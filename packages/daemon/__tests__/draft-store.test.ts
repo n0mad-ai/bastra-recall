@@ -193,7 +193,7 @@ test("compiled CLI lists JSON, honors help and purges; invalid subcommand fails"
   assert.match((await invoke("purge", "--help")).stdout, /local session drafts/);
   assert.equal((await listDrafts()).length, 1);
   await assert.rejects(invoke("other"), (err: unknown) => (err as { code: number }).code === 2);
-  assert.deepEqual(JSON.parse((await invoke("purge", "--json")).stdout), { purged: true });
+  assert.deepEqual(JSON.parse((await invoke("purge", "--json")).stdout), { purged: true, cleared: ["drafts", "vectors", "decisions"], pending_relay: "absent" });
   assert.deepEqual(await listDrafts(), []);
 }));
 

@@ -60,7 +60,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
-import { writePendingSuggestion } from "./pending-suggestions.js";
+import { writePendingFromHook } from "./pending-suggestions.js";
 import { hookClientEvidence } from "./hook-surface.js";
 import { getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
@@ -285,7 +285,7 @@ async function evaluateStop(
     if (suggestions.length > 0) {
       const sameTurn = await takeSameTurnSuggestions(payload, suggestions);
       if (sameTurn === null) {
-        await writePendingSuggestion(suggestions.map(formatSuggestion).join("\n"));
+        await writePendingFromHook(suggestions.map(formatSuggestion).join("\n"));
         delivery = "pending";
       } else if (sameTurn.length > 0) {
         stdout = JSON.stringify({
@@ -298,7 +298,7 @@ async function evaluateStop(
       }
     }
     if (drift.length > 0) {
-      await writePendingSuggestion(formatDriftBlock(drift), {
+      await writePendingFromHook(formatDriftBlock(drift), {
         lane: "trends",
         key: "taxonomy-drift",
         clusters: Object.fromEntries(drift.map((c) => [`${c.kind}:${c.key}`, c.count])),

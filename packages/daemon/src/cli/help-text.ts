@@ -219,6 +219,8 @@ BASTRA_DRAFTS_PATH overrides the default ~/.bastra/drafts.json location.
 Typed messages passing the structural noise filter are captured automatically
 by the local session harvest, with their redacted situation. Retrieval shows
 unconfirmed quotes separately; BASTRA_DRAFT_HINTS=0 disables that band.
+BASTRA_PENDING_RELAY=0 stops all relay writes and delivery; retained files stay.
+purge also clears the pending relay (even when disabled); unreadable relay files are preserved.
 `,
   code: `bastra code — code awareness for a repository (experimental)
 

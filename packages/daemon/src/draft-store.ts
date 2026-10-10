@@ -12,6 +12,7 @@ import { cleanDraftText, cleanDraftField, cleanDraftLine, clipDraftText } from "
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
+import { purgePendingSuggestions } from "./pending-suggestions.js";
 import { retainDraftSurfaces, draftUseProof } from "./draft-use.js";
 
 export const DRAFT_STORE_VERSION = 1;
@@ -425,14 +426,17 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
   }, { crossProcess: true });
 }
 
-export async function purgeDrafts(): Promise<void> {
+export async function purgeDrafts(): Promise<{ pendingRelay: boolean }> {
   const path = draftsPath();
-  await withDraftPublication(() => withPathLock(path, async () => {
-    await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    cache = undefined;
-  }, { crossProcess: true }));
+  return withDraftPublication(() => withPathLock(path, async () => {
+    const pendingRelay = await purgePendingSuggestions(async () => {
+      await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      cache = undefined;
+    });
+    return { pendingRelay };
+  }, { crossProcess: true, requireLock: true }));
 }
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */

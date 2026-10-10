@@ -87,6 +87,13 @@ content: it can be retrieved by connected clients and processed by the chosen
 vault embedding provider, including a non-local provider. That provider path
 is separate from the assistant; draft embeddings themselves remain local.
 
+
+Busy relay reads are skipped immediately and retain their entries for the next
+start. Stop-hook writes skip contention on the response path and are retried
+in the daemon background under a real lock, without normal busy-lock warnings.
+The in-memory deferred write can be lost if the daemon is killed before it is
+persisted; this is not a second durable queue.
+
 #### Switching off and clearing drafts
 
 Set the switches in the **daemon's environment** and restart it; changing only
@@ -95,18 +102,21 @@ and `no`, case-insensitive with surrounding whitespace ignored.
 
 - `BASTRA_SESSION_HARVEST=0` stops booking/capture, the harvest tick, shadow comparisons, automatic promotion and new harvest relay writes. Existing draft hints still work unless hints are also disabled.
 - `BASTRA_DRAFT_HINTS=0` stops the unconfirmed hint band, `draft_hits` and use tracking. It does not stop capture or relay writes/delivery.
-- Neither switch stops SessionStart from delivering existing relay entries. Other relay writers, including the independent Stop evaluation and curator, are not controlled by these two switches.
+- `BASTRA_PENDING_RELAY=0` stops every relay writer and SessionStart delivery, including Stop, curator and harvest. The existing file is left in place and is not read while disabled. Capture and the draft hint band are separate.
 
-For draft capture and hints to stay off, set **both** switches.
-`bastra drafts list` inspects the store. `bastra drafts purge` removes only the
-draft store, vectors and decision receipts; it does **not** clear the relay,
-harvest queue, optional training capture or already promoted vault notes.
-To remove retained relay text, stop the daemon and delete the actual
-`pending-suggestions.json` file in your file manager (the default path is above).
-Delete the harvest queue too if its retained session/path metadata is unwanted;
-reenabling harvest can otherwise resume queued sessions. Restart with both
-switches off. Independent Stop/curator producers must also be disabled if no
-new shared relay entries are wanted. On an existing Claude Code installation,
+For draft capture and hints to stay off, set **both** draft switches; add
+`BASTRA_PENDING_RELAY=0` to stop shared relay writes and delivery as well.
+`bastra drafts list` inspects the store. `bastra drafts purge` removes the draft
+store, vectors and decision receipts, and clears the pending relay to an empty
+0600 file under its usual lock, even when relay delivery is disabled. The relay is validated first, then drafts are deleted, then the relay is cleared.
+An unreadable or malformed relay is preserved and the command fails before
+deleting drafts; an empty relay is accepted. Failed draft deletion leaves the
+relay unchanged.
+The command reports the cleared stores and marks an absent relay as not present; it does not clear the harvest queue,
+optional training capture or already promoted vault notes. Stop capture before
+clearing to prevent new entries. The harvest queue can resume queued sessions
+when harvest is reenabled; its session/path metadata is retained.
+On an existing Claude Code installation,
 `bastra install claude-code --no-stop-hook` preserves a previously enabled Stop
 hook and its SessionEnd companion; it does not remove them. Disable/remove those
 entries explicitly in the client's hook configuration when needed.
@@ -225,6 +235,14 @@ können sie abrufen, und der gewählte Vault-Embedding-Anbieter kann sie verarbe
 auch ein nicht-lokaler Anbieter. Dieser Anbieterweg läuft getrennt vom Assistenten;
 die Embeddings der Entwürfe selbst bleiben lokal.
 
+
+Belegte Relay-Sperren werden beim Lesen sofort übersprungen; die Einträge bleiben
+für den nächsten Start. Stop-Hook-Schreibvorgänge warten auf dem Antwortweg
+nicht auf die Sperre und werden im Daemon-Hintergrund unter einer echten Sperre
+wiederholt, ohne Störmeldung bei normaler Belegung. Ein noch nicht gespeicherter
+Auftrag im Arbeitsspeicher kann bei einem harten Daemon-Abbruch verloren gehen;
+das ist keine zweite dauerhafte Warteschlange.
+
 #### Abschalten und Entwürfe entfernen
 
 Die Schalter in der **Umgebung des Daemons** setzen und ihn neustarten;
@@ -234,19 +252,22 @@ und mit ignorierten umgebenden Leerzeichen.
 
 - `BASTRA_SESSION_HARVEST=0` stoppt Vormerken/Erfassung, den Harvest-Tick, Shadow-Vergleiche, automatische Übernahme und neue Harvest-Relay-Schreibvorgänge. Bestehende Entwurfs-Hinweise funktionieren weiter, solange die Hinweise nicht ebenfalls abgeschaltet sind.
 - `BASTRA_DRAFT_HINTS=0` stoppt das unbestätigte Hinweisband, `draft_hits` und die Nutzungserfassung. Erfassung sowie Relay-Schreiben/-Auslieferung bleiben davon unberührt.
-- Keiner der Schalter stoppt die Auslieferung vorhandener Relay-Einträge bei SessionStart. Andere Relay-Schreiber, darunter die unabhängige Stop-Prüfung und der Curator, werden nicht durch diese beiden Schalter gesteuert.
+- `BASTRA_PENDING_RELAY=0` stoppt alle Relay-Schreiber und die SessionStart-Auslieferung, auch Stop, Curator und Harvest. Die vorhandene Datei bleibt liegen und wird bei abgeschaltetem Relay nicht gelesen. Erfassung und Entwurfs-Hinweisband bleiben getrennt.
 
-Damit Entwurfs-Erfassung und Hinweise aus bleiben, **beide** Schalter setzen.
-`bastra drafts list` zeigt die Ablage. `bastra drafts purge` entfernt nur
-Entwurfsablage, Vektoren und Entscheidungsmerker; es leert **nicht** den Relay,
-die Harvest-Queue, optionale Trainingsdaten oder bereits beförderte Vault-Notizen.
-Um verbliebenen Relay-Text zu entfernen, den Daemon stoppen und die tatsächlich
-verwendete `pending-suggestions.json` im Dateimanager löschen (Standardpfad siehe
-oben). Die Harvest-Queue ebenso löschen, wenn ihre Sitzungs-/Pfadmetadaten nicht
-bleiben sollen; nach erneutem Einschalten kann der Harvest sonst vorgemerkte
-Sitzungen fortsetzen. Mit beiden abgeschalteten Schaltern neustarten. Unabhängige
-Stop-/Curator-Schreiber müssen ebenfalls deaktiviert sein, wenn keine neuen
-gemeinsamen Relay-Einträge entstehen sollen. Bei einer bestehenden Claude-Code-
+Damit Entwurfs-Erfassung und Hinweise aus bleiben, **beide** Entwurfs-Schalter
+setzen; zusätzlich `BASTRA_PENDING_RELAY=0` schaltet die gemeinsame Weitergabe
+vollständig ab. `bastra drafts list` zeigt die Ablage. `bastra drafts purge`
+entfernt Entwurfsablage, Vektoren und Entscheidungsmerker und leert den Relay
+unter derselben Sperre in eine leere 0600-Datei, auch bei abgeschalteter
+Weitergabe. Zuerst wird der Relay geprüft, dann werden Entwürfe gelöscht, danach wird der Relay
+geleert. Ein unlesbarer oder beschädigter Relay bleibt erhalten; der Befehl
+scheitert vor dem Löschen der Entwürfe. Eine leere Relay-Datei wird akzeptiert;
+scheitert das Löschen der Entwürfe, bleibt der Relay unverändert. Die Ausgabe
+nennt die geleerten Ablagen und kennzeichnet einen fehlenden Relay als nicht vorhanden.
+Harvest-Queue, optionale Trainingsdaten und bereits beförderte Vault-Notizen
+bleiben erhalten. Vor dem Leeren die Erfassung abschalten, damit keine neuen
+Einträge entstehen. Die Harvest-Queue behält Sitzungs-/Pfadmetadaten und kann
+nach erneutem Einschalten vorgemerkte Sitzungen fortsetzen. Bei einer bestehenden Claude-Code-
 Installation erhält `bastra install claude-code --no-stop-hook` einen zuvor
 aktivierten Stop-Hook und seinen SessionEnd-Begleiter; es entfernt sie nicht.
 Diese Einträge bei Bedarf ausdrücklich in der Hook-Konfiguration des Clients
