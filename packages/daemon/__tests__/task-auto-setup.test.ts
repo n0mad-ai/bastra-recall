@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, chmod, stat, mkdir } from "node:fs/promises";
@@ -35,7 +36,7 @@ test("disabled and multi-owner installations do not get silent new access", asyn
 }));
 
 test("real upgraded daemon needs no setup command and preserves client configuration across restarts", async () => {
-  const { spawn } = await import("node:child_process"), { once } = await import("node:events"), { createServer } = await import("node:net"), { fileURLToPath } = await import("node:url");
+  const { spawn } = await import("node:child_process"), { createServer } = await import("node:net"), { fileURLToPath } = await import("node:url");
   const root = await mkdtemp(join(tmpdir(), "task-auto-process-")), vault = join(root, "vault"), data = join(root, "data"); await mkdir(vault); await mkdir(data);
   const config = join(root, "foreign-client-settings.json"), sentinel = '{"mcpServers":{"foreign":{"command":"synthetic"}},"hooks":{"keep":true}}'; await writeFile(config, sentinel);
   let child: ReturnType<typeof spawn> | undefined, closed: Promise<any> | undefined, base = "";
