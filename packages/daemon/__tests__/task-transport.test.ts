@@ -90,3 +90,7 @@ test("unknown errors never expose raw filesystem codes", () => {
   assert.equal(failure.body.code, "unavailable"); assert.ok(!JSON.stringify(failure).includes("ENOENT"));
   assert.ok(!JSON.stringify(failure).includes("private path"));
 });
+
+test("task routes enforce the same local Host gate even with a valid mapped token",async()=>{
+ const f=await fixture();try{const {request}=await import("node:http");for(const host of ["foreign.invalid","localhost.evil.invalid"]){const status=await new Promise<number>((resolve,reject)=>{const r=request(f.base+"/api/v1/tasks",{headers:{Host:host,Authorization:`Bearer ${f.owner.token}`}},res=>{res.resume();resolve(res.statusCode!);});r.on("error",reject);r.end();});assert.equal(status,403);}assert.equal((await fetch(f.base+"/api/v1/tasks",{headers:{Authorization:`Bearer ${f.owner.token}`}})).status,200);}finally{await f.close();}
+});

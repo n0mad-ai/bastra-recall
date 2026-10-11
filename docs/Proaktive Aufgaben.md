@@ -85,4 +85,35 @@ bastra tasks ui
 
 Die Aufgaben-Seite fragt den Token ab und hält ihn nur in der geöffneten Seite. Sie zeigt Aufgaben, Karten, Quellen und Freigaben. Anlegen ist standardmäßig unscharf; Owner-Prüfung, Quittieren, Zurückstellen, Erledigen und Beenden bleiben getrennt. Daten werden als Text dargestellt. Für eine widerlegte tragende Annahme zeigt die Karte alte Entscheidung, geänderte Prämisse, Evidenz und Unsicherheit. Beibehalten, Ändern, Zurückstellen und Überwachung beenden sind eigene Owner-Wahlen. Beibehalten schaltet den historischen Watch ab; weitere Änderungen brauchen eine neue Owner-Bindung.
 
-Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die CLI entsperrt Signing-Schlüssel und signiert die ganze Bindung; die Browser-Kennung und automatische Klicks ersetzen diese Signatur nicht. Jede betroffene Domäne muss zustimmen. Für Execute sind zusätzlich ein aktivierter registrierter lokaler Adapter, eine lebende Lease und eine fällige scharfe Aufgabe erforderlich. Die geschützte Grenze ist eine ausdrückliche, technisch nicht geprüfte Owner-Zusicherung über fehlenden Agent-Zugriff auf Daten, Schlüssel und Laufzeit. Ohne diese Grenze bleibt Execute gesperrt. Einrichtung des Referenzadapters und die vollständige Wegwerf-Demo folgen im Abschluss-Paket.
+Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die CLI entsperrt Signing-Schlüssel und signiert die ganze Bindung; die Browser-Kennung und automatische Klicks ersetzen diese Signatur nicht. Jede betroffene Domäne muss zustimmen. Für Execute sind zusätzlich ein aktivierter registrierter lokaler Adapter, eine lebende Lease und eine fällige scharfe Aufgabe erforderlich. Die geschützte Grenze ist eine ausdrückliche, technisch nicht geprüfte Owner-Zusicherung über fehlenden Agent-Zugriff auf Daten, Schlüssel und Laufzeit. Ohne diese Grenze bleibt Execute gesperrt. Der nächste Abschnitt richtet den Referenzadapter ein; die vollständige Wegwerf-Demo steht in `docs/design/proactive-tasks-demo.md`.
+
+## Ein lokales Ziel registrieren
+
+Unterstützt wird genau ein Referenzadapter: eine vorhandene, registrierte UTF-8-Datei exakt ersetzen. Kein Versand, keine Anbieter-Nachrichten, keine E-Mail-, Slack-, GitHub-, Cloud- oder Shell-Aktionen. Der Vorzustand muss rückrollbar sein: höchstens16384 Zeichen, keine Tabs/CRLF/BOM/Steuerzeichen oder Inhalte, die sich nicht sicher unverändert darstellen lassen.
+
+```sh
+bastra tasks targets register demo --root /ABSOLUTER/DEMOORDNER --path artifact.txt --domain personal
+bastra tasks targets list
+bastra tasks keys enroll personal /OWNERORDNER/approval-key.json
+bastra tasks boundary
+# Alle Task-Prozesse neu starten, damit sie die neue Registry binden.
+bastra tasks execution-enable
+```
+
+Zielregistrierung ersetzt keine vorhandene Kennung still. Sie stoppt Ausführung und setzt die Grenzerklärung zurück. Der Owner sieht vor Bestätigung den konkreten Pfad und die Domänen. Die Browser-Seite zeigt exakte Vorher/Nachher-Inhalte; alle Bindungsdetails bleiben zusätzlich aufklappbar. Signing-Schlüssel bleiben am Owner-Terminal, die ganze Bindung wird vor dem Signieren angezeigt. Jeder Write und jedes Rollback braucht neue konkrete Signaturen aller Pflichtdomänen, eine frische Lease und einen unveränderten Zielstand. `resume` fragt lesbar mit Nein als Standard; Nein ändert nichts.
+
+## Budgets, Archiv und Reparatur
+
+Status und Seite nennen pro Aufgabe Prüfintervall, Timeout und Quell-Bytegrenze sowie die globalen Grenzen: höchstens10 Quellprüfungen und5s Quellbudget je Lauf, 60s Poll, höchstens1s pro Quelllesung, 4MiB aktive Momentaufnahme (Normalbetrieb bis75%). Unveränderte Fehlquellen gehen bis1h in Backoff. Neue angenommene Ereignisse umgehen diesen Backoff; sie werden geordnet beim Kontakt oder nächsten Poll geprüft. Fünf Sekunden sind für kleine gesunde Tests vorgesehen, keine harte Garantie bei blockiertem Dateisystem, Lock-Konkurrenz oder Prozesspause.
+
+```sh
+bastra tasks stop
+bastra tasks archive ERLEDIGTE_AUFGABEN_ID
+bastra tasks archive-restore ARCHIV_ID
+```
+
+Archivierung exportiert validierte private History samt Wirkungsbelegen, bevor sie abgeschlossene Datensätze aus dem aktiven Speicher nimmt. Offene Vorkommen, offene/unklare Wirkungen und aktive Leases werden nicht archiviert. Verbrauchte Freigaben, Fencing-Zähler, Journal und Idempotenz bleiben erhalten. Wiederholungen liefern ursprüngliche IDs/Belege; ein fehlendes/verändertes Archiv wird als Fehler behandelt und erlaubt keine Wiederverwendung. `status` nennt die Archive. Wiederaufnahme lädt den Verlauf für Prüfung oder separat freigegebenes Rollback; sie schaltet nichts scharf und hält Ausführung gestoppt. Archive und Backups behalten sensible Inhalte: privat sichern, nicht an Agenten freigeben. Unaufgelöster Rückstau, verbrauchte Freigaben und der Archivindex haben feste Grenzen; Sättigung meldet `capacity`, nichts wird still gelöscht.
+
+Bei beschädigtem Speicher: erst alle Task-Prozesse stoppen, dann `bastra tasks recover`. Der Owner bestätigt, die private letzte Backup-Version wird geprüft und das beschädigte Original gesichert. Aufgaben werden unscharf, Ausführung gestoppt, alte Revisions-/Freigabebindungen ungültig. Der letzte Backup-Stand kann jüngste Änderungen nicht enthalten; das Original bleibt zur Prüfung erhalten. `recover --lock` bietet zusätzlich eine ausdrückliche Offline-Sicherung einer unbekannten liegengebliebenen Sperre; bekannte lebende lokale Besitzer werden nie entfernt. Danach Daemon neu starten und jede Aufgabe neu prüfen. Keine automatische leere Ersatzablage bei Korruption.
+
+Unklare Wirkungen bleiben als „Abgleich nötig“ sichtbar; kein automatischer zweiter Write. Ein unsicher bereinigbarer Temp-Rest wird ausdrücklich genannt. `intent-reconcile --input ...` oder der Abgleichknopf liest den Zielstand und versucht nur eigene hashgebundene Restdateien zu entfernen, auch wenn das Ziel fehlt. Fremde/abweichende Reste werden nicht gelöscht. Die Wegwerf-Demo steht in `docs/design/proactive-tasks-demo.md`.

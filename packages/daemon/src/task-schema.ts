@@ -144,6 +144,7 @@ export const taskStoreSchema = z.strictObject({
   proposals: z.array(proposalSchema).max(1000), challenges: z.array(challengeSchema).max(10000), approvals: z.array(approvalSchema).max(10000),
   leases: z.array(leaseSchema).max(1000), intents: z.array(intentSchema).max(1000), receipts: z.array(receiptSchema).max(10000),
   consumed_approval_ids: z.array(id).max(10000),
+  archives: z.array(z.strictObject({id:z.string().uuid(),hash,at:instant,actor:taskIdentitySchema,task_ids:z.array(id).min(1).max(1000),intent_keys:z.array(hash).max(1000),owner_domains:domains})).max(1000).default([]),
   recovery_history: z.array(z.strictObject({
     id, at: instant, from_revision: revision, actor: id, reason: text,
   })).max(1000),
@@ -180,6 +181,6 @@ export type TaskStore = z.infer<typeof taskStoreSchema>;
 export function emptyTaskStore(): TaskStore {
   return { schema_version: TASK_STORE_VERSION, revision: 0, recovery_epoch: "initial", fencing_counter: 0, evaluation_cursor: 0,
     sources: [], tasks: [], events: [], checkpoint: 0, occurrences: [], proposals: [],
-    challenges: [], approvals: [], leases: [], intents: [], receipts: [], consumed_approval_ids: [], recovery_history: [],
+    challenges: [], approvals: [], leases: [], intents: [], receipts: [], consumed_approval_ids: [], archives: [], recovery_history: [],
     controls: { enabled: true, muted: false, execution_stopped: true, adapters: {} } };
 }

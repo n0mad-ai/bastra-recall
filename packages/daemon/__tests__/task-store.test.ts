@@ -148,7 +148,9 @@ test("strict lock refuses age-only takeover of a live owner", async () => {
   const raw = JSON.stringify({ pid: process.pid, host: hostname(), ts: 0, token: "live-paused" });
   await writeFile(pathLockFilePath(path), raw); await utimes(pathLockFilePath(path), 1, 1);
   let called = false;
-  await assert.rejects(withPathLock(path, async () => { called = true; }, { strictLocal: true }), PathLockUnavailableError);
+  let logged="";const stderrWrite=process.stderr.write;process.stderr.write=((chunk:any)=>{logged+=String(chunk);return true;}) as typeof process.stderr.write;
+  try{await assert.rejects(withPathLock(path, async () => { called = true; }, { strictLocal: true }), PathLockUnavailableError);}finally{process.stderr.write=stderrWrite;}
+  assert.ok(!logged.includes(path));assert.match(logged,/\[private store\]/);
   assert.equal(called, false); assert.equal(await readFile(pathLockFilePath(path), "utf8"), raw);
 });
 

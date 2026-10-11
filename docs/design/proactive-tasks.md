@@ -616,3 +616,33 @@ Owner due inspection survives mute/off/ack; passive delivery obeys the controls.
 Ambiguous local CLI creation remains unarmed and states its earlier-offset choice.
 Owner credential cache is interactive-only, outside agent access by Owner setup;
 never read by hook/MCP/agent authorization and not a signing substitute.
+
+P9c retention/recovery: v3 gains an optional/default-empty cold archive index and
+optional intent temp_cleanup_pending metadata (no memory-schema change, no action
+capability migration). Export private validated exact terminal groups before an
+archive-kind guard commit; the guard independently verifies hash and predecessor,
+terminal/unarmed state, resolved occurrences, no pending/unknown intents, no active
+leases, execution stop and exact-only row retirement. Keep active event journal,
+checkpoint/fence counters and permanently consumed approval IDs. Cold task/intent
+indexes retain create/execute idempotency; missing/tampered archive fails closed.
+Restore imports terminal history/receipts for fresh approved rollback, keeps the
+index and stops execution; never renews old authority. Max1000 archive entries,
+max10000 spent tombstones and journal rows remain bounded backpressure, not automatic
+unsafe purge. Orphan export before index commit is harmless and private. The last
+backup may omit newer changes; quarantine preserves the damaged current original.
+Owner recovery changes epoch, disarms all and stops execution. Offline unknown-lock
+quarantine requires explicit stopped-process attestation, refuses known live local
+owners. Public lock diagnostics never include the private task-store path.
+
+Owner target registration uses CLI options and refuses silent ID replacement,
+noncanonical/symlink boundaries and nonreversible existing bytes. Every registry
+edit stops execution/resets protected_boundary; restart pins new revision. Only
+local-artifact-v1 is supported, no provider/cloud/chat/email/GitHub/shell writes.
+Temp cleanup resolves registered parent independently of target leaf existence,
+checks own intent filename/no symlink/bounded exact approved hash; a changed registry
+or foreign rest remains visible with temp_cleanup_pending and can be safely retried
+after review. Receipt/outcome is immutable; cleanup never retries a target write.
+Task HTTP requires the shared loopback Host predicate in addition to mapped bearer
+and existing Origin gate. CLI reason codes are bounded, no raw Zod/filesystem data;
+UI terminal controls are disabled, exact before/after text shown before signature,
+full signed binding remains inspectable. Global/per-task source budgets are visible.

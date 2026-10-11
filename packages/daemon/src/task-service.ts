@@ -1,3 +1,5 @@
+import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
+import { archiveTasks, restoreTaskArchive, archivedTask, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
 import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
@@ -38,7 +40,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict" | "protected_boundary_required", message: string) {
@@ -69,7 +71,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     ? schedule.expected : taskValueHash(schedule.expected);
   if (schedule.kind === "calendar") {
     try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
-    catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
+    catch (error) { throw Object.assign(new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"),{reason:(error as any)?.reason}); }
   }
 }
 export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; executionHost?: boolean; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
@@ -79,6 +81,9 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
   if (isTaskExecution(operation)) return executeTaskAction(ctx, authorization, operation, raw);
+  if (operation === "task_recover") return recoverTasks(ctx,authorization,raw);
+  if (operation === "task_archive") return archiveTasks(ctx,authorization,raw);
+  if (operation === "task_archive_restore") { const input=z.strictObject({archive_id:z.string().uuid()}).parse(raw); return restoreTaskArchive(ctx,authorization,input.archive_id); }
   if (operation === "task_status") return taskStatus(ctx, authorization, raw);
   if (operation === "task_controls") return taskControls(ctx, authorization, raw);
   if (Object.hasOwn(TASK_ACTION_INPUTS, operation)) return callTaskAction(ctx, authorization, operation as keyof typeof TASK_ACTION_INPUTS, raw);
@@ -118,8 +123,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
     const creationHash = hash(input);
+    let archived: Awaited<ReturnType<typeof archivedTask>>;
     const store = await transactTaskStore(ctx.path, undefined, async s => {
-      const existing = s.tasks.find(t => t.id === id);
+      archived = s.tasks.some(t=>t.id===id) ? undefined : await archivedTask(ctx.path,s,id);
+      const existing = s.tasks.find(t => t.id === id) ?? archived?.task;
       if (existing) {
         requireTaskDomains(principal, existing.owner_domains);
         if (existing.creation_hash !== creationHash) throw new TaskServiceError("conflict", "idempotency key already has a different request");
@@ -136,7 +143,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (arm && await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       s.tasks.push(task);
     });
-    return view(store, findTask(store, id, principal));
+    return archived && !store.tasks.some(t=>t.id===id) ? {...view(archived.snapshot,archived.task),archived:true,archive_id:archived.entry.id} : view(store, findTask(store, id, principal));
   }
   const input = operation === "task_edit" ? editInput.parse(raw)
     : operation === "task_review" ? mutationInput.parse(raw) : lifecycleInput.parse(raw);
@@ -172,6 +179,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     const op = operation.slice(5) as TaskLifecycleOperation;
     if (["acknowledge", "resolve", "rearm"].includes(op)) requireTaskOwner(principal);
     const args = lifecycleInput.parse(input);
+    if (op === "snooze" && (args.until === undefined || args.until <= now)) throw Object.assign(new TaskServiceError("validation","Future snooze required"),{reason:"snooze_past"});
     if (op === "snooze" && principal.role === "agent") {
       const ceiling = task.agent_snooze_deadline ?? now + 24 * 60 * 60 * 1000;
       if (args.until === undefined || args.until > ceiling) throw new TaskServiceError("validation", "agent snooze exceeds the fixed 24-hour window");
@@ -192,7 +200,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   return view(store, findTask(store, input.id, principal));
 }
 
-export const TASK_INPUT_SCHEMAS = { ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
+export const TASK_INPUT_SCHEMAS = {task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,

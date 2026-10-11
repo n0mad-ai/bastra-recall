@@ -16,7 +16,7 @@ function calendarCandidates(local: string, timezone: string): Array<{ at: number
   }
   const candidates = [...offsets].map(offset => ({ at: wall - offset, offset_minutes: offset / 60000 }))
     .filter(c => c.at >= 0 && Number.isInteger(c.offset_minutes) && localWall(c.at, timezone) === local).sort((a, b) => a.at - b.at);
-  if (!candidates.length) throw new Error("calendar time is in a DST gap");
+  if (!candidates.length) throw Object.assign(new Error("Diese Ortszeit existiert wegen der Sommerzeit-Umstellung nicht. Andere Uhrzeit wählen."),{code:"validation",reason:"calendar_gap"});
   return candidates;
 }
 export function resolveTaskCalendar(local: string, timezone: string): { at: number; offset_minutes: number } { return calendarCandidates(local, timezone)[0]; }

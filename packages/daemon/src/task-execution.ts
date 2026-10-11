@@ -1,3 +1,4 @@
+import { archivedIntent } from "./task-archive.js";
 /** Reviewed local execution: one lock, durable spend, exact UTF-8 CAS, receipts. */
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -60,9 +61,13 @@ function markUnknown(store: TaskStore, taskId: string, now: number) {
   task.history.push({ at: now, actor: "task-action-recovery", operation: "action-unknown", before_revision: before, after_revision: task.revision, reason: "Abgleich nötig" });
 }
 async function cleanupIntentTemp(registry: Awaited<ReturnType<typeof taskActionRegistry>>, intent: Intent, proposal: TaskStore["proposals"][number]) {
-  const target = await readTaskTarget(registry, proposal.target_id);
-  const tmp = join(dirname(target.path), `.bastra-task-${intent.id}.tmp`);
-  try { const info = await lstat(tmp); if (!info.isSymbolicLink() && info.isFile() && info.size <= 16384 * 4 && bytesHash(await boundedTaskRead(tmp, 16384 * 4)) === intent.after_hash) await unlink(tmp); }
+  if (registryHash(registry) !== proposal.registry_hash) fail("approval_stale", "Cleanup registry changed");
+  const target = registry.targets.find(t => t.id === proposal.target_id);
+  if (!target) fail("not_found", "Cleanup target absent");
+  const root = realpathSync(target.root), path = resolve(root, target.path), parent = dirname(path);
+  if (root !== target.root || relative(root,path).startsWith("..") || realpathSync(parent) !== parent) fail("approval_stale", "Cleanup directory boundary changed");
+  const tmp = join(parent, `.bastra-task-${id.parse(intent.id)}.tmp`);
+  try { const info = await lstat(tmp); if (info.isSymbolicLink() || !info.isFile() || info.size > 16384 * 4 || bytesHash(await boundedTaskRead(tmp, 16384 * 4)) !== intent.after_hash) fail("approval_stale", "Cleanup file differs; owner review required"); await unlink(tmp); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
 /** No awaits between final CAS/ownership/expiry admission and the rename. */
@@ -90,14 +95,19 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       if (!intent) fail("not_found", "Intent absent");
       const proposal = store.proposals.find(p => p.id === intent.proposal_id)!; requireTaskDomains(principal, proposal.required_domains);
       if (principal.actor_id !== intent.actor) requireTaskOwner(principal);
-      if (intent.state !== "pending") return present(intent);
-      const target = await readTaskTarget(registry, proposal.target_id);
+      let cleanupPending = false;
+      try { await cleanupIntentTemp(registry, intent, proposal); } catch { cleanupPending = true; }
+      if (intent.state !== "pending") {
+        if (!!intent.temp_cleanup_pending !== cleanupPending) store = await guard.commit(s => { s.intents.find(i => i.id === intent.id)!.temp_cleanup_pending = cleanupPending; }, "control");
+        return { ...present(store.intents.find(i => i.id === intent.id)!), temp_cleanup_pending: cleanupPending };
+      }
+      let targetHash: string | undefined;
+      try { targetHash = (await readTaskTarget(registry, proposal.target_id)).hash; } catch { /* persist unknown */ }
       // Read-only recovery never retries a target write, regardless of lease expiry.
-      const outcome = target.hash === intent.after_hash && intent.recovery_epoch === store.recovery_epoch ? "reconciled" as const : "unknown" as const;
-      await cleanupIntentTemp(registry, intent, proposal);
+      const outcome = targetHash === intent.after_hash && intent.recovery_epoch === store.recovery_epoch ? "reconciled" as const : "unknown" as const;
       const receipt = { id: randomUUID(), intent_id: intent.id, proposal_id: proposal.id, task_id: intent.task_id, actor: intent.actor, fence: intent.fence, at: now, outcome,
-        target_hash: target.hash, before_hash: intent.before_hash, after_hash: intent.after_hash, backup_id: intent.backup_id };
-      store = await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
+        ...(targetHash ? {target_hash:targetHash} : {error_code:"target_unavailable"}), before_hash: intent.before_hash, after_hash: intent.after_hash, backup_id: intent.backup_id };
+      store = await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; row.temp_cleanup_pending = cleanupPending; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
       return present(store.intents.find(i => i.id === intent.id)!);
     }
     if (operation === "task_rollback_prepare") {
@@ -117,6 +127,12 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       return { proposal, rollback_of: receipt.id, preview: { before: target.payload, after: backup.payload }, executes: false, new_owner_approvals_required: true };
     }
     const input = TASK_EXECUTION_INPUTS.task_execute.parse(raw);
+    const archived = await archivedIntent(ctx.path,store,principal.actor_id,input.idempotency_key);
+    if (archived && !store.intents.some(i=>i.id===archived.intent.id)) {
+      const old=archived.intent,proposal=archived.snapshot.proposals.find(p=>p.id===old.proposal_id)!;requireTaskDomains(principal,proposal.required_domains);
+      if(old.proposal_id!==input.proposal_id||old.lease_id!==input.lease_id||old.fence!==input.fence)fail("conflict","Archived idempotency binding differs");
+      return {intent_id:old.id,state:old.state,receipt:archived.snapshot.receipts.find(r=>r.id===old.receipt_id)};
+    }
     const proposal = store.proposals.find(p => p.id === input.proposal_id); if (!proposal) fail("not_found", "Proposal absent");
     requireTaskDomains(principal, proposal.required_domains);
     const existing = store.intents.find(i => i.actor === principal.actor_id && i.idempotency_key === input.idempotency_key);
@@ -169,11 +185,11 @@ export async function reconcilePendingTaskIntents(ctx: TaskServiceContext): Prom
       const proposal = store.proposals.find(p => p.id === intent.proposal_id)!;
       let hash: string | undefined;
       try { if (proposal.registry_hash !== registryHash(registry)) throw new Error("Registry drift"); hash = (await readTaskTarget(registry, proposal.target_id)).hash; } catch { /* unknown retains an explicit review outcome */ }
-      try { await cleanupIntentTemp(registry, intent, proposal); } catch { /* unavailable temp/target is visible as unknown */ }
+      let cleanupPending = false; try { await cleanupIntentTemp(registry, intent, proposal); } catch { cleanupPending = true; }
       const outcome = hash === intent.after_hash && intent.recovery_epoch === store.recovery_epoch ? "reconciled" as const : "unknown" as const;
       const receipt = { id: randomUUID(), intent_id: intent.id, proposal_id: proposal.id, task_id: intent.task_id, actor: intent.actor, fence: intent.fence, at: (ctx.now ?? Date.now)(), outcome,
         ...(hash ? { target_hash: hash } : { error_code: "target_unavailable" }), before_hash: intent.before_hash, after_hash: intent.after_hash, backup_id: intent.backup_id };
-      await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
+      await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; row.temp_cleanup_pending = cleanupPending; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
     }
   });
 }

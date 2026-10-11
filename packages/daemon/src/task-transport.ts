@@ -1,3 +1,4 @@
+import { isLoopbackHost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
 import { approvalRegistryPath, pinnedApprovalRegistry } from "./task-approval-keys.js";
 import type { ToolDeps } from "./tool-deps.js";
@@ -17,15 +18,17 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">, executionHost = false): TaskServiceContext { return { executionHost, path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), approvalRegistryPath: approvalRegistryPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
-export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
+export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number; reason?: string } } {
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
   const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
-    validation: 400, conflict: 409, approval_stale: 409, approval_expired: 409, approval_revoked: 409, approval_denied: 403, approval_missing: 409, approval_consumed: 409, lease_expired: 409, key_unlock_failed: 403, owner_cache_invalid: 403, adapter_disabled: 409, adapter_not_reversible: 409, execution_stopped: 409, feature_disabled: 409, execution_host_required: 409, protected_boundary_required: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
+    validation: 400, conflict: 409, approval_stale: 409, approval_expired: 409, approval_revoked: 409, approval_denied: 403, approval_missing: 409, approval_consumed: 409, lease_expired: 409, key_unlock_failed: 403, owner_cache_invalid: 403, adapter_disabled: 409, adapter_not_reversible: 409, execution_stopped: 409, feature_disabled: 409, execution_host_required: 409, protected_boundary_required: 409, invalid_backup:503, corrupt: 503, auth_corrupt:503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
   // Do not echo raw validation values, paths, authorization or filesystem errors.
   const code = Object.hasOwn(statuses, reported) ? reported : "unavailable";
   const status = statuses[code] ?? 503;
-  return { status, body: { error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
+  const detail = (error as {reason?:string})?.reason;
+  const reason = ["calendar_gap","recurrence_limit_required","snooze_past","owner_declined"].includes(detail??"") ? detail : undefined;
+  return { status, body: { ...(reason?{reason}:{}), error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
 }
 export async function callTaskMcp(name: TaskCrudOperation, input: unknown,
   authorization: string | undefined, ctx = defaultTaskContext()) {
@@ -47,6 +50,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
   if (!pathname.startsWith("/api/v1/tasks") && !pathname.startsWith("/api/v1/task_")) return false;
   void (async () => {
     try {
+      if (!isLoopbackHost(req.headers.host,[])) throw Object.assign(new Error("Local task Host required"),{code:"forbidden"});
       // Authenticate even invalid routes before reading a body. Loopback is no exemption.
       await authenticateTask(req.headers.authorization, ctx.authPath);
       let operation: TaskCrudOperation | undefined;
@@ -54,6 +58,9 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       const tool = pathname.slice("/api/v1/".length);
       if (isTaskTool(tool) && method === "POST") operation = tool;
       else if (pathname === "/api/v1/tasks/due" && method === "GET") operation = "task_due";
+      else if (pathname === "/api/v1/tasks/recovery" && method === "POST") operation = "task_recover";
+      else if (pathname === "/api/v1/tasks/archive" && method === "POST") operation = "task_archive";
+      else if (pathname === "/api/v1/tasks/archive/restore" && method === "POST") operation = "task_archive_restore";
       else if (pathname === "/api/v1/tasks/events" && method === "POST") operation = "task_event";
       else if (pathname === "/api/v1/tasks/sources" && method === "POST") operation = "task_source_register";
       else if (pathname === "/api/v1/tasks/reconcile" && method === "POST") operation = "task_reconcile";

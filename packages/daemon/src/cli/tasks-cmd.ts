@@ -1,3 +1,5 @@
+import { ownerTaskMaintenance } from "./task-maintenance-cmd.js";
+import { ownerTaskTargets } from "./task-targets.js";
 import { loginOwnerTaskAccess, ownerTaskAuthorization } from "./task-owner-access.js";
 import { declareTaskBoundary, enableTaskExecution } from "./task-execution-enable.js";
 import { friendlyTaskCreate, friendlyTaskResult, friendlyTaskError, parseTaskOptions, taskWhen } from "./task-friendly.js";
@@ -19,7 +21,7 @@ export async function readTaskInputFile(path: string): Promise<unknown> {
     if (!stat.isFile() || stat.size > 256 * 1024) throw new Error("Bounded JSON input required");
     return JSON.parse(await handle.readFile("utf8"));
   } finally { await handle.close(); }
-  } catch { throw new TaskCliInputError("Task input must be a readable file containing valid JSON (up to 256 KiB)."); }
+  } catch { throw new TaskCliInputError("Die Eingabedatei fehlt, ist nicht lesbar oder enthält kein gültiges JSON (höchstens 256 KiB)."); }
 }
 /** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
 export async function taskCliCall(sub: string, input: unknown, authorization: string, baseUrl: string): Promise<unknown> {
@@ -29,8 +31,8 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
     method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization }, body: JSON.stringify(input),
     signal: AbortSignal.timeout(10000),
   });
-  const body = await resp.json() as { error?: string; code?: string };
-  if (!resp.ok) throw Object.assign(new Error(body.error), { code: body.code, status: resp.status });
+  const body = await resp.json() as { error?: string; code?: string;reason?:string };
+  if (!resp.ok) throw Object.assign(new Error(body.error), { code: body.code, reason:body.reason, status: resp.status });
   return body;
 }
 export async function cmdTasks(args: { sub: string | null; positional: string[]; argv?: string[]; json?: boolean }): Promise<number> {
@@ -44,12 +46,14 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     if (args.sub === "client-status") {
       const status = await taskClientCoverage(); process.stdout.write((args.json ? JSON.stringify(status) : `${status.authorized ? "Client-Kennung gültig (Daemon muss laufen)" : "Keine Karten für diesen Client"}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) + "\n"); return 0;
     }
+    if (["recover","archive","archive-restore"].includes(args.sub??"")) { await ownerTaskMaintenance(args.sub!,words,options,args.json); return 0; }
+    if (args.sub === "targets") { await ownerTaskTargets(words,options,args.json); return 0; }
     if (args.sub === "keys") { await taskOwnerKeys(words); return 0; }
     if (args.sub === "auth") {
-      if (!process.stdin.isTTY || !await confirm("Offline owner credential administration. Continue?"))
+      if (!process.stdin.isTTY || !await confirm("Zugang als Owner am Terminal verwalten? Token-Dateien müssen außerhalb des Agent-Zugriffs liegen."))
         throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
       const [operation, role, actor, domains, destination, previous] = words;
-      if (operation === "revoke") { await revokeTaskCredential(taskAuthPath(), role); return 0; }
+      if (operation === "revoke") { await revokeTaskCredential(taskAuthPath(), role); process.stdout.write((args.json?JSON.stringify({revoked:true,credential_id:role}):`Zugang ${role} widerrufen. Dieser Client erhält keine Karten mehr.`)+"\n"); return 0; }
       if (!["mint", "rotate"].includes(operation) || !["owner", "agent"].includes(role) || !destination)
         throw Object.assign(new Error("Use auth mint|rotate owner|agent actor domain[,domain] new-token-file [previous-id]"), { code: "validation" });
       const out = await open(destination, "wx", 0o600);
@@ -63,7 +67,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     const agent = words[0] === "agent" || options.agent === true; if (words[0] === "agent") words.shift();
     const signing = args.sub === "approve" || args.sub === "deny";
     if (signing && agent) throw Object.assign(new Error("Owner signing terminal required"), { code: "forbidden" });
-    let input: any = signing ? {} : options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw new TaskCliInputError(error instanceof Error ? error.message : "Task time/options invalid"); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
+    let input: any = signing ? {} : options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw Object.assign(new TaskCliInputError(error instanceof Error ? error.message : "Zeit/Optionen ungültig"),{reason:(error as any)?.reason}); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
     if (options.id || (words[0] && !words[0].endsWith(".json"))) input.id = String(options.id ?? words[0]);
     if (options.revision) input.expected_revision = options.revision;
     if (options.occurrence) input.occurrence_id = options.occurrence;
@@ -89,5 +93,5 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     return 0;
   } catch (error) { const failure = taskFailure(error).body;
     if (error instanceof TaskCliInputError) failure.error = error.message;
-    process.stderr.write((args.json ? JSON.stringify(failure) : friendlyTaskError(failure.code, args.sub)) + "\n"); return 1; }
+    process.stderr.write((args.json ? JSON.stringify(failure) : error instanceof TaskCliInputError ? `${args.sub??"Aufgaben"}: ${failure.error}` : friendlyTaskError(failure.code, args.sub,failure.reason)) + "\n"); return 1; }
 }

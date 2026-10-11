@@ -40,7 +40,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
       || (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))) { retryBlocked++; continue; }
     let card: Record<string, unknown> = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`,
       reconsideration: reconsiderationCard(task, occurrence, store),
-      action_outcome: (() => { const i = store.intents.filter(i => i.task_id === task.id).at(-1); return i ? { intent_id: i.id, state: i.state, receipt_id: i.receipt_id, receipt_outcome: store.receipts.find(r => r.id === i.receipt_id)?.outcome, review_hint: ["pending", "unknown"].includes(i.state) ? "Abgleich nötig" : undefined } : undefined; })(),
+      action_outcome: (() => { const i = store.intents.filter(i => i.task_id === task.id).at(-1); return i ? { intent_id: i.id, state: i.state, temp_cleanup_pending:i.temp_cleanup_pending===true, receipt_id: i.receipt_id, receipt_outcome: store.receipts.find(r => r.id === i.receipt_id)?.outcome, review_hint: ["pending", "unknown"].includes(i.state) ? "Abgleich nötig" : undefined } : undefined; })(),
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),

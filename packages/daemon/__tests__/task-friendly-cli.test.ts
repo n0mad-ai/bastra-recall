@@ -89,3 +89,11 @@ test("private owner cache is separate from hook access, rejects automation and r
  try{const {saveOwnerTaskAccess,ownerTaskAccessPath,ownerTaskAuthorization}=await import("../src/cli/task-owner-access.js");const owner=await mintTaskCredential(authPath,{actor_id:"owner",role:"owner",domains:["personal"]});await saveOwnerTaskAccess(`Bearer ${owner.token}`);assert.equal((await stat(ownerTaskAccessPath())).mode&0o077,0);assert.equal(taskClientToken(),undefined);await assert.rejects(ownerTaskAuthorization(),/terminal/);const agent=await mintTaskCredential(authPath,{actor_id:"agent",role:"agent",domains:["personal"]});await assert.rejects(saveOwnerTaskAccess(`Bearer ${agent.token}`),/owner/);}
  finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(token===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=token;}
 });
+
+test("mid-flow errors name DST gap, bounded repeat and past snooze; declining resume is not an agent error",async()=>{
+ assert.throws(()=>friendlyTaskCreate({goal:"Gap",when:"2026-03-29T02:30",timezone:"Europe/Madrid"}),/Sommerzeit/);
+ assert.throws(()=>friendlyTaskCreate({goal:"Repeat",after:"7d",every:"1d"}),/--count.*--end/);
+ assert.match(friendlyTaskError("validation","snooze","snooze_past"),/Vergangenheit/);assert.match(friendlyTaskError("forbidden","resume","owner_declined"),/Nicht bestätigt/);
+ const f:any={id:"t",goal:"Test",schedule:{kind:"instant",at:1},timezone:"Europe/Madrid",state:"pending",armed:false,action_level:"notify",review_reason:"Explicit owner review required",budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
+ assert.ok(!friendlyTaskResult("get",f).includes("Explicit"));assert.match(friendlyTaskResult("get",f),/Budget.*60s/);assert.ok(!friendlyTaskResult("due",{cards:[{...f,due_at:1,task_id:"t",occurrence_id:"o",why_now:"Registered condition is due; evaluation is not a passed measurement gate"}],overflow:0}).includes("Registered condition"));
+});

@@ -146,7 +146,7 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
         process.stderr.write(
-          `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — ${giveUp}\n`,
+          `[bastra-recall] cannot create lock ${strictLocal ? "[private store]" : lockPath} (${strictLocal ? "unavailable" : (err as Error).message}) — ${giveUp}\n`,
         );
         return null;
       }
@@ -166,7 +166,7 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
     }
     if (Date.now() >= deadline) {
       process.stderr.write(
-        `[bastra-recall] lock ${lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`,
+        `[bastra-recall] lock ${strictLocal ? "[private store]" : lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`,
       );
       return null;
     }

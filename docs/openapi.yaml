@@ -1193,7 +1193,7 @@ paths:
   /tasks/due:
     get:
       operationId: taskDueRead
-      summary: Authenticated task taskReconcile
+      summary: Authenticated due task cards
       description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Manual reconciliation requires owner role and every stored task domain. Automatic daemon evaluation uses the same dedup path.
       security: [{ taskBearerAuth: [] }]
       responses:
@@ -1211,8 +1211,146 @@ paths:
   /task_due:
     post:
       operationId: task_due
-      summary: Authenticated task task_reconcile
+      summary: Authenticated due task cards
       description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Manual reconciliation requires owner role and every stored task domain. Automatic daemon evaluation uses the same dedup path.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_recover:
+    post:
+      operationId: task_recover
+      summary: Owner task task_recover
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_archive:
+    post:
+      operationId: task_archive
+      summary: Owner task task_archive
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_archive_restore:
+    post:
+      operationId: task_archive_restore
+      summary: Owner task task_archive_restore
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /tasks/recovery:
+    post:
+      operationId: taskRecoverCanonical
+      summary: Owner task tasks/recovery
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /tasks/archive:
+    post:
+      operationId: taskArchiveCanonical
+      summary: Owner task tasks/archive
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /tasks/archive/restore:
+    post:
+      operationId: taskArchiveRestoreCanonical
+      summary: Owner task tasks/archive/restore
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner/all affected domains required. Archive retains unresolved work and cold idempotency records. Recovery disarms and changes the epoch; no action authority is revived. Loopback Host required.
       security: [{ taskBearerAuth: [] }]
       requestBody:
         required: true
@@ -1244,6 +1382,7 @@ components:
             properties:
               error: { type: string }
               code: { type: string }
+              reason: { type: string, description: Optional bounded machine reason such as calendar_gap or snooze_past. }
               retryable: { type: boolean }
               status: { type: integer, enum: [400, 401, 403, 404, 409, 503] }
   securitySchemes:

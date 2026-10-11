@@ -21,6 +21,6 @@ export const leaseSchema = z.strictObject({ id, task_id: id, proposal_id: id, ac
   fence: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(), state: z.enum(["active", "released", "expired"]) });
 export const intentSchema = z.strictObject({ id, proposal_id: id, task_id: id, actor: id, lease_id: id, fence: number,
   approval_ids: z.array(id).min(1).max(32), idempotency_key: id, created_at: number, recovery_epoch: z.string().max(160),
-  before_hash: hash, after_hash: hash, backup_id: id, state: z.enum(["pending", "succeeded", "unknown", "failed"]), receipt_id: id.optional() });
+  before_hash: hash, after_hash: hash, backup_id: id, temp_cleanup_pending: z.boolean().optional(), state: z.enum(["pending", "succeeded", "unknown", "failed"]), receipt_id: id.optional() });
 export const receiptSchema = z.strictObject({ id, intent_id: id, proposal_id: id, task_id: id, actor: id, fence: number, at: number,
   outcome: z.enum(["succeeded", "reconciled", "unknown", "failed"]), target_hash: hash.optional(), before_hash: hash, after_hash: hash, backup_id: id, error_code: id.optional() });

@@ -41,7 +41,7 @@ test("bounded elapsed recurrence catches up latest with missed slots and durable
   await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 2);
 });
 test("Madrid gap rejects; overlap resolves earlier and cannot double fire; calendar days differ from durations", async () => {
-  assert.throws(() => resolveTaskCalendar("2026-03-29T02:30:00", "Europe/Madrid"), /gap/);
+  assert.throws(() => resolveTaskCalendar("2026-03-29T02:30:00", "Europe/Madrid"), /Sommerzeit/);
   assert.equal(resolveTaskCalendar("2026-10-25T02:30:00", "Europe/Madrid").at, Date.parse("2026-10-25T00:30:00Z"));
   const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input,
     schedule: { kind: "calendar", local_time: "2026-10-25T02:30:00", timezone: "Europe/Madrid", gap: "reject", overlap: "earlier", at: 0, offset_minutes: 0 },

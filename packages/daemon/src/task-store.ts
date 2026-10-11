@@ -1,3 +1,4 @@
+import { validateTaskArchivePrune } from "./task-archive.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
@@ -95,12 +96,13 @@ function cleanStore(store: TaskStore): TaskStore {
 
 /** Enforce audit/lifecycle even for internal callers without a snapshot token. */
 function assertTaskProgress(before: TaskStore, after: TaskStore): void {
+  if (canonicalTaskValue(before.archives) !== canonicalTaskValue(after.archives)) throw new TaskStoreError("conflict","Archive index immutable outside validated export");
   if (after.fencing_counter < before.fencing_counter || before.consumed_approval_ids.some(id => !after.consumed_approval_ids.includes(id)))
     throw new TaskStoreError("conflict", "fences and permanently spent approval IDs cannot go backwards");
   for (const old of before.receipts) if (canonicalTaskValue(after.receipts.find(r => r.id === old.id)) !== canonicalTaskValue(old)) throw new TaskStoreError("conflict", "receipts immutable");
   for (const old of before.intents) {
     const row = after.intents.find(i => i.id === old.id);
-    if (!row || canonicalTaskValue({ ...row, state: old.state, receipt_id: old.receipt_id }) !== canonicalTaskValue(old) || (old.state !== "pending" && row.state !== old.state)) throw new TaskStoreError("conflict", "intent binding/outcome immutable");
+    if (!row || canonicalTaskValue({ ...row, state: old.state, receipt_id: old.receipt_id, temp_cleanup_pending: old.temp_cleanup_pending }) !== canonicalTaskValue(old) || (old.state !== "pending" && row.state !== old.state)) throw new TaskStoreError("conflict", "intent binding/outcome immutable");
   }
   for (const old of before.proposals) {
     const row = after.proposals.find(p => p.id === old.id);
@@ -157,7 +159,7 @@ export async function atomicWrite(path: string, payload: string, assertOwnership
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-export type TaskMutationKind = "normal" | "control";
+export type TaskMutationKind = "normal" | "control" | "archive";
 /** One strict local lock spans durable intent, target CAS and receipt commits. */
 export async function withTaskStoreGuard<T>(path: string, run: (guard: {
   snapshot: () => TaskStore; assertOwnership: () => void;
@@ -169,10 +171,11 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
     const commit = async (mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal"): Promise<TaskStore> => {
       const draft = structuredClone(store);
       await mutate(draft);
-      for (const [name, limit] of Object.entries({ tasks: 1000, sources: 1000, proposals: 1000, intents: 1000, events: 10000, occurrences: 10000, challenges: 10000, approvals: 10000, receipts: 10000 }))
+      for (const [name, limit] of Object.entries({ tasks: 1000, sources: 1000, proposals: 1000, intents: 1000, archives:1000, consumed_approval_ids:10000, recovery_history:1000, events: 10000, occurrences: 10000, challenges: 10000, approvals: 10000, receipts: 10000 }))
         if ((draft[name as keyof TaskStore] as unknown[]).length > limit) throw new TaskStoreError("capacity", `${name} capacity reached; owner archive required`);
       const next = cleanStore(draft);
-      assertTaskProgress(store, next);
+      const predecessor = kind === "archive" ? await validateTaskArchivePrune(path,store,next) : store;
+      assertTaskProgress(predecessor, next);
       if (canonicalTaskValue(next) === canonicalTaskValue(store)) return structuredClone(store);
       next.revision = store.revision + 1;
       next.recovery_epoch = store.recovery_epoch;
@@ -206,11 +209,13 @@ export async function transactTaskStore(path: string, expectedRevision: Pick<Tas
 }
 
 /** Explicit recovery only; invalid backups cannot replace recoverable originals. */
-export async function recoverTaskStore(path: string, actor: string): Promise<{ store: TaskStore; quarantine: string | null }> {
+export async function recoverTaskStore(path: string, actor: string, authorize?: (snapshot:TaskStore)=>Promise<void>): Promise<{ store: TaskStore; quarantine: string | null }> {
   return withPathLock(path, async assertOwnership => {
     let backup: TaskStore;
     try { backup = decodeTaskStore(await readFile(`${path}.backup`, "utf8")); }
     catch { throw new TaskStoreError("invalid_backup", "backup is absent or invalid; original preserved"); }
+    await authorize?.(backup);
+    backup.controls.execution_stopped=true;
     let quarantine: string | null = `${path}.corrupt-${randomUUID()}`;
     try {
       await copyFile(path, quarantine); await chmod(quarantine, 0o600);

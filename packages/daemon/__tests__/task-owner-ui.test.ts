@@ -1,0 +1,26 @@
+/** Deterministic DOM fixture: no browser, no real credentials, all task strings are data. */
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {createContext,runInContext} from "node:vm";
+class Node {
+ textContent="";children:Node[]=[];disabled=false;hidden=false;value="";id="";className="";handlers:Record<string,Function>={};
+ set innerHTML(_value:string){throw new Error("Task data must never enter HTML");}
+ append(...nodes:Node[]){this.children.push(...nodes);}replaceChildren(...nodes:Node[]){this.children=nodes;}addEventListener(name:string,fn:Function){this.handlers[name]=fn;}remove(){}showModal(){}close(){}
+}
+const descendants=(n:Node):Node[]=>[n,...n.children.flatMap(descendants)];
+async function ui(snapshot:any){
+ const nodes=new Map<string,Node>(),get=(id:string)=>{if(!nodes.has(id)){const n=new Node();n.id=id;nodes.set(id,n);}return nodes.get(id)!;};
+ const document={getElementById:get,createElement:()=>new Node(),querySelectorAll:()=>[]};
+ const source=await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8"),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async()=>({ok:true,json:async()=>snapshot})});
+ runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get,ctx};
+}
+test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
+ const task={id:"terminal",goal:"Done </script><img onerror=bad>",original_request:"literal data",state:"resolved",armed:false,action_level:"notify",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",deliveries:[],budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
+ const base={role:"owner",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true,next_tick:1000},tasks:[task],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false},budgets:{max_assessments_per_turn:10,source_turn_ms:5000,poll_ms:60000,snapshot_bytes:4194304}};
+ const u=await ui(base),all=descendants(u.get("tasks"));for(const label of ["Scharf schalten","Zurückstellen","Erledigt","Beenden","Bearbeiten"]){assert.equal(all.find(n=>n.textContent===label)?.disabled,true,label);}assert.equal(all.find(n=>n.textContent==="Wieder zur Prüfung")?.disabled,false);
+ assert.ok(all.some(n=>n.textContent===task.goal));assert.ok(all.some(n=>/Budget.*60s.*1000ms.*1024/.test(n.textContent)));assert.match(descendants(u.get("status")).map(n=>n.textContent).join(" "),/Globale Budgets.*10.*5s/);
+ const proposal={id:"p",task_id:"terminal",task_revision:3,target_id:"artifact",payload_hash:"a".repeat(64),payload:"after </script>",required_domains:["personal"]};
+ (u.ctx as any).fixture={proposal,preview:{before:"before </pre>",after:proposal.payload},approved:false};await runInContext("showProposal(fixture)",u.ctx);
+ const preview=descendants(u.get("preview")).map(n=>n.textContent);assert.ok(preview.includes("Vorher"));assert.ok(preview.includes("Nachher – exakt freizugebende Bytes"));assert.ok(preview.includes("before </pre>"));assert.ok(preview.includes(proposal.payload));assert.ok(!u.get("preview").textContent.startsWith("{"));assert.match(u.get("binding").textContent,/payload_hash/);assert.equal(descendants(u.get("proposal")).find(n=>n.id==="execute-button")?.disabled,true);
+});

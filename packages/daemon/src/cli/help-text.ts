@@ -221,6 +221,11 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks get|review|resolve|cancel|rearm <id>
   bastra tasks acknowledge <id> --occurrence <occurrence-id>
   bastra tasks snooze <id> --until 2026-10-13T18:00
+  bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal
+  bastra tasks targets list       Vorhandene lokale reversible Ziele, kein Anbieter
+  bastra tasks archive ID         Nur abgeschlossene Arbeit; vorher tasks stop
+  bastra tasks archive-restore ARCHIV_ID  Verlauf/Rollback aufnehmen, unscharf
+  bastra tasks recover [--lock]   Owner offline: Prozesse stoppen, Backup/Original sichern
   bastra tasks setup-hooks        Owner richtet lokale Hook-Karten mit eigener Agent-Kennung ein
   bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
   bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
