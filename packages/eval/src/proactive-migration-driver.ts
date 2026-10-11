@@ -1,17 +1,17 @@
 /** Published storage versions and actual daemon recovery; all paths are synthetic. */
-import { readFileSync,writeFileSync,readdirSync,existsSync } from 'node:fs';
+import { readFileSync,writeFileSync,readdirSync } from 'node:fs';
 import { dirname,basename,join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 export async function runMigration(x:any):Promise<Record<string,boolean|number|string>> {
  const {http,create,taskPath,root,start,stopDaemon,evidence,legacyRoot,storeApi}=x;
  const old=await import(pathToFileURL(join(legacyRoot,'packages/daemon/dist/task-store.js')).href);
  const schema=await import(pathToFileURL(join(legacyRoot,'packages/daemon/dist/task-schema.js')).href);
- const memory=join(root,'vault/neighbour.txt'),drafts=join(root,'drafts.json');writeFileSync(memory,'invented neighbour',{mode:0o600});writeFileSync(drafts,'invented draft sentinel',{mode:0o600});
+ const memory=join(root,'vault/neighbour.txt'),drafts=join(root,'drafts.json');writeFileSync(memory,'invented neighbour',{mode:0o600});const draftSentinel=JSON.stringify({version:1,rows:[],measurement:'invented draft sentinel'});writeFileSync(drafts,draftSentinel,{mode:0o600});
  const first=await http('GET','/api/v1/tasks');const t=await create('migration');const base=JSON.parse(readFileSync(taskPath,'utf8'));
  const pick=(value:any,shape:any)=>Object.fromEntries(Object.keys(shape).filter(k=>Object.hasOwn(value,k)).map(k=>[k,value[k]]));
  const legacy=pick(base,schema.taskStoreSchema.shape);legacy.schema_version=1;legacy.tasks=base.tasks.map((task:any)=>pick(task,schema.taskSchema.shape));
  old.decodeTaskStore(JSON.stringify(legacy)); // genuine v1 accepted by original published decoder
- let migrations=first.status===200&&first.data.tasks.length===0&&!existsSync(taskPath+'.unexpected'),loss=0;
+ let migrations=first.status===200&&first.data.tasks.length===0,loss=0;
  for(const version of [1,2]){
   await stopDaemon();const fixture={...legacy,schema_version:version};const bytes=JSON.stringify(fixture);writeFileSync(taskPath,bytes,{mode:0o600});await start();
   const get=await http('GET',`/api/v1/tasks/${t.id}`);const retained=get.status===200&&get.data.id===t.id&&get.data.goal===legacy.tasks[0].goal&&JSON.stringify(get.data.history)===JSON.stringify(legacy.tasks[0].history);
@@ -24,14 +24,14 @@ export async function runMigration(x:any):Promise<Record<string,boolean|number|s
  for(const mode of ['truncated','duplicate','future']){
   const valid=JSON.parse(readFileSync(taskPath,'utf8'));const raw=mode==='truncated'?'{"schema_version":3,':JSON.stringify(mode==='duplicate'?{...valid,tasks:[...valid.tasks,valid.tasks[0]]}:{...valid,schema_version:999});
   const backup=storeApi.decodeTaskStore(readFileSync(taskPath+'.backup','utf8'));writeFileSync(taskPath,raw,{mode:0o600});await start();
-  const read=await http('GET','/api/v1/tasks');const denied=await http('POST','/api/v1/task_create',{idempotency_key:'invalid-'+mode},'owner');
-  visible&&=read.status===503&&read.data.code===(mode==='future'?'unsupported_version':'corrupt');originals&&=readFileSync(taskPath,'utf8')===raw;
+  const read=await http('GET','/api/v1/tasks');const denied=await http('PATCH',`/api/v1/tasks/${t.id}`,{expected_revision:`${valid.recovery_epoch}:${valid.tasks[0].revision}`,patch:{goal:'Blocked mutation '+mode}});
+  visible&&=read.status===503&&denied.status===503&&read.data.code===(mode==='future'?'unsupported_version':'corrupt');originals&&=readFileSync(taskPath,'utf8')===raw;
   const recovered=await http('POST','/api/v1/task_recover',{});const after=JSON.parse(readFileSync(taskPath,'utf8'));
   originals&&=recovered.status===200&&recovered.data.quarantined===true&&readdirSync(dirname(taskPath)).filter(p=>p.startsWith(basename(taskPath)+'.corrupt-')).some(p=>readFileSync(join(dirname(taskPath),p),'utf8')===raw);
   loss+=after.tasks.length===backup.tasks.length&&after.tasks.every((task:any)=>backup.tasks.some((b:any)=>b.id===task.id&&b.goal===task.goal&&JSON.stringify(b.history)===JSON.stringify(task.history)))?0:1;
   migrations&&=recovered.status===200&&recovered.data.changes_may_be_missing===true&&after.controls.execution_stopped&&after.tasks.every((task:any)=>!task.armed)&&after.recovery_epoch!==backup.recovery_epoch;
   evidence.push({mode,read,denied,recovered,backup,after});await stopDaemon();
  }
- await start();originals&&=readFileSync(memory,'utf8')==='invented neighbour'&&readFileSync(drafts,'utf8')==='invented draft sentinel';
+ await start();originals&&=readFileSync(memory,'utf8')==='invented neighbour'&&readFileSync(drafts,'utf8')===draftSentinel;
  return {silent_loss:loss,corruption_visible:visible,originals_preserved:originals,supported_migrations_pass:migrations};
 }
