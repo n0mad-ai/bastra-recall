@@ -59,7 +59,7 @@ test("real upgraded daemon needs no setup command and preserves client configura
 });
 
 test("missing managed token retires former automatic access; unsafe file is visible in normal status", async () => isolated(async root => {
-  await ensureLocalTaskAgent(); const token = taskClientToken()!; const principal = await authenticateTask(`Bearer ${token}`,join(root,"task-auth.json"));
+  await ensureLocalTaskAgent(); const token = taskClientToken()!; await authenticateTask(`Bearer ${token}`,join(root,"task-auth.json"));
   await unlink(taskHookConfigPath()); await ensureLocalTaskAgent(); assert.notEqual(taskClientToken(),token);
   await assert.rejects(authenticateTask(`Bearer ${token}`,join(root,"task-auth.json")),{code:"unauthorized"});
   await chmod(taskHookConfigPath(),0o644); const access=await taskAgentAccessStatus(); assert.equal(access.authorized,false); assert.match(access.hint,/stumm/);
