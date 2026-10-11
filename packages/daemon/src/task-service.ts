@@ -1,5 +1,5 @@
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
-import { privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
+import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
 import { archiveTasks, restoreTaskArchive, archivedTask, readTaskArchive, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
@@ -12,7 +12,7 @@ import { reconsiderTask, taskReconsiderInput, taskDecisionStatus, checkTaskDecis
 import { taskDueInput, taskDueProjection, recordTaskDelivery } from "./task-outbox.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
-import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
+import { observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
 import { ambiguousTaskCalendar, resolveTaskCalendar } from "./task-clock.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -68,9 +68,12 @@ function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule
   if (!source || !source.owner_domains.every(d => domains.includes(d)) || !schedule.expected_hash)
     throw new TaskServiceError("validation", "Registered source and an exact owner-reviewed baseline are required");
 }
-function normalizeSchedule(schedule: Task["schedule"]): void {
-  if (schedule.kind === "event") schedule.expected_hash = schedule.predicate === "content-version" && /^[a-f0-9]{64}$/.test(schedule.expected)
-    ? schedule.expected : taskValueHash(schedule.expected);
+async function normalizeSchedule(path: string, schedule: Task["schedule"], versionSource = false): Promise<void> {
+  if (schedule.kind === "event") {
+    const supplied = !versionSource && schedule.predicate !== "git-ref" && /^[a-f0-9]{64}$/.test(schedule.expected);
+    schedule.expected_hash = await privateContentComparison(path, schedule.expected, supplied);
+    if (supplied && !["content-version", "git-ref"].includes(schedule.predicate)) schedule.expected = "Private content baseline";
+  }
   if (schedule.kind === "calendar") {
     try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
     catch (error) { throw Object.assign(new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"),{reason:(error as any)?.reason}); }
@@ -127,9 +130,11 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   }
   if (operation === "task_create") {
     const input = taskCreateInputSchema.parse(raw);
+    const legacyInput = structuredClone(input);
     if (principal.role === "agent" && input.arm && input.schedule.kind === "calendar" && ambiguousTaskCalendar(input.schedule.local_time, input.schedule.timezone))
       throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
-    normalizeSchedule(input.schedule);
+    const sourceKind = input.schedule.kind === "event" ? (await readTaskStore(ctx.path)).sources.find(s=>input.schedule.kind === "event" && s.id === input.schedule.source_id)?.kind : undefined;
+    await normalizeSchedule(ctx.path, input.schedule, sourceKind === "git" || sourceKind === "memory");
     requireTaskDomains(principal, input.owner_domains);
     if (input.arm && input.action_level !== "notify") requireTaskOwner(principal);
     if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
@@ -143,7 +148,20 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       const existing = s.tasks.find(t => t.id === id) ?? archived?.task;
       if (existing) {
         requireTaskDomains(principal, existing.owner_domains);
-        if (existing.creation_hash !== creationHash) throw new TaskServiceError("conflict", "idempotency key already has a different request");
+        if (existing.creation_hash !== creationHash) {
+          // Pre-content-HMAC keyed create identities still prove an exact old retry.
+          // Reconstruct only the submitted request, never the stored scrubbed text.
+          legacyInput.schedule = structuredClone(input.schedule);
+          if (legacyInput.schedule.kind === "event") {
+            const original = taskCreateInputSchema.parse(raw).schedule;
+            if (original.kind !== "event") throw new TaskServiceError("conflict", "idempotency binding differs");
+            legacyInput.schedule.expected = original.expected;
+            legacyInput.schedule.expected_hash = original.predicate === "content-version" && /^[a-f0-9]{64}$/.test(original.expected)
+              ? original.expected : createHash("sha256").update(original.expected,"utf8").digest("hex");
+          }
+          if (existing.creation_hash !== await privateTaskComparison(ctx.path,"create",legacyInput))
+            throw new TaskServiceError("conflict", "idempotency key already has a different request");
+        }
         return;
       }
       if (principal.role === "agent" && input.action_level === "notify") {
@@ -174,7 +192,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (operation === "task_edit") {
       const patch = editInput.parse(input).patch;
       if (principal.role === "agent" && patch.action_level && patch.action_level !== task.action_level) requireTaskOwner(principal);
-      if (patch.schedule) normalizeSchedule(patch.schedule);
+      if (patch.schedule) {
+        const kind = patch.schedule.kind === "event" ? s.sources.find(src=>patch.schedule!.kind === "event" && src.id === patch.schedule!.source_id)?.kind : undefined;
+        await normalizeSchedule(ctx.path, patch.schedule, kind === "git" || kind === "memory");
+      }
       if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
         requireTaskOwner(principal);
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);

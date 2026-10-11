@@ -32,7 +32,7 @@ export const taskScheduleSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("event"), source_id: id,
     predicate: z.enum(["equals", "content-version", "git-ref", "premise"]),
-    expected: text, expected_hash: hash.optional(), verifier_id: id.optional(),
+    expected: text, expected_hash: comparison.optional(), verifier_id: id.optional(),
   }),
 ]);
 
@@ -71,8 +71,8 @@ export const taskSchema = z.strictObject({
   }),
   evidence: z.array(taskReferenceSchema).max(100),
   decision: taskDecisionSchema.optional(),
-  decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: hash, new_memory_hash: hash.optional(), updated_date: z.string().optional(), new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
-  last_material_hash: hash.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
+  decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: comparison.optional(), new_memory_hash: hash.optional(), updated_date: z.string().optional(), new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
+  last_material_hash: comparison.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   verification: z.lazy(() => taskVerificationSchema).optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
@@ -99,7 +99,7 @@ export const taskSchema = z.strictObject({
 });
 
 export const taskClaimSchema = z.strictObject({
-  claim_id: id, claim_revision: id, value_hash: hash, evidence_id: id, evidence_revision: id,
+  claim_id: id, claim_revision: id, value_hash: comparison.optional(), evidence_id: id, evidence_revision: id,
 });
 export const taskVerificationSchema = z.strictObject({
   outcome: z.enum(["verified", "refuted", "stale", "unavailable", "inconclusive"]),
@@ -111,7 +111,7 @@ const eventSchema = z.strictObject({
   sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
   actor: taskIdentitySchema, owner_domains: domains, observed_at: instant,
   state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
-  value: text, value_hash: hash.optional(), claim: taskClaimSchema.optional(), observation_bytes:instant.optional(), observation_ms:instant.optional(),
+  value: text, value_hash: comparison.optional(), claim: taskClaimSchema.optional(), observation_bytes:instant.optional(), observation_ms:instant.optional(),
 });
 
 const occurrenceSchema = z.strictObject({
@@ -130,7 +130,7 @@ export const taskSourceSchema = z.strictObject({
   root: z.string().min(1).max(4096).optional(), path: z.string().min(1).max(4096).optional(),
   ref: z.string().regex(/^refs\/(heads|tags)\/[a-zA-Z0-9._/-]+$/).max(256).optional(),
   memory_id: id.optional(), max_age_ms: instant, enabled: z.boolean(),
-  observation_number: revision.default(0), last_value_hash: hash.optional(),
+  observation_number: revision.default(0), last_value_hash: comparison.optional(),
 }).superRefine((s, ctx) => {
   if ((s.kind === "file" && (!s.root || !s.path)) || (s.kind === "git" && (!s.root || !s.ref)) || (s.kind === "memory" && !s.memory_id))
     ctx.addIssue({ code: "custom", message: "source registration incomplete" });

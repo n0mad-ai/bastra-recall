@@ -1,3 +1,4 @@
+import { privateContentComparison } from "./task-private-comparison.js";
 import { checkTaskDecisions } from "./task-reconsideration.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
@@ -40,10 +41,10 @@ export function findTaskEvent(store: TaskStore, source: TaskStore["sources"][num
     ?? store.events.find(e => e.dedup_key === legacy && e.source_id === source.id && e.source_revision === String(source.revision)
       && e.actor === actor && JSON.stringify([...e.owner_domains].sort()) === JSON.stringify([...source.owner_domains].sort()));
 }
-function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number): TaskStore["events"][number] {
+async function appendEvent(path: string, store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number): Promise<TaskStore["events"][number]> {
   const source = store.sources.find(s => s.id === sourceId && s.enabled);
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
-  const value_hash = source.kind === "file" ? value : taskValueHash(value);
+  const value_hash = await privateContentComparison(path, value, source.kind === "file");
   const dedup_key = taskEventKey(source, actor, key);
   const existing = findTaskEvent(store, source, actor, key);
   if (existing) {
@@ -58,15 +59,15 @@ function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRe
 export async function submitTaskEvent(ctx: TaskServiceContext, authorization: string | undefined, input: unknown) {
   const principal = await authenticateTask(authorization, ctx.authPath); const event = taskEventInput.parse(input);
   let id = "";
-  await transactTaskStore(ctx.path, undefined, s => {
+  await transactTaskStore(ctx.path, undefined, async s => {
     const source = s.sources.find(source => source.id === event.source_id);
     if (!source) throw Object.assign(new Error("unregistered source"), { code: "forbidden" });
     requireTaskDomains(principal, source.owner_domains);
     const claim = event.claim ? { claim_id: event.claim.claim_id, claim_revision: event.claim.claim_revision,
-      evidence_id: event.claim.evidence_id, evidence_revision: event.claim.evidence_revision, value_hash: taskValueHash(event.claim.value) } : undefined;
+      evidence_id: event.claim.evidence_id, evidence_revision: event.claim.evidence_revision, value_hash: await privateContentComparison(ctx.path, event.claim.value) } : undefined;
     const existing = findTaskEvent(s, source, principal.actor_id, event.dedup_key);
     if (existing && canonicalTaskValue(existing.claim) !== canonicalTaskValue(claim)) throw Object.assign(new Error("claim dedup drift"), { code: "conflict" });
-    const appended = appendEvent(s, event.source_id, principal.actor_id, event.source_revision, event.value, event.dedup_key, event.state_updated_at, (ctx.now ?? Date.now)());
+    const appended = await appendEvent(ctx.path, s, event.source_id, principal.actor_id, event.source_revision, event.value, event.dedup_key, event.state_updated_at, (ctx.now ?? Date.now)());
     if (claim) appended.claim = claim;
     id = appended.id;
   });
@@ -211,10 +212,10 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
         })(), new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(Object.assign(new Error("source timeout"),{code:"source_timeout"})), maxMs); })]);
       } finally { if (timeout) clearTimeout(timeout); }
       const observedMs=Date.now()-intakeStarted;if(observedMs>maxMs)throw Object.assign(new Error("source timeout"),{code:"source_timeout"});
-      await transactTaskStore(ctx.path, undefined, s => {
+      await transactTaskStore(ctx.path, undefined, async s => {
         const current = s.sources.find(row => row.id === source.id);
         if (!current || !current.enabled || current.revision !== source.revision) return;
-        const observed = taskValueHash(value);
+        const observed = await privateContentComparison(ctx.path, value);
         for (const task of s.tasks) if (charged.some(t=>t.id===task.id) && observedBytes<=task.budget.max_source_bytes && observedMs<=task.budget.timeout_ms && ["source_unavailable","source_budget","source_timeout"].includes(task.last_failure?.code??"")) {
           delete task.last_failure; audit(task, now, "source-recovered");
         }
@@ -226,7 +227,7 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
         }
         const same=current.last_value_hash===observed;
         current.observation_number++;
-        const event=appendEvent(s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), same?(previous?.state_updated_at??now):now, now);
+        const event=await appendEvent(ctx.path, s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), same?(previous?.state_updated_at??now):now, now);
         event.observation_bytes=observedBytes;event.observation_ms=observedMs;
         current.last_value_hash = observed;
       });

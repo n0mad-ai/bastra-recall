@@ -91,7 +91,9 @@ test("actual temporary memory source uses disk revision, handles move/duplicate/
     const reader = taskMemoryReader({ vault, vaultPath: root }); const context = { ...f.ctx, memoryRead: reader };
     assert.equal((await reader("fixture-note")).revision, memoryRevision(raw));
     await callTaskCrud(context, f.auth, "task_source_register", { ...f.source, id: "memory", kind: "memory", producer_actor: "task-source-reader", memory_id: "fixture-note" });
+    await callTaskCrud(context, f.auth, "task_create", {...f.input,schedule:{kind:"event",source_id:"memory",predicate:"equals",expected:memoryRevision(raw)}});
     await observeTaskSources(context); assert.equal((await readTaskStore(f.ctx.path)).events.at(-1)?.value, memoryRevision(raw));
+    await reconcileTaskTime(context);assert.equal((await readTaskStore(f.ctx.path)).occurrences.length,1,"64-character Memory revision remains a raw version identifier");
     await writeFile(join(root, "duplicate.md"), raw); await assert.rejects(reader("fixture-note"));
     const { unlink } = await import("node:fs/promises"); await unlink(join(root, "duplicate.md"));
     await rename(join(root, "note.md"), join(root, "moved.md"));

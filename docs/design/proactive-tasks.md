@@ -747,9 +747,35 @@ than treating matching redaction placeholders as proof. Losing or weakening an
 already-used key fails closed, never silently issues a replacement. Full filesystem
 access as the same OS user remains outside this boundary.
 
-Audit of earlier P3/P4 remains separate: task-events.ts taskValueHash(value),
-claim.value_hash and task-service.ts expected_hash are still unkeyed pre-scrub
-comparisons. For low-entropy masked input they have the same dictionary-oracle
-property. This correction does not change their producer/verifier/version-binding
-contract; it does NOT claim those older fields are confidential. File/Git/Memory
-version digests and exact adapter byte hashes likewise remain integrity metadata.
+### R7 content comparison correction
+
+Event expected/value/claim, last material/source values and decision-body retry
+comparisons now use the same private local key. For source content the HMAC input
+is the transient SHA-256 digest, with a distinct `source-content` purpose. Thus
+raw expected text and a supplied lowercase SHA-256 digest agree; only the HMAC is
+stored, and a supplied content digest is replaced with a harmless display label.
+Git-ref OIDs are raw version identifiers, including 64-character Git OIDs;
+content-version baselines retain their version text. Version/CAS byte digests,
+evidence revisions and immutable signing records remain integrity metadata.
+The decision-body retry digest is separately keyed with `decision-body`.
+
+Valid live snapshots/backups convert old content comparison digests directly to
+HMAC, preserving equality and journal IDs without reconstructing masked text.
+Existing keyed create identities can still prove an exact pre-migration submitted
+request: the old normalization is computed transiently for that identity check.
+Plain legacy create/reminder hashes still cannot prove retries and remain removed.
+A changed task binding invalidates old cached verification/approval bindings;
+normal freshness checks and existing explicit review are required. No signing,
+Owner/Agent permissions, cancellation policy or action authority is relaxed.
+
+The recursive public projection removes all these comparison fields. The actual
+reconsideration-card producer also omits the claim comparison. Managed cold
+archives remove every comparison, including claims and decision-body retries;
+resumable archive/index cleanup keeps archive hashes consistent across crashes.
+An archive restore remains terminal/unarmed and cannot reconstruct absent private
+baseline proof; reuse needs a new explicit baseline edit/review. Retained live
+journal comparisons are cloned before export filtering, preserving exact retries.
+The private key is never exported, archived, sent to browsers or logged. Same-UID
+filesystem access to that key and authorized online equality requests remain
+outside the offline dictionary protection. No confidentiality claim is made for
+public Git/file/Memory version identifiers or approved exact execution bytes.

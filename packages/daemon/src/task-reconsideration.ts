@@ -1,3 +1,4 @@
+import { privateTaskComparison } from "./task-private-comparison.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** C-096: revision-bound reconsideration, never automatic decision inversion. */
 import { z } from "zod";
@@ -55,7 +56,7 @@ export function reconsiderationCard(task: Task, occurrence: TaskStore["occurrenc
   const event = store.events.find(e => occurrence.event_key === `event:${e.id}`);
   if (!event?.claim) return undefined;
   return { kind: "reconsideration", decision: { ...task.decision, option: task.decision.option.slice(0, 160), reason: task.decision.reason.slice(0, 160), premise: task.decision.premise.slice(0, 160), alternatives: task.decision.alternatives.slice(0, 3).map(a => a.slice(0, 80)) }, old_premise: task.decision.premise.slice(0, 160), new_premise: occurrence.new_premise?.slice(0, 160),
-    changed_value_hash: event.claim.value_hash, new_evidence: { id: event.claim.evidence_id, revision: event.claim.evidence_revision, observed_at: event.observed_at, state_updated_at: event.state_updated_at },
+    new_evidence: { id: event.claim.evidence_id, revision: event.claim.evidence_revision, observed_at: event.observed_at, state_updated_at: event.state_updated_at },
     old_evidence: task.evidence.slice(0, 3), uncertainty: "A verified premise change invites review; no replacement has been chosen", choices: ["keep", "change", "snooze", "stop"] };
 }
 export async function reconsiderTask(ctx: TaskServiceContext, authorization: string | undefined, raw: unknown) {
@@ -63,7 +64,7 @@ export async function reconsiderTask(ctx: TaskServiceContext, authorization: str
   if (input.change) { input.change.option = cleanText(input.change.option); input.change.reason = cleanText(input.change.reason); }
   const now = (ctx.now ?? Date.now)();
   const changeId = input.change && digest(["decision-change-v1", principal.actor_id, input.id, input.change.idempotency_key]);
-  const bodyHash = input.change && digest(input.change.body);
+  const bodyHash = input.change && await privateTaskComparison(ctx.path,"decision-body",digest(input.change.body));
   const find = (store: TaskStore) => {
     const task = store.tasks.find(t => t.id === input.id && t.owner_domains.every(d => principal.domains.includes(d)));
     if (!task?.decision) throw Object.assign(new Error("Bound decision absent"), { code: "not_found" });
