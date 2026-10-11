@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 1,
+  "registration_version": 2,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -11,7 +11,7 @@
     "baseline_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
     "package_version": "1.1.0",
     "contract": "C-097; docs/Proactive Tasks Build Plan.md section 5 and product matrix",
-    "design_pr": null,
+    "design_pr": 1159,
     "feature_commit": null,
     "profile": "synthetic-local-only; production data excluded",
     "config": "fixed UTC instant 2026-10-11T12:00:00Z; Europe/Madrid DST fixtures; own temporary data directory; port allocated by OS, never 6723",
@@ -19,10 +19,12 @@
     "reader": null,
     "judge": "deterministic independent assertions; human decisions for #598",
     "top_k": null,
-    "context_budget": null
+    "context_budget": null,
+    "design_commit": "313621f8a85648603c83c5eb106405fbc0b51d50",
+    "design_sha256": "d657399531373f621545b6f8403facba30df2845642772d4c967aff19e8fd402"
   },
   "dependencies": {
-    "P0": "pending publication; PR number unknown",
+    "P0": "PR #1159 proposed contract; independent review pending",
     "P2": "waiting for canonical CRUD contract; PR number unknown",
     "P5": "waiting for delivery contract; PR number unknown",
     "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown"
@@ -113,5 +115,6 @@
     "true_rejection": "Variant minus baseline paired bootstrap 95% upper bound <= 0.05.",
     "effort": "Median participant correction-time ratio <= 1.25; zero accidental execution or silent re-arm.",
     "coverage": "All slices, 24 participants and independent labels required; unmet N is not evaluable, never no effect."
-  }
+  },
+  "$comment_amendment": "P0 #1159 was published after initial preregistration, before any feature/study run. Record its proposed design revision and hash; no sample, threshold or evaluation-rule changes. P2/P5/P8 remain unpublished."
 }
