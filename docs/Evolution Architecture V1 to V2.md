@@ -54,13 +54,17 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-097. A new delta is carried forward in this file and is
+> Next available ID: C-098. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
 
 > **Addition C-096, 2026-10-10:** Section 44 attaches decision assumptions and
 > reconsideration, approach checks, error recurrence and evidenced connections to
 > existing components. Planned behavior, not implementation or benefit evidence;
 > C-095 release and measurement rules remain unchanged.
+
+> **Build contract C-097, 2026-10-11:** Section 45 specifies the now-authorized
+> proactive build including C-096. 1.1.1 follow-ups stay separate; the ongoing
+> 1.1.0 cut and C-095 measurement/release boundaries remain.
 
 ## 0. Decision and Review Status
 
@@ -220,6 +224,7 @@ reopened only with new evidence.
 | C-094 | contract addition | The platform scope of this sub-release is macOS and Linux. Windows is explicitly not promised while locking, git path resolution, worktrees and process termination have not been checked in a Windows CI; until then the feature reports itself as unavailable there instead of half working. Reason: Graphify's process lock rests on `fcntl` and is a no-op on Windows, `nice` is not portable, and `.git` is a file rather than a directory in worktrees — git paths are therefore resolved via `git rev-parse --git-path`. Recall brings its own cross-platform repository lock. Also recorded: the graph provides no `rename` or `move` relation; renames are detected solely through git evidence (`git diff --name-status -M`) and never inferred from similar symbol sets. Without evidence no rename is claimed. |
 | C-095 | Product-owner decision | Unified V2 roadmap, parallel measurements in #30, beta delivery before complete evidence, stable V2 after confirmation and at least two adversarial review rounds; code awareness exclusively in #29. See §42–43. |
 | C-096 | Product-owner addition | Attach decision assumptions/reconsideration, approach checks, post-correction recurrence and evidenced cross-project connections to existing V2 components. No second graph, trigger, proposal or outcome infrastructure; ownership and acceptance in §44. |
+| C-097 | Product-owner build scope | Build #250/#403/#404/#405 together now: C-096 reconsideration, persisted tasks, actual delivery states, freshness/approval binding, conservative owner approval and recovery. 1.1.1 follow-ups separate in #32. See §45 and implementation contract. |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -433,7 +438,7 @@ to a relation allowlist. C-094 limits the platform scope of this sub-release to
 macOS and Linux and binds renames to git evidence. No verdict from C-001–C-090
 is reinterpreted.
 
-**Next available ID: C-097.** New delta reviews begin there. A verdict
+**Next available ID: C-098.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -7761,6 +7766,10 @@ Rules:
 
 #### Open design questions
 
+**C-097 update, 2026-10-11:** Approved-state freshness and the conservative
+multi-owner default are decided for the current build in §45. The original review
+questions below retain their provenance; the causal-method question stays separate.
+
 These points come from an external critical review of the plan on 28 August
 2026 and are attached as comments to the respective issues. They are not decided
 yet.
@@ -7942,4 +7951,50 @@ English translation synchronized. Existing issue bodies receive only their respe
 contract and links; #359's inconsistent temporal semantics are corrected. No new
 infrastructure or milestone. No product implementation.
 
-**Next available ID: C-097.**
+**Next available ID: C-097.** *(Historical state of §44; current value in §45.)*
+
+## 45. C-097 build contract for proactive tasks and reminders
+
+**Daniel, 2026-10-11:** Build #250/#403/#404/#405 as one feature now, including the
+already discussed additions. The [implementation contract](./Proactive%20Tasks%20Build%20Plan.md)
+fixes ownership, transport/UI contracts, trust boundaries and acceptance matrix.
+This is an authorized build scope, not implementation or review evidence.
+
+- C-096 decision assumptions and evidenced reconsideration belong in this build.
+  No silent decision reversal, re-arming or revision rebinding.
+- Tasks are independently persisted objects; draft confirmation, memory expiry,
+  relay files and merely rendered hints attest neither task completion nor human
+  acknowledgement. Relay disable/purge cannot lose a task.
+- Time/calendar/DST/catch-up, deduplicated events, freshness, leases and crash
+  recovery are specified and tested together.
+- #405 approval binds payload, source, revision, actor and target, checked again
+  before execute. State drift is stale/new review. A proposer cannot attest its
+  own human approval. Uncertain external success is reconciled or unknown; no
+  blind retry/universal exactly-once external guarantee without provider support.
+- #450 conservative default: all affected authenticated owner domains approve;
+  no implicit quorum or partial execute under one approval. Unknown domains block
+  execute, not reading. Local coordination belongs here; federation stays #408/#409.
+- MCP/HTTP/CLI and minimal usable daemon UI share a contract. Missing background
+  capability is visibly next-contact-only. Notify, prepare and execute each need
+  end-to-end evidence with at least one working reversible reference adapter.
+- #403 owns its backward-compatible task schema decision in this build. Reuse IDs,
+  content revisions and evidence references; the entire M4 claim/graph migration
+  is not a blanket start prerequisite. Unknown provenance or contested evidence
+  cannot become user-confirmed knowledge.
+- #402/#598/#410 remain parallel measurements in #30 under C-095. Voice, Dots,
+  Mac document UI and Company-Brain extensions are separate consumers of this base.
+
+The open §43 questions about stale approved state and multi-owner approval are
+answered for this build by the rules above; historic review questions retain their
+provenance. Its causal-method question remains separate.
+
+**Release mapping:** 1.1.0 remains the ongoing approved release cut.
+[v1.1.1 milestone #32](https://github.com/n0mad-ai/bastra-recall/milestone/32) collects
+targeted follow-ups, initially explicitly deferred #1151/#1152. Proactive work stays
+in its existing V2 workstream and starts now; the whole V2 backlog is not moved to
+1.1.1. Further patch defects require evidence, not speculative issue creation.
+
+**C-097 delta:** §45, preamble/ledger, shared roadmap and existing issue bodies aligned
+with the implementation contract; no new feature epic.
+
+**Next available ID: C-098.**

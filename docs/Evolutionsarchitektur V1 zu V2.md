@@ -61,8 +61,12 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-097. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-098. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
+
+> **Bauauftrag C-097, 11.10.2026:** §45 konkretisiert den jetzt beauftragten
+> proaktiven Funktionsbau einschließlich C-096. 1.1.1-Nacharbeiten bleiben getrennt;
+> der laufende 1.1.0-Schnitt und C-095s Mess-/Releasegrenzen gelten weiter.
 
 ## 0. Entscheidungs- und Reviewstatus
 
@@ -223,6 +227,7 @@ neuer Evidenz erneut geöffnet.
 | C-094 | Vertragsergänzung | Plattform-Scope dieses Unter-Releases sind macOS und Linux. Windows wird ausdrücklich nicht zugesagt, solange Locking, Git-Pfadauflösung, Worktrees und Prozessabbruch nicht in einer Windows-CI geprüft sind; bis dahin meldet sich die Funktion dort als nicht verfügbar, statt halb zu funktionieren. Begründung: Graphifys Prozess-Lock beruht auf `fcntl` und ist unter Windows ein No-op, `nice` ist nicht portabel, und `.git` ist in Worktrees eine Datei statt eines Verzeichnisses — Git-Pfade werden deshalb über `git rev-parse --git-path` aufgelöst. Recall bringt einen eigenen, plattformübergreifenden Repo-Lock mit. Ebenfalls festgehalten: Der Graph liefert keine `rename`- oder `move`-Relation; Umbenennungen werden ausschließlich über Git-Evidenz (`git diff --name-status -M`) erkannt und nie aus ähnlichen Symbolmengen geschlossen. Ohne Evidenz wird kein Rename behauptet. |
 | C-095 | Product-Owner-Entscheidung | Gemeinsame V2-Roadmap, Messungen parallel in #30, Beta-Auslieferung vor vollständigem Nachweis, stabile V2 erst nach Bestätigung und mindestens zwei adversariellen Reviewrunden; Code-Awareness ausschließlich #29. Siehe §42–43. |
 | C-096 | Product-Owner-Ergänzung | Fehlende Produktabläufe werden an bestehende V2-Bausteine angeschlossen: Entscheidungsannahmen und überprüfbare Neubewertung, Vorgehensprüfung gegen Erfahrungen, Fehlerwiederholung nach Korrektur sowie belegte projektübergreifende Querverbindungen. Keine zweite Graph-, Trigger-, Vorschlags- oder Outcome-Infrastruktur; Teilzuständigkeiten und Abnahme in §44. |
+| C-097 | Product-Owner-Bauauftrag | #250/#403/#404/#405 jetzt integriert bauen: C-096-Neubewertung, persistierte Aufgaben, echte Zustellzustände, Frische-/Freigabebindung, konservative Eigentümerfreigabe und Recovery. 1.1.1-Nacharbeiten getrennt in #32. Siehe §45 und Implementierungsvertrag. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -440,7 +445,7 @@ und an eine Relations-Allowlist. C-094 begrenzt den Plattform-Scope dieses
 Unter-Releases auf macOS und Linux und bindet Umbenennungen an Git-Evidenz.
 Kein Urteil aus C-001–C-090 wird umgedeutet.
 
-**Nächste freie ID: C-097.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Nächste freie ID: C-098.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -7957,6 +7962,11 @@ Regeln:
 
 #### Offene Designfragen
 
+**Fortschreibung C-097, 11.10.2026:** Für den jetzt beauftragten Bau sind
+Freigabefrische und der konservative Mehr-Eigentümer-Standard in §45 entschieden.
+Die folgenden ursprünglichen Reviewfragen dokumentieren deren Herkunft; die Frage
+zur kausalen Methode bleibt gesondert offen.
+
 Diese Punkte stammen aus einem externen, kritischen Review des Plans vom
 28.08.2026 und hängen als Kommentare an den jeweiligen Issues. Sie sind noch
 nicht entschieden.
@@ -8152,4 +8162,56 @@ V2-Plan; englische Übersetzung synchron. Bestehende Issue-Bodies erhalten nur i
 Teilvertrag und Querverweise; #359s abweichende Zeitsemantik wird korrigiert.
 Keine neue Infrastruktur und kein neuer Milestone. Keine Produktimplementierung.
 
-**Nächste freie ID: C-097.**
+**Nächste freie ID: C-097.** *(Historischer Stand von §44; aktuell §45.)*
+
+## 45. Bauauftrag C-097 für proaktive Aufgaben und Erinnerungen
+
+**Daniel, 11.10.2026:** #250/#403/#404/#405 jetzt als zusammenhängendes Feature
+bauen und die bereits besprochenen Ergänzungen direkt berücksichtigen. Der
+[Implementierungsvertrag](./Proactive%20Tasks%20Build%20Plan.md) konkretisiert
+Zuständigkeiten, Transport-/UI-Verträge, Vertrauensgrenzen und Abnahmematrix.
+Dies ist ein Bauauftrag, kein Implementierungs- oder Reviewnachweis.
+
+- C-096s Entscheidungsannahmen und belegte Neubewertung gehören in diesen Bau.
+  Keine stille Entscheidungsumkehr, Wiederbewaffnung oder Versionsumbindung.
+- Aufgaben sind eigene persistierte Objekte; Entwurfsbestätigung, Memory-Ablauf,
+  Relay-Datei und ein bloß gerenderter Hinweis ersetzen weder Aufgabe noch
+  menschlichen Empfang oder Erledigung. Relay aus/leeren verliert keine Aufgabe.
+- Zeit-/Kalender-/DST-/Catch-up-Regeln, deduplizierte Ereignisse, Quellenaktualität,
+  Leases und Crash-Recovery werden gemeinsam festgelegt und getestet.
+- #405s Freigabe bindet Payload, Quelle, Revision, Akteur und Ziel; vor Ausführung
+  erneut prüfen. Geänderter Zustand ist stale mit neuem Review. Der Vorschlagende
+  attestiert nicht seine eigene menschliche Freigabe. Unklarer externer Erfolg
+  wird abgeglichen oder bleibt unknown; ohne Providerunterstützung kein blindes
+  Retry und kein allgemeines Exactly-once-Versprechen für Seiteneffekte.
+- #450s konservativer Standard in diesem Bau: alle betroffenen authentifizierten
+  Eigentümerdomänen müssen zustimmen; kein implizites Quorum, keine partielle
+  Ausführung unter nur einem Ja. Unbekannte Domänen sperren execute, nicht Lesen.
+  Lokale Koordination ist jetzt Teil des Baus; volle Föderation bleibt #408/#409.
+- MCP/HTTP/CLI und eine minimale bedienbare Daemon-UI verwenden einen Vertrag.
+  Fehlende Hintergrundfähigkeit wird als next-contact-only angezeigt. notify,
+  prepare und execute brauchen jeweils Ende-zu-Ende-Belege mit mindestens einem
+  tatsächlich funktionierenden reversiblen Referenzadapter.
+- #403 entscheidet sein rückwärtskompatibles Aufgabenschema im Bau. Vorhandene
+  IDs, Inhaltsrevisionen und Evidenzreferenzen werden wiederverwendet; die
+  vollständige M4-Claims-/Graph-Umstellung ist keine pauschale Startblockade.
+  Unbekannte Herkunft oder strittige Evidenz wird nicht zu bestätigtem Nutzerwissen.
+- #402/#598/#410 bleiben parallele Messungen in #30; C-095s Release- und
+  Sicherheitsregeln gelten weiter. Stimme, Dots, Mac-Dokumentenoberfläche und
+  Company-Brain-Erweiterungen sind separate Konsumenten derselben Grundlage.
+
+Die offenen Fragen in §43 zu veraltetem Freigabezustand und Mehr-Eigentümer-Freigabe
+werden für diesen Bau durch die obigen Regeln beantwortet; historische Reviewfragen
+bleiben als Herkunft erkennbar. Die dortige kausale Methodenfrage bleibt gesondert.
+
+**Releasezuordnung:** 1.1.0 bleibt der laufende freigegebene Release-Schnitt.
+[v1.1.1, Milestone #32](https://github.com/n0mad-ai/bastra-recall/milestone/32) sammelt
+gezielte Nacharbeiten, zunächst das ausdrücklich verschobene #1151/#1152.
+Das proaktive Feature bleibt im bestehenden V2-Arbeitsbereich und wird jetzt gebaut,
+statt den gesamten V2-Rückstand nach 1.1.1 zu verschieben. Weitere Patch-Defekte
+werden erst nach Beleg eingereiht; keine neuen Defekte aus Ideensammlungen erfinden.
+
+**Delta C-097:** §45, Präambel/Ledger, gemeinsamer Plan und bestehende Issue-Bodies
+mit dem Implementierungsvertrag abgeglichen; kein neuer Feature-Epic.
+
+**Nächste freie ID: C-098.**

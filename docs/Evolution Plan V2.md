@@ -9,7 +9,7 @@
 **Owner decision: 2026-10-04, C-095.** This is the shared roadmap for the former
 V2 and V3 scopes. It describes planned work, not shipped capabilities. The
 [technical architecture](./Evolution%20Architecture%20V1%20to%20V2.md), especially
-sections 42–44, preserves the detailed contracts. German is the governing version.
+sections 42–45, preserves the detailed contracts. German is the governing version.
 
 ### One roadmap, three kinds of work
 
@@ -97,6 +97,20 @@ comprehension and #410 end-to-end confirmation, all in #30. #400 includes this
 feature/evidence mapping in stable V2 approval; C-095 beta/parallel-measurement rules
 remain. Graphify and its specific compliance study #666 remain experimental in #29.
 
+### Proactive build now — C-097, 2026-10-11
+
+Build the existing #250/#403/#404/#405 workstream as one product, including C-096
+assumption reconsideration. The [implementation contract](./Proactive%20Tasks%20Build%20Plan.md)
+assigns task lifecycle/delivery, time/events, freshness #475, trusted exact-state
+approval and conservative all-affected-owner consent #450, local leases #409,
+working reference adapter and the end-to-end matrix. #250 is the integration checklist;
+#402/#598/#410 measurements stay parallel in #30. Voice/Dots and Mac document UI remain
+separate consumers. This is build scope, not shipped capability.
+
+The ongoing 1.1.0 cut remains separate. [v1.1.1 follow-ups #32](https://github.com/n0mad-ai/bastra-recall/milestone/32)
+initially owns deferred #1151/#1152; further verified patch findings can join.
+The whole V2 feature backlog is not moved to 1.1.1 and no duplicate feature epic is created.
+
 ### First slice: measurement follow-ups
 
 Create a project task with source, owner, start/due timestamp, timezone, resolution
@@ -131,7 +145,7 @@ provenance and no-data-loss invariants apply continuously, including in beta.
 **Product-Owner-Entscheidung: 04.10.2026, C-095.** Dies ist die gemeinsame Roadmap
 für die bisherigen V2- und V3-Umfänge. Sie beschreibt geplante Arbeit, keine bereits
 ausgelieferten Fähigkeiten. Die [technische Architektur](./Evolutionsarchitektur%20V1%20zu%20V2.md),
-insbesondere Abschnitte 42–44, erhält die detaillierten Verträge. Deutsch ist maßgeblich.
+insbesondere Abschnitte 42–45, erhält die detaillierten Verträge. Deutsch ist maßgeblich.
 
 ### Eine Roadmap, drei Arten von Arbeit
 
@@ -224,6 +238,20 @@ und Abnahme-Kontrollfälle stehen in Architektur §44. Geplant, nicht ausgeliefe
 Review-Verständlichkeit und #410 Ende-zu-Ende-Bestätigung, alle in #30. #400 nimmt
 Funktions-/Evidenzzuordnung in die stabile V2-Abnahme auf; C-095s Beta-/Parallelregeln
 bleiben. Graphify und seine Befolgungsstudie #666 bleiben experimentell in #29.
+
+### Proaktiven Bereich jetzt bauen — C-097, 11.10.2026
+
+#250/#403/#404/#405 als zusammenhängendes Produkt bauen, einschließlich C-096s
+Annahmen-Neubewertung. Der [Implementierungsvertrag](./Proactive%20Tasks%20Build%20Plan.md)
+ordnet Lebenszyklus/Zustellung, Zeit/Events, Aktualität #475, vertrauenswürdige
+inhaltsgebundene Freigabe und Zustimmung aller betroffenen Eigentümer #450,
+lokale Leases #409, funktionierenden Referenzadapter und Ende-zu-Ende-Matrix zu.
+#250 führt die Integration; #402/#598/#410 bleiben parallel in #30. Stimme/Dots
+und Mac-Dokumentenoberfläche bleiben separate Konsumenten. Bauauftrag, kein Ist-Stand.
+
+Der laufende 1.1.0-Schnitt bleibt getrennt. [1.1.1-Nacharbeiten #32](https://github.com/n0mad-ai/bastra-recall/milestone/32)
+enthalten zunächst das verschobene #1151/#1152; weitere belegte Patch-Befunde können
+hinzukommen. Kein pauschales Verschieben des V2-Rückstands und kein neuer Feature-Epic.
 
 ### Erster Funktionsschnitt: Messauswertungen wieder vorlegen
 
