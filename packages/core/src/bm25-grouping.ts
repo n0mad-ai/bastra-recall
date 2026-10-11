@@ -12,7 +12,7 @@
  * seiner Häufigkeit multipliziert.
  *
  * **Die Reihenfolge entscheidet, ob das stimmt.** Gezählt werden muss NACH
- * MiniSearchs `processTerm` (Default: `toLowerCase`), nicht davor. Sonst sind
+ * MiniSearchs `processTerm` (`foldTerm`), nicht davor. Sonst sind
  * `Recall` und `recall` zwei Einträge, die Häufigkeiten verteilen sich falsch,
  * und das Ergebnis weicht ab. Gemessen auf 30 echten Prompts gegen den echten
  * Vault:
@@ -32,6 +32,7 @@
  * nicht. Deshalb bekommt der gruppierte Aufruf einen Identitäts-Tokenizer:
  * Die Query IST bereits die Termliste.
  */
+import { foldTerm } from "./fold.js";
 
 /** Was `MiniSearch.search()` für den gruppierten Aufruf braucht. */
 export interface GroupedQuery {
@@ -54,7 +55,7 @@ export interface GroupedQuery {
 export function groupQueryTerms(
   query: string,
   tokenize: (text: string) => string[],
-  processTerm: (term: string) => string = (t) => t.toLowerCase(),
+  processTerm: (term: string) => string = foldTerm,
 ): GroupedQuery {
   const terms = tokenize(query);
   const counts = new Map<string, number>();

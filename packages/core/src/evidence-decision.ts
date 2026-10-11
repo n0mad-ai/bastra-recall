@@ -33,6 +33,7 @@
 import type { Memory } from "./schema.js";
 import type { RecallHit } from "./search.js";
 import { tokenizeWithIdentifiers } from "./query-normalize.js";
+import { foldTerm, normalizeText } from "./fold.js";
 
 /** §10.3: die Produktsemantik von V1.0. */
 export type RecallDecision =
@@ -158,9 +159,9 @@ function hasExactIdentifier(input: DecisionInput): boolean {
     input.hit.title,
     ...(m ? [m.fm.title, ...(m.fm.recall_when ?? [])] : []),
   ]
-    .join(" \n ")
-    .toLowerCase();
-  return candidates.some((t) => startsWhole(haystack, t.toLowerCase()));
+    .join(" \n ");
+  const folded = foldTerm(normalizeText(haystack));
+  return candidates.some((t) => startsWhole(folded, foldTerm(t)));
 }
 
 /**
@@ -203,8 +204,8 @@ function recallWhenCoverage(input: DecisionInput): number {
   // Ganze Tokens vergleichen, nicht Teilstrings: sonst zählt `art` in
   // `party` und eine Ein-Term-Query öffnet den harten Anker (#440). Derselbe
   // Tokenizer wie auf der Query-Seite hält beide Seiten symmetrisch.
-  const triggers = new Set(tokenizeWithIdentifiers(triggerText).map((t) => t.toLowerCase()));
-  const hits = terms.filter((t) => triggers.has(t.toLowerCase())).length;
+  const triggers = new Set(tokenizeWithIdentifiers(triggerText).map(foldTerm));
+  const hits = terms.filter((t) => triggers.has(foldTerm(t))).length;
   return Number((hits / terms.length).toFixed(4));
 }
 

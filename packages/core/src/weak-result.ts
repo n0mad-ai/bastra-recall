@@ -1,3 +1,4 @@
+import { foldTerm, normalizeText } from "./fold.js";
 /**
  * #230 / #249 — the "nothing really matched" signal, shared by every recall path.
  *
@@ -37,12 +38,14 @@ import type { RecallHit } from "./search.js";
  */
 export function hitTitleMatches(hit: RecallHit): boolean {
   if (!hit.matched_terms || hit.matched_terms.length === 0) return false;
-  const titleTokens = hit.title
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
+  // One spelling and case fold (fold.ts); marks belong to their word, so a
+  // Devanagari vowel sign or virama is not a separator.
+  const titleTokens = normalizeText(hit.title)
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
+    .filter(Boolean)
+    .map(foldTerm);
   return hit.matched_terms.some((term) => {
-    const t = term.toLowerCase();
+    const t = foldTerm(term);
     return titleTokens.some((tok) => tok === t || tok.startsWith(t) || t.startsWith(tok));
   });
 }
