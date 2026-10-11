@@ -145,7 +145,7 @@ test("resume uses readable owner confirmation; Enter leaves stop and adapter unc
 master,slave=pty.openpty()
 p=subprocess.Popen(sys.argv[1:],stdin=slave,stdout=slave,stderr=slave,start_new_session=True,preexec_fn=lambda: __import__('fcntl').ioctl(0,__import__('termios').TIOCSCTTY,0))
 os.close(slave);out=b'';sent=set();deadline=time.time()+15
-pairs=[(b'Owner task token (hidden): ',os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Lokalen Referenzadapter aktivieren',b'\\n')]
+pairs=[('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Lokalen Referenzadapter aktivieren',b'\\n')]
 while p.poll() is None and time.time()<deadline:
  if select.select([master],[],[],0.1)[0]:
   try:

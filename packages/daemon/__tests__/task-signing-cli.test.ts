@@ -37,7 +37,7 @@ while p.poll() is None and time.time()<deadline:
  if select.select([master],[],[],0.1)[0]:
   try: out+=os.read(master,65536)
   except OSError: break
- for label,reply in [(b'Owner task token (hidden): ',os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Sign approve for these exact bytes and this binding?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Owner key passphrase (hidden): ',b'wrong password\\n')]:
+ for label,reply in [('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),('Diese ganze Bindung und diese exakten Bytes freigeben und separat signieren?'.encode(),b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),('Owner-Passphrase (verborgen): '.encode(),b'synthetic signing password\\n' if os.environ['CASE']=='human' else b'wrong password\\n')]:
   if label in out and label not in sent: os.write(master,reply);sent.add(label)
 if p.poll() is None:p.kill()
 p.wait()
@@ -52,10 +52,11 @@ os.close(master)
 sys.stdout.buffer.write(out)
 sys.exit(0)
 `;
-  const run=async(mode:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","approve",f.prepared.proposal.id,"personal",f.privateFile,"--json"],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token,CASE:mode},stdio:["ignore","pipe","pipe"]});let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);return output;};
+  const run=async(mode:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","approve",f.prepared.proposal.id,"personal",f.privateFile,...(mode==="human"?[]:["--json"])],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token,CASE:mode},stdio:["ignore","pipe","pipe"]});let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);return output;};
   try{
-    const declined=await run("decline");assert.match(declined,/forbidden/);assert.match(declined,/task_revision/);assert.match(declined,/source_revisions/);assert.match(declined,/registry_hash/);assert.match(declined,/target_path/);assert.ok(!declined.includes(f.owner.token));
+    const declined=await run("decline");assert.match(declined,/forbidden/);assert.match(declined,/task_revision/);assert.match(declined,/source_revisions/);assert.match(declined,/registry_hash/);assert.match(declined,/Ziel:/);assert.ok(!declined.includes(f.owner.token));
     const wrong=await run("wrong");assert.match(wrong,/key_unlock_failed/);assert.match(wrong,/"retryable":false/);assert.equal((await import("../src/task-store.js").then(m=>m.readTaskStore(f.ctx.path))).approvals.length,0);
+    const human=await run("human");assert.match(human,/Ganze Bindung/);assert.match(human,/Aufgabenrevision/);assert.match(human,/Quellrevisionen/);assert.match(human,/Inhalt-Hash/);assert.match(human,/Signatur gespeichert/);assert.match(human,/Noch kein Write/);assert.ok(!human.includes('"approval_id":'));assert.ok(!human.includes(f.owner.token));
     assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(f.owner.token));
   }finally{await new Promise<void>(r=>f.server.close(()=>r()));}
 });
@@ -65,7 +66,7 @@ master,slave=pty.openpty()
 p=subprocess.Popen(sys.argv[1:],stdin=slave,stdout=slave,stderr=slave,start_new_session=True,preexec_fn=lambda: __import__('fcntl').ioctl(0,__import__('termios').TIOCSCTTY,0))
 os.close(slave)
 out=b'';sent=set();deadline=time.time()+15
-pairs=[(b'Enroll owner-held approval key',b'yes\\n'),(b'Owner task token (hidden): ',os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Old key passphrase (hidden): ',b'synthetic signing password\\n'),(b'New owner-key passphrase',b'synthetic replacement password\\n'),(b'Repeat passphrase: ',b'synthetic replacement password\\n')]
+pairs=[('Owner-Schlüssel einschreiben?'.encode(),b'yes\\n'),('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),('Alte Schlüssel-Passphrase (verborgen): '.encode(),b'synthetic signing password\\n'),('Neue Owner-Passphrase'.encode(),b'synthetic replacement password\\n'),('Passphrase wiederholen: '.encode(),b'synthetic replacement password\\n')]
 while p.poll() is None and time.time()<deadline:
  if select.select([master],[],[],0.1)[0]:
   try:
@@ -91,6 +92,6 @@ sys.stdout.buffer.write(out)
  try{
   const rejected=await run("enroll");assert.match(rejected,/conflict/);await assert.rejects(readFile(replacement));
   const {transactTaskStore,readTaskStore}=await import("../src/task-store.js");await transactTaskStore(f.ctx.path,undefined,s=>{s.controls.execution_stopped=false;});
-  const rotated=await run("rotate");assert.match(rotated,/reset to false/);const registry=JSON.parse(await readFile(join(f.root,"task-approval-keys.json"),"utf8"));assert.equal(registry.protected_boundary,false);assert.notEqual(registry.keys[0].public_key,(await import("../src/task-approval-keys.js").then(m=>m.privateJson(f.privateFile))).public_key);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);assert.ok(!rotated.includes(f.owner.token));
+  const rotated=await run("rotate");assert.match(rotated,/Grenzerklärung zurückgesetzt/);const registry=JSON.parse(await readFile(join(f.root,"task-approval-keys.json"),"utf8"));assert.equal(registry.protected_boundary,false);assert.notEqual(registry.keys[0].public_key,(await import("../src/task-approval-keys.js").then(m=>m.privateJson(f.privateFile))).public_key);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);assert.ok(!rotated.includes(f.owner.token));
  }finally{await new Promise<void>(r=>f.server.close(()=>r()));}
 });

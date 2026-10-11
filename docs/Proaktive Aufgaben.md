@@ -89,7 +89,7 @@ Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die
 
 ## Ein lokales Ziel registrieren
 
-Unterstützt wird genau ein Referenzadapter: eine vorhandene, registrierte UTF-8-Datei exakt ersetzen. Kein Versand, keine Anbieter-Nachrichten, keine E-Mail-, Slack-, GitHub-, Cloud- oder Shell-Aktionen. Der Vorzustand muss rückrollbar sein: höchstens16384 Zeichen, keine Tabs/CRLF/BOM/Steuerzeichen oder Inhalte, die sich nicht sicher unverändert darstellen lassen.
+Unterstützt wird genau ein Referenzadapter: eine vorhandene, registrierte UTF-8-Datei exakt ersetzen. Kein Versand, keine Anbieter-Nachrichten, keine E-Mail-, Slack-, GitHub-, Cloud- oder Shell-Aktionen. Der Vorzustand muss rückrollbar sein: höchstens 16384 Zeichen, keine Tabs/CRLF/BOM/Steuerzeichen oder Inhalte, die sich nicht sicher unverändert darstellen lassen.
 
 ```sh
 bastra tasks targets register demo --root /ABSOLUTER/DEMOORDNER --path artifact.txt --domain personal
@@ -104,7 +104,7 @@ Zielregistrierung ersetzt keine vorhandene Kennung still. Sie stoppt Ausführung
 
 ## Budgets, Archiv und Reparatur
 
-Status und Seite nennen pro Aufgabe Prüfintervall, Timeout und Quell-Bytegrenze sowie die globalen Grenzen: höchstens10 Quellprüfungen und5s Quellbudget je Lauf, 60s Poll, höchstens1s pro Quelllesung, 4MiB aktive Momentaufnahme (Normalbetrieb bis75%). Unveränderte Fehlquellen gehen bis1h in Backoff. Neue angenommene Ereignisse umgehen diesen Backoff; sie werden geordnet beim Kontakt oder nächsten Poll geprüft. Fünf Sekunden sind für kleine gesunde Tests vorgesehen, keine harte Garantie bei blockiertem Dateisystem, Lock-Konkurrenz oder Prozesspause.
+Status und Seite nennen pro Aufgabe Prüfintervall, Timeout und Quell-Bytegrenze sowie die globalen Grenzen: höchstens 10 Quellprüfungen und 5 s Quellbudget je Lauf, 60 s Poll, höchstens 1 s pro Quelllesung, 4 MiB aktive Momentaufnahme (Normalbetrieb bis 75 %). Unveränderte Fehlquellen gehen bis 1 h in Backoff. Neue angenommene Ereignisse umgehen diesen Backoff; sie werden geordnet beim Kontakt oder nächsten Poll geprüft. Fünf Sekunden sind für kleine gesunde Tests vorgesehen, keine harte Garantie bei blockiertem Dateisystem, Lock-Konkurrenz oder Prozesspause.
 
 ```sh
 bastra tasks stop

@@ -1,17 +1,21 @@
 # Proaktive Aufgaben: Wegwerf-Demo
 
-Diese Demo benutzt nur einen eigenen temporären Vault, Aufgaben-/Owner-/Arbeitsordner und freien Port. Sie ändert keine reale Erinnerung, Dienstdatei oder Anbieter-Ressource. Die bestehende Test-Isolation stellt eine eigene Benutzerkonfiguration bereit. Kein Merge, Tag, Release oder Versionswechsel. Der vorbereitete synthetische Owner-Zugang ist eine Testhilfe, kein Beleg realer menschlicher Anwesenheit oder einer geschützten OS-Grenze.
+Diese Demo benutzt nur einen eigenen temporären Vault, Aufgaben-/Owner-/Arbeitsordner und freien Port. Sie ändert keine reale Erinnerung, Dienstdatei oder Anbieter-Ressource. Das Startskript erzeugt stets eine frische Test-Isolation samt Benutzerkonfiguration; geerbte Test-/Keep-env-/Log-/Eval-Einstellungen werden nicht übernommen. Kein Merge, Tag, Release oder Versionswechsel. Der vorbereitete synthetische Owner-Zugang ist eine Testhilfe, kein Beleg realer menschlicher Anwesenheit oder einer geschützten OS-Grenze.
+
+Plane **20–30 Minuten** ein. Für die erste Erinnerung: eine Minute Frist plus bis zum nächsten 60-Sekunden-Poll; das kann insgesamt ungefähr **1:40 Minuten** dauern. `due`/Browser-Aktualisieren löst einen Kontakt aus, Auswertung und Anzeige laufen getrennt; gegebenenfalls nach einigen Sekunden erneut anzeigen.
+
+Abfragen: Jede `[y/N]`-Frage hat **Nein** als Standard. Für Zustimmung `yes` tippen. setup-hooks nutzt den vorbereiteten privaten Owner-Zugang. Schlüssel-Einschreibung fragt Zustimmung, den **verborgenen Owner-Aufgaben-Token**, die **neue verborgene Passphrase** und deren Wiederholung. boundary fragt erneut den verborgenen Token und Zustimmung. execution-enable fragt Zustimmung. approve zeigt die ganze Bindung, fragt Zustimmung und die verborgene Schlüssel-Passphrase. Browser-Execute und Entscheidung ändern fragen nochmals nach. Der Token liegt nur in der privaten Demo-Datei; im lokalen Editor kopieren, nicht im Chat.
 
 ## Start
 
-Im gebauten Checkout am eigenen Terminal (Node22 oder neuer, Bash):
+Im gebauten Checkout am eigenen Terminal (Node 22 oder neuer, Bash):
 
 ```sh
 npm run build
-node --import ./scripts/test-env.mjs tools/proactive-tasks-demo.mjs
+node tools/proactive-tasks-demo.mjs
 ```
 
-Das Werkzeug startet seinen eigenen Daemon und eine Shell mit dem Prompt `bastra-demo>`. **Alle folgenden Befehle in dieser Shell ausführen.** `bastra` verweist dort auf genau diesen Checkout. `$task_demo_root` enthält die gedruckte Wegwerf-Ablage; der reale Dienst auf6723 wird nicht angesprochen. Owner-CLI-Zugang ist privat vorbereitet; Signing-Schlüssel und konkrete Freigaben fehlen absichtlich. Ohne Terminal oder Isolations-Preload startet die Demo nicht.
+Das Werkzeug startet seinen eigenen Daemon und eine Shell mit dem Prompt `bastra-demo>`. **Alle folgenden Befehle in dieser Shell ausführen.** `bastra` verweist dort auf genau diesen Checkout. `$task_demo_root` enthält die gedruckte Wegwerf-Ablage; der reale Dienst auf 6723 wird nicht angesprochen. Owner-CLI-Zugang ist privat vorbereitet; Signing-Schlüssel und konkrete Freigaben fehlen absichtlich. Ohne Terminal startet die Demo nicht. Der nötige Isolations-Preload wird intern in einem frischen Prozess geladen.
 
 ## 1 Erinnerung: gesehen ist noch nicht erledigt
 
@@ -28,12 +32,27 @@ Nach der Minute beim nächsten Kontakt:
 
 ```sh
 bastra tasks due
+bastra tasks status
+```
+
+IDs aus der Karte übernehmen. Für **dieselbe noch offene Erinnerung im Browser**:
+
+```sh
+bastra config set ui.enabled true
+bastra tasks ui
+```
+
+Lokale URL öffnen, synthetischen Token aus der privaten Demo-Datei einsetzen, **Aktualisieren → Karten anzeigen**. Erst die Karte ansehen, dann die getrennten Schritte ausprobieren:
+
+```sh
 bastra tasks acknowledge AUFGABEN_ID --occurrence VORKOMMEN_ID
+bastra tasks status
+bastra tasks snooze AUFGABEN_ID --until 18:00
 bastra tasks status
 bastra tasks resolve AUFGABEN_ID
 ```
 
-IDs aus der Karte übernehmen. Nach acknowledge bleibt die Aufgabe fällig/offen; erst resolve erledigt sie. Mit `--json` bleibt das Maschinenformat erreichbar. Optional `mute`, `due`, `unmute`: Owner sieht Fälliges auch bei stummer passiver Zustellung. Ein abwesender Client wird nicht geweckt. Fehlender/widerrufener Hook-Zugang ist in client-status sichtbar.
+Quittieren bedeutet gesehen, noch offen. Zurückstellen meint die nächste 18-Uhr-Ortszeit; die Aufgabe bleibt offen. Erst resolve erledigt sie. Für eine schnelle erneute Browser-Erinnerung einfach eine neue Ein-Minuten-Aufgabe anlegen. Die Seite bietet Quittieren, Zurückstellen und Erledigen als getrennte Knöpfe. Mit `--json` bleibt das Maschinenformat erreichbar. Optional vor dem Zurückstellen: `mute`, `due`, `unmute`; Owner sieht Fälliges auch bei stummer passiver Zustellung. Ein abwesender Client wird nicht geweckt. Fehlender/widerrufener Hook-Zugang ist in client-status sichtbar.
 
 ## 2 Ein lokales Ziel ohne Registry-Handarbeit
 
@@ -45,7 +64,7 @@ bastra tasks keys enroll personal "$task_demo_root/owner/approval-key.json"
 
 Registrierung nennt den echten Pfad und warnt vor dem außerhalb des Checkout gewählten Arbeitsordner. Daten-/Schlüssel-/Vault-/Konfigurationsorte und Shell-Profile sind gesperrt. Nur `work/artifact.txt` wird registriert. Ziel-/Schlüsseländerungen stoppen Ausführung und setzen die Grenzerklärung zurück.
 
-Für die versteckte Owner-Token-Abfrage öffne `$task_demo_root/owner/task.token` **lokal im Editor** und kopiere den synthetischen Token; nicht in einen Chat. Wähle eine nur für diese Demo benutzte Passphrase mit mindestens12 Zeichen. Die Schlüsseldatei bleibt im getrennten privaten Owner-Ordner.
+Für die versteckte Owner-Token-Abfrage öffne `$task_demo_root/owner/task.token` **lokal im Editor** und kopiere den synthetischen Token; nicht in einen Chat. Wähle eine nur für diese Demo benutzte Passphrase mit mindestens 12 Zeichen. Die Schlüsseldatei bleibt im getrennten privaten Owner-Ordner.
 
 ```sh
 bastra tasks boundary
@@ -60,7 +79,7 @@ bastra config set ui.enabled true
 bastra tasks ui
 ```
 
-execution-enable fragt mit Nein als Standard. Der eine Referenzadapter ersetzt exakt eine vorhandene registrierte reversible UTF-8-Datei. Keine E-Mail-, Slack-, GitHub-, Cloud-, Anbieter- oder Shell-Aktionen. Tabs/CRLF/BOM/Steuerzeichen, nicht sicher unverändert darstellbare Inhalte und Vorzustände über16384 Zeichen werden abgewiesen.
+execution-enable fragt mit Nein als Standard. Der eine Referenzadapter ersetzt exakt eine vorhandene registrierte reversible UTF-8-Datei. Keine E-Mail-, Slack-, GitHub-, Cloud-, Anbieter- oder Shell-Aktionen. Tabs/CRLF/BOM/Steuerzeichen, nicht sicher unverändert darstellbare Inhalte und Vorzustände über 16384 Zeichen werden abgewiesen.
 
 ## 3 Vorbereiten schreibt nichts; Ausführen braucht jede konkrete Signatur
 
@@ -86,17 +105,45 @@ Im Abschnitt **Wirkungen und Abgleich** die erfolgreiche Quittung wählen, **Rü
 
 „Ausgang unklar – Abgleich nötig“ bedeutet: Ziel prüfen, keine automatische Wiederholung. Der Abgleich liest nur und erkennt den exakten Zielhash oder hält unknown fest. Eigene hashpassende Temp-Reste werden auch bei fehlendem Ziel entfernt; fremde Reste bleiben sichtbar. Für reproduzierbaren Crash **nach erfolgreichem Rename vor Receipt** dient der echte Prozess-Test unten; den Demo-Daemon nicht willkürlich als Erfolgsbeleg abschießen.
 
-## 5 Neubewertung einer Entscheidung und Grenzen
+## 5 Eine Entscheidung tatsächlich neu bewerten
 
-Die belegte Prämissenänderung braucht registrierte Decision-/Assumption-Revisionen und `versioned-value-v1`-Evidenz. Das ist eine erweiterte Quellenbindung; die normalen Zeitaufgaben benötigen keine JSON-Eingabedatei. Automatische Tests mit realen Wegwerf-Memorydateien zeigen Keep/Change/Snooze/Stop, fehlende/irrelevante/strittige/veraltete Evidenz und Supersession. Keep disarmt; erst neue ausdrückliche Owner-Bindung erlaubt weitere Änderungen. Eine neue Quelle oder ein Dokument allein widerlegt keine Entscheidung.
+In der Demo-Shell:
 
 ```sh
-# In einem zweiten Terminal im Checkout, unabhängig von der Demo-Shell:
-node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/task-reconsideration.test.ts packages/daemon/__tests__/task-runtime.test.ts packages/daemon/__tests__/task-final-e2e.test.ts
+demo-reconsider prepare
 ```
 
-Neue angenommene Events umgehen unveränderten Fehlquellen-Backoff. Aufnahme beim eingereihten Kontakt oder spätestens nächsten60s-Poll; danach begrenzte Prüfgruppen. Kleine gesunde Fixtures prüfen Ergebnis **und** Occurrence binnen5s. Keine harte Wallclock-Garantie bei I/O/Lock/Kapazitätsfehlern oder Prozesspause. Status nennt Ergebnis, nächste Prüfung, Fehler und Budgets.
+Der Helfer legt **nur in der Wegwerf-Ablage** zwei erfundene Memorydateien an: `vault/demo-decision.md` (A gewählt wegen hoher Wartungskosten) und `vault/demo-assumption.md` (Kosten hoch). Er bereitet eine versionierte Evidenzdatei und einen ausdrücklich registrierten Watch vor. Noch keine neue Prämisse, keine geänderte Entscheidung.
+
+```sh
+demo-reconsider simulate
+demo-reconsider check
+```
+
+Jetzt ändert der Helfer ausschließlich die erfundene Evidenz und nimmt ein gültiges Demo-Ereignis an: `costly → cheap`. In der Browser-Seite **Aktualisieren → Karten anzeigen**. Die Karte zeigt A, die alte Begründung, die neue Prämisse, Quelle und Unsicherheit. Eine lange Karte wird mit Detailverweis gekürzt statt weggelassen.
+
+Pro vorbereiteter Aufgabe eine Wahl ausprobieren:
+
+- **Beibehalten:** A bleibt, Watch wird unscharf. Weitere Änderungen brauchen neue Owner-Bindung.
+- **Zurückstellen:** zukünftige Ortszeit eingeben; offen, keine Umkehr.
+- **Überwachung beenden:** stoppt diese Aufgabe, ändert die Decision nicht.
+- **Entscheidung ändern:** neue Option `B`, Begründung `Die erfundenen Wartungskosten sind nun geringer`, neuer Body `Demo: B gewählt nach ausdrücklicher Neubewertung.`; dann Browser-Rückfrage bestätigen. Nur jetzt wird eine neue echte Version der **erfundenen** Decision geschrieben, alter Watch bleibt unscharf.
+
+Für eine andere Wahl `demo-reconsider prepare` und `simulate` erneut ausführen. prepare setzt ausschließlich die beiden Demo-Memorydateien auf das erfundene Ausgangsszenario zurück; ältere Watches werden dadurch ungültig. Keine reale Memory wird berührt.
+
+## Kurze Wörterhilfe
+
+- **Vorkommen:** ein konkreter fälliger Anlass einer Aufgabe; eine Wiederholung kann weitere erzeugen.
+- **Quittieren:** „gesehen“, noch nicht erledigt.
+- **Domäne:** eine in der Einrichtung benannte Eigentümergruppe, hier nur `personal`.
+- **Vorschlag / prepare:** genaue Vorher/Nachher-Änderung, noch ohne Schreiben.
+- **Payload-Hash / Inhalt-Hash:** Fingerabdruck der exakt freizugebenden Bytes, kein Messergebnis.
+- **Lease / Reservierung:** kurzzeitige Zuordnung einer konkreten Ausführung zu einem Akteur (höchstens 30 Sekunden).
+- **Epoch:** neue Wiederherstellungskennung; alte Freigaben passen danach nicht mehr.
+- **Abgleich:** Zielstand prüfen; bei unklarem Ausgang nicht blind erneut schreiben.
+
+Falls „bereits reserviert“ erscheint: Status/Wirkungsquittung prüfen. Eigene Reservierungs-ID steht in `bastra tasks status`; `bastra tasks release ID` gibt sie frei, erneuert aber keine Freigabe. Die Seite verhindert Doppelklicks und gibt ihre Reservierung nach einem fehlgeschlagenen Versuch frei. Erneutes Öffnen des Vorschlags ist erforderlich, keine automatische Wiederholung.
 
 ## Ende
 
-`bastra tasks stop` demonstriert den sicheren Ausführungsstopp. `exit` beendet nur diese Shell und ihren eigenen Testdaemon; die Test-Isolation räumt nur ihre Wegwerf-Ablage auf. Für echte Einrichtung ohne Testhelfer: [Aufgaben und Erinnerungen](../Proaktive%20Aufgaben.md). Archiv-/Backup-Recovery zuerst bei gestoppten Task-Prozessen, ursprüngliche Daten/Archive behalten; ein älteres Backup kann neuere Änderungen nicht enthalten.
+`bastra tasks stop` demonstriert den sicheren Ausführungsstopp. Auch Terminal-Schließen/SIGHUP beendet den eigenen Daemon und räumt die eigene Wegwerf-Ablage auf. `exit` beendet nur diese Shell und ihren eigenen Testdaemon; die Test-Isolation räumt nur ihre Wegwerf-Ablage auf. Für echte Einrichtung ohne Testhelfer: [Aufgaben und Erinnerungen](../Proaktive%20Aufgaben.md). Archiv-/Backup-Recovery zuerst bei gestoppten Task-Prozessen, ursprüngliche Daten/Archive behalten; ein älteres Backup kann neuere Änderungen nicht enthalten.

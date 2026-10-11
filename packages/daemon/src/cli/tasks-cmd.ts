@@ -68,7 +68,8 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     const signing = args.sub === "approve" || args.sub === "deny";
     if (signing && agent) throw Object.assign(new Error("Owner signing terminal required"), { code: "forbidden" });
     let input: any = signing ? {} : options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw Object.assign(new TaskCliInputError(error instanceof Error ? error.message : "Zeit/Optionen ungültig"),{reason:(error as any)?.reason}); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
-    if (options.id || (words[0] && !words[0].endsWith(".json"))) input.id = String(options.id ?? words[0]);
+    if(args.sub==="release" && words[0] && !words[0].endsWith(".json")) input.lease_id=words[0];
+    if (args.sub!=="release" && (options.id || (words[0] && !words[0].endsWith(".json")))) input.id = String(options.id ?? words[0]);
     if (options.revision) input.expected_revision = options.revision;
     if (options.occurrence) input.occurrence_id = options.occurrence;
     const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
@@ -79,7 +80,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
     if ((args.sub === "execution-enable" || args.sub === "resume")) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
-    if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization); return 0; }
+    if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization,args.json); return 0; }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
     if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until)) {
       const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision ??= task.expected_revision;

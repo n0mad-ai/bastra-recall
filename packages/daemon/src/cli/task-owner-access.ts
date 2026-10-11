@@ -17,7 +17,7 @@ export async function ownerTaskAuthorization(): Promise<string> {
   try { saved = await privateJson(ownerTaskAccessPath()); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw Object.assign(new Error("Unsafe owner credential cache"), { code: "owner_cache_invalid" }); }
   const parsed = saved === undefined ? undefined : ownerCacheSchema.safeParse(saved);
   if (parsed && !parsed.success) throw Object.assign(new Error("Owner credential cache invalid"), { code: "owner_cache_invalid" });
-  const token = parsed?.success ? parsed.data.token : await taskPrivatePrompt("Owner task token (hidden): ");
+  const token = parsed?.success ? parsed.data.token : await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ");
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw Object.assign(new Error("Owner credential invalid"), { code: "unauthorized" });
   const authorization = `Bearer ${token}`, principal = await authenticateTask(authorization); requireTaskOwner(principal);
   if (parsed?.success && parsed.data.credential_id !== principal.credential_id) throw Object.assign(new Error("Owner credential cache changed"), { code: "owner_cache_invalid" });
@@ -30,7 +30,7 @@ export async function saveOwnerTaskAccess(authorization: string) {
 }
 export async function loginOwnerTaskAccess() {
   if (!await confirm("Owner-Zugang nur für interaktive CLI privat speichern? Dieses Datenverzeichnis muss außerhalb des Agent-Zugriffs liegen; Hooks/MCP bekommen diesen Token nie.")) throw Object.assign(new Error("Owner declined credential cache"), { code: "forbidden" });
-  const authorization = `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ")}`;
+  const authorization = `Bearer ${await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ")}`;
   await saveOwnerTaskAccess(authorization);
   process.stdout.write("Owner-Zugang privat für die interaktive CLI gespeichert. Wird bei jedem Befehl frisch geprüft; Signing-Schlüssel weiterhin separat entsperren.\n");
 }

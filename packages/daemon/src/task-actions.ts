@@ -20,7 +20,7 @@ export const TASK_ACTION_INPUTS = {
   task_approval: z.strictObject({ challenge_id: id, decision: z.enum(["approve", "deny"]), signature: z.string().min(1).max(256) }),
   task_revoke_approval: z.strictObject({ approval_id: id }),
   task_lease: proposalInput,
-  task_release: z.strictObject({ lease_id: id, holder_token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), fence: z.number().int().nonnegative().safe() }),
+  task_release: z.strictObject({ lease_id: id, holder_token: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(), fence: z.number().int().nonnegative().safe().optional() }),
 };
 export type TaskActionOperation = keyof typeof TASK_ACTION_INPUTS;
 export class TaskApprovalError extends Error {
@@ -149,7 +149,12 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
     }
     if (operation === "task_release") {
       const input = TASK_ACTION_INPUTS.task_release.parse(raw); const lease = store.leases.find(l => l.id === input.lease_id && l.actor === principal.actor_id);
-      if (!lease || lease.fence !== input.fence || lease.holder_token_hash !== bytesHash(input.holder_token)) return conflict("Lease holder mismatch");
+      if (!lease) return conflict("Lease holder mismatch");
+      const proposal = store.proposals.find(p => p.id === lease.proposal_id);
+      if (principal.role === "owner" && input.holder_token === undefined && input.fence === undefined) {
+        if (!proposal) return conflict("Proposal absent");
+        requireTaskDomains(principal, proposal.required_domains);
+      } else if (lease.fence !== input.fence || !input.holder_token || lease.holder_token_hash !== bytesHash(input.holder_token)) return conflict("Lease holder mismatch");
       if (lease.state !== "active" || !liveActionDeadline(ctx, lease)) return fail("lease_expired", "Lease expired or released");
       lease.state = "released"; result = { released: true }; return;
     }
@@ -196,7 +201,7 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
     if (missing) fail(missing.reason, "All exact owner approvals required");
     if ((!proposal.rollback_of && store.tasks.find(t => t.id === proposal.task_id)?.action_level !== "execute") || proposal.actor !== principal.actor_id || !store.controls.enabled || store.controls.execution_stopped || !taskApprovalStatus(ctx, store, proposal, registry).approved) return conflict("All exact owner approvals and execution enabled are required for a lease");
     const active = store.leases.find(l => l.proposal_id === proposal.id && l.state === "active");
-    if (active && liveActionDeadline(ctx, active)) return conflict("Active lease already held");
+    if (active && liveActionDeadline(ctx, active)) return fail("lease_busy", "Active lease already held");
     if (active) active.state = "expired";
     const holderToken = randomBytes(32).toString("base64url"), c = clock(ctx);
     const lease = { id: randomUUID(), task_id: proposal.task_id, proposal_id: proposal.id, actor: principal.actor_id,

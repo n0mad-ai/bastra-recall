@@ -12,22 +12,28 @@ import { taskPrivatePrompt } from "./task-private-prompt.js";
 import { confirm } from "./prompt.js";
 import { taskCliCall } from "./tasks-cmd.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+function readableBinding(value:unknown,prefix=""):string {
+ const names:Record<string,string>={proposal_hash:"Vorschlags-Hash",task_id:"Aufgabe",task_revision:"Aufgabenrevision",generation:"Generation",recovery_epoch:"Wiederherstellungskennung",actor:"Ausführender Akteur",target_id:"Zielkennung",target_hash:"Vorzustand-Hash",payload_hash:"Inhalt-Hash",source_revisions:"Quellrevisionen",required_domains:"Pflichtdomänen",domain:"Signierende Domäne",nonce:"Einmal-Kennung",expires_at:"Ablauf",decision:"Zustimmung/Ablehnung",binding_hash:"Bindungs-Hash",kind:"Typ",proposal:"Vorschlag",challenge:"Signierabfrage",scope:"Bereich",sensitivity:"Vertraulichkeit",id:"Kennung",revision:"Revision",created_at:"Angelegt",boot_id:"Startkennung",monotonic_deadline:"Monotone Ablaufgrenze",key_id:"Schlüsselkennung",registry_hash:"Registry-Hash",task_binding:"Aufgabenbindung",status:"Zustand",payload:"Exakte Zielbytes",action:"Aktion",local_time:"Ortszeit",timezone:"Zeitzone",owner_domains:"Eigentümerdomänen",at:"Zeitpunkt",schedule:"Auslöser"};
+ if(Array.isArray(value))return value.map((v,i)=>readableBinding(v,`${prefix}[${i+1}] `)).join("\n");
+ if(value&&typeof value==="object")return Object.entries(value).map(([k,v])=>readableBinding(v,`${prefix}${names[k]??k.replaceAll("_"," ")}: `)).join("\n");
+ return `${prefix}${JSON.stringify(value)}`;
+}
 export async function taskOwnerKeys(words: string[]) {
   const [op, domain, destination, oldPrivateFile] = words;
-  if (!["enroll", "rotate"].includes(op) || !domain || !destination || !await confirm("Enroll owner-held approval key; private file must be outside agent access. Continue?"))
+  if (!["enroll", "rotate"].includes(op) || !domain || !destination || !await confirm("Owner-Schlüssel einschreiben? Private Datei muss außerhalb des Agent-Zugriffs liegen."))
     throw Object.assign(new Error("Use tasks keys enroll domain new-private-file from an owner terminal"), { code: "validation" });
   taskIdentitySchema.parse(domain);
-  const owner = await authenticateTask(`Bearer ${await taskPrivatePrompt("Owner task token (hidden): ")}`); requireTaskOwner(owner); requireTaskDomains(owner, [domain]);
+  const owner = await authenticateTask(`Bearer ${await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ")}`); requireTaskOwner(owner); requireTaskDomains(owner, [domain]);
   const currentRegistry = await readApprovalRegistry(); const previous = currentRegistry?.keys.find(k => k.domain === domain);
   if (previous && op === "enroll") throw Object.assign(new Error("Domain key already enrolled; use rotate with old private key"), { code: "conflict" });
   if (op === "rotate") {
     if (!previous || !oldPrivateFile) throw Object.assign(new Error("Rotate needs enrolled domain and old private-key file"), { code: "validation" });
     const oldEnvelope = await privateJson(oldPrivateFile);
-    try { unlockOwnerKey(oldEnvelope, await taskPrivatePrompt("Old key passphrase (hidden): ", true)); } catch { throw Object.assign(new Error("Owner key unlock failed"), { code: "key_unlock_failed" }); }
+    try { unlockOwnerKey(oldEnvelope, await taskPrivatePrompt("Alte Schlüssel-Passphrase (verborgen): ", true)); } catch { throw Object.assign(new Error("Owner key unlock failed"), { code: "key_unlock_failed" }); }
     if (oldEnvelope.public_key !== previous.public_key) throw Object.assign(new Error("Old domain key mismatch"), { code: "forbidden" });
   }
-  const passphrase = await taskPrivatePrompt("New owner-key passphrase (hidden, 12+ chars): ", true);
-  if (passphrase !== await taskPrivatePrompt("Repeat passphrase: ", true)) throw Object.assign(new Error("Passphrases differ"), { code: "validation" });
+  const passphrase = await taskPrivatePrompt("Neue Owner-Passphrase (verborgen, mindestens 12 Zeichen): ", true);
+  if (passphrase !== await taskPrivatePrompt("Passphrase wiederholen: ", true)) throw Object.assign(new Error("Passphrases differ"), { code: "validation" });
   const envelope = newOwnerKey(passphrase), path = approvalRegistryPath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await transactTaskStore(tasksPath(), undefined, store => { store.controls.execution_stopped = true; }, "control");
@@ -42,9 +48,9 @@ export async function taskOwnerKeys(words: string[]) {
     registry.keys = registry.keys.filter(k => k.domain !== domain); registry.keys.push({ id: randomUUID(), domain, public_key: envelope.public_key, fingerprint: bytesHash(envelope.public_key) }); registry.revision++;
     await atomicWrite(path, JSON.stringify(approvalRegistrySchema.parse(registry)), ownership);
   }, { strictLocal: true });
-  process.stdout.write("Owner key enrolled/rotated; protected_boundary reset to false and execution stopped. Restart the isolated task daemon to pin the new registry; older approvals become stale. Execution remains stopped until a protected boundary is configured.\n");
+  process.stdout.write("Owner-Schlüssel gespeichert; Grenzerklärung zurückgesetzt, Ausführung gestoppt. Task-Prozesse neu starten. Alte Freigaben werden veraltet; neue Grenzerklärung und execution-enable erforderlich.\n");
 }
-export async function taskOwnerSign(words: string[], decision: "approve" | "deny", authorization: string) {
+export async function taskOwnerSign(words: string[], decision: "approve" | "deny", authorization: string, json=false) {
   const [proposalId, domain, privateFile] = words;
   if (!proposalId || !domain || !privateFile) throw Object.assign(new Error("Use tasks approve|deny proposal-id domain private-key-file"), { code: "validation" });
   const base = resolveDaemonEndpoint().baseUrl;
@@ -58,13 +64,13 @@ export async function taskOwnerSign(words: string[], decision: "approve" | "deny
     throw Object.assign(new Error("Local target/registry/domain-key binding differs"), { code: "approval_stale" });
   const binding = approvalBinding(proposal, challenge, decision);
   // Complete signed object plus locally pinned concrete target path; JSON quoted.
-  process.stdout.write(JSON.stringify({ binding, task: { id: proposal.task_id, goal: response.task_goal, revision: proposal.task_revision, generation: proposal.generation },
-    target_path: resolve(target.root, target.path), registry_revision: registry.revision, preview }, null, 2) + "\n");
-  if (!await confirm(`Sign ${decision} for these exact bytes and this binding?`)) throw Object.assign(new Error("Owner declined signing"), { code: "forbidden" });
+  process.stdout.write(`Aufgabe: ${JSON.stringify(response.task_goal??proposal.task_id)} (${proposal.task_id})\nRevision ${proposal.task_revision}, Generation ${proposal.generation}\nZiel: ${JSON.stringify(resolve(target.root,target.path))}\nAlle Pflichtdomänen: ${proposal.required_domains.join(", ")}\nDiese Signatur: ${domain} · ${decision==="approve"?"zustimmen":"ablehnen"}\nInhalt-Hash: ${proposal.payload_hash}\nQuellrevisionen: ${JSON.stringify(proposal.source_revisions)}\nAblauf: ${new Date(challenge.expires_at).toISOString()}\nVorher:\n${JSON.stringify(preview.before)}\nNachher (exakte Bytes):\n${JSON.stringify(preview.after)}\nGanze Bindung (zur Kontrolle):\n${json?JSON.stringify(binding,null,2):readableBinding(binding)}\n`);
+  if (!await confirm(`Diese ganze Bindung und diese exakten Bytes ${decision==="approve"?"freigeben":"ablehnen"} und separat signieren?`)) throw Object.assign(new Error("Owner declined signing"), { code: "forbidden",reason:"owner_declined" });
   let key;
-  try { key = unlockOwnerKey(envelope, await taskPrivatePrompt("Owner key passphrase (hidden): ", true)); }
+  try { key = unlockOwnerKey(envelope, await taskPrivatePrompt("Owner-Passphrase (verborgen): ", true)); }
   catch { throw Object.assign(new Error("Owner key unlock failed"), { code: "key_unlock_failed" }); }
   const signature = signTaskApproval(key, approvalBinding(proposal, challenge, decision));
   const result = await taskCliCall("approval", { challenge_id: challenge.id, decision, signature }, authorization, base);
-  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  if(json){process.stdout.write(JSON.stringify(result,null,2)+"\n");return;}
+  const status=result as any;process.stdout.write(`${decision==="approve"?"Signatur gespeichert":"Ablehnung gespeichert"}. ${status.approved?"Alle Pflichtdomänen vollständig freigegeben.":`Noch nicht ausführbar; fehlende Domänen: ${status.missing_domains?.join(", ")||"Status prüfen"}` } Noch kein Write, keine Aufgabe erledigt.\n`);
 }

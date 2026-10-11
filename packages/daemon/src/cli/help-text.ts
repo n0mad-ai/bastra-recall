@@ -240,6 +240,7 @@ Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
   bastra tasks boundary          Owner erklärt geschützte Grenze; Prozesse danach neu starten
   bastra tasks execution-enable   Owner aktiviert lokalen Adapter und hebt Stopp auf
   bastra tasks keys enroll domain new-private-file
+  bastra tasks release LEASE_ID   Eigene Reservierung freigeben; keine Freigabe erneuern
   bastra tasks approve|deny proposal-id domain private-key-file
 Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen
 signieren. Notify/prepare funktionieren ohne Signing-Key. Kein Hintergrund-Wakeup;

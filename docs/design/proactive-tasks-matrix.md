@@ -1,7 +1,7 @@
 # Final C-097 functional matrix
 
 Scope: the stacked unmerged proactive build through P10, 2026-10-11. All fixtures
-are invented, local and isolated; no production vault/service/port6723/provider
+are invented, local and isolated; no production vault/service/port 6723/provider
 write. These are functional/security observations, not a longitudinal benefit
 verdict, measured human acknowledgement, production OS isolation or stable release.
 The [owner demo](proactive-tasks-demo.md) uses the actual compiled CLI and daemon.
@@ -58,10 +58,10 @@ explicit CLI/optional browser. Dedicated task credentials/setup required; hookle
 clients see work on contact, native provider wakeups are unsupported.
 
 Contact/startup jobs run off the hook hot path. New accepted events bypass old
-backoff and drain in bounded groups (at most10 assessments/5s source intake per
-turn, plus bounded decision guards); periodic admission within the next60s healthy
+backoff and drain in bounded groups (at most 10 assessments/5 s source intake per
+turn, plus bounded decision guards); periodic admission within the next 60 s healthy
 wake. Five seconds is a small healthy-fixture target, not a hard bound on lock/I/O
-failure or process suspension. Unchanged failures can back off to1h; status projects
+failure or process suspension. Unchanged failures can back off to 1 h; status projects
 why/next check/budgets. No periodic task I/O with empty/unarmed work. Exactly one
 logical occurrence survives automatic/manual overlap.
 
@@ -70,3 +70,5 @@ human comprehension/interruption outcomes as pending; #410 receives this local
 functional/security integration and independent-review history. Federation,
 longitudinal utility, causal benefit, native wakeup and real OS-held key separation
 are not implemented/proven by this matrix. No issue or release is closed/promoted.
+
+Independent integration round 3 froze df3abfca and exercised all fourteen cases in one shared real-process matrix: 41/41 observations, with CLI, bridge, hooks, HTTP/stdio MCP, restarts and SIGKILL. It found the per-task intake limit defect, fixed in f07b0167 with negative File/Memory/Git/shared-consumer and smaller-timeout regressions. Card-budget and demo changes after the frozen audit have their own suite evidence; that audit is not claimed for later commits.

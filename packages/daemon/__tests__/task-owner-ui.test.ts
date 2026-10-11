@@ -9,10 +9,10 @@ class Node {
  append(...nodes:Node[]){this.children.push(...nodes);}replaceChildren(...nodes:Node[]){this.children=nodes;}addEventListener(name:string,fn:Function){this.handlers[name]=fn;}remove(){}showModal(){}close(){}
 }
 const descendants=(n:Node):Node[]=>[n,...n.children.flatMap(descendants)];
-async function ui(snapshot:any,due:any={cards:[]}){
+async function ui(snapshot:any,due:any={cards:[]},overrides:any={}){
  const nodes=new Map<string,Node>(),get=(id:string)=>{if(!nodes.has(id)){const n=new Node();n.id=id;nodes.set(id,n);}return nodes.get(id)!;};
  const document={getElementById:get,createElement:()=>new Node(),querySelectorAll:()=>[]};
- const source=await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8"),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot})});
+ const source=await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8"),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
  runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get,ctx};
 }
 test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
@@ -29,4 +29,12 @@ test("browser shows compact reconsideration, owner choices and the detail comman
  const snapshot={role:"owner",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}};
  const c={task_id:"t",occurrence_id:"o",goal:"Neubewertung",due_at:1000,timezone:"Europe/Madrid",compact:true,detail_command:"bastra tasks get t",why_now:"Geprüfte Prämissenänderung",reconsideration:{decision:{option:"A",reason:"Wartung",alternatives:["B"]},old_premise:"costly",new_premise:"cheap",new_evidence:{id:"evidence",revision:"v1",observed_at:1000},choices:["keep","change","snooze","stop"]}};
  const u=await ui(snapshot,{cards:[c],overflow:0});await (u.get("due") as any).onclick();const nodes=descendants(u.get("cards"));assert.ok(nodes.some(n=>n.textContent==="Neubewertung"));assert.ok(nodes.some(n=>n.textContent.includes("bastra tasks get t")));for(const label of ["Beibehalten","Zurückstellen","Überwachung beenden","Entscheidung ändern"])assert.ok(nodes.some(n=>n.textContent===label&&!n.disabled));
+});
+
+test("browser prevents duplicate execute reservations and releases its exact holder after failure",async()=>{
+ const snapshot={role:"owner",controls:{enabled:true,muted:false,execution_stopped:false},runtime:{running:true},tasks:[],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:true}};
+ const calls:any[]=[];const u=await ui(snapshot,undefined,{confirm:()=>true,fetch:async(url:string,args:any)=>{const input=JSON.parse(args.body);calls.push({url,input});return url.endsWith("task_lease")?{ok:true,json:async()=>({lease:{id:"l",fence:7},holder_token:"secret"})}:url.endsWith("task_execute")?{ok:false,json:async()=>({code:"approval_stale"})}:{ok:true,json:async()=>snapshot};}});
+ (u.ctx as any).fixture={proposal:{id:"p",required_domains:["personal"]},preview:{before:"old",after:"new"},approved:true,binding_status:"current"};await runInContext("showProposal(fixture)",u.ctx);
+ const button=descendants(u.get("proposal")).find(n=>n.id==="execute-button")!;await Promise.all([button.handlers.click(),button.handlers.click()]);
+ assert.equal(calls.filter(c=>c.url.endsWith("task_lease")).length,1);assert.equal(calls.filter(c=>c.url.endsWith("task_execute")).length,1);const released=calls.find(c=>c.url.endsWith("task_release"));assert.deepEqual(released.input,{lease_id:"l",holder_token:"secret",fence:7});assert.equal(button.disabled,true);assert.match(u.get("message").textContent,/Bindung geändert/);
 });

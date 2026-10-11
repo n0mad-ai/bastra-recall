@@ -1032,8 +1032,8 @@ paths:
   /task_release:
     post:
       operationId: task_release
-      summary: Exact task action release; no execution in P7
-      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      summary: Release an actor-owned execution reservation
+      description: Mapped bearer required. Release only an actor-owned live lease. Agents require exact holder_token and fence; an Owner with all proposal domains may release its own lease by ID. No target write or renewal of approval.
       security: [{ taskBearerAuth: [] }]
       requestBody:
         required: true

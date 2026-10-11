@@ -160,3 +160,20 @@ test("lease wall rollback cannot extend expired holder; source/evidence and deci
   const dec=await callTaskCrud(ctx,own,"task_edit",{id:h.prepared.proposal.task_id,expected_revision:"initial:0",patch:{decision:{id:"decision",revision:"v1",option:"A",reason:"R",assumption_id:"assumption",assumption_revision:"v1",premise:"P",alternatives:["B"]}}}) as any;await callTaskCrud(ctx,own,"task_review",{id:dec.id,expected_revision:dec.expected_revision});const dt=(await readTaskStore(ctx.path)).tasks[0];const dp=await callTaskCrud(ctx,h.auth,"task_prepare",{id:dt.id,expected_revision:`initial:${dt.revision}`,target_id:"artifact",payload:"new\n"}) as any;
   ctx.memoryRead=async(id:string)=>({id,revision:"v2",raw:`---\nid: ${id}\ntype: decision\n---\nchanged`,body:"changed",sensitivity:"private"});await assert.rejects(callTaskCrud(ctx,own,"task_challenge",{proposal_id:dp.proposal.id,domain:"personal"}),/Decision binding/);
 });
+
+test("duplicate reservation reports lease_busy; only same full-domain owner can release without holder secret",async()=>{
+ const f=await fixture();await transactTaskStore(f.ctx.path,undefined,s=>{s.controls.execution_stopped=false;s.controls.adapters["local-artifact-v1"]={enabled:true,coverage:"test"};});
+ const owner=`Bearer ${f.owners[0].token}`;
+ const prepared=await callTaskCrud(f.ctx,owner,"task_prepare",{id:f.prepared.proposal.task_id,expected_revision:"initial:0",target_id:"artifact",payload:"new\n"}) as any;
+ const challenge=await callTaskCrud(f.ctx,owner,"task_challenge",{proposal_id:prepared.proposal.id,domain:"personal"}) as any;
+ await callTaskCrud(f.ctx,owner,"task_approval",{challenge_id:challenge.challenge.id,decision:"approve",signature:signTaskApproval(unlockOwnerKey(f.envelopes[0],"synthetic owner key password"),approvalBinding(challenge.proposal,challenge.challenge,"approve"))});
+ const l=await callTaskCrud(f.ctx,owner,"task_lease",{proposal_id:prepared.proposal.id}) as any;
+ await assert.rejects(callTaskCrud(f.ctx,owner,"task_lease",{proposal_id:prepared.proposal.id}),(e:any)=>e.code==="lease_busy");
+ await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_release",{lease_id:l.lease.id}));
+ const other=await mintTaskCredential(f.ctx.authPath,{actor_id:"another-owner",role:"owner",domains:["personal"]});
+ await assert.rejects(callTaskCrud(f.ctx,`Bearer ${other.token}`,"task_release",{lease_id:l.lease.id}));
+ assert.deepEqual(await callTaskCrud(f.ctx,owner,"task_release",{lease_id:l.lease.id}),{released:true});
+ assert.equal((await readTaskStore(f.ctx.path)).leases[0].state,"released");
+ assert.equal(await readFile(f.targetPath,"utf8"),"old\n");
+ await callTaskCrud(f.ctx,owner,"task_lease",{proposal_id:prepared.proposal.id});
+});

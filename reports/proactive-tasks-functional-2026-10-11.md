@@ -42,3 +42,5 @@ fixtures does not mark #402/#598/#410 or stable V2 confirmation as passed. Indep
 review history includes P7/P8 adversarial write-boundary probes and two integration
 rounds, followed by package corrections. The final P10 additions still receive the
 ordinary independent review; no blanket review of uninspected changes is claimed.
+
+Independent integration round 3 at frozen df3abfca ran the original fourteen cases together against one synthetic store and real processes, with 41/41 observations. Full suite: 5576 passed, zero failed (12 skipped, 2 todo). It additionally identified a per-task source-intake budget defect; f07b0167 enforces byte/time limits for File/Memory/Git intake and per shared-source consumer. Standard-budget reconsideration regressions in 2f9e0300 cover owner/passive/DOM cards with long synthetic reason/evidence. Later demo changes are verified separately and do not inherit the frozen audit.

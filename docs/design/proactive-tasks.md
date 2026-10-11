@@ -586,14 +586,14 @@ queue another bounded turn, not a wait for the old failure's retry deadline.
 Irrelevant/contested/unknown/stale results are persisted when materially changed;
 only identical checks suppress writes. Before the first event, no verification
 is invented (owner status says waiting for an event). Healthy small-cohort tests
-require persisted result AND logical occurrence within5s; 5s is not a universal
+require persisted result AND logical occurrence within 5 s; 5s is not a universal
 wall-clock SLA. A healthy daemon with no contention/capacity/storage failure
-admits an event at next queued contact or latest60s periodic wake, then bounded
-cohorts of10 assessments (source intake5s; decision guard later adds its own bounded
+admits an event at next queued contact or latest 60 s periodic wake, then bounded
+cohorts of 10 assessments (source intake 5 s; decision guard later adds its own bounded
 intake). With N eligible watchers, budget-deferred work drains in ceil(N/10)
 turns. Filesystem commits/syscalls and process suspension cannot be given a hard
 wall-clock upper bound; errors/capacity/backoff remain visible and no result is
-falsely inferred. Unchanged failing sources without a new event retain up to1h
+falsely inferred. Unchanged failing sources without a new event retain up to 1 h
 retry backoff. Measurement should wait for the saved event-specific verification
 and occurrence, not just the first verification commit (evaluation is a separate
 atomic commit).
@@ -664,10 +664,12 @@ its archive; no identity reuse or hidden deletion. Corrupt exports fail closed.
 
 P9c r2: fixed target denial includes all .git state (directory or worktree-control file), .husky, .github/workflows, .envrc and .npmrc, normalized case. package.json remains eligible with an explicit automatic-script warning before consent; it gains no extra capability. Regression asserts consumed approval status from cold archive AND recovered active snapshot, and old proof cannot acquire lease or produce another write.
 
-P10 final recovery probe: a valid committed snapshot or successful healthy refresh clears the global store-I/O stop, permitting an accepted NEW event at queued contact instead of inheriting an old hour retry deadline. Source-specific unchanged-failure backoff remains unchanged. Regression reproduced the missed occurrence before the correction and checks exactly one within5s afterward.
+P10 final recovery probe: a valid committed snapshot or successful healthy refresh clears the global store-I/O stop, permitting an accepted NEW event at queued contact instead of inheriting an old hour retry deadline. Source-specific unchanged-failure backoff remains unchanged. Regression reproduced the missed occurrence before the correction and checks exactly one within 5 s afterward.
 
 P10 explicit due inspection reads the authoritative store (it already records a durable attempt), so it cannot contradict a just-read durable due state during fsync/watch/cache publication lag. Passive hook attachments remain cached/off-path. Deterministic stale-cache regression plus the final real-process package run cover this boundary.
 
 P10 card budget correction: measure actual escaped DATA JSON bytes, shorten oversized cards with a stable task/occurrence identity and bastra tasks get detail command. Standard-budget reconsideration retains old/new premise, bounded reason/evidence and Owner choices. When even an actionable card cannot fit, show an availability notice instead of silence, retain overflow/pending and do not fabricate a per-occurrence attempt. CLI/UI understand both forms; passive standard-budget delivery uses the same projection.
 
 P10 intake-budget correction: file buffers/stat admission, memory reader/locator and Git output/process deadline receive the eligible consumer byte/timeout caps before intake. Shared sources use the largest selected eligible admission; each consumer checks recorded actual bytes/ms and a smaller consumer cannot fire from a larger one. Resource reinspection can amend cost metadata without creating a material event or refreshing state age; unchanged admissibility does not write. Legacy missing cost metadata is unavailable until inspected. Recovery only retains known archived/readable spent IDs; an unreadable current store and older pre-spend backup can omit a recent unarchived receipt/tombstone. New epoch, disarm and stop prevent old-proof replay even then; audit reconstruction is not claimed.
+
+P10 demo correction: actor-owned live reservation contention reports `lease_busy` (409), not generic conflict. A full-domain Owner may release only its own reservation by ID; agents still require exact holder token and fence. Release never renews spent proof or changes target/receipt. The UI admits one click at a time and releases its exact holder after a failed attempt; reopening and reviewing are explicit, not automatic retry.

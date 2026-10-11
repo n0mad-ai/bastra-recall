@@ -19,7 +19,7 @@ while p.poll() is None and time.time()<deadline:
  if select.select([m],[],[],0.1)[0]:
   try:out+=os.read(m,65536)
   except OSError:break
- for label,reply in [(b'Owner task token (hidden): ',os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Backup wiederherstellen?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Auch unbekannte Sperre privat sichern?',b'yes\\n'),(b'Dieses lokale Ziel',b'\\n' if os.environ['CASE']=='target-decline' else b'yes\\n'),(b'Ziel entfernen?',b'yes\\n')]:
+ for label,reply in [('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Backup wiederherstellen?',b'\\n' if os.environ['CASE']=='decline' else b'yes\\n'),(b'Auch unbekannte Sperre privat sichern?',b'yes\\n'),(b'Dieses lokale Ziel',b'\\n' if os.environ['CASE']=='target-decline' else b'yes\\n'),(b'Ziel entfernen?',b'yes\\n')]:
   if label in out and label not in sent:os.write(m,reply);sent.add(label)
 if p.poll() is None:p.kill()
 p.wait()

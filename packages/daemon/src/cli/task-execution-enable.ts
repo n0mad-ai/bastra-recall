@@ -7,7 +7,7 @@ import { confirm } from "./prompt.js";
 import { taskCliCall } from "./tasks-cmd.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 export async function declareTaskBoundary() {
-  const owner = await authenticateTask(`Bearer ${await taskPrivatePrompt("Owner task token (hidden): ")}`); requireTaskOwner(owner);
+  const owner = await authenticateTask(`Bearer ${await taskPrivatePrompt("Owner-Aufgaben-Token (verborgen): ")}`); requireTaskOwner(owner);
   const path = approvalRegistryPath();
   if (!await confirm("Ich bestätige: Agenten können weder Aufgaben-Datenverzeichnis noch private Schlüssel noch die Daemon-Laufzeit ändern. Diese Grenze wird technisch NICHT geprüft. Grenze erklären?")) throw Object.assign(new Error("Owner declined boundary declaration"), { code: "forbidden", reason:"owner_declined" });
   await transactTaskStore(tasksPath(), undefined, s => { s.controls.execution_stopped = true; }, "control");
