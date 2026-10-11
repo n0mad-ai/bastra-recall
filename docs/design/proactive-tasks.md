@@ -49,11 +49,16 @@ and arm a fully specified notify task in one readable confirmation, without key
 enrollment. Ambiguous requests stay unarmed with one visible question. Owner
 review/arm and re-arm use the owner credential, not an execute signature.
 
+Agent snooze has a persisted 24-hour ceiling from its first snooze in a generation;
+repeated agent calls cannot extend it. Only explicit owner review/rearm resets that
+ceiling. Owners may choose longer deferrals.
+
 Snooze preserves occurrence identity/receipts and returns to due at the stored
 instant. Acknowledge records an authenticated owner command, not proof that eyes
 saw a card, and does not resolve. Only an owner resolve command or a reviewed
 bounded resolution verifier resolves. Cancel/resolved/expired never re-arm
-silently. Edits increment revision; changes to trigger/decision/authority disarm
+silently. Edits increment revision; changes to trigger/decision/authority advance generation,
+clear snooze and disarm
 and invalidate dependent bindings. Explicit re-arm creates a new generation.
 Reviewed bounded recurrence can advance automatically until count/end, but never
 from a terminal state. Delivery, acknowledgement, resolution and execution are
@@ -162,7 +167,7 @@ All transports share schemas/results. HTTP prefix `/api/v1/tasks`, CLI prefix
 
 Structured errors: code/message/retryable, resulting revision. Common statuses:
 401 absent credential, 403 wrong role/domain/actor, 404 absent, 409 revision/binding
-conflict or spent challenge, 422 validation/unknown owner, 503 lock/backpressure/
+conflict or spent challenge, 400 validation, 422 unknown owner, 503 lock/backpressure/
 source unavailable. Expired/revoked/denied/stale signatures have distinct codes
 (403 or 409). Recovery adds invalid_backup (422), corruption (503). Disabled
 adapter/feature or stopped execution is 409. Lease conflicts/expiry are 409.

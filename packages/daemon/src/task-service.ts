@@ -102,7 +102,13 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
       if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
         requireTaskOwner(principal);
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
-      Object.assign(task, patch); task.armed = false; task.review_reason = "Edited binding requires explicit owner review";
+      const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level"]
+        .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
+      Object.assign(task, patch);
+      if (triggerChanged) {
+        task.generation++; delete task.snoozed_until;
+        if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
+      } task.armed = false; task.review_reason = "Edited binding requires explicit owner review";
       audit(task, principal, "edit", now);
       taskSchema.parse(task);
       return;
@@ -111,11 +117,16 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
       requireTaskOwner(principal);
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
       if (task.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
-      task.armed = true; delete task.review_reason; audit(task, principal, "review", now); return;
+      task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
     const op = operation.slice(5) as TaskLifecycleOperation;
     if (["acknowledge", "resolve", "rearm"].includes(op)) requireTaskOwner(principal);
     const args = lifecycleInput.parse(input);
+    if (op === "snooze" && principal.role === "agent") {
+      const ceiling = task.agent_snooze_deadline ?? now + 24 * 60 * 60 * 1000;
+      if (args.until === undefined || args.until > ceiling) throw new TaskServiceError("validation", "agent snooze exceeds the fixed 24-hour window");
+      task.agent_snooze_deadline = ceiling;
+    }
     const relevant = s.occurrences.filter(o => o.task_id === task.id && o.generation === task.generation);
     if (op === "acknowledge") {
       if (!args.occurrence_id) throw new TaskServiceError("validation", "acknowledgement requires occurrence_id");
@@ -129,3 +140,9 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
   }, operation === "task_edit" || operation === "task_review" || operation === "task_rearm" ? "normal" : "control");
   return view(store, findTask(store, input.id, principal));
 }
+
+export const TASK_INPUT_SCHEMAS = {
+  task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
+  task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
+  task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
+};

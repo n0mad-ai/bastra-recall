@@ -52,3 +52,11 @@ test("opaque identity rejects prose, paths, control characters and bearer materi
   for (const id of ["owner-a", "scope:fixture", "d2264724-4941-40f7-8078-66b6c7f201af"])
     assert.equal(taskIdentitySchema.safeParse(id).success, true);
 });
+test("revoke validates the complete registry before writing and preserves invalid next revision", async () => {
+  const path = await fixture(); const c = await mintTaskCredential(path, owner);
+  const registry = JSON.parse(await readFile(path, "utf8")); registry.revision = Number.MAX_SAFE_INTEGER;
+  const original = JSON.stringify(registry); await writeFile(path, original);
+  await assert.rejects(revokeTaskCredential(path, c.credential_id));
+  assert.equal(await readFile(path, "utf8"), original);
+  await authenticateTask(`Bearer ${c.token}`, path);
+});

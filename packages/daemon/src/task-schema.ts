@@ -66,7 +66,7 @@ export const taskSchema = z.strictObject({
     id, revision: id, option: text, reason: text, assumption_id: id,
     assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
   }).optional(),
-  next_check_at: instant.optional(), snoozed_until: instant.optional(),
+  next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
   history: z.array(z.strictObject({
     at: instant, actor: taskIdentitySchema, operation: id,

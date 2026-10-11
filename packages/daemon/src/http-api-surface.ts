@@ -24,6 +24,7 @@ import { liveIntent, readActs } from "./floor-acts.js";
 import { computeHeat, computeReach, readUsage } from "./usage-sidecar.js";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
 import { isLoopback, isLoopbackHost, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
+import { dispatchTaskHttp } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
 
 export interface ApiSurfaceCtx {
@@ -51,6 +52,12 @@ export function dispatchApiSurface(
   const reqOrigin = req.headers.origin;
   const allowedOrigin = resolveCorsOrigin(reqOrigin, server.corsAllow);
   sendCors(res, allowedOrigin); // before the gate, so a 401/403 still carries CORS
+
+  if (url.startsWith("/api/v1/tasks") || url.startsWith("/api/v1/task_")) {
+    if (reqOrigin && !allowedOrigin) { sendJson(res, 403, { error: "origin not allowed" }); return true; }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+    return dispatchTaskHttp(req, res, method, url);
+  }
 
   const gate = gateApiRequest({
     reqOrigin,

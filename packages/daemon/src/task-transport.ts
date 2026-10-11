@@ -1,0 +1,73 @@
+import { z } from "zod";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { tasksPath } from "./task-store.js";
+import { taskAuthPath, authenticateTask } from "./task-auth.js";
+import { callTaskCrud, TASK_CRUD_OPERATIONS, TASK_INPUT_SCHEMAS, type TaskCrudOperation, type TaskServiceContext } from "./task-service.js";
+import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
+import { PathLockUnavailableError } from "./path-lock.js";
+
+export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
+  description: `${name}: persisted commitment; agent capture stays unarmed. Owner command required for review, acknowledgement, resolution and rearm. Delivery does not resolve.`,
+  inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
+  annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
+}));
+export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
+export function defaultTaskContext(): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath() }; }
+export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
+  const code = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
+    : (error as { code?: string })?.code ?? "unavailable";
+  const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
+    validation: 400, conflict: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
+  // Do not echo raw validation values, paths, authorization or filesystem errors.
+  const status = statuses[code] ?? 503;
+  return { status, body: { error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
+}
+export async function callTaskMcp(name: TaskCrudOperation, input: unknown,
+  authorization: string | undefined, ctx = defaultTaskContext()) {
+  try {
+    const result = await callTaskCrud(ctx, authorization, name, input);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  } catch (error) {
+    return { isError: true, content: [{ type: "text" as const, text: JSON.stringify(taskFailure(error).body) }] };
+  }
+}
+export async function taskClientAuthorization(): Promise<string | undefined> {
+  // Client config must hold its explicitly assigned agent credential, not the legacy token.
+  return process.env.BASTRA_TASK_TOKEN ? `Bearer ${process.env.BASTRA_TASK_TOKEN}` : undefined;
+}
+/** Matches both canonical REST and the established /api/v1/<MCP tool> route. */
+export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, method: string, url: string,
+  ctx = defaultTaskContext()): boolean {
+  const pathname = new URL(url, "http://127.0.0.1").pathname;
+  if (!pathname.startsWith("/api/v1/tasks") && !pathname.startsWith("/api/v1/task_")) return false;
+  void (async () => {
+    try {
+      // Authenticate even invalid routes before reading a body. Loopback is no exemption.
+      await authenticateTask(req.headers.authorization, ctx.authPath);
+      let operation: TaskCrudOperation | undefined;
+      let id: string | undefined;
+      const tool = pathname.slice("/api/v1/".length);
+      if (isTaskTool(tool) && method === "POST") operation = tool;
+      else if (pathname === "/api/v1/tasks" || pathname === "/api/v1/tasks/") {
+        operation = method === "GET" ? "task_list" : method === "POST" ? "task_create" : undefined;
+      } else {
+        const match = /^\/api\/v1\/tasks\/([a-z0-9._:-]+)(?:\/(review|snooze|acknowledge|resolve|cancel|rearm))?$/.exec(pathname);
+        if (match) {
+          id = match[1];
+          if (method === "GET" && !match[2]) operation = "task_get";
+          if (method === "PATCH" && !match[2]) operation = "task_edit";
+          if (method === "POST" && match[2]) operation = `task_${match[2]}` as TaskCrudOperation;
+        }
+      }
+      if (!operation) { sendJson(res, 404, { error: "Task route absent", code: "not_found", retryable: false }); return; }
+      let input: Record<string, unknown> = method === "GET" ? {} : await readJsonBody(req, MAX_BODY_BYTES);
+      if (id) {
+        if ("id" in input && input.id !== id) throw new z.ZodError([]);
+        input = { ...input, id };
+      }
+      const result = await callTaskCrud(ctx, req.headers.authorization, operation, input);
+      res.setHeader("Cache-Control", "no-store"); sendJson(res, 200, result);
+    } catch (error) { const failure = taskFailure(error); sendJson(res, failure.status, failure.body); }
+  })();
+  return true;
+}

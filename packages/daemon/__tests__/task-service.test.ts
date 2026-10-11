@@ -85,3 +85,23 @@ test("recovery epoch rejects formerly valid revision token; revocation denies ne
   await revokeTaskCredential(f.ctx.authPath, f.owner.credential_id);
   await assert.rejects(f.call(f.owner, "task_get", { id: t.id }), { code: "unauthorized" });
 });
+test("agent snooze has a fixed ceiling, cannot extend indefinitely, and owner review resets it", async () => {
+  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true });
+  const ceiling = 1000 + 86400000;
+  await assert.rejects(f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling + 1 }), { code: "validation" });
+  t = await f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling });
+  f.ctx.now = () => 10000;
+  await assert.rejects(f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling + 1 }), { code: "validation" });
+  t = await f.call(f.owner, "task_review", { id: t.id, expected_revision: t.expected_revision });
+  assert.equal(t.agent_snooze_deadline, undefined);
+  t = await f.call(f.owner, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling * 2 });
+  assert.equal(t.snoozed_until, ceiling * 2);
+});
+test("trigger edit discards snooze, advances generation unarmed; cosmetic edit preserves snooze", async () => {
+  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true });
+  t = await f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: 3000 });
+  t = await f.call(f.owner, "task_edit", { id: t.id, expected_revision: t.expected_revision, patch: { goal: "Cosmetic" } });
+  assert.equal(t.state, "snoozed"); assert.equal(t.snoozed_until, 3000); assert.equal(t.generation, 0);
+  t = await f.call(f.owner, "task_edit", { id: t.id, expected_revision: t.expected_revision, patch: { schedule: { kind: "instant", at: 4000 } } });
+  assert.equal(t.state, "pending"); assert.equal(t.snoozed_until, undefined); assert.equal(t.armed, false); assert.equal(t.generation, 1);
+});

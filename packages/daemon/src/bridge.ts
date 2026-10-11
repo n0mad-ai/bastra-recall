@@ -30,6 +30,8 @@
  *   docs_settings_get()                  -> { mode, language }
  *   docs_settings_set({ mode?, language? }) -> { mode, language }
  */
+import { isTaskTool, defaultTaskContext, taskClientAuthorization, taskFailure } from "./task-transport.js";
+import { callTaskCrud } from "./task-service.js";
 import {
   Vault,
   SearchIndex,
@@ -273,7 +275,7 @@ async function main(): Promise<void> {
 
   const rl = readline.createInterface({ input: process.stdin });
 
-  rl.on("line", (line) => {
+  rl.on("line", async (line) => {
     let req: Request;
     try {
       req = JSON.parse(line);
@@ -283,6 +285,11 @@ async function main(): Promise<void> {
     const { id, method, params } = req;
     try {
       let result: unknown;
+      if (isTaskTool(method)) {
+        const result = await callTaskCrud(defaultTaskContext(), await taskClientAuthorization(), method, params ?? {});
+        process.stdout.write(JSON.stringify({ id, result }) + "\n");
+        return;
+      }
       switch (method) {
         case "vault_status":
           result = { size: vault.size() };
@@ -527,7 +534,7 @@ async function main(): Promise<void> {
     } catch (err) {
       send({
         id,
-        error: { message: err instanceof Error ? err.message : String(err) },
+        error: isTaskTool(method) ? taskFailure(err).body : { message: err instanceof Error ? err.message : String(err) },
       });
     }
   });

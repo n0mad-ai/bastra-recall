@@ -4,6 +4,7 @@
  *
  * Moved verbatim out of `main()` in `index.ts`, with its `errorResult` helper.
  */
+import { taskTools, isTaskTool, callTaskMcp, taskClientAuthorization } from "./task-transport.js";
 import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -78,6 +79,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
+      ...taskTools,
       ...draftReviewTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
@@ -101,6 +103,8 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
+
+    if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization());
 
     // #482: same check as the REST boundary — the standalone stdio surface is
     // the other place tool arguments arrive, and the client bug does not care

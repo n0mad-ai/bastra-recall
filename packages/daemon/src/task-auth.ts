@@ -88,6 +88,6 @@ export async function revokeTaskCredential(path: string, credentialId: string): 
     const entry = registry.credentials.find(c => c.credential_id === credentialId);
     if (!entry) throw new TaskAuthError("not_found", "credential absent");
     entry.revoked_at ??= Date.now(); registry.revision++;
-    await atomicWrite(path, JSON.stringify(registry), assertOwnership);
+    await atomicWrite(path, JSON.stringify(registrySchema.parse(registry)), assertOwnership);
   }, { strictLocal: true });
 }

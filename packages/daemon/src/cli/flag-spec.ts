@@ -73,6 +73,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   skills: ["--vault"],
   feedback: [],
   rules: ["--dry-run"],
+  tasks: ["--json"],
   drafts: ["--json", "--vault", "--force"],
   patches: [],
   completion: [],

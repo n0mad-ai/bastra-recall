@@ -43,6 +43,9 @@ Commands:
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' writes a LaunchAgent;
                              a hand-written one is never replaced without --force
+  tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm>
+                             Owner token prompt; JSON input file. Add agent before
+                             the file to use explicit BASTRA_TASK_TOKEN.
   drafts <list|purge|undo>         Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
@@ -202,6 +205,18 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  tasks: `bastra tasks — persisted reminders (next-contact delivery)
+Usage: bastra tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm> [agent] [input.json]
+Owner commands prompt for a hidden task token. Agent mode uses BASTRA_TASK_TOKEN.
+Mutations require expected_revision from get; acknowledgement requires occurrence_id.
+Agent snooze is limited to a fixed 24-hour window until owner review.
+Create needs idempotency_key, original_request, goal, resolution_condition, schedule,
+timezone, scope and owner_domains; notify is default. Agent create remains unarmed.
+Offline bootstrap (interactive owner only):
+  bastra tasks auth mint owner|agent actor domain[,domain] new-token-file
+  bastra tasks auth rotate owner|agent actor domain[,domain] new-token-file old-id
+  bastra tasks auth revoke credential-id
+Token files are created 0600; tokens never print to the console. No execution here.`,
   drafts: `bastra drafts — local session drafts
 
 Usage:

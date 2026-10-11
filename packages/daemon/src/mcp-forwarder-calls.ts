@@ -4,6 +4,7 @@
  * against `/hook/recall` (SSE), and the one-shot session-context inject for
  * hookless clients.
  */
+import { isTaskTool, taskClientAuthorization } from "./task-transport.js";
 import { type RecallStage } from "@bastra-recall/core";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
 import { withDraftBudget } from "./draft-search.js";
@@ -35,6 +36,11 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
     ...ccTurnHeaders(),
   };
   if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
+  if (isTaskTool(tool)) {
+    delete headers.Authorization;
+    const auth = await taskClientAuthorization();
+    if (auth) headers.Authorization = auth;
+  }
 
   const doFetch = async (): Promise<Response> => {
     return await fetchWithTimeout(
@@ -74,6 +80,7 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
   if (!resp.ok) {
     const errMsg =
       (body as { error?: string })?.error ?? `HTTP ${resp.status}`;
+    if (isTaskTool(tool)) throw Object.assign(new Error(errMsg), { code: (body as { code?: string }).code, status: resp.status });
     throw new Error(errMsg);
   }
   return body;
@@ -258,6 +265,7 @@ export async function callRecallStreaming(
     ...ccTurnHeaders(),
   };
   if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
+
 
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);

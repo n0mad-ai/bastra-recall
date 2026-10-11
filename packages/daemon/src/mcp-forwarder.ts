@@ -39,6 +39,7 @@
  *                             welche Tools DIESER Client sieht und aufrufen
  *                             darf. Default ohne Wert: `full`.
  */
+import { isTaskTool, taskFailure } from "./task-transport.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -310,7 +311,7 @@ async function main(): Promise<void> {
         flushStatusline();
         return {
           isError: true,
-          content: [{ type: "text" as const, text: (err as Error).message }],
+          content: [{ type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message }],
         };
       }
     }
@@ -360,7 +361,7 @@ async function main(): Promise<void> {
       return {
         isError: true,
         content: [
-          { type: "text" as const, text: (err as Error).message },
+          { type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message },
         ],
       };
     }

@@ -84,7 +84,8 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
     if (next.revision <= old.revision || next.history.length <= old.history.length)
       throw new TaskStoreError("conflict", "task changes require a newer revision and appended audit");
     const rearm = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "rearm";
-    if (next.generation !== old.generation && !rearm)
+    const editedGeneration = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "edit";
+    if (next.generation !== old.generation && !rearm && !editedGeneration)
       throw new TaskStoreError("conflict", "generation changes require explicit unarmed re-arm");
     if (["resolved", "cancelled", "expired"].includes(old.state) && (next.state !== old.state || next.armed) && !rearm)
       throw new TaskStoreError("conflict", "terminal task cannot silently re-arm");
@@ -183,7 +184,7 @@ export function transitionTask(task: Task, operation: TaskLifecycleOperation, ac
       next.state = "snoozed"; next.snoozed_until = snoozedUntil; break;
     case "resolve": next.state = "resolved"; next.armed = false; break;
     case "cancel": next.state = "cancelled"; next.armed = false; break;
-    case "rearm": next.state = "pending"; next.armed = false; next.generation++; next.review_reason = "Owner review required before arming"; break;
+    case "rearm": delete next.agent_snooze_deadline; next.state = "pending"; next.armed = false; next.generation++; next.review_reason = "Owner review required before arming"; break;
   }
   if (["resolve", "cancel", "rearm"].includes(operation)) delete next.snoozed_until;
   next.revision++; next.updated_at = now;

@@ -242,6 +242,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         allowedOrigin !== null &&
         req.headers["access-control-request-private-network"] === "true";
       sendCors(res, allowedOrigin, { allowPrivateNetwork });
+      if (url.startsWith("/api/v1/tasks")) res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
       res.writeHead(204);
       res.end();
       return;
