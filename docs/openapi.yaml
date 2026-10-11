@@ -498,6 +498,31 @@ paths:
         "404": { $ref: "#/components/responses/TaskError" }
         "409": { $ref: "#/components/responses/TaskError" }
         "503": { $ref: "#/components/responses/TaskError" }
+  /tasks/{id}/reconsider:
+    post:
+      operationId: taskReconsider
+      summary: Authenticated task taskReconsider
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
   /task_create:
     post:
       operationId: task_create
@@ -709,6 +734,29 @@ paths:
     post:
       operationId: task_rearm
       summary: Authenticated task task rearm
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_reconsider:
+    post:
+      operationId: task_reconsider
+      summary: Owner chooses keep, change, snooze or stop for a bound reconsideration
       description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
       security: [{ taskBearerAuth: [] }]
       requestBody:

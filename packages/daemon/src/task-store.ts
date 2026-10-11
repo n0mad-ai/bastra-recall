@@ -41,7 +41,7 @@ export async function readTaskStore(path = tasksPath()): Promise<TaskStore> {
 }
 
 /** Private text is scrubbed, while opaque IDs/revisions keep exact identity. */
-function cleanText(value: string): string {
+export function cleanText(value: string): string {
   return redactSecrets(scrubInjectedBlocks(value).text, homedir()).text
     .replace(/[\p{Cc}\p{Cf}]/gu, c => c === "\n" ? c : "");
 }
@@ -49,10 +49,18 @@ function cleanText(value: string): string {
 function cleanTask(task: Task): Task {
   const out = structuredClone(task);
   for (const key of ["original_request", "goal", "resolution_condition"] as const) out[key] = cleanText(out[key]);
+  if (out.verification?.refuted_value) out.verification.refuted_value = cleanText(out.verification.refuted_value);
   if (out.review_reason) out.review_reason = cleanText(out.review_reason);
   if (out.last_failure) out.last_failure.message = cleanText(out.last_failure.message);
   if (out.schedule.kind === "event") out.schedule.expected = cleanText(out.schedule.expected);
-  for (const row of out.history) row.reason = cleanText(row.reason);
+  for (const row of out.history) {
+    row.reason = cleanText(row.reason);
+    if (row.decision_snapshot) {
+      for (const key of ["option", "reason", "premise"] as const) row.decision_snapshot.decision[key] = cleanText(row.decision_snapshot.decision[key]);
+      row.decision_snapshot.decision.alternatives = row.decision_snapshot.decision.alternatives.map(cleanText);
+    }
+  }
+  if (out.decision_change) { out.decision_change.new_option = cleanText(out.decision_change.new_option); out.decision_change.new_reason = cleanText(out.decision_change.new_reason); }
   if (out.decision) {
     out.decision.option = cleanText(out.decision.option); out.decision.reason = cleanText(out.decision.reason);
     out.decision.premise = cleanText(out.decision.premise); out.decision.alternatives = out.decision.alternatives.map(cleanText);
@@ -113,7 +121,7 @@ export type TaskMutationKind = "normal" | "control";
 /** Caller cannot execute effects here: only a validated, revisioned snapshot. */
 export async function transactTaskStore(
   path: string, expectedRevision: Pick<TaskStore, "revision" | "recovery_epoch"> | undefined,
-  mutate: (store: TaskStore) => void, kind: TaskMutationKind = "normal",
+  mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal",
 ): Promise<TaskStore> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   return withPathLock(path, async assertOwnership => {
@@ -121,7 +129,7 @@ export async function transactTaskStore(
     if (expectedRevision !== undefined && (store.revision !== expectedRevision.revision || store.recovery_epoch !== expectedRevision.recovery_epoch))
       throw new TaskStoreError("conflict", "task store revision changed");
     const draft = structuredClone(store);
-    mutate(draft);
+    await mutate(draft);
     const next = cleanStore(draft);
     assertTaskProgress(store, next);
     if (JSON.stringify(next) === JSON.stringify(store)) return store;

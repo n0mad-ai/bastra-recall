@@ -4,10 +4,10 @@ import { open, realpath } from "node:fs/promises";
 import { relative, resolve, isAbsolute } from "node:path";
 import { z } from "zod";
 import matter from "gray-matter";
-import { memoryRevision, scanVaultForIdAsync, occupantOfRaw, parseMemoryWith } from "@bastra-recall/core";
+import { mutateMemoryFile, memoryRevision, scanVaultForIdAsync, occupantOfRaw, parseMemoryWith } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-deps.js";
 import type { Task, TaskStore, TaskSource } from "./task-schema.js";
-import { readTaskStore, transactTaskStore } from "./task-store.js";
+import { cleanText, readTaskStore, transactTaskStore } from "./task-store.js";
 import type { TaskServiceContext } from "./task-service.js";
 import { taskValueHash } from "./task-events.js";
 export type TaskEvent = TaskStore["events"][number];
@@ -37,6 +37,24 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
     const occupant = occupantOfRaw(raw, target); if (occupant.kind !== "memory" || occupant.id !== id) throw new Error("memory rebound");
     const memory = parseMemoryWith(matter, raw, target, Date.now());
     return { id, raw, body: memory.body, revision: memoryRevision(raw), sensitivity: memory.fm.sensitivity ?? "public" };
+  };
+}
+/** Owner-only revisioned body change via the existing ID/CAS mutation boundary. */
+export function taskMemoryChanger(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
+  const reader = taskMemoryReader(deps);
+  return async (id: string, revision: string, body: string, changeId: string): Promise<string> => {
+    const snapshot = await reader(id);
+    const fm = matter(snapshot.raw).data;
+    if (fm.proactive_change_id === changeId && snapshot.body.trim() === body.trim()) return snapshot.revision;
+    if (snapshot.revision !== revision) throw Object.assign(new Error("Decision revision changed"), { code: "conflict" });
+    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: 1024 * 1024, maxFiles: 1000, deadline: Date.now() + 1000 });
+    if (located.kind !== "unique") throw Object.assign(new Error("Decision absent or ambiguous"), { code: "conflict" });
+    const outcome = await mutateMemoryFile(located.filePath, id, {
+      precondition: raw => { if (memoryRevision(raw) !== revision) throw Object.assign(new Error("Decision revision changed"), { code: "conflict" }); },
+      body: () => body, frontmatter: current => ({ ...current, proactive_change_id: changeId, updated: new Date().toISOString().slice(0, 10) }),
+    }, { vaultRoot: deps.vaultPath, op: "proactive_decision_change" });
+    if (outcome.kind !== "written") throw Object.assign(new Error("Decision CAS failed"), { code: "conflict" });
+    return outcome.revision;
   };
 }
 function result(task: Task, event: TaskEvent, source: TaskSource | undefined, now: number, outcome: Verification["outcome"], reason: string): Verification {
@@ -132,11 +150,11 @@ export async function verifyTaskSource(ctx: ReadContext, task: Task, event: Task
     if (now - data.data.state_updated_at > reference!.max_age_ms) return out("stale", "producer_state_too_old");
     if (data.data.claim_id !== claim.claim_id || data.data.claim_revision !== claim.claim_revision || taskValueHash(data.data.value) !== claim.value_hash)
       return out("inconclusive", "claim_evidence_mismatch");
-    return { ...out(claim.value_hash === task.schedule.expected_hash ? "verified" : "refuted", "verified_claim_snapshot"), state_updated_at: data.data.state_updated_at, max_age_ms: Math.min(basic.max_age_ms, reference!.max_age_ms) };
+    return { ...out(claim.value_hash === task.schedule.expected_hash ? "verified" : "refuted", "verified_claim_snapshot"), refuted_value: data.data.value, state_updated_at: data.data.state_updated_at, max_age_ms: Math.min(basic.max_age_ms, reference!.max_age_ms) };
   } catch { return out("unavailable", "evidence_read_failed"); }
 }
 function verificationChanged(before: Verification | undefined, after: Verification): boolean {
-  const stable = (v: Verification) => ({ ...v, checked_at: 0, observed_at: v.event_id === "clock" ? 0 : v.observed_at });
+  const stable = (v: Verification) => Object.fromEntries(Object.entries({ ...v, ...(v.refuted_value ? { refuted_value: cleanText(v.refuted_value) } : {}), checked_at: 0, observed_at: v.event_id === "clock" ? 0 : v.observed_at }).sort(([a], [b]) => a.localeCompare(b)));
   return !before || JSON.stringify(stable(before)) !== JSON.stringify(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */

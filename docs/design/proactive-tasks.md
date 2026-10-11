@@ -439,3 +439,13 @@ outside the hook hot path. The bridge starts the shared job only with a dedicate
 task credential and adds proactive_due beside successful results; consumers must
 render that field (otherwise explicit task_due is the available coverage). No reply
 or relay consumption is an acknowledgement or resolution.
+
+P6 implementation: owner task_reconsider chooses keep/change/snooze/stop for one
+current reconsideration occurrence. Keep resolves that material event, retaining
+monitoring; change persists a disarmed intent before core ID/CAS memory mutation,
+requires the exact decision revision, and keeps old decision/evidence in append-only
+history. A write marker and exact body identify a prior interrupted write; drift
+requires review. Old bindings remain historical and are never rebound automatically.
+Before each evaluation, bounded disk-authoritative decision AND assumption reads
+reject revision/sensitivity/inactive/missing bindings, preserving history. Scope is
+local revisioned memories, not a newly implemented global temporal graph.

@@ -36,14 +36,16 @@ async function premiseFixture(value: string, provenance = "attributable") {
   const f = await fixture(); const raw = JSON.stringify({ claim_id: "assumption", claim_revision: "v1", value, state_updated_at: 1000, provenance });
   const evidenceRevision = taskValueHash(raw); await writeFile(join(f.root, "evidence.json"), raw);
   await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "evidence", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "evidence.json" });
-  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input,
+  const memoryRead = async (id: string) => ({ id, revision: "v1", raw: `---\nid: ${id}\ntype: decision\n---\nfixture`, body: "fixture", sensitivity: "private" });
+  const ctx = { ...f.ctx, memoryRead };
+  await callTaskCrud(ctx, f.auth, "task_create", { ...f.input,
     schedule: { kind: "event", source_id: "producer", predicate: "premise", expected: "costly", verifier_id: "versioned-value-v1" },
     decision: { id: "decision", revision: "v1", option: "A", reason: "Maintenance", assumption_id: "assumption", assumption_revision: "v1", premise: "costly", alternatives: ["B"] },
     evidence: [{ source_id: "evidence", id: "evidence", revision: evidenceRevision, hash: evidenceRevision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }],
   });
   const event = { source_id: "producer", source_revision: 0, dedup_key: "claim", value: "structured claim event", state_updated_at: 1000,
     claim: { claim_id: "assumption", claim_revision: "v1", value, evidence_id: "evidence", evidence_revision: evidenceRevision } };
-  await callTaskCrud(f.ctx, f.auth, "task_event", event); return { ...f, event };
+  await callTaskCrud(f.ctx, f.auth, "task_event", event); return { ...f, ctx, event };
 }
 test("versioned-value verifier refutes only matching fresh attributed snapshot; unchanged stays quiet", async () => {
   for (const value of ["costly", "cheap"]) {
@@ -75,6 +77,8 @@ test("secret claim values retain exact pre-redaction comparison without executin
   const secret = "api_key=sk_" + "z".repeat(36); const f = await premiseFixture(secret);
   await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).tasks[0].verification?.outcome, "refuted");
   assert.ok(!(await readFile(f.ctx.path, "utf8")).includes(secret));
+  const checked = await readFile(f.ctx.path, "utf8"); await assessTaskFreshness(f.ctx);
+  assert.equal(await readFile(f.ctx.path, "utf8"), checked, "redacted display value does not create repeated freshness writes");
   const malicious = await premiseFixture("cheap"); const marker = join(malicious.root, "should-not-exist");
   await writeFile(join(malicious.root, "evidence.json"), JSON.stringify({ verify_cmd: `touch ${marker}` }));
   await assessTaskFreshness(malicious.ctx); await reconcileTaskTime(malicious.ctx);

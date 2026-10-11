@@ -1,3 +1,4 @@
+import { reconsiderationCard } from "./task-reconsideration.js";
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -28,6 +29,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
     if (principal.role !== "owner" && (attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= task.notification_policy.max_attempts
       || (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))) { retryBlocked++; continue; }
     const card = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`,
+      reconsideration: reconsiderationCard(task, occurrence, store),
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),

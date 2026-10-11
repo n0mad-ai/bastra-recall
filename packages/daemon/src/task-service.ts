@@ -1,4 +1,5 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
+import { reconsiderTask, taskReconsiderInput, taskDecisionStatus } from "./task-reconsideration.js";
 import { taskDueInput, taskDueProjection, recordTaskDelivery, cachedTaskSnapshot } from "./task-outbox.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
@@ -32,7 +33,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
@@ -72,12 +73,13 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot> }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string) => Promise<string> }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (operation === "task_reconsider") return reconsiderTask(ctx, authorization, raw);
   if (operation === "task_due") {
     const input = taskDueInput.parse(raw); const store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
     const projection = taskDueProjection(store, principal, input, now);
@@ -110,7 +112,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (input.arm && input.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
     const creationHash = hash(input);
-    const store = await transactTaskStore(ctx.path, undefined, s => {
+    const store = await transactTaskStore(ctx.path, undefined, async s => {
       const existing = s.tasks.find(t => t.id === id);
       if (existing) {
         requireTaskDomains(principal, existing.owner_domains);
@@ -119,18 +121,20 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       }
       const { idempotency_key: _key, arm, ...values } = input;
       if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
-      s.tasks.push(taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
+      const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
         last_event_sequence: s.events.at(-1)?.sequence ?? 0, created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
         request_source: principal.role === "owner" ? "owner-command" : "agent-proposal", reference_at: now,
         state: "pending", armed: arm, review_reason: arm ? undefined : "Explicit owner review required",
         history: [{ at: now, actor: principal.actor_id, operation: "create", before_revision: 0, after_revision: 0, reason: "create" }],
-      }));
+      });
+      if (arm && await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
+      s.tasks.push(task);
     });
     return view(store, findTask(store, id, principal));
   }
   const input = operation === "task_edit" ? editInput.parse(raw)
     : operation === "task_review" ? mutationInput.parse(raw) : lifecycleInput.parse(raw);
-  const store = await transactTaskStore(ctx.path, undefined, s => {
+  const store = await transactTaskStore(ctx.path, undefined, async s => {
     const task = findTask(s, input.id, principal);
     if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
     if (operation === "task_edit") {
@@ -155,6 +159,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
       if (task.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
       if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
+      if (await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       task.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
       task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
@@ -182,7 +187,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
 }
 
 export const TASK_INPUT_SCHEMAS = {
-  task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
+  task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,

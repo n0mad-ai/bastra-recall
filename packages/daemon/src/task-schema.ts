@@ -34,6 +34,11 @@ export const taskScheduleSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+export const taskDecisionSchema = z.strictObject({
+    id, revision: id, option: text, reason: text, assumption_id: id,
+    assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
+});
+
 export const taskSchema = z.strictObject({
   id, revision, generation: revision, creation_hash: hash.optional(),
   created_at: instant, updated_at: instant,
@@ -62,10 +67,8 @@ export const taskSchema = z.strictObject({
     max_source_bytes: z.number().int().positive().max(1024 * 1024),
   }),
   evidence: z.array(taskReferenceSchema).max(100),
-  decision: z.strictObject({
-    id, revision: id, option: text, reason: text, assumption_id: id,
-    assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
-  }).optional(),
+  decision: taskDecisionSchema.optional(),
+  decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: hash, new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
   last_material_hash: hash.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   verification: z.lazy(() => taskVerificationSchema).optional(),
@@ -73,6 +76,7 @@ export const taskSchema = z.strictObject({
   history: z.array(z.strictObject({
     at: instant, actor: taskIdentitySchema, operation: id,
     before_revision: revision, after_revision: revision, reason: text,
+    decision_snapshot: z.strictObject({ decision: taskDecisionSchema, evidence: z.array(taskReferenceSchema).max(100) }).optional(),
   })).max(10000),
 }).superRefine((task, ctx) => {
   if (["resolved", "cancelled", "expired"].includes(task.state) && task.armed)
@@ -97,7 +101,7 @@ export const taskClaimSchema = z.strictObject({
 export const taskVerificationSchema = z.strictObject({
   outcome: z.enum(["verified", "refuted", "stale", "unavailable", "inconclusive"]),
   reason: id, source_id: id, source_revision: id, event_id: id,
-  binding_hash: hash, observed_at: instant, state_updated_at: instant.optional(),
+  binding_hash: hash, refuted_value: text.optional(), observed_at: instant, state_updated_at: instant.optional(),
   max_age_ms: instant, timeout_ms: instant, checked_at: instant,
 });
 const eventSchema = z.strictObject({

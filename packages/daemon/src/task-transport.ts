@@ -1,5 +1,5 @@
 import type { ToolDeps } from "./tool-deps.js";
-import { taskMemoryReader } from "./task-freshness.js";
+import { taskMemoryChanger, taskMemoryReader } from "./task-freshness.js";
 import { z } from "zod";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tasksPath } from "./task-store.js";
@@ -14,7 +14,7 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
-export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined }; }
+export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined }; }
 export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
@@ -58,7 +58,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       else if (pathname === "/api/v1/tasks" || pathname === "/api/v1/tasks/") {
         operation = method === "GET" ? "task_list" : method === "POST" ? "task_create" : undefined;
       } else {
-        const match = /^\/api\/v1\/tasks\/([a-z0-9._:-]+)(?:\/(review|snooze|acknowledge|resolve|cancel|rearm))?$/.exec(pathname);
+        const match = /^\/api\/v1\/tasks\/([a-z0-9._:-]+)(?:\/(review|snooze|acknowledge|resolve|cancel|rearm|reconsider))?$/.exec(pathname);
         if (match) {
           id = match[1];
           if (method === "GET" && !match[2]) operation = "task_get";

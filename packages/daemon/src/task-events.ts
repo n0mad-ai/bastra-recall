@@ -1,3 +1,4 @@
+import { checkTaskDecisions } from "./task-reconsideration.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
 import { verifyTaskEvent, taskBindingHash } from "./task-freshness.js";
 import { createHash } from "node:crypto";
@@ -157,7 +158,10 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   store.checkpoint = Math.max(store.checkpoint, cursor);
 }
 export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskStore> {
-  return transactTaskStore(ctx.path, undefined, s => evaluateTaskSnapshot(s, (ctx.now ?? Date.now)()));
+  return transactTaskStore(ctx.path, undefined, async s => {
+    await checkTaskDecisions(ctx, s);
+    evaluateTaskSnapshot(s, (ctx.now ?? Date.now)());
+  });
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
 export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false, allowedSources?: ReadonlySet<string>): Promise<void> {
