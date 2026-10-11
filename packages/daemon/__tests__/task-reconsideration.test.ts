@@ -71,10 +71,12 @@ test("snooze and stop remain distinct; agent cannot confirm a new decision", asy
 });
 test("owner change writes a real new CAS memory revision, retains old history and disarms old watch", async () => {
   const f = await fixture(); await reconcileTaskTime(f.ctx);
-  const change = { idempotency_key: "new-choice", expected_memory_revision: memoryRevision(f.decisionRaw), body: "Choose B now; maintenance premise changed.", option: "B", reason: "Lower maintenance" };
+  const change = { idempotency_key: "new-choice", expected_memory_revision: memoryRevision(f.decisionRaw), body: "Choose B now; password=0427", option: "B", reason: "Lower maintenance" };
   const result = await f.command("change", { change }); const raw = await readFile(f.decisionPath, "utf8");
   assert.ok(!raw.includes("proactive_change_id")); assert.match(raw, /Choose B now/); assert.equal(memoryRevision(raw), result.revision);
   const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].armed, false); assert.equal(s.tasks[0].decision!.option, "A"); assert.equal(s.tasks[0].decision_change!.status, "applied");
+  assert.match(s.tasks[0].decision_change!.new_body_hash!, /^hmac-v1:/);
+  const publicTask = await callTaskCrud(f.ctx,f.auth,"task_get",{id:s.tasks[0].id});assert.ok(!JSON.stringify(publicTask).includes(s.tasks[0].decision_change!.new_body_hash!));
   const retry = await f.command("change", { change }); assert.equal(retry.revision, result.revision); assert.equal(await readFile(f.decisionPath, "utf8"), raw);
   await assert.rejects(f.command("change", { change: { ...change, body: "different" } }), /differs/);
 });
@@ -97,6 +99,7 @@ test("occurrence premise survives later verification and edited memories withdra
   try {
     const s = await readTaskStore(f.ctx.path); s.tasks[0].verification!.refuted_value = "unrelated later value";
     assert.equal(reconsiderationCard(s.tasks[0], s.occurrences[0], s)!.new_premise, "cheap");
+    assert.ok(!JSON.stringify(reconsiderationCard(s.tasks[0],s.occurrences[0],s)).includes(s.events[0].claim!.value_hash!));
     await writeFile(f.decisionPath, f.decisionRaw + "Changed"); await f.vault.reindexFile(f.decisionPath);
     assert.equal(cachedTaskSnapshot(f.ctx.path)!.tasks[0].armed, false);
     assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {}) as any).cards.length, 0);

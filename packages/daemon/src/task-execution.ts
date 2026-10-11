@@ -1,3 +1,4 @@
+import { privateContentComparison } from "./task-private-comparison.js";
 import { archivedIntent } from "./task-archive.js";
 /** Reviewed local execution: one lock, durable spend, exact UTF-8 CAS, receipts. */
 import { z } from "zod";
@@ -37,7 +38,7 @@ async function freshSources(ctx: TaskServiceContext, task: Task, store: TaskStor
     if (source.kind === "file") {
       const root = realpathSync(source.root!), path = resolve(root, source.path!);
       if (root !== source.root || realpathSync(path) !== path || relative(root, path).startsWith("..")) fail("approval_stale", "Source boundary changed");
-      if (bytesHash(await boundedTaskRead(path, task.budget.max_source_bytes)) !== event.value_hash) fail("approval_stale", "Source content changed");
+      if (await privateContentComparison(ctx.path, bytesHash(await boundedTaskRead(path, task.budget.max_source_bytes)), true) !== event.value_hash) fail("approval_stale", "Source content changed");
     } else if (source.kind === "memory") {
       if (!ctx.memoryRead || (await ctx.memoryRead(source.memory_id!)).revision !== event.value) fail("approval_stale", "Memory source changed");
     } else if (source.kind === "git") {

@@ -23,7 +23,7 @@ export async function privateTaskComparison(path: string, purpose: string, value
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new TaskStoreError("corrupt", "Private task comparison key unavailable; original preserved");
       // A lost key must not silently replace the identity of existing comparisons.
       for (const candidate of [path,`${path}.backup`]) {
-        try { const s=JSON.parse(await readFile(candidate,"utf8")); if (s.tasks?.some((t:any)=>isPrivateComparison(t.reminder_fingerprint)||isPrivateComparison(t.creation_hash)) || s.archives?.some((a:any)=>Object.values(a.creation_bindings??{}).some(isPrivateComparison)))
+        try { const s=JSON.parse(await readFile(candidate,"utf8")); if (containsPrivateComparison(s))
           throw new TaskStoreError("corrupt","Private task comparison key missing; restore its private original");
         } catch(e) { if(e instanceof TaskStoreError)throw e;if((e as NodeJS.ErrnoException).code!=="ENOENT")throw new TaskStoreError("corrupt","Private comparison state unavailable"); }
       }
@@ -31,6 +31,35 @@ export async function privateTaskComparison(path: string, purpose: string, value
     }
     return prefix + createHmac("sha256",key).update(canonicalTaskValue(["bastra-task-comparison-v1",purpose,value])).digest("hex");
   }, { strictLocal: true });
+}
+function containsPrivateComparison(value: unknown): boolean {
+  return isPrivateComparison(value) || !!value && typeof value === "object" && Object.values(value).some(containsPrivateComparison);
+}
+/** SHA is transient input only, so raw content and a client baseline digest agree. */
+export async function privateContentComparison(path: string, value: string, digest = false): Promise<string> {
+  if (digest && !/^[a-f0-9]{64}$/.test(value)) throw new TaskStoreError("corrupt", "Invalid content comparison baseline");
+  return privateTaskComparison(path, "source-content", digest ? value : sha(value));
+}
+const privateFields = new Set(["reminder_fingerprint", "creation_hash", "creation_bindings", "expected_hash", "value_hash", "last_material_hash", "last_value_hash", "changed_value_hash", "new_body_hash"]);
+/** Key legacy digests directly: equality survives even when the raw text was scrubbed. */
+async function migrateContentComparisons(path: string, store: any): Promise<void> {
+  for (const task of store.tasks ?? []) {
+    if (task.schedule?.kind === "event") {
+      const schedule = task.schedule;
+      if (/^[a-f0-9]{64}$/.test(schedule.expected_hash ?? "")) {
+        const old = schedule.expected_hash;
+        schedule.expected_hash = await privateContentComparison(path, old, true);
+        if (/^[a-f0-9]{64}$/.test(schedule.expected) && !store.sources?.some((source:any)=>source.id===schedule.source_id && ["git","memory"].includes(source.kind)) && !["content-version", "git-ref"].includes(schedule.predicate)) schedule.expected = "Private content baseline";
+      }
+    }
+    if (/^[a-f0-9]{64}$/.test(task.decision_change?.new_body_hash ?? "")) task.decision_change.new_body_hash = await privateTaskComparison(path,"decision-body",task.decision_change.new_body_hash);
+    if (/^[a-f0-9]{64}$/.test(task.last_material_hash ?? "")) task.last_material_hash = await privateContentComparison(path, task.last_material_hash, true);
+  }
+  for (const event of store.events ?? []) {
+    if (/^[a-f0-9]{64}$/.test(event.value_hash ?? "")) event.value_hash = await privateContentComparison(path, event.value_hash, true);
+    if (/^[a-f0-9]{64}$/.test(event.claim?.value_hash ?? "")) event.claim.value_hash = await privateContentComparison(path, event.claim.value_hash, true);
+  }
+  for (const source of store.sources ?? []) if (/^[a-f0-9]{64}$/.test(source.last_value_hash ?? "")) source.last_value_hash = await privateContentComparison(path, source.last_value_hash, true);
 }
 /** Drop unsafe legacy verifiers; raw secrets cannot be recovered for migration. */
 export function dropLegacyTaskComparisons(store: any): void {
@@ -41,12 +70,19 @@ export function dropLegacyTaskComparisons(store: any): void {
 }
 export function publicTaskResult<T>(value: T): T {
   if (Array.isArray(value)) return value.map(publicTaskResult) as T;
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([key])=>!["reminder_fingerprint","creation_hash","creation_bindings"].includes(key)).map(([k,v])=>[k,publicTaskResult(v)])) as T;
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([key])=>!privateFields.has(key)).map(([k,v])=>[k,publicTaskResult(v)])) as T;
   return value;
 }
 export function exportTaskComparisons(store: any): void {
-  for (const t of store.tasks ?? []) { delete t.reminder_fingerprint; delete t.creation_hash; }
-  for (const a of store.archives ?? []) delete a.creation_bindings;
+  function strip(value: any): void {
+    if (!value || typeof value !== "object") return;
+    for (const key of Object.keys(value)) { if (privateFields.has(key)) delete value[key]; else strip(value[key]); }
+  }
+  // A supplied secret digest is not a display string. Versions remain displayable.
+  for (const task of store.tasks ?? []) if (task.schedule?.kind === "event" && /^[a-f0-9]{64}$/.test(task.schedule.expected)
+    && !store.sources?.some((source:any)=>source.id===task.schedule.source_id && ["git","memory"].includes(source.kind))
+    && !["content-version", "git-ref"].includes(task.schedule.predicate)) task.schedule.expected = "Private content baseline";
+  strip(store);
 }
 const migrated = new Set<string>();
 /** Existing store lock, resumable archive/index cleanup; no task/authority changes. */
@@ -81,6 +117,7 @@ export async function migrateTaskComparisons(path: string): Promise<void> {
       let raw:string;try{raw=await readFile(candidate,"utf8");}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
       let s:any;try{decodeTaskStore(raw);s=JSON.parse(raw);}catch{continue;}if(!Array.isArray(s.tasks))continue;
       dropLegacyTaskComparisons(s);
+      await migrateContentComparisons(path, s);
       for(const a of s.archives??[]) {const p=plan.find(p=>p.id===a.id);if(p){if(a.hash!==p.before&&a.hash!==p.after)throw new TaskStoreError("corrupt","Private archive index drift");a.hash=p.after;const changed=archiveChanges.find(c=>c.id===a.id);if(changed&&Object.keys(changed.bindings).length)a.creation_bindings=changed.bindings;}}
       const payload=JSON.stringify(s);if(payload!==raw)await atomicWrite(candidate,payload,ownership);
     }
