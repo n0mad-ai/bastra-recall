@@ -223,7 +223,7 @@
           "ollama_version": "0.40.3",
           "same_digest_as_observed_before_run": true
         },
-        "run_out": "longmemeval-v110.json (durable local artifact; location in private handover)",
+        "run_out": "~/.codex/measurement-runs/2026-10-11-messung-b/longmemeval-v110.json",
         "repo_tag": "v1.1.0",
         "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
         "code_hash": "771642995ba6aa2107fdace0dd5b2cf5cf84d2418f9e879ed89296b393f0a78d",
@@ -308,6 +308,92 @@
           "cpu_model": "Apple M4 Pro",
           "logical_cpus": 14,
           "total_memory_bytes": 25769803776
+        },
+        "by_type_derivation": {
+          "source_artifact_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
+          "script": "scripts/extract-longmemeval-types.py",
+          "derivation_code_sha256": "f1f9e779ab6d4262029658b102be0c4f82cb03ab6d6136fc4909d776db154423",
+          "rule": "For each question type and arm, first ranked id in gold determines rank; hit@k iff 0 < rank <= k. Counts/n gives recall_any@k."
+        },
+        "by_type_r_at_1": {
+          "knowledge-update": {
+            "n": 78,
+            "arms": {
+              "bm25": {
+                "hits": 48,
+                "value": 0.6153846153846154
+              },
+              "hybrid": {
+                "hits": 69,
+                "value": 0.8846153846153846
+              }
+            }
+          },
+          "multi-session": {
+            "n": 133,
+            "arms": {
+              "bm25": {
+                "hits": 85,
+                "value": 0.6390977443609023
+              },
+              "hybrid": {
+                "hits": 120,
+                "value": 0.9022556390977443
+              }
+            }
+          },
+          "single-session-assistant": {
+            "n": 56,
+            "arms": {
+              "bm25": {
+                "hits": 40,
+                "value": 0.7142857142857143
+              },
+              "hybrid": {
+                "hits": 47,
+                "value": 0.8392857142857143
+              }
+            }
+          },
+          "single-session-preference": {
+            "n": 30,
+            "arms": {
+              "bm25": {
+                "hits": 12,
+                "value": 0.4
+              },
+              "hybrid": {
+                "hits": 21,
+                "value": 0.7
+              }
+            }
+          },
+          "single-session-user": {
+            "n": 70,
+            "arms": {
+              "bm25": {
+                "hits": 34,
+                "value": 0.4857142857142857
+              },
+              "hybrid": {
+                "hits": 44,
+                "value": 0.6285714285714286
+              }
+            }
+          },
+          "temporal-reasoning": {
+            "n": 133,
+            "arms": {
+              "bm25": {
+                "hits": 88,
+                "value": 0.6616541353383458
+              },
+              "hybrid": {
+                "hits": 115,
+                "value": 0.8646616541353384
+              }
+            }
+          }
         }
       },
       "same_retriever_class": "agentmemory-longmemeval-r5",
@@ -348,7 +434,7 @@
     "run_out": "~/.bastra/longmemeval-runs/2026-09-09/longmemeval-s-uncleaned.json"
   },
   "$comment_determinism": "The default configuration was run twice across a cosmetic edit to the harness. The artifacts are identical in EVERY field except code_hash itself — not to four decimals but exactly, survival_dense to its last digit, and all 500 per-question ranking lists in the same order. An earlier wording here claimed only \"identical to four decimals\" and understated its own evidence.",
-  "$comment_engine": "Legacy runs retain explicitly hand-backfilled engine fields. The v1.1.0 shipped-default run carries the unmodified machine-written engine block from a clean tag checkout.",
+  "$comment_engine": "Why an engine hash sits beside the code hash at all: `code_hash` covers this arm's harness and loader, the convention goldset-run.ts:hashCode() follows and the right one for an internal ablation, where both arms see the same engine and its version cancels. For an EXTERNAL figure it is the wrong pin — #500 asks for a number that is versioned and re-runnable, and what a reader of \"97.2% R@5\" needs later is which revision of search.ts earned it, not which revision of the printer printed it. Runs after d955191 record this block themselves; the three legacy runs below carry it backfilled and say so. The v1.1.0 shipped-default run is additional: its unchanged engine block was written by the harness from a clean tag checkout, not backfilled.",
   "$comment_missing_arm": "The comparison that WOULD be like-for-like against MemPalace's 96.6% is our dense arm alone, and this harness has no such arm — `--arms` offers bm25 and hybrid only. That is the measurement missing from this result, named rather than worked around; adding a vector-only arm is the obvious next step and is deliberately not shipped untested here.",
   "shipped_default_configuration": "shipped-default-v1.1.0"
 }

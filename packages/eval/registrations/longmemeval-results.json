@@ -316,7 +316,7 @@
       "file_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
       "archive": {
         "kind": "durable local artifact outside the repository",
-        "locator": "private handover for measurement B, 2026-10-11"
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/longmemeval-v110.json"
       },
       "corpus": "longmemeval_s_cleaned.json",
       "turns": "all",
@@ -401,6 +401,100 @@
       "far_retention": {
         "bm25": 0.8428891736066624,
         "hybrid": 0.9837484861379334
+      },
+      "by_type_derivation": {
+        "schema_version": 1,
+        "source_artifact_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
+        "derivation_code_sha256": "f1f9e779ab6d4262029658b102be0c4f82cb03ab6d6136fc4909d776db154423",
+        "source_engine": {
+          "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+          "core_src_files": 61,
+          "repo_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+          "repo_dirty": false
+        },
+        "n_questions": 500,
+        "rule": "For each question type and arm, first ranked id in gold determines rank; hit@k iff 0 < rank <= k. Counts/n gives recall_any@k.",
+        "command": "python3 packages/eval/scripts/extract-longmemeval-types.py --artifact <archived-full-run> --out <derived-aggregate>"
+      },
+      "by_type_r_at_1": {
+        "knowledge-update": {
+          "n": 78,
+          "arms": {
+            "bm25": {
+              "hits": 48,
+              "value": 0.6153846153846154
+            },
+            "hybrid": {
+              "hits": 69,
+              "value": 0.8846153846153846
+            }
+          }
+        },
+        "multi-session": {
+          "n": 133,
+          "arms": {
+            "bm25": {
+              "hits": 85,
+              "value": 0.6390977443609023
+            },
+            "hybrid": {
+              "hits": 120,
+              "value": 0.9022556390977443
+            }
+          }
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "arms": {
+            "bm25": {
+              "hits": 40,
+              "value": 0.7142857142857143
+            },
+            "hybrid": {
+              "hits": 47,
+              "value": 0.8392857142857143
+            }
+          }
+        },
+        "single-session-preference": {
+          "n": 30,
+          "arms": {
+            "bm25": {
+              "hits": 12,
+              "value": 0.4
+            },
+            "hybrid": {
+              "hits": 21,
+              "value": 0.7
+            }
+          }
+        },
+        "single-session-user": {
+          "n": 70,
+          "arms": {
+            "bm25": {
+              "hits": 34,
+              "value": 0.4857142857142857
+            },
+            "hybrid": {
+              "hits": 44,
+              "value": 0.6285714285714286
+            }
+          }
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "arms": {
+            "bm25": {
+              "hits": 88,
+              "value": 0.6616541353383458
+            },
+            "hybrid": {
+              "hits": 115,
+              "value": 0.8646616541353384
+            }
+          }
+        }
       }
     }
   ],
