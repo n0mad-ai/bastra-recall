@@ -110,7 +110,7 @@ const eventSchema = z.strictObject({
 const occurrenceSchema = z.strictObject({
   id, task_id: id, task_revision: revision, generation: revision,
   event_key: id, due_at: instant, why: text, missed_count: revision,
-  attempts: z.array(z.strictObject({ at: instant, client: id, outcome: id })).max(100),
+  attempts: z.array(z.strictObject({ attempt_id: id.optional(), at: instant, client: id, outcome: id })).max(100),
   acknowledgement: z.strictObject({ at: instant, actor: taskIdentitySchema, proof_id: id }).optional(),
   resolution: z.strictObject({ at: instant, actor: taskIdentitySchema, reason: text }).optional(),
 });

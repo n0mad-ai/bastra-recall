@@ -25,7 +25,7 @@ export function registerShutdown(opts: {
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
     console.error("[bastra-recall] shutting down");
-    stopTaskRuntimes();
+    await stopTaskRuntimes();
     search.stop();
     await vault.stop();
     // #240/B3: drain the background writers before exiting. The embedding

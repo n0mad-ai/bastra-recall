@@ -11,7 +11,7 @@ import { PathLockUnavailableError } from "./path-lock.js";
 export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   description: `${name}: persisted commitment; agent capture stays unarmed. Owner command required for review, acknowledgement, resolution and rearm. Delivery does not resolve.`,
   inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
-  annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
+  annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_due", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined }; }
@@ -21,7 +21,7 @@ export function taskFailure(error: unknown): { status: number; body: { error: st
   const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
     validation: 400, conflict: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
   // Do not echo raw validation values, paths, authorization or filesystem errors.
-  const code = reported in statuses ? reported : "unavailable";
+  const code = Object.hasOwn(statuses, reported) ? reported : "unavailable";
   const status = statuses[code] ?? 503;
   return { status, body: { error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
 }
@@ -51,6 +51,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       let id: string | undefined;
       const tool = pathname.slice("/api/v1/".length);
       if (isTaskTool(tool) && method === "POST") operation = tool;
+      else if (pathname === "/api/v1/tasks/due" && method === "GET") operation = "task_due";
       else if (pathname === "/api/v1/tasks/events" && method === "POST") operation = "task_event";
       else if (pathname === "/api/v1/tasks/sources" && method === "POST") operation = "task_source_register";
       else if (pathname === "/api/v1/tasks/reconcile" && method === "POST") operation = "task_reconcile";

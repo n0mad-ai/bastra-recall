@@ -151,10 +151,12 @@ export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskSt
   return transactTaskStore(ctx.path, undefined, s => evaluateTaskSnapshot(s, (ctx.now ?? Date.now)()));
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
-export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false): Promise<void> {
+export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false, allowedSources?: ReadonlySet<string>): Promise<void> {
   const snapshot = await readTaskStore(ctx.path); if (!snapshot.controls.enabled) return;
-  let count = 0;
+  let count = 0; const started = Date.now();
   for (const source of snapshot.sources) {
+    if (Date.now() - started >= 5000) break;
+    if (allowedSources && !allowedSources.has(source.id)) continue;
     if (activeOnly && !snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
     if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
     const now = (ctx.now ?? Date.now)();
@@ -186,6 +188,9 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
         const current = s.sources.find(row => row.id === source.id);
         if (!current || !current.enabled || current.revision !== source.revision) return;
         const observed = taskValueHash(value);
+        for (const task of s.tasks) if (task.armed && task.schedule.kind === "event" && task.schedule.source_id === source.id && task.last_failure?.code === "source_unavailable") {
+          delete task.last_failure; audit(task, now, "source-recovered");
+        }
         if (current.last_value_hash === observed) return;
         current.observation_number++;
         appendEvent(s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), now, now);

@@ -1,6 +1,6 @@
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
-import { watch, type FSWatcher } from "node:fs";
-import { basename, dirname } from "node:path";
+import { watch, existsSync, type FSWatcher } from "node:fs";
+import { basename, dirname, relative, sep } from "node:path";
 import { emptyTaskStore, type TaskStore } from "./task-schema.js";
 import { readTaskStore } from "./task-store.js";
 import { observeTaskSources, reconcileTaskTime } from "./task-events.js";
@@ -11,71 +11,94 @@ import type { TaskServiceContext } from "./task-service.js";
 export class TaskRuntime {
   snapshot: TaskStore = emptyTaskStore();
   lastTick: number | null = null; lastError: string | null = null; nextTick = 0;
-  reads = 0; backoff = 0; private stopped = false; private busy: Promise<void> | null = null;
+  reads = 0; backoff = 0; ioStopped = false;
+  readonly checks = new Map<string, { next: number; backoff: number; material: string }>();
+  private pollCursor = 0; private stopped = false; private busy: Promise<void> | null = null;
   private queued = false; private loaded = false; private watcher?: FSWatcher;
-  private unsubscribe: Array<() => void>;
+  private unsubscribe: Array<() => void>; private cleanup: Array<() => void> = [];
   readonly ready: Promise<void>;
   constructor(readonly ctx: TaskServiceContext) {
     this.unsubscribe = [onTaskSnapshot(ctx.path, store => { this.snapshot = store; this.loaded = true; this.installWatcher(); }),
       onTaskWake(ctx.path, () => this.contact())];
     this.installWatcher();
-    this.ready = this.refresh().then(() => this.tick(true)).catch(() => undefined);
+    this.ready = this.refresh().then(() => this.tick()).catch(() => undefined);
   }
   private installWatcher(): void {
     if (this.watcher || this.stopped) return;
+    const target = dirname(this.ctx.path); let directory = target;
+    while (!existsSync(directory) && dirname(directory) !== directory) directory = dirname(directory);
     try {
-      this.watcher = watch(dirname(this.ctx.path), { persistent: false }, (_event, name) => {
-        if (name?.toString() !== basename(this.ctx.path)) return;
-        // Watch notifications are off-path, never a second polling loop.
+      this.watcher = watch(directory, { persistent: false }, (_event, name) => {
+        const wanted = directory === target ? basename(this.ctx.path) : relative(directory, target).split(sep)[0];
+        if (name?.toString() !== wanted) return;
+        if (directory !== target) { this.watcher?.close(); this.watcher = undefined; this.installWatcher(); }
         void this.refresh().then(changed => { if (changed) this.contact(); }).catch(() => undefined);
       });
       this.watcher.on("error", () => { this.watcher?.close(); this.watcher = undefined; this.lastError = "watch_unavailable"; });
-    } catch { /* The first task mutation creates the parent, then attaches. */ }
+    } catch { /* Retried off-path at the next contact or committed mutation. */ }
   }
   private async refresh(): Promise<boolean> {
     if (this.stopped) return false;
     this.reads++;
     try {
       const snapshot = await readTaskStore(this.ctx.path);
+      if (this.loaded && snapshot.recovery_epoch === this.snapshot.recovery_epoch && snapshot.revision < this.snapshot.revision) return false;
       const changed = !this.loaded || snapshot.revision !== this.snapshot.revision || snapshot.recovery_epoch !== this.snapshot.recovery_epoch;
       this.snapshot = snapshot; this.loaded = true; return changed;
-    } catch { this.lastError = "task_store_unavailable"; throw new Error("Task store unavailable"); }
+    } catch { this.lastError = "task_store_unavailable"; this.ioStopped = true; throw new Error("Task store unavailable"); }
   }
   get hasWork(): boolean { return this.snapshot.controls.enabled && this.snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state)); }
   contact(): void {
     if (this.stopped) return;
     this.queued = true;
-    // No source/file reads inside hooks; the existing job runs after the response turn.
-    setImmediate(() => { if (this.queued) { this.queued = false; void this.tick(true); } });
+    setImmediate(() => { if (this.queued) { this.queued = false; this.installWatcher(); void this.tick(); } });
   }
-  async tick(force = false): Promise<void> {
+  async tick(): Promise<void> {
     if (this.stopped) return;
-    if (this.busy) { if (force) this.queued = true; return this.busy; }
+    if (this.busy) { this.queued = true; return this.busy; }
+    if (!this.hasWork || !this.loaded || (this.ioStopped && (this.ctx.now ?? Date.now)() < this.nextTick)) return; // no interval reads/writes when empty/unarmed
     const now = (this.ctx.now ?? Date.now)();
-    if (!this.hasWork || now < this.nextTick || (!force && !this.loaded)) return;
     this.busy = (async () => {
-      const started = Date.now();
+      const started = Date.now(); const selected = new Set<string>(); const sources = new Set<string>();
+      let visited = 0;
+      while (visited < this.snapshot.tasks.length && selected.size < 10) {
+        const task = this.snapshot.tasks[(this.pollCursor + visited++) % this.snapshot.tasks.length];
+        if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
+        const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+        const material = `${event?.value_hash ?? ""}:${event?.claim?.value_hash ?? ""}:${event?.state_updated_at ?? ""}`;
+        const previous = this.checks.get(task.id);
+        if (previous && now < previous.next && previous.material === material) continue;
+        selected.add(task.id); if (task.schedule.kind === "event") sources.add(task.schedule.source_id);
+      }
+      this.pollCursor = (this.pollCursor + visited) % this.snapshot.tasks.length;
       try {
-        // One shared journal/CAS path for startup, interval, contact and owner calls.
-        await observeTaskSources(this.ctx, true);
-        if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx);
+        if (selected.size) {
+          await observeTaskSources(this.ctx, true, sources);
+          if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected);
+        }
         if (Date.now() - started < 5000) this.snapshot = await reconcileTaskTime(this.ctx);
-        this.lastTick = now;
-        const degraded = this.snapshot.tasks.some(t => t.armed && (t.verification?.outcome === "unavailable" || t.last_failure?.code === "source_unavailable"));
-        this.backoff = degraded ? Math.min(Math.max(this.backoff * 2, 60000), 3600000) : 0;
-        this.lastError = degraded ? "source_unavailable" : null;
-        this.nextTick = now + (this.backoff || 60000);
-      } catch { this.lastError = "task_job_unavailable"; this.backoff = Math.min(Math.max(this.backoff * 2, 60000), 3600000); this.nextTick = now + this.backoff; }
+        this.lastTick = now; this.backoff = 0; this.lastError = null;
+        for (const id of selected) {
+          const task = this.snapshot.tasks.find(t => t.id === id)!;
+          const failed = ["unavailable", "inconclusive", "stale"].includes(task.verification?.outcome ?? "") || task.last_failure?.code === "source_unavailable";
+          const delay = failed ? Math.min(Math.max((this.checks.get(id)?.backoff ?? 0) * 2, task.budget.poll_interval_ms), 3600000) : task.budget.poll_interval_ms;
+          const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+          this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: `${event?.value_hash ?? ""}:${event?.claim?.value_hash ?? ""}:${event?.state_updated_at ?? ""}` });
+          this.backoff = Math.max(this.backoff, failed ? delay : 0); if (failed) this.lastError = "source_unavailable";
+        }
+        this.nextTick = Math.min(now + 60000, ...[...this.checks.values()].map(c => c.next));
+      } catch { this.ioStopped = true; this.lastError = "task_job_unavailable"; this.backoff = Math.min(Math.max(this.backoff * 2, 60000), 3600000); this.nextTick = now + this.backoff; }
     })();
     try { await this.busy; } finally { this.busy = null; }
-    // Mutations/contact during a tick never create parallel work or lose a wake.
     if (this.queued) { this.queued = false; this.contact(); }
   }
-  stop(): void { this.stopped = true; this.watcher?.close(); for (const unsubscribe of this.unsubscribe) unsubscribe(); }
+  onStop(cleanup: () => void): void { if (this.stopped) cleanup(); else this.cleanup.push(cleanup); }
+  settle(): Promise<void> { return this.busy ?? Promise.resolve(); }
+  stop(): void { this.stopped = true; this.watcher?.close(); for (const unsubscribe of this.unsubscribe) unsubscribe(); for (const cleanup of this.cleanup) cleanup(); }
 }
 const runtimes = new Map<string, TaskRuntime>();
 export function startTaskRuntime(ctx: TaskServiceContext): TaskRuntime {
-  runtimes.get(ctx.path)?.stop(); const runtime = new TaskRuntime(ctx); runtimes.set(ctx.path, runtime); return runtime;
+  runtimes.get(ctx.path)?.stop(); const runtime = new TaskRuntime(ctx); runtimes.set(ctx.path, runtime); runtime.onStop(() => { if (runtimes.get(ctx.path) === runtime) runtimes.delete(ctx.path); }); return runtime;
 }
 export function taskRuntime(path: string): TaskRuntime | undefined { return runtimes.get(path); }
-export function stopTaskRuntimes(): void { for (const runtime of runtimes.values()) runtime.stop(); runtimes.clear(); }
+export async function stopTaskRuntimes(): Promise<void> { const active = [...runtimes.values()]; for (const runtime of active) runtime.stop(); runtimes.clear(); await Promise.all(active.map(runtime => runtime.settle())); }

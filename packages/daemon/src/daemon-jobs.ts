@@ -420,5 +420,6 @@ function startLogRetention(): void {
 export function startProactiveTaskJob(ctx: TaskServiceContext, cadence = 60000): { runtime: TaskRuntime; stop: () => void } {
   const runtime = startTaskRuntime(ctx);
   const timer = setInterval(() => { void runtime.tick(); }, cadence); timer.unref();
-  return { runtime, stop: () => { clearInterval(timer); runtime.stop(); } };
+  runtime.onStop(() => clearInterval(timer));
+  return { runtime, stop: () => runtime.stop() };
 }

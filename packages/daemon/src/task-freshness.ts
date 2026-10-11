@@ -140,11 +140,11 @@ function verificationChanged(before: Verification | undefined, after: Verificati
   return !before || JSON.stringify(stable(before)) !== JSON.stringify(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */
-export async function assessTaskFreshness(ctx: TaskServiceContext): Promise<void> {
+export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>): Promise<void> {
   const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return;
   const sourceCache: ReadContext["sourceCache"] = new Map(); const sourceReads = new Map<string, number>();
   const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
-  for (const task of store.tasks.filter(t => t.armed && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
+  for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
     if (Date.now() - started >= 5000) break;
     const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
     if (!event && task.schedule.kind === "event") continue;

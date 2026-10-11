@@ -1,4 +1,5 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
+import { taskDueInput, taskDueProjection, recordTaskDelivery, cachedTaskSnapshot } from "./task-outbox.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
 import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
@@ -31,7 +32,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
@@ -77,6 +78,12 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (operation === "task_due") {
+    const input = taskDueInput.parse(raw); const store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
+    const projection = taskDueProjection(store, principal, input, now);
+    await recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, now);
+    const { client: _client, occurrenceIds: _ids, ...result } = projection; return result;
+  }
   if (operation === "task_source_register") return registerTaskSource(ctx, authorization, raw);
   if (operation === "task_event") return submitTaskEvent(ctx, authorization, raw);
   if (operation === "task_reconcile") {
@@ -175,7 +182,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
 }
 
 export const TASK_INPUT_SCHEMAS = {
-  task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
+  task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
