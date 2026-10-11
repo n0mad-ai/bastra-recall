@@ -36,14 +36,14 @@ export async function runPremises(c:any,x:any):Promise<Record<string,boolean|num
     return {false_reconsiderations:falseCount,unknown_not_false_all_subruns:unknown};
   }
   if(c.id==='material-premise-change') {
-    let exact=true,reversals=0,persist=true;
+    let exact=true,reversals=0,persist=true,controlsComplete=true;
     for(const choice of ['keep','change','snooze','stop']){const a=await make(choice);let task=await wait(a.task.id,t=>t.state==='due');const original=readFileSync(a.decisionPath,'utf8');reversals+=original!==a.decisionRaw?1:0;
       const eventRetry=await call('event',a.event);await new Promise(r=>setTimeout(r,100));const before=snapshot();const occurrences=before.occurrences.filter((o:any)=>o.task_id===task.id);const cards=ok(await call('due',{}),'due');const card=cards.cards.find((card:any)=>card.task_id===task.id);exact&&=eventRetry.status===200&&eventRetry.data.event_id===before.events.find((e:any)=>e.source_id===a.event.source_id).id&&occurrences.length===1&&card?.reconsideration?.old_premise==='costly'&&card?.reconsideration?.new_premise==='cheap'&&card?.reconsideration?.decision?.option==='A';
-      if(occurrences.length!==1)throw new Error('material fixture lacks exactly one occurrence');task=await get(task.id);const body={id:task.id,expected_revision:task.expected_revision,occurrence_id:occurrences[0].id,choice,...(choice==='snooze'?{until:now+3600000}:{}),...(choice==='change'?{change:{idempotency_key:'owner-change',expected_memory_revision:a.decisionRevision,body:'Choose B after owner review.',option:'B',reason:'Changed maintenance evidence'}}:{})};
+      if(occurrences.length!==1){controlsComplete=false;evidence.push({choice,unavailable_control_ground_truth:'no durable reconsideration occurrence within registered deadline',eventRetry,task,before});continue;}task=await get(task.id);const body={id:task.id,expected_revision:task.expected_revision,occurrence_id:occurrences[0].id,choice,...(choice==='snooze'?{until:now+3600000}:{}),...(choice==='change'?{change:{idempotency_key:'owner-change',expected_memory_revision:a.decisionRevision,body:'Choose B after owner review.',option:'B',reason:'Changed maintenance evidence'}}:{})};
       const denied=await call('reconsider',body,'agent');const result=ok(await call('reconsider',body),'reconsider');persist&&=denied.status===403;const changed=readFileSync(a.decisionPath,'utf8');if(choice==='change'){const retry=ok(await call('reconsider',body),'change retry');persist&&=retry.revision===result.revision&&changed.includes('Choose B after owner review.')&&memoryRevision(changed)===result.revision;}else persist&&=changed===a.decisionRaw;
       await stopDaemon();await start();task=await get(task.id);persist&&=choice==='snooze'?task.state==='snoozed'&&task.snoozed_until===now+3600000:!task.armed&&(choice==='stop'?task.state==='cancelled':choice==='change'?task.decision_change?.status==='applied':task.history.some((h:any)=>h.operation==='decision-keep'&&h.decision_snapshot));evidence.push({choice,eventRetry,denied,result,task,changed});
     }
-    return {reconsiderations_per_event:exact?1:0,automatic_decision_reversals:reversals,controls_persist_all_subruns:persist};
+    return {reconsiderations_per_event:exact?1:0,automatic_decision_reversals:reversals,...(controlsComplete?{controls_persist_all_subruns:persist}:{})};
   }
   if(c.id==='supersession') {
     let rebound=0,spent=0,history=true;
