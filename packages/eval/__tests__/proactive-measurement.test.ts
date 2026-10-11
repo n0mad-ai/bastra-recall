@@ -5,8 +5,8 @@ import { PROACTIVE_CASES, evaluateObservation, summarizeObservations } from "../
 test("missing contracts and observations cannot become a passed window", () => {
   const report = summarizeObservations([]);
   assert.equal(report.functional_verdict, "pending");
-  assert.equal(report.expected_runs, 72);
-  assert.equal(report.missing_runs, 72);
+  assert.equal(report.expected_runs, 75);
+  assert.equal(report.missing_runs, 75);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
 });
 test("missing acknowledgement and evidence are not implicit success", () => {
@@ -31,7 +31,7 @@ test("even a complete synthetic response set leaves human and longitudinal gates
   const rows = PROACTIVE_CASES.flatMap(c => [1, 2, 3].map(repetition => ({ case_id: c.id, repetition, values: { ...c.expected }, evidence: ["test-only"] })));
   const report = summarizeObservations(rows);
   assert.equal(report.functional_verdict, "passed");
-  assert.equal(report.observed_runs, 72);
+  assert.equal(report.observed_runs, 75);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
   rows.find(r => r.case_id === "seven-day-evaluation")!.values.logical_firings = 2;
   const failed = summarizeObservations(rows);

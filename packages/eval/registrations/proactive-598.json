@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 5,
+  "registration_version": 6,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -290,7 +290,7 @@
     "effort": "Median participant correction-time ratio <= 1.25; zero accidental execution or silent re-arm.",
     "coverage": "All slices, 24 participants and independent labels required; unmet N is not evaluable, never no effect."
   },
-  "$comment_amendment": "Prospective integration-fixture clarification before any P5 run: CRUD-only tasks stay future-due at reference+24h. Automatic start/contact/poll tests first hold the child clock before due and allow 5500ms for the create-mutation wake to settle, then advance the clock and measure the named path. This prevents a queued create-wake from masquerading as the periodic poll. Previous failed P3 runs remain unchanged at v5/v4 hashes; no retrospective reclassification or threshold change. Human/longitudinal rules unchanged.",
+  "$comment_amendment": "Before any observation of this NEW source-key tuple boundary case: valid opaque IDs/keys containing colons must not collapse two independently authenticated, different-domain event sources into one journal record or foreign receipt. Three isolated repetitions, exact binding/identity assertions. Prior P2/P3 records and hashes preserved; existing human/longitudinal thresholds unchanged. Prospective quiescence/CRUD schedule controls from the preceding version remain.",
   "functional_supplement": {
     "registered_before_runtime": true,
     "repetitions": 3,
@@ -445,5 +445,27 @@
     "version_rule": "Old e78ff4f4 baseline and each corrected feature head are separate immutable segments; prior mechanical passes are not complete P3 confirmation.",
     "mutation_wake_settle_ms": 5500,
     "future_due_precondition": "After each creation, wait 5500ms with frozen child clock before due; require zero occurrences before advance. Startup probes no HTTP at restart; next-contact uses one ordinary GET; polling permits no client contacts."
+  },
+  "source_key_tuple_supplement": {
+    "case": {
+      "id": "p3-source-key-tuple-boundary",
+      "issue": 410,
+      "dependencies": [
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "stimulus": "Register two valid event sources in separate owner domains: source collision:a with key b, and source collision with key a:b. Submit equal values through their own authenticated configured producers. Both accepted events must have separate IDs and retain their exact source/actor/domain bindings.",
+      "expected": {
+        "accepted_submissions": 2,
+        "journal_events": 2,
+        "distinct_event_ids": 2,
+        "source_actor_bindings_exact": true,
+        "foreign_domain_receipt_reused": false
+      }
+    },
+    "repetitions": 3,
+    "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
+    "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   }
 }

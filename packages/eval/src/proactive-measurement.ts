@@ -10,6 +10,8 @@ export interface ProactiveCase {
 }
 
 export const PROACTIVE_CASES: ProactiveCase[] = [
+  {"id":"p3-source-key-tuple-boundary","issue":410,"dependencies":["P1","P2","P3"],"stimulus":"Register two valid event sources in separate owner domains: source collision:a with key b, and source collision with key a:b. Submit equal values through their own authenticated configured producers. Both accepted events must have separate IDs and retain their exact source/actor/domain bindings.","expected":{"accepted_submissions":2,"journal_events":2,"distinct_event_ids":2,"source_actor_bindings_exact":true,"foreign_domain_receipt_reused":false}},
+
   {"id":"p3-automatic-evaluation","issue":402,"dependencies":["P1","P2","P3"],"stimulus":"No task_reconcile anywhere: persist future armed tasks, cross their due instant with a child-only fixture clock, and observe exactly one durable firing after daemon restart, ordinary next contact and 60s background polling in separate subruns.","expected":{"startup_logical_firings":1,"contact_logical_firings":1,"poll_logical_firings":1,"manual_reconcile_calls":0}},
   {"id":"p3-returning-source-transitions","issue":410,"dependencies":["P1","P2","P3"],"stimulus":"Register real temporary file and Git-ref sources; observe A,B,A,B using the published source adapter and frozen timestamps; repeated unchanged polls remain quiet. Four journal events per source are required, even when a prior value returns.","expected":{"file_events":4,"git_events":4,"unchanged_polls_quiet":true,"distinct_event_ids":8}},
 
