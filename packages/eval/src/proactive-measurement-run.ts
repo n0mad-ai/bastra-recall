@@ -66,7 +66,7 @@ async function main() {
   mkdirSync(out, { mode: 0o700 });
   const write = (name: string, value: unknown) => writeFileSync(join(out, name), JSON.stringify(value, null, 2) + "\n", { mode: 0o600, flag: "wx" });
   const started = new Date().toISOString();
-  const manifest = { started_at: started, evidence_class: "synthetic_functional_only", eval_commit: evalCommit, runner_sha256: runnerHash,
+  const manifest = { command: [process.execPath, ...process.execArgv, ...process.argv.slice(1)], started_at: started, evidence_class: "synthetic_functional_only", eval_commit: evalCommit, runner_sha256: runnerHash,
     driver_sha256: opts["--driver"] ? hash(readFileSync(opts["--driver"], "utf8")) : null,
     registration, dataset_sha256: hash(JSON.stringify(PROACTIVE_CASES)), runtime: process.version,
     feature: driver?.metadata ?? null, longitudinal_window_started_at: null };
