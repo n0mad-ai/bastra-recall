@@ -1,3 +1,4 @@
+import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
 import { randomUUID } from "node:crypto";
@@ -79,9 +80,9 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
     if (!next) throw new TaskStoreError("conflict", "task deletion requires an explicit archive path");
     if (next.revision < old.revision || next.generation < old.generation)
       throw new TaskStoreError("conflict", "task revision/generation cannot go backwards");
-    if (JSON.stringify(next.history.slice(0, old.history.length)) !== JSON.stringify(old.history))
+    if (canonicalTaskValue(next.history.slice(0, old.history.length)) !== canonicalTaskValue(old.history))
       throw new TaskStoreError("conflict", "task audit history is append-only");
-    if (JSON.stringify(next) === JSON.stringify(old)) continue;
+    if (canonicalTaskValue(next) === canonicalTaskValue(old)) continue;
     if (next.revision <= old.revision || next.history.length <= old.history.length)
       throw new TaskStoreError("conflict", "task changes require a newer revision and appended audit");
     const rearm = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "rearm";

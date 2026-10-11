@@ -83,3 +83,46 @@ test("real isolated daemon catches up due data on startup with no task_reconcile
   } catch (error) { throw new Error(`${(error as Error).message}; isolated daemon: ${errors}`); }
   finally { child.kill("SIGTERM"); await closed; }
 });
+async function premiseRuntime(provenance = "attributable", claimId = "assumption", pause?: { entered: () => void; release: Promise<void> }) {
+  const f = await fixture(); const raw = JSON.stringify({ claim_id: "assumption", claim_revision: "v1", value: "cheap", state_updated_at: 1000, provenance });
+  const { taskValueHash } = await import("../src/task-events.js"); const revision = taskValueHash(raw); let delayed = false;
+  const ctx = { ...f.ctx, memoryRead: async (id: string) => {
+    if (id !== "evidence") return { id, revision: "v1", raw: `---\nid: ${id}\ntype: decision\n---\nfixture`, body: "fixture", sensitivity: "private" };
+    if (pause && !delayed) { delayed = true; pause.entered(); await pause.release; }
+    return { id, revision, raw, body: raw, sensitivity: "private" };
+  } };
+  const source = { producer_actor: "owner", owner_domains: ["personal"], sensitivity: "private", max_age_ms: 10000, enabled: true };
+  await callTaskCrud(ctx, f.auth, "task_source_register", { ...source, id: "producer", kind: "event" });
+  await callTaskCrud(ctx, f.auth, "task_source_register", { ...source, id: "evidence", kind: "memory", memory_id: "evidence", producer_actor: "task-source-reader" });
+  await callTaskCrud(ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "producer", predicate: "premise", expected: "costly", verifier_id: "versioned-value-v1" },
+    decision: { id: "decision", revision: "v1", option: "A", reason: "Maintenance", assumption_id: "assumption", assumption_revision: "v1", premise: "costly", alternatives: ["B"] },
+    evidence: [{ source_id: "evidence", id: "evidence", revision, hash: revision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 10000, provenance: "attributable" }] });
+  const event = { source_id: "producer", source_revision: 0, dedup_key: "first", value: "structured claim", state_updated_at: 1000,
+    claim: { claim_id: claimId, claim_revision: "v1", value: "cheap", evidence_id: "evidence", evidence_revision: revision } };
+  const job = startProactiveTaskJob(ctx); await job.runtime.ready;
+  return { ...f, ctx, event, job };
+}
+test("automatic irrelevant/contested states persist within the contact cycle, new accepted event bypasses backoff", async () => {
+  for (const mode of ["irrelevant", "contested", "refuted"]) {
+    const f = await premiseRuntime(mode === "contested" ? "contested" : "attributable", mode === "irrelevant" ? "other" : "assumption");
+    try { await callTaskCrud(f.ctx, f.auth, "task_event", f.event);
+      await waitFor(async () => { const s = await readTaskStore(f.ctx.path); return !!s.tasks[0].verification && (mode !== "refuted" || s.occurrences.length === 1); }, 5000);
+      const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].verification!.outcome, mode === "refuted" ? "refuted" : "inconclusive");
+      assert.equal(s.occurrences.length, mode === "refuted" ? 1 : 0);
+      if (mode === "irrelevant") {
+        await callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, dedup_key: "corrected-claim", claim: { ...f.event.claim, claim_id: "assumption" } });
+        await waitFor(async () => (await readTaskStore(f.ctx.path)).occurrences.length === 1, 5000);
+      }
+    } finally { f.job.stop(); await f.job.runtime.settle(); }
+  }
+});
+test("event arriving DURING an older assessment never inherits its backoff or disappears until poll", async () => {
+  let enter!: () => void, release!: () => void; const entered = new Promise<void>(r => { enter = r; }), gate = new Promise<void>(r => { release = r; });
+  const f = await premiseRuntime("attributable", "other", { entered: enter, release: gate });
+  try { await callTaskCrud(f.ctx, f.auth, "task_event", f.event); await entered;
+    const second = await callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, dedup_key: "during-check", claim: { ...f.event.claim, claim_id: "assumption" } }) as {event_id:string};
+    release(); await waitFor(async () => (await readTaskStore(f.ctx.path)).occurrences.length === 1, 5000);
+    const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].verification!.event_id, second.event_id); assert.equal(s.tasks[0].verification!.outcome, "refuted");
+    await f.job.runtime.tick(); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
+  } finally { release(); f.job.stop(); await f.job.runtime.settle(); }
+});

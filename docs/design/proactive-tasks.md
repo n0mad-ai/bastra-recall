@@ -449,3 +449,23 @@ Small session budgets keep a compact availability card with the explicit due
 command instead of silently dropping due work. P9/demo MUST provide one owner CLI
 setup command for hook task credentials and show honest per-client missing-token
 coverage. No automatic provider wakeup is claimed.
+Automatic event visibility: an accepted journal event queues an off-path job
+immediately. Each failed/unchanged check may back off (60s up to 1h), but a NEW
+event ID/sequence, binding or source registry version bypasses that backoff. The
+cache key is captured from the snapshot actually assessed, never from a newer
+snapshot that arrived while assessment was running. Budget-deferred new events
+queue another bounded turn, not a wait for the old failure's retry deadline.
+Irrelevant/contested/unknown/stale results are persisted when materially changed;
+only identical checks suppress writes. Before the first event, no verification
+is invented (owner status says waiting for an event). Healthy small-cohort tests
+require persisted result AND logical occurrence within5s; 5s is not a universal
+wall-clock SLA. A healthy daemon with no contention/capacity/storage failure
+admits an event at next queued contact or latest60s periodic wake, then bounded
+cohorts of10 assessments (source intake5s; decision guard later adds its own bounded
+intake). With N eligible watchers, budget-deferred work drains in ceil(N/10)
+turns. Filesystem commits/syscalls and process suspension cannot be given a hard
+wall-clock upper bound; errors/capacity/backoff remain visible and no result is
+falsely inferred. Unchanged failing sources without a new event retain up to1h
+retry backoff. Measurement should wait for the saved event-specific verification
+and occurrence, not just the first verification commit (evaluation is a separate
+atomic commit).
