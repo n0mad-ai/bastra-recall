@@ -1,0 +1,83 @@
+/**
+ * Reflex triggers and the acted_on match accept a word form, not only the
+ * exact spelling.
+ *
+ * reflex: every content token of a trigger had to appear in the prompt in
+ * exactly the same form, so a case ending ("арке" for "арка") or a verb form
+ * ("antworten" for "Antwort") missed the trigger.
+ * acted_on: a memory token counted only when the edit used the same spelling,
+ * so "ротацию бэкапа" in an edit did not count for a memory about "ротация
+ * бэкапов".
+ *
+ * Revert-check: restore `contextTokens.has(t)` / `contextTokens.has(meaningful[0])`
+ * in reflex.ts → the two "satisfies the trigger" tests go red; restore
+ * `inputTokens.has(token)` in telemetry-join-state.ts → "an inflected form in
+ * the edit still counts" goes red. The strict cases stay green either way.
+ *
+ * Runner: node --import tsx --test packages/daemon/__tests__/word-forms-reflex-acted-on.test.ts
+ */
+import { test, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { Telemetry } from "../src/telemetry.js";
+import { distinctiveTokensForActedOn } from "../src/tool-handlers.js";
+import { phraseMatchesContext } from "../src/reflex.js";
+
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "bastra-word-forms-"));
+  process.env.BASTRA_LOG_PATH = dir;
+  process.env.BASTRA_TELEMETRY = "on";
+});
+afterEach(async () => {
+  delete process.env.BASTRA_LOG_PATH;
+  delete process.env.BASTRA_TELEMETRY;
+  await rm(dir, { recursive: true, force: true });
+});
+
+function actedOn(memoryText: string, toolInput: string) {
+  const t = new Telemetry();
+  t.rotateTurn("s");
+  t.recordLoadedMemory({
+    memory_id: "m",
+    distinctive_tokens: distinctiveTokensForActedOn(memoryText),
+    hook_hint: { recall_id: "r", score: 120 },
+    session_id: "s",
+  });
+  return t.matchLoadedMemories({ tool_name: "Edit", tool_input_excerpt: toolInput, session_id: "s" })[0];
+}
+
+const MEMORY_RU = "Ротация бэкапов хранит семь снапшотов на сторадж-боксе";
+
+test("acted_on: an inflected form in the edit still counts", () => {
+  const ep = actedOn(MEMORY_RU, "поменял ротацию бэкапа, снапшоты теперь по семь");
+  assert.equal(ep?.acted_on, true, `match_strength=${ep?.match_strength}`);
+});
+
+test("acted_on stays strict: an unrelated edit in the same language is not acted on", () => {
+  const ep = actedOn(MEMORY_RU, "обновил README про установку демона");
+  assert.equal(ep?.acted_on, false);
+});
+
+function ctx(prompt: string): [Set<string>, string] {
+  const toks = tokenizeWithIdentifiers(prompt.toLowerCase());
+  return [new Set(toks), ` ${toks.join(" ")} `];
+}
+
+test("reflex: a case ending in the prompt satisfies the trigger", () => {
+  const [tokens, seq] = ctx("глянь что в арке по ревью");
+  assert.equal(phraseMatchesContext("ревью арка", tokens, seq), true);
+});
+
+test("reflex: a verb form in the prompt satisfies the trigger", () => {
+  const [tokens, seq] = ctx("danach antworten wir dem maintainer");
+  assert.equal(phraseMatchesContext("Antwort maintainer", tokens, seq), true);
+});
+
+test("reflex stays strict: a missing content word still blocks the trigger", () => {
+  const [tokens, seq] = ctx("глянь что в арке");
+  assert.equal(phraseMatchesContext("ревью арка", tokens, seq), false);
+});
