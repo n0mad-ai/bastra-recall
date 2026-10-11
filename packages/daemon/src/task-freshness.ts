@@ -1,3 +1,4 @@
+import { privateContentComparison } from "./task-private-comparison.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Registered bounded evidence only; verify_cmd is never executable. */
 import { constants } from "node:fs";
@@ -177,7 +178,7 @@ export async function verifyTaskSource(ctx: ReadContext, task: Task, event: Task
     if (!data.success || data.data.provenance !== "attributable") return out("inconclusive", "evidence_not_attributable");
     if (data.data.state_updated_at > now || data.data.state_updated_at > event.observed_at || data.data.state_updated_at > reference!.observed_at) return out("inconclusive", "unattributable_state_age");
     if (now - data.data.state_updated_at > reference!.max_age_ms) return out("stale", "producer_state_too_old");
-    if (data.data.claim_id !== claim.claim_id || data.data.claim_revision !== claim.claim_revision || taskValueHash(data.data.value) !== claim.value_hash)
+    if (data.data.claim_id !== claim.claim_id || data.data.claim_revision !== claim.claim_revision || await privateContentComparison(ctx.path, data.data.value) !== claim.value_hash)
       return out("inconclusive", "claim_evidence_mismatch");
     return { ...out(claim.value_hash === task.schedule.expected_hash ? "verified" : "refuted", "verified_claim_snapshot"), refuted_value: data.data.value, state_updated_at: data.data.state_updated_at, max_age_ms: Math.min(basic.max_age_ms, reference!.max_age_ms) };
   } catch { return out("unavailable", "evidence_read_failed"); }

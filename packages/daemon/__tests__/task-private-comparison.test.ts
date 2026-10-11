@@ -41,3 +41,49 @@ test("archive cleanup resumes after crash-window index update without blessing f
  try{await assert.rejects(readTaskStore(path));assert.ok(interrupted);assert.ok((await stat(path+".comparison-migration")).isFile());}finally{fs.renameSync=original;syncBuiltinESMExports();}
  const completed=await readTaskStore(path);const bytes=await readFile(archive,"utf8");assert.ok(!bytes.includes("reminder_fingerprint"));assert.equal(completed.archives[0].hash,createHash("sha256").update(bytes).digest("hex"));await assert.rejects(stat(path+".comparison-migration"),{code:"ENOENT"});
 });
+
+test("event, claim and raw/client-SHA baselines use the same private content comparison; retries remain exact", async()=>{
+ const f=await fixture(), g=await fixture(); const raw="password=0427", digest=createHash("sha256").update(raw).digest("hex");
+ const source={id:"source",kind:"event",producer_actor:"agent",owner_domains:["personal"],sensitivity:"private",max_age_ms:10000,enabled:true};
+ for(const x of [f,g])await callTaskCrud(x.ctx,x.ownerAuth,"task_source_register",source);
+ const input={...f.input,arm:true,schedule:{kind:"event",source_id:"source",predicate:"equals",expected:raw}};
+ const a=await callTaskCrud(f.ctx,f.ownerAuth,"task_create",input) as any;
+ const b=await callTaskCrud(f.ctx,f.ownerAuth,"task_create",{...input,idempotency_key:"sha",schedule:{...input.schedule,expected:digest}}) as any;
+ await callTaskCrud(g.ctx,g.ownerAuth,"task_create",input);
+ const event={source_id:"source",source_revision:0,dedup_key:"same",value:raw,state_updated_at:1000,claim:{claim_id:"assumption",claim_revision:"v1",value:raw,evidence_id:"evidence",evidence_revision:"v1"}};
+ const first=await callTaskCrud(f.ctx,f.auth,"task_event",event);assert.deepEqual(await callTaskCrud(f.ctx,f.auth,"task_event",event),first);
+ await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_event",{...event,value:"password=0583"}),{code:"conflict"});
+ await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_event",{...event,claim:{...event.claim,value:"password=0771"}}),{code:"conflict"});
+ const {reconcileTaskTime}=await import("../src/task-events.js");await reconcileTaskTime(f.ctx);let s=await readTaskStore(f.ctx.path);
+ const hash=s.events[0].value_hash!;assert.match(hash,/^hmac-v1:/);assert.equal(s.events[0].claim!.value_hash,hash);assert.equal(s.tasks[0].schedule.kind==="event"&&s.tasks[0].schedule.expected_hash,hash);assert.equal(s.tasks[1].schedule.kind==="event"&&s.tasks[1].schedule.expected_hash,hash);assert.equal(s.occurrences.length,2);
+ const other=await readTaskStore(g.ctx.path);assert.notEqual(other.tasks[0].schedule.kind==="event"&&other.tasks[0].schedule.expected_hash,hash);
+ assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(digest));assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(raw));
+ // The former dictionary verifier fails for every four-digit candidate.
+ for(let i=0;i<10000;i++)assert.notEqual(createHash("sha256").update(`password=${String(i).padStart(4,"0")}`).digest("hex"),hash.slice(8));
+ for(const [op,arg] of [["task_get",{id:a.id}],["task_list",{}],["task_status",{}],["task_due",{session:"private",channel:"mcp"}]] as const){const json=JSON.stringify(await callTaskCrud(f.ctx,f.auth,op,arg));assert.ok(!json.includes(hash));assert.ok(!json.includes(digest));for(const field of ["expected_hash","value_hash","last_material_hash","last_value_hash"])assert.ok(!json.includes(field));}
+ for(const id of [a.id,b.id]){const task=await callTaskCrud(f.ctx,f.auth,"task_get",{id}) as any;await callTaskCrud(f.ctx,f.auth,"task_resolve",{id,expected_revision:task.expected_revision});}
+ s=await readTaskStore(f.ctx.path);const archived=await callTaskCrud(f.ctx,f.ownerAuth,"task_archive",{task_ids:[a.id,b.id],expected_revision:s.revision,recovery_epoch:s.recovery_epoch}) as any;
+ const bytes=await readFile(taskArchivePath(f.ctx.path,archived.archive_id),"utf8");assert.ok(!bytes.includes("hmac-v1:"));assert.ok(!bytes.includes(digest));for(const field of ["expected_hash","value_hash","last_material_hash","last_value_hash"])assert.ok(!bytes.includes(field));
+ assert.deepEqual(await callTaskCrud(f.ctx,f.auth,"task_event",event),first,"archiving does not mutate the retained event journal");
+ await callTaskCrud(f.ctx,f.ownerAuth,"task_archive_restore",{archive_id:archived.archive_id});const restored=await readTaskStore(f.ctx.path);assert.ok(restored.tasks.every(t=>!t.armed));
+});
+
+test("legacy expected/event/claim/material/source digests migrate in live, backup and exports without raw secrets",async()=>{
+ const f=await fixture();const raw="password=0427",digest=createHash("sha256").update(raw).digest("hex");
+ await callTaskCrud(f.ctx,f.ownerAuth,"task_source_register",{id:"source",kind:"event",producer_actor:"agent",owner_domains:["personal"],sensitivity:"private",max_age_ms:10000,enabled:true});
+ const made=await callTaskCrud(f.ctx,f.ownerAuth,"task_create",{...f.input,schedule:{kind:"event",source_id:"source",predicate:"equals",expected:digest}}) as any;
+ const event={source_id:"source",source_revision:0,dedup_key:"legacy",value:raw,state_updated_at:1000,claim:{claim_id:"claim",claim_revision:"v1",value:raw,evidence_id:"evidence",evidence_revision:"v1"}};await callTaskCrud(f.ctx,f.auth,"task_event",event);
+ const s=await readTaskStore(f.ctx.path);const task=s.tasks[0];assert.equal(task.schedule.kind,"event");if(task.schedule.kind!=="event")throw new Error();task.schedule.expected=digest;task.schedule.expected_hash=digest;task.last_material_hash=digest;s.events[0].value_hash=digest;s.events[0].claim!.value_hash=digest;s.sources[0].last_value_hash=digest;
+ const bodyDigest=createHash("sha256").update(canonicalTaskValue(raw)).digest("hex");task.decision_change={id:"legacy-change",actor:"owner",expected_memory_revision:"v1",binding_hash:"f".repeat(64),new_body_hash:bodyDigest,new_option:"B",new_reason:"Changed",status:"applied"};
+ const {taskCreateInputSchema}=await import("../src/task-service.js"),{privateTaskComparison}=await import("../src/task-private-comparison.js");
+ const legacyInput=taskCreateInputSchema.parse({...f.input,schedule:{kind:"event",source_id:"source",predicate:"equals",expected:raw}});if(legacyInput.schedule.kind!=="event")throw new Error();legacyInput.schedule.expected_hash=digest;task.creation_hash=await privateTaskComparison(f.ctx.path,"create",legacyInput);
+ const path=join(f.root,"content-legacy.json"),ctx={...f.ctx,path};await writeFile(privateComparisonPath(path),await readFile(privateComparisonPath(f.ctx.path)),{mode:0o600});
+ const id="00000000-0000-4000-8000-000000000003",group=structuredClone(s);group.archives=[];group.tasks[0].state="resolved";group.tasks[0].armed=false;const bundle=JSON.stringify({schema_version:1,id,snapshot:group}),archive=taskArchivePath(path,id);const {mkdir}=await import("node:fs/promises");await mkdir(join(f.root,"task-archives"),{recursive:true});await writeFile(archive,bundle,{mode:0o600});
+ s.archives=[{id,hash:createHash("sha256").update(bundle).digest("hex"),at:1000,actor:"owner",task_ids:[made.id],intent_keys:[],owner_domains:["personal"]}];for(const file of [path,path+".backup"])await writeFile(file,JSON.stringify(s),{mode:0o600});
+ const migrated=await readTaskStore(path);const {privateContentComparison}=await import("../src/task-private-comparison.js"),expected=await privateContentComparison(path,raw);assert.equal(migrated.events[0].value_hash,expected);assert.equal(migrated.events[0].claim!.value_hash,expected);assert.equal(migrated.tasks[0].last_material_hash,expected);assert.equal(migrated.sources[0].last_value_hash,expected);assert.equal(migrated.tasks[0].schedule.kind==="event"&&migrated.tasks[0].schedule.expected_hash,expected);
+ assert.equal(migrated.tasks[0].decision_change!.new_body_hash,await privateTaskComparison(path,"decision-body",bodyDigest));
+ for(const file of [path,path+".backup",archive]){const bytes=await readFile(file,"utf8");assert.ok(!bytes.includes(digest));assert.ok(!bytes.includes(bodyDigest));}assert.ok(!(await readFile(archive,"utf8")).includes("hmac-v1:"));
+ assert.equal((await callTaskCrud(ctx,f.ownerAuth,"task_create",{...f.input,schedule:{kind:"event",source_id:"source",predicate:"equals",expected:raw}}) as any).id,made.id,"old keyed create retry retains its original identity");
+ const retry=await callTaskCrud(ctx,f.auth,"task_event",event) as any;assert.equal(retry.event_id,migrated.events[0].id);assert.equal((await readTaskStore(path)).events.length,1);
+ const {reconcileTaskTime}=await import("../src/task-events.js");const evaluated=await reconcileTaskTime(ctx);const {verifyTaskEvent}=await import("../src/task-freshness.js");assert.equal(verifyTaskEvent(evaluated.tasks[0],evaluated.events[0],evaluated,1000).outcome,"verified");assert.equal(evaluated.occurrences.length,0,"unchanged material stays quiet after migration");
+});
