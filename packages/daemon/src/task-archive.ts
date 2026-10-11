@@ -80,3 +80,18 @@ export async function restoreTaskArchive(ctx:TaskServiceContext,authorization:st
  await guard.commit(next=>{for(const name of groupRows){for(const row of archived[name]){if((next[name] as {id:string}[]).some(r=>r.id===row.id))throw new TaskStoreError("conflict","Archived identity reused");(next[name] as unknown[]).push(structuredClone(row));}}next.controls.execution_stopped=true;},"control");
  return{restored:true,archive_id:entry.id,unarmed:true,execution_stopped:true};});
 }
+
+/** Recover only private, fully validated cold exports; never delete orphan files. */
+export async function discoverTaskArchiveExports(path:string,actor:string){
+ const {readdir}=await import("node:fs/promises");let names:string[];
+ try{names=await readdir(dirname(taskArchivePath(path,"00000000-0000-4000-8000-000000000000")));}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return [];throw e;}
+ const eligible=names.filter(n=>/^[a-f0-9-]{36}\.json$/.test(n)).sort();if(eligible.length>1000)throw new TaskStoreError("capacity","Too many recovery archive exports; originals preserved");
+ const result:Array<{entry:TaskStore["archives"][number],snapshot:TaskStore}>=[];
+ for(const name of eligible){const id=z.string().uuid().parse(name.slice(0,-5)),fd=await open(taskArchivePath(path,id),constants.O_RDONLY|constants.O_NOFOLLOW);let raw:string;
+  try{const info=await fd.stat();if(!info.isFile()||info.mode&0o077||info.size>TASK_MAX_BYTES+1024)throw new TaskStoreError("corrupt","Unsafe cold export; original preserved");const bytes=Buffer.alloc(TASK_MAX_BYTES+1025),read=await fd.read(bytes,0,bytes.length,0);if(read.bytesRead>TASK_MAX_BYTES+1024)throw new TaskStoreError("capacity","Cold export too large");raw=bytes.subarray(0,read.bytesRead).toString("utf8");}finally{await fd.close();}
+  let bundle:z.infer<typeof bundleSchema>;try{bundle=bundleSchema.parse(JSON.parse(raw));}catch{throw new TaskStoreError("corrupt","Invalid cold export; originals preserved");}if(bundle.id!==id||bundle.snapshot.archives.length||bundle.snapshot.tasks.some(t=>t.armed||!["resolved","cancelled","expired"].includes(t.state))||bundle.snapshot.occurrences.some(o=>!o.resolution)||bundle.snapshot.intents.some(i=>["pending","unknown"].includes(i.state)||i.temp_cleanup_pending)||bundle.snapshot.leases.some(l=>l.state==="active"))throw new TaskStoreError("corrupt","Invalid terminal cold export");
+  const snapshot=bundle.snapshot,entry={id,hash:sha(raw),actor,at:Date.now(),task_ids:snapshot.tasks.map(t=>t.id),intent_keys:snapshot.intents.map(i=>archiveIntentKey(i.actor,i.idempotency_key)),owner_domains:[...new Set([...snapshot.tasks.flatMap(t=>t.owner_domains),...snapshot.proposals.flatMap(p=>p.required_domains),...snapshot.events.flatMap(e=>e.owner_domains),...snapshot.sources.flatMap(s=>s.owner_domains)])]};
+  // Validate the same indexed format used by ordinary reads.
+  await readTaskArchive(path,entry);result.push({entry,snapshot});
+ }return result;
+}

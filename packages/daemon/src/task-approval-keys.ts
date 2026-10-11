@@ -14,6 +14,7 @@ const domains = z.array(id).min(1).max(32).refine(a => new Set(a).size === a.len
 export const taskTargetSchema = z.strictObject({ id, root: z.string().min(1).max(4096), path: z.string().min(1).max(4096), owner_domains: domains,
   sensitivity: z.enum(["public", "private", "restricted"]), adapter: z.literal("local-artifact-v1") });
 export const approvalRegistrySchema = z.strictObject({ schema_version: z.literal(1), revision: z.number().int().nonnegative().safe(), protected_boundary: z.boolean(),
+  key_storage_roots:z.array(z.string().min(1).max(4096)).max(64).optional(),
   keys: z.array(z.strictObject({ id, domain: id, public_key: z.string().max(4096), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })).max(32),
   targets: z.array(taskTargetSchema).max(100) }).refine(r => new Set(r.keys.map(k => k.domain)).size === r.keys.length && new Set(r.keys.map(k => k.id)).size === r.keys.length && new Set(r.targets.map(t => t.id)).size === r.targets.length);
 export type ApprovalRegistry = z.infer<typeof approvalRegistrySchema>;

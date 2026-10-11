@@ -1,7 +1,7 @@
 import { authenticateTask, requireTaskOwner, requireTaskDomains } from "../task-auth.js";
 import { taskIdentitySchema } from "../task-schema.js";
 /** Owner CLI channel. Unlock never accepts argv/env/stdin passphrases. */
-import { open, mkdir } from "node:fs/promises";
+import { open, mkdir, realpath } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { newOwnerKey, unlockOwnerKey, privateJson, readApprovalRegistry, approvalRegistryPath, approvalRegistrySchema, bytesHash, signTaskApproval, actionHash, registryHash } from "../task-approval-keys.js";
@@ -38,6 +38,7 @@ export async function taskOwnerKeys(words: string[]) {
     const actual = registry.keys.find(k => k.domain === domain);
     if (actual?.fingerprint !== previous?.fingerprint) throw Object.assign(new Error("Domain key changed concurrently"), { code: "conflict" });
     registry.protected_boundary = false;
+    registry.key_storage_roots=[...new Set([...(registry.key_storage_roots??[]),await realpath(dirname(resolve(destination)))])];
     registry.keys = registry.keys.filter(k => k.domain !== domain); registry.keys.push({ id: randomUUID(), domain, public_key: envelope.public_key, fingerprint: bytesHash(envelope.public_key) }); registry.revision++;
     await atomicWrite(path, JSON.stringify(approvalRegistrySchema.parse(registry)), ownership);
   }, { strictLocal: true });

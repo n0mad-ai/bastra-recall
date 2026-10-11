@@ -27,7 +27,7 @@ export function taskFailure(error: unknown): { status: number; body: { error: st
   const code = Object.hasOwn(statuses, reported) ? reported : "unavailable";
   const status = statuses[code] ?? 503;
   const detail = (error as {reason?:string})?.reason;
-  const reason = ["calendar_gap","recurrence_limit_required","snooze_past","owner_declined"].includes(detail??"") ? detail : undefined;
+  const reason = ["calendar_gap","recurrence_limit_required","snooze_past","owner_declined","targets_syntax","target_path_missing","target_boundary","target_protected"].includes(detail??"") ? detail : undefined;
   return { status, body: { ...(reason?{reason}:{}), error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
 }
 export async function callTaskMcp(name: TaskCrudOperation, input: unknown,

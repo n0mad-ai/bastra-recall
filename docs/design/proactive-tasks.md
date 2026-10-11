@@ -646,3 +646,18 @@ Task HTTP requires the shared loopback Host predicate in addition to mapped bear
 and existing Origin gate. CLI reason codes are bounded, no raw Zod/filesystem data;
 UI terminal controls are disabled, exact before/after text shown before signature,
 full signed binding remains inspectable. Global/per-task source budgets are visible.
+
+P9c review correction: recover --lock is admitted by the central flag table and
+covered through the real compiled CLI/PTY for known-live rejection, unknown-owner
+quarantine and default-No. Registration resolves the actual root before consent;
+fixed denials cover task/key directories (key_storage_roots is optional private
+registry metadata populated on enrollment), home .bastra, configured vault, agent/
+hook/service configuration, shell profiles and any root encompassing protected
+locations. The explicitly chosen narrow --root is the allowed work directory;
+outside current cwd it receives a clear warning. Owner update/remove stop execution,
+reset declaration and change registry revision, never renew proofs. Missing paths,
+syntax, refusal and task-lock errors have specific bounded German feedback.
+Backup recovery declares potential loss of newer changes, validates private cold
+exports, rebuilds missing indexes and unions spent IDs/fence maxima from readable
+original and validated exports. Active restored terminal history can coexist with
+its archive; no identity reuse or hidden deletion. Corrupt exports fail closed.

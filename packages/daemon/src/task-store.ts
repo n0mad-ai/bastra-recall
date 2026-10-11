@@ -1,4 +1,4 @@
-import { validateTaskArchivePrune } from "./task-archive.js";
+import { discoverTaskArchiveExports,validateTaskArchivePrune } from "./task-archive.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
@@ -209,12 +209,21 @@ export async function transactTaskStore(path: string, expectedRevision: Pick<Tas
 }
 
 /** Explicit recovery only; invalid backups cannot replace recoverable originals. */
-export async function recoverTaskStore(path: string, actor: string, authorize?: (snapshot:TaskStore)=>Promise<void>): Promise<{ store: TaskStore; quarantine: string | null }> {
+export async function recoverTaskStore(path: string, actor: string, authorize?: (snapshot:TaskStore)=>Promise<void>): Promise<{ store: TaskStore; quarantine: string | null; changes_may_be_missing:true; recovered_archive_exports:number; original_readable:boolean }> {
   return withPathLock(path, async assertOwnership => {
     let backup: TaskStore;
     try { backup = decodeTaskStore(await readFile(`${path}.backup`, "utf8")); }
     catch { throw new TaskStoreError("invalid_backup", "backup is absent or invalid; original preserved"); }
     await authorize?.(backup);
+    let current:TaskStore|undefined;try{current=decodeTaskStore(await readFile(path,"utf8"));}catch{/* retain damaged original in quarantine */}
+    if(current)await authorize?.(current);
+    const cold=await discoverTaskArchiveExports(path,actor);let recoveredArchiveExports=0;
+    for(const {entry,snapshot} of cold){await authorize?.({...snapshot,archives:[entry]});const known=backup.archives.find(a=>a.id===entry.id)??current?.archives.find(a=>a.id===entry.id);
+      if(known&&known.hash!==entry.hash)throw new TaskStoreError("corrupt","Indexed archive differs; original preserved");
+      if(!backup.archives.some(a=>a.id===entry.id)){backup.archives.push(known??entry);recoveredArchiveExports++;}
+      backup.consumed_approval_ids=[...new Set([...backup.consumed_approval_ids,...snapshot.consumed_approval_ids])];backup.fencing_counter=Math.max(backup.fencing_counter,snapshot.fencing_counter);
+    }
+    if(current){for(const entry of current.archives)if(!backup.archives.some(a=>a.id===entry.id))throw new TaskStoreError("corrupt","Current archive export missing; original preserved");backup.consumed_approval_ids=[...new Set([...backup.consumed_approval_ids,...current.consumed_approval_ids])];backup.fencing_counter=Math.max(backup.fencing_counter,current.fencing_counter);}
     backup.controls.execution_stopped=true;
     let quarantine: string | null = `${path}.corrupt-${randomUUID()}`;
     try {
@@ -223,7 +232,7 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
       try { await original.sync(); } finally { await original.close(); }
     }
     catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") quarantine = null; else throw err; }
-    backup.recovery_history.push({ id: randomUUID(), at: Date.now(), from_revision: backup.revision, actor, reason: "Explicit backup recovery; original quarantined when present" });
+    backup.recovery_history.push({ id: randomUUID(), at: Date.now(), from_revision: backup.revision, actor, reason: `Explicit older backup recovery; newer changes may be missing; original quarantined; ${recoveredArchiveExports} cold archive indexes recovered` });
     backup.revision++;
     backup.recovery_epoch = randomUUID(); // pre-recovery revision tokens cannot match
     for (const task of backup.tasks) {
@@ -235,7 +244,7 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
     if (Buffer.byteLength(payload) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "recovery snapshot exceeds hard limit; original preserved");
     await atomicWrite(path, payload, assertOwnership);
     publishTaskSnapshot(path, cleaned);
-    return { store: cleaned, quarantine };
+    return { store: cleaned, quarantine, changes_may_be_missing:true,recovered_archive_exports:recoveredArchiveExports,original_readable:!!current };
   }, { strictLocal: true });
 }
 
