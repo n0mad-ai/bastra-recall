@@ -1,3 +1,4 @@
+import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
 import { randomUUID } from "node:crypto";
@@ -93,22 +94,22 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
     throw new TaskStoreError("conflict", "fences and permanently spent approval IDs cannot go backwards");
   for (const old of before.proposals) {
     const row = after.proposals.find(p => p.id === old.id);
-    if (!row || JSON.stringify({ ...row, status: old.status }) !== JSON.stringify(old) || (old.status !== "prepared" && row.status !== old.status))
+    if (!row || canonicalTaskValue({ ...row, status: old.status }) !== canonicalTaskValue(old) || (old.status !== "prepared" && row.status !== old.status))
       throw new TaskStoreError("conflict", "exact proposal binding is immutable");
   }
   for (const old of before.leases) {
     const row = after.leases.find(l => l.id === old.id);
-    if (!row || JSON.stringify({ ...row, state: old.state }) !== JSON.stringify(old) || (old.state !== "active" && row.state !== old.state))
+    if (!row || canonicalTaskValue({ ...row, state: old.state }) !== canonicalTaskValue(old) || (old.state !== "active" && row.state !== old.state))
       throw new TaskStoreError("conflict", "lease identity/deadline/fence cannot renew or revive");
   }
   for (const old of before.challenges) {
     const row = after.challenges.find(c => c.id === old.id);
-    if (!row || JSON.stringify({ ...row, consumed_at: old.consumed_at }) !== JSON.stringify(old) || (old.consumed_at !== undefined && row.consumed_at !== old.consumed_at))
+    if (!row || canonicalTaskValue({ ...row, consumed_at: old.consumed_at }) !== canonicalTaskValue(old) || (old.consumed_at !== undefined && row.consumed_at !== old.consumed_at))
       throw new TaskStoreError("conflict", "challenge binding/consumption is immutable");
   }
   for (const old of before.approvals) {
     const row = after.approvals.find(a => a.id === old.id);
-    if (!row || JSON.stringify({ ...row, revoked_at: old.revoked_at }) !== JSON.stringify(old) || (old.revoked_at !== undefined && row.revoked_at !== old.revoked_at))
+    if (!row || canonicalTaskValue({ ...row, revoked_at: old.revoked_at }) !== canonicalTaskValue(old) || (old.revoked_at !== undefined && row.revoked_at !== old.revoked_at))
       throw new TaskStoreError("conflict", "approval proof and revocation are immutable");
   }
   for (const old of before.tasks) {
@@ -116,9 +117,9 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
     if (!next) throw new TaskStoreError("conflict", "task deletion requires an explicit archive path");
     if (next.revision < old.revision || next.generation < old.generation)
       throw new TaskStoreError("conflict", "task revision/generation cannot go backwards");
-    if (JSON.stringify(next.history.slice(0, old.history.length)) !== JSON.stringify(old.history))
+    if (canonicalTaskValue(next.history.slice(0, old.history.length)) !== canonicalTaskValue(old.history))
       throw new TaskStoreError("conflict", "task audit history is append-only");
-    if (JSON.stringify(next) === JSON.stringify(old)) continue;
+    if (canonicalTaskValue(next) === canonicalTaskValue(old)) continue;
     if (next.revision <= old.revision || next.history.length <= old.history.length)
       throw new TaskStoreError("conflict", "task changes require a newer revision and appended audit");
     const rearm = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "rearm";
@@ -161,7 +162,7 @@ export async function transactTaskStore(
     await mutate(draft);
     const next = cleanStore(draft);
     assertTaskProgress(store, next);
-    if (JSON.stringify(next) === JSON.stringify(store)) return store;
+    if (canonicalTaskValue(next) === canonicalTaskValue(store)) return store;
     next.revision = store.revision + 1;
     next.recovery_epoch = store.recovery_epoch;
     if (kind === "normal" && next.tasks.some(t => t.history.length > 9900))

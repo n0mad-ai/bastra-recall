@@ -1,3 +1,4 @@
+import { canonicalTaskValue } from "./task-canonical.js";
 /** Offline owner-held keys; transport credentials are never approval proof. */
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
@@ -16,11 +17,7 @@ export const approvalRegistrySchema = z.strictObject({ schema_version: z.literal
   keys: z.array(z.strictObject({ id, domain: id, public_key: z.string().max(4096), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })).max(32),
   targets: z.array(taskTargetSchema).max(100) }).refine(r => new Set(r.keys.map(k => k.domain)).size === r.keys.length && new Set(r.keys.map(k => k.id)).size === r.keys.length && new Set(r.targets.map(t => t.id)).size === r.targets.length);
 export type ApprovalRegistry = z.infer<typeof approvalRegistrySchema>;
-export function canonicalAction(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalAction).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonicalAction(v)}`).join(",")}}`;
-  return JSON.stringify(value);
-}
+export const canonicalAction = canonicalTaskValue;
 export const actionHash = (value: unknown) => createHash("sha256").update(canonicalAction(value)).digest("hex");
 export const bytesHash = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 export const registryHash = (registry: ApprovalRegistry) => actionHash(["task-registry-v1", registry]);

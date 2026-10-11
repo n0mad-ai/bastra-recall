@@ -1,3 +1,4 @@
+import { canonicalTaskValue } from "./task-canonical.js";
 /** C-096: revision-bound reconsideration, never automatic decision inversion. */
 import { z } from "zod";
 import matter from "gray-matter";
@@ -6,7 +7,7 @@ import { authenticateTask, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema, type Task, type TaskStore } from "./task-schema.js";
 import { TaskStoreError, cleanText, transactTaskStore } from "./task-store.js";
 import type { TaskServiceContext } from "./task-service.js";
-const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const digest = (value: unknown) => createHash("sha256").update(canonicalTaskValue(value)).digest("hex");
 export const taskReconsiderInput = z.strictObject({
   id: taskIdentitySchema, expected_revision: z.string().regex(/^[a-z0-9._-]+:\d+$/), occurrence_id: taskIdentitySchema,
   choice: z.enum(["keep", "change", "snooze", "stop"]), until: z.number().int().nonnegative().safe().optional(),
