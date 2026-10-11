@@ -73,18 +73,18 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_feature_commit": "4bc482fbb9b58b45315ddf2c2614ed0d719cd114",
-      "latest_observed_runs": 27,
-      "latest_required_runs": 72,
+      "latest_full_segment_feature_commit": "465a6800bbb4457ec337335574a3e3581588e744",
+      "latest_observed_runs": 30,
+      "latest_required_runs": 75,
       "latest_passed": 24,
-      "latest_failed": 3,
+      "latest_failed": 6,
       "latest_not_evaluable": 0,
       "remaining_runs": 45,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "failed: automatic startup/contact/polling absent in all 3 repetitions; returning file/Git A,B,A,B fixed (4 events each in 3/3 repetitions)",
-      "remaining_automatic_integration": "Explicit builder obligation for P5; this control remains failed until actual isolated startup/contact/polling evidence passes",
-      "no_retroactive_change": "Prior 18/21 mechanical passes and original expanded 21 pass/6 fail segment preserved with original hashes"
+      "functional_status": "failed: automatic evaluation absent (3/3) and distinct source/key tuples collapse across owner domains (3/3); returning file/Git transitions fixed (3/3)",
+      "corrected_p4_head_check": "84a241ed focused tuple replay prepared; P5/P8 pending",
+      "immutable_prior_segments": "Original P2/P3 successes and expanded review failures preserved separately"
     },
     "runtime_segments": [
       {
@@ -242,6 +242,50 @@
           "expected_events_per_source": 4,
           "returning_source_replays_passed": 3,
           "automatic_replays_failed": 3
+        }
+      },
+      {
+        "started_at": "2026-10-11T10:05:44.372Z",
+        "eval_commit": "906a8e8a4b9346f613453f1ddede58a3849aeffd",
+        "runner_sha256": "314cc4f7ea57631257f42d5330c0dcbe5b02015452298a811ad2c4ec080e369f",
+        "driver_sha256": "a488ddf094e93fddfe8d9d09aafe93dc7a97c27d09ab6eb6d8cefc51f10ba2d7",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "failed",
+        "expected_runs": 75,
+        "observed_runs": 30,
+        "missing_runs": 45,
+        "passed": 24,
+        "failed": 6,
+        "not_evaluable": 0,
+        "feature_commit": "465a6800bbb4457ec337335574a3e3581588e744",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 7,
+            "sha256": "15ea244b17bf83e3fd4e40b1aa80791acd79b7605a3f4d40a25f65ee97bcf20f"
+          },
+          {
+            "issue": 598,
+            "registration_version": 6,
+            "sha256": "4fc128df9294c61182ece7770b96c4e6e595f12707060a83664aa4a2b9918a90"
+          },
+          {
+            "issue": 410,
+            "registration_version": 6,
+            "sha256": "f360a5704d73f47cb28b6417967f43f634f8023ceff3c83081a0959982f90adc"
+          }
+        ],
+        "private_result_sha256": "659397e3eb7365e3028f863d8cb5e82f944125f4f3c1e5aca0287340a7cf0931",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0,
+        "review_findings": {
+          "automatic_replays_failed": 3,
+          "returning_source_replays_passed": 3,
+          "tuple_boundary_replays_failed": 3,
+          "tuple_submissions_accepted_per_replay": 2,
+          "tuple_events_stored_per_replay": 1,
+          "tuple_distinct_event_ids_per_replay": 1,
+          "foreign_domain_receipt_reused": true
         }
       }
     ]
