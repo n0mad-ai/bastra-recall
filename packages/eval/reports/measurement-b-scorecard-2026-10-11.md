@@ -8,7 +8,7 @@ The external baseline is production retrieval from clean v1.1.0 with embeddingge
 |---|---|---|
 | Shipped default | Complete external retrieval baseline | #1166 / #1081 |
 | Correction durability | Synthetic BM25 baseline and file-order control | #1160 / #644 |
-| Chunk scoring | Full lexical result registered; dense run in progress | #1168 / #1082 |
+| Chunk scoring | Full lexical and true max-sim results registered; M1/gold set/storage decision pending | #1168 / #1082 |
 | Draft CSLS | Unlabelled diagnostic; precision/adoption not evaluable | #1165 / #1109 |
 | Test-log contamination | Due read-only recount: zero matches, zero cleanup proposed | #1161 / #686 |
 | MCP scope filtering | Due shadow week; enforce utility/safety not evaluable | #1162 / #421 |

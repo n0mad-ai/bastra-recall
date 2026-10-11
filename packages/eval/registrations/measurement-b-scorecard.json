@@ -72,19 +72,21 @@
     },
     {
       "issue": 1082,
-      "status": "lexical_complete_dense_in_progress",
+      "status": "complete_lexical_and_true_maxsim_external_measurement",
       "pr": 1168,
       "registration": "chunk-maxsim.json",
       "results": "chunk-maxsim-lexical-results.json",
       "n_lexical": 500,
       "primary": "true maximum over chunk vectors versus shipped hybrid; lexical counterpart separately",
       "remaining": [
-        "complete dense run",
         "main gold set",
         "M1",
         "production storage decision"
       ],
-      "gates_passed": []
+      "gates_passed": [],
+      "n_dense": 500,
+      "dense_results": "chunk-maxsim-dense-results.json",
+      "paired_results": "chunk-maxsim-paired-results.json"
     },
     {
       "issue": 1109,
