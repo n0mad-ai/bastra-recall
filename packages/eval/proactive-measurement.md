@@ -4,7 +4,9 @@ Measurement PR [#1158](https://github.com/n0mad-ai/bastra-recall/pull/1158), mil
 [#30](https://github.com/n0mad-ai/bastra-recall/milestone/30). Protocols were committed
 before observations in `c65394bf`. Later amendments pin reviewed P0/P1/P2 contracts,
 clarify three total repetitions, and register six P1/P2 mechanics cases in `22e62f25`
-before any runtime run. Longitudinal/human thresholds remain unchanged.
+before any runtime run. Independent-review controls were added in `cf2b64e4`
+BEFORE those new runs (#402 v5, #598/#410 v4), preserving the earlier protocols.
+Longitudinal/human thresholds remain unchanged.
 
 - [#402 trigger/delivery](registrations/proactive-402.json): 14-day minimum and
   labelled due/non-trigger denominators. Delivery, acknowledgement and resolution
@@ -17,14 +19,25 @@ before any runtime run. Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix has 22 cases, three repetitions each (66 required runs):
-14 original build-plan rows, migration/containment rows, and six new P1/P2 cases.
+The registered matrix now has 24 cases, three repetitions each (72 required runs):
+14 original build-plan rows, migration/containment rows, six P1/P2 cases and two
+P3 review controls.
 The observation interface is not a competing task/API/storage schema.
 
 | Pinned clean feature head | Available cases | Replays passed | Full coverage |
 |---|---:|---:|---|
 | P2c #1170 `4041932736e24d4c78365fa9f3728376c12ca26f` | 6 | 18/18 | 18/66, pending |
 | P3 #1171 `e78ff4f4808bafcc942759c69f584cf72d58f0b2` | 7 | 21/21 | 21/66, pending |
+
+The first two rows above are the original mechanics-only registrations. They did
+not test automatic start/contact/poll evaluation or returning A,B,A,B sources.
+Under the new review registration, unchanged P3 e78ff4f4 produced **21 passing
+and 6 failing replays / 27 observed of 72 required**: every automatic phase had
+0 instead of 1 firing; file and Git each recorded 2 instead of 4 events. Both
+controls failed all three repetitions. #402/#410 have observed functional failures;
+#598 human confirmation remains pending. Corrected 4bc482fb is being rerun; builder
+handover defers automatic integration to P5, so an internal engine alone cannot
+pass that control. Earlier mechanical passes are preserved, not relabelled.
 
 Each revision is a separate segment; repeated observations across revisions are
 not pooled into an empirical error rate. No human or longitudinal window started.
@@ -96,7 +109,8 @@ coverage. Preserve earlier raw artifacts and code segments. Stop all created
 processes in `finally`. Synthetic signing keys later test mechanics, not a real
 human approval or protected owner key boundary.
 
-All three issue verdicts remain pending until the respective registered human,
-longitudinal and independent-review evidence is adequate. Consent and actual
+Current observed invariant failures are reported as failed for #402/#410; the
+unstarted human study stays pending. Adequate registered human,
+longitudinal and independent-review evidence is still required. Consent and actual
 opportunities are required before starting those windows; elapsed time cannot
 change their verdicts.

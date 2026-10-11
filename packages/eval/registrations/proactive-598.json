@@ -74,16 +74,17 @@
     "window_version": null,
     "public_aggregate": {
       "latest_feature_commit": "e78ff4f4808bafcc942759c69f584cf72d58f0b2",
-      "latest_observed_runs": 21,
-      "latest_required_runs": 66,
+      "latest_observed_runs": 27,
+      "latest_required_runs": 72,
       "latest_passed": 21,
-      "latest_failed": 0,
+      "latest_failed": 6,
       "latest_not_evaluable": 0,
       "remaining_runs": 45,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_only": "P1/P2 auth/CRUD/restart/concurrency/recovery and P3 DST/recurrence; separate revisions, no pooled error-rate estimate",
-      "unmeasured": "P5 delivery, P4/P6 premise/freshness, P7/P8/P9/P10 action/recovery integration, human usability and longitudinal utility remain pending"
+      "functional_status": "failed: automatic evaluation absent and returning file/Git transitions deduplicated; prior 21 mechanical passes did not cover these properties",
+      "corrected_head": "4bc482fb independent rerun in progress; automatic integration deferred to P5 in builder handover",
+      "review_supplement_registered_before_run": "cf2b64e4; original earlier registrations/reports remain in immutable commits and private hash manifests"
     },
     "runtime_segments": [
       {
@@ -157,6 +158,48 @@
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0,
         "available_case_verdict": "passed"
+      },
+      {
+        "started_at": "2026-10-11T09:20:58.031Z",
+        "eval_commit": "61efb6d2c2279b075808a0aeb09b707ab4ac1968",
+        "runner_sha256": "7cace659697a4a7a487ef87e971f680761ada5dfd1194ab642f25d019e280b16",
+        "driver_sha256": "f7b8b892b5c26bf8d320efda9bdf7b97abbbb8ebce9d6747a391a1ff3b593d2d",
+        "dataset_sha256": "3a8b899ee779cf5b286b43fdefd679294fafa7b7aaf781244aa082aa60bfc6ef",
+        "functional_verdict": "failed",
+        "expected_runs": 72,
+        "observed_runs": 27,
+        "missing_runs": 45,
+        "passed": 21,
+        "failed": 6,
+        "not_evaluable": 0,
+        "feature_commit": "e78ff4f4808bafcc942759c69f584cf72d58f0b2",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 5,
+            "sha256": "455913cfcbbcf2243c9c0f97b062cc996b16fe5bb39d852aae6d52f7d3691cd8"
+          },
+          {
+            "issue": 598,
+            "registration_version": 4,
+            "sha256": "cdb9e145552b6413a06657760a665c187b18484ec929d3bd6a5f00330fe93c06"
+          },
+          {
+            "issue": 410,
+            "registration_version": 4,
+            "sha256": "bd3b14da912368b2719b088362e6316d6af9eaafe77f2c24fce1802eaf915cf2"
+          }
+        ],
+        "private_result_sha256": "1a21006049ce50759a79fa181d02b8fa459cfd1ff4f864bf38dd99da8c0c86a3",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0,
+        "review_findings": {
+          "automatic_start_contact_poll": "0 firings instead of 1 in each phase, all 3 repetitions",
+          "returning_file_source_events": 2,
+          "returning_git_source_events": 2,
+          "expected_events_per_source": 4,
+          "failing_review_replays": 6
+        }
       }
     ]
   },
