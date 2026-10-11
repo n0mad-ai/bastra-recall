@@ -91,7 +91,7 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
   }
 }
 
-async function atomicWrite(path: string, payload: string, assertOwnership: () => void): Promise<void> {
+export async function atomicWrite(path: string, payload: string, assertOwnership: () => void): Promise<void> {
   const tmp = `${path}.${randomUUID()}.tmp`;
   const handle = await open(tmp, "wx", 0o600);
   try {

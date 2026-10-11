@@ -7,9 +7,11 @@ export const TASK_MAX_ROWS = 1000;
 const instant = z.number().int().nonnegative().safe();
 const revision = z.number().int().nonnegative().safe();
 const id = z.string().min(1).max(160);
+/** Identity fields are opaque machine IDs, never prose, paths or credentials. */
+export const taskIdentitySchema = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,95}$/);
 const text = z.string().min(1).max(4096);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
-const domains = z.array(id).min(1).max(32).refine(v => new Set(v).size === v.length, "duplicate owner domains");
+const domains = z.array(taskIdentitySchema).min(1).max(32).refine(v => new Set(v).size === v.length, "duplicate owner domains");
 
 export const taskReferenceSchema = z.strictObject({
   source_id: id, id, revision: id, hash: hash.optional(),
@@ -36,8 +38,8 @@ export const taskSchema = z.strictObject({
   id, revision, generation: revision,
   created_at: instant, updated_at: instant,
   original_request: text, request_source: id, request_reference: id.optional(),
-  creator: id, actor: id, owner_domains: domains,
-  scope: z.strictObject({ kind: z.enum(["personal", "project", "team"]), name: id }),
+  creator: taskIdentitySchema, actor: taskIdentitySchema, owner_domains: domains,
+  scope: z.strictObject({ kind: z.enum(["personal", "project", "team"]), name: taskIdentitySchema }),
   sensitivity: z.enum(["public", "private", "restricted"]),
   goal: text, resolution_condition: text,
   state: z.enum(["pending", "due", "snoozed", "resolved", "cancelled", "expired"]),
@@ -67,7 +69,7 @@ export const taskSchema = z.strictObject({
   next_check_at: instant.optional(), snoozed_until: instant.optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
   history: z.array(z.strictObject({
-    at: instant, actor: id, operation: id,
+    at: instant, actor: taskIdentitySchema, operation: id,
     before_revision: revision, after_revision: revision, reason: text,
   })).max(10000),
 }).superRefine((task, ctx) => {
@@ -87,7 +89,7 @@ export const taskSchema = z.strictObject({
 
 const eventSchema = z.strictObject({
   sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
-  actor: id, owner_domains: domains, observed_at: instant,
+  actor: taskIdentitySchema, owner_domains: domains, observed_at: instant,
   state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
   value: text,
 });
@@ -96,8 +98,8 @@ const occurrenceSchema = z.strictObject({
   id, task_id: id, task_revision: revision, generation: revision,
   event_key: id, due_at: instant, why: text, missed_count: revision,
   attempts: z.array(z.strictObject({ at: instant, client: id, outcome: id })).max(100),
-  acknowledgement: z.strictObject({ at: instant, actor: id, proof_id: id }).optional(),
-  resolution: z.strictObject({ at: instant, actor: id, reason: text }).optional(),
+  acknowledgement: z.strictObject({ at: instant, actor: taskIdentitySchema, proof_id: id }).optional(),
+  resolution: z.strictObject({ at: instant, actor: taskIdentitySchema, reason: text }).optional(),
 });
 
 // Action records become strict, named schemas in P7 before any action API exists.
