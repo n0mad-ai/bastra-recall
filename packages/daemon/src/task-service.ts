@@ -1,3 +1,4 @@
+import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
 import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
 import type { ApprovalRegistry } from "./task-approval-keys.js";
@@ -36,7 +37,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
@@ -76,12 +77,13 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; executionHost?: boolean; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (isTaskExecution(operation)) return executeTaskAction(ctx, authorization, operation, raw);
   if (operation === "task_status") return taskStatus(ctx, authorization, raw);
   if (operation === "task_controls") return taskControls(ctx, authorization, raw);
   if (Object.hasOwn(TASK_ACTION_INPUTS, operation)) return callTaskAction(ctx, authorization, operation as keyof typeof TASK_ACTION_INPUTS, raw);
@@ -195,7 +197,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   return view(store, findTask(store, input.id, principal));
 }
 
-export const TASK_INPUT_SCHEMAS = { task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
+export const TASK_INPUT_SCHEMAS = { ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,

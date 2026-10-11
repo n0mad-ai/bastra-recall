@@ -71,7 +71,7 @@ export interface BackgroundJobDeps {
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
-  startProactiveTaskJob(defaultTaskContext(deps.toolDeps));
+  startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
   startVaultReconcile(deps.vault);
   startForwarderSweep();
   startMintSchedule(deps);

@@ -58,7 +58,7 @@ export function dispatchApiSurface(
     if (sameOrigin && reqOrigin) sendCors(res, reqOrigin);
     if (reqOrigin && !allowedOrigin && !sameOrigin) { sendJson(res, 403, { error: "origin not allowed" }); return true; }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-    return dispatchTaskHttp(req, res, method, url, defaultTaskContext(toolDeps));
+    return dispatchTaskHttp(req, res, method, url, defaultTaskContext(toolDeps, true));
   }
 
   const gate = gateApiRequest({

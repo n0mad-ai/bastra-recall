@@ -23,13 +23,18 @@ export function decodeTaskStore(raw: string): TaskStore {
   if (Buffer.byteLength(raw) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "task snapshot exceeds its hard limit; original preserved");
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new TaskStoreError("corrupt", "invalid task JSON; original preserved"); }
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1 && value.schema_version !== 2)
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1 && value.schema_version !== 2 && value.schema_version !== 3)
     throw new TaskStoreError("unsupported_version", "unsupported task schema; original preserved");
   if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 1) {
     // v1 was strictly empty for actions. Never migrate unchecked capabilities.
     const legacy = value as Record<string, unknown>;
     if (["proposals", "challenges", "approvals", "leases", "intents", "receipts"].some(k => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length)) throw new TaskStoreError("corrupt", "v1 actions must be empty");
     value = { ...legacy, schema_version: 2 };
+  }
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 2) {
+    const legacy = value as Record<string, unknown>;
+    if (["intents", "receipts"].some(k => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length)) throw new TaskStoreError("corrupt", "v2 execution state must be empty");
+    value = { ...legacy, schema_version: 3 };
   }
   const parsed = taskStoreSchema.safeParse(value);
   if (!parsed.success) throw new TaskStoreError("corrupt", "invalid task schema or references; original preserved");
@@ -91,6 +96,11 @@ function cleanStore(store: TaskStore): TaskStore {
 function assertTaskProgress(before: TaskStore, after: TaskStore): void {
   if (after.fencing_counter < before.fencing_counter || before.consumed_approval_ids.some(id => !after.consumed_approval_ids.includes(id)))
     throw new TaskStoreError("conflict", "fences and permanently spent approval IDs cannot go backwards");
+  for (const old of before.receipts) if (JSON.stringify(after.receipts.find(r => r.id === old.id)) !== JSON.stringify(old)) throw new TaskStoreError("conflict", "receipts immutable");
+  for (const old of before.intents) {
+    const row = after.intents.find(i => i.id === old.id);
+    if (!row || JSON.stringify({ ...row, state: old.state, receipt_id: old.receipt_id }) !== JSON.stringify(old) || (old.state !== "pending" && row.state !== old.state)) throw new TaskStoreError("conflict", "intent binding/outcome immutable");
+  }
   for (const old of before.proposals) {
     const row = after.proposals.find(p => p.id === old.id);
     if (!row || JSON.stringify({ ...row, status: old.status }) !== JSON.stringify(old) || (old.status !== "prepared" && row.status !== old.status))
@@ -147,39 +157,49 @@ export async function atomicWrite(path: string, payload: string, assertOwnership
 }
 
 export type TaskMutationKind = "normal" | "control";
-/** Caller cannot execute effects here: only a validated, revisioned snapshot. */
-export async function transactTaskStore(
-  path: string, expectedRevision: Pick<TaskStore, "revision" | "recovery_epoch"> | undefined,
-  mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal",
-): Promise<TaskStore> {
+/** One strict local lock spans durable intent, target CAS and receipt commits. */
+export async function withTaskStoreGuard<T>(path: string, run: (guard: {
+  snapshot: () => TaskStore; assertOwnership: () => void;
+  commit: (mutate: (store: TaskStore) => void | Promise<void>, kind?: TaskMutationKind) => Promise<TaskStore>;
+}) => Promise<T>): Promise<T> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   return withPathLock(path, async assertOwnership => {
-    const store = await readTaskStore(path);
+    let store = await readTaskStore(path);
+    const commit = async (mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal"): Promise<TaskStore> => {
+      const draft = structuredClone(store);
+      await mutate(draft);
+      const next = cleanStore(draft);
+      assertTaskProgress(store, next);
+      if (JSON.stringify(next) === JSON.stringify(store)) return structuredClone(store);
+      next.revision = store.revision + 1;
+      next.recovery_epoch = store.recovery_epoch;
+      if (kind === "normal" && next.tasks.some(t => t.history.length > 9900))
+        throw new TaskStoreError("capacity", "task history reserve reached; control operations remain available");
+      const validated = taskStoreSchema.parse(next);
+      const payload = JSON.stringify(validated);
+      const limit = kind === "control" ? TASK_MAX_BYTES : TASK_MAX_BYTES * 0.75;
+      if (Buffer.byteLength(payload) > limit)
+        throw new TaskStoreError("capacity", "task capacity reached; pending work preserved");
+      // Preserve last valid snapshot before replacing it; never back up corruption.
+      // Absence has no recoverable predecessor; do not advertise an empty backup.
+      let present = true;
+      try { await stat(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
+      if (present) await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
+      await atomicWrite(path, payload, assertOwnership);
+      publishTaskSnapshot(path, validated);
+      store = validated; return structuredClone(validated);
+    };
+    return run({ snapshot: () => structuredClone(store), assertOwnership, commit });
+  }, { strictLocal: true });
+}
+export async function transactTaskStore(path: string, expectedRevision: Pick<TaskStore, "revision" | "recovery_epoch"> | undefined,
+  mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal"): Promise<TaskStore> {
+  return withTaskStoreGuard(path, async guard => {
+    const store = guard.snapshot();
     if (expectedRevision !== undefined && (store.revision !== expectedRevision.revision || store.recovery_epoch !== expectedRevision.recovery_epoch))
       throw new TaskStoreError("conflict", "task store revision changed");
-    const draft = structuredClone(store);
-    await mutate(draft);
-    const next = cleanStore(draft);
-    assertTaskProgress(store, next);
-    if (JSON.stringify(next) === JSON.stringify(store)) return store;
-    next.revision = store.revision + 1;
-    next.recovery_epoch = store.recovery_epoch;
-    if (kind === "normal" && next.tasks.some(t => t.history.length > 9900))
-      throw new TaskStoreError("capacity", "task history reserve reached; control operations remain available");
-    const validated = taskStoreSchema.parse(next);
-    const payload = JSON.stringify(validated);
-    const limit = kind === "control" ? TASK_MAX_BYTES : TASK_MAX_BYTES * 0.75;
-    if (Buffer.byteLength(payload) > limit)
-      throw new TaskStoreError("capacity", "task capacity reached; pending work preserved");
-    // Preserve last valid snapshot before replacing it; never back up corruption.
-    // Absence has no recoverable predecessor; do not advertise an empty backup.
-    let present = true;
-    try { await stat(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
-    if (present) await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
-    await atomicWrite(path, payload, assertOwnership);
-    publishTaskSnapshot(path, validated);
-    return validated;
-  }, { strictLocal: true });
+    return guard.commit(mutate, kind);
+  });
 }
 
 /** Explicit recovery only; invalid backups cannot replace recoverable originals. */

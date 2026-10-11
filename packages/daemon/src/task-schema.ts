@@ -1,8 +1,8 @@
 /** Commitment persistence contract (#403); independent of memory/draft schemas. */
-import { proposalSchema, challengeSchema, approvalSchema, leaseSchema } from "./task-action-schema.js";
+import { proposalSchema, challengeSchema, approvalSchema, leaseSchema, intentSchema, receiptSchema } from "./task-action-schema.js";
 import { z } from "zod";
 
-export const TASK_STORE_VERSION = 2;
+export const TASK_STORE_VERSION = 3;
 export const TASK_MAX_BYTES = 4 * 1024 * 1024;
 export const TASK_MAX_ROWS = 1000;
 const instant = z.number().int().nonnegative().safe();
@@ -136,14 +136,13 @@ export const taskSourceSchema = z.strictObject({
 export type TaskSource = z.infer<typeof taskSourceSchema>;
 
 // v2 introduces preparation/signatures/local leases; execution records remain empty.
-const emptyActions = z.array(z.never()).max(0);
 export const taskStoreSchema = z.strictObject({
   schema_version: z.literal(TASK_STORE_VERSION), revision, recovery_epoch: id, fencing_counter: revision, evaluation_cursor: revision.default(0),
   sources: z.array(taskSourceSchema).max(1000).default([]),
   tasks: z.array(taskSchema).max(TASK_MAX_ROWS), events: z.array(eventSchema).max(10000),
   checkpoint: revision, occurrences: z.array(occurrenceSchema).max(10000),
   proposals: z.array(proposalSchema).max(1000), challenges: z.array(challengeSchema).max(10000), approvals: z.array(approvalSchema).max(10000),
-  leases: z.array(leaseSchema).max(1000), intents: emptyActions, receipts: emptyActions,
+  leases: z.array(leaseSchema).max(1000), intents: z.array(intentSchema).max(1000), receipts: z.array(receiptSchema).max(10000),
   consumed_approval_ids: z.array(id).max(10000),
   recovery_history: z.array(z.strictObject({
     id, at: instant, from_revision: revision, actor: id, reason: text,
@@ -153,7 +152,7 @@ export const taskStoreSchema = z.strictObject({
     adapters: z.record(id, z.strictObject({ enabled: z.boolean(), coverage: z.string().max(256) })),
   }),
 }).superRefine((store, ctx) => {
-  for (const rows of [store.tasks, store.events, store.occurrences, store.sources, store.proposals, store.challenges, store.approvals, store.leases]) {
+  for (const rows of [store.tasks, store.events, store.occurrences, store.sources, store.proposals, store.challenges, store.approvals, store.leases, store.intents, store.receipts]) {
     if (new Set(rows.map(row => row.id)).size !== rows.length)
       ctx.addIssue({ code: "custom", message: "duplicate record identity" });
   }
@@ -161,6 +160,8 @@ export const taskStoreSchema = z.strictObject({
   if (store.proposals.some(p => !store.tasks.some(t => t.id === p.task_id)) || store.challenges.some(c => !proposalIds.has(c.proposal_id)) || store.approvals.some(a => !proposalIds.has(a.proposal_id) || !store.challenges.some(c => c.id === a.challenge_id)) || store.leases.some(l => !proposalIds.has(l.proposal_id)))
     ctx.addIssue({ code: "custom", message: "orphan action record" });
   if (new Set(store.consumed_approval_ids).size !== store.consumed_approval_ids.length) ctx.addIssue({ code: "custom", message: "duplicate spent approval" });
+  if (store.intents.some(i => !proposalIds.has(i.proposal_id) || !store.leases.some(l => l.id === i.lease_id) || i.approval_ids.some(id => !store.approvals.some(a => a.id === id))) || store.receipts.some(r => !store.intents.some(i => i.id === r.intent_id)))
+    ctx.addIssue({ code: "custom", message: "orphan intent/receipt" });
   const taskIds = new Set(store.tasks.map(t => t.id));
   if (store.occurrences.some(o => !taskIds.has(o.task_id)))
     ctx.addIssue({ code: "custom", message: "orphan occurrence" });

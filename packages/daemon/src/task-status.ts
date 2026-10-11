@@ -1,8 +1,8 @@
 import { taskBindingHash } from "./task-freshness.js";
-import { taskApprovalStatus } from "./task-actions.js";
+import { TaskApprovalError, taskActionRegistry, taskApprovalStatus } from "./task-actions.js";
 import { z } from "zod";
 import { authenticateTask, requireTaskOwner, requireTaskDomains } from "./task-auth.js";
-import { readTaskStore, transactTaskStore, TaskStoreError } from "./task-store.js";
+import { readTaskStore, transactTaskStore } from "./task-store.js";
 import { taskRuntime } from "./task-runtime.js";
 import { taskIdentitySchema as id } from "./task-schema.js";
 import type { TaskServiceContext } from "./task-service.js";
@@ -24,7 +24,10 @@ export async function taskStatus(ctx: TaskServiceContext, authorization: string 
 }
 export async function taskControls(ctx: TaskServiceContext, authorization: string | undefined, raw: unknown) {
   const input = taskControlsInput.parse(raw), principal = await authenticateTask(authorization, ctx.authPath); requireTaskOwner(principal);
-  if (input.execution_stopped === false && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskStoreError("conflict", "Protected owner configuration required; prepare/notify remain usable");
+  if (input.execution_stopped === false) {
+    const registry = await taskActionRegistry(ctx).catch(error => { if (error.code === "approval_stale") throw error; throw new TaskApprovalError("protected_boundary_required", "Protected owner configuration required; prepare/notify remain usable"); });
+    if (!registry.protected_boundary) throw new TaskApprovalError("protected_boundary_required", "Protected owner configuration required; prepare/notify remain usable");
+  }
   const store = await transactTaskStore(ctx.path, undefined, s => {
     if (input.enabled !== undefined || input.muted !== undefined || input.execution_stopped !== undefined || input.adapter) requireTaskDomains(principal, [...new Set(s.tasks.flatMap(t => t.owner_domains))]);
     for (const key of ["enabled", "muted", "execution_stopped"] as const) if (input[key] !== undefined) s.controls[key] = input[key]!;

@@ -1,7 +1,7 @@
 /** P7 preparation, exact owner proof and local leases. No execution adapter. */
 import { z } from "zod";
 import { randomUUID, randomBytes } from "node:crypto";
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner, type TaskPrincipal } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
@@ -48,7 +48,8 @@ export async function readTaskTarget(registry: ApprovalRegistry, targetId: strin
   if (root !== target.root || !rel || rel.startsWith("..") || isAbsolute(rel) || await realpath(path) !== path) return conflict("Target boundary changed");
   const payload = await boundedTaskRead(path, 1024 * 1024);
   if (payload.includes("\ufffd")) return conflict("Target must be exact UTF-8");
-  return { target, path, payload, hash: bytesHash(payload) };
+  const mode = (await lstat(path)).mode & 0o777;
+  return { target, path, payload, hash: bytesHash(payload), mode };
 }
 function findProposal(store: TaskStore, proposalId: string, principal: TaskPrincipal): Proposal {
   const proposal = store.proposals.find(p => p.id === proposalId);
@@ -72,7 +73,7 @@ export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskS
     || proposal.recovery_epoch !== store.recovery_epoch || proposal.task_binding !== taskBindingHash(task) || registryHash(registry) !== proposal.registry_hash
     || bytesHash(proposal.payload) !== proposal.payload_hash) return fail("approval_stale", "Proposal binding changed");
   for (const source of proposal.source_revisions) if (!store.sources.some(s => s.id === source.id && s.enabled && String(s.revision) === source.revision)) return conflict("Proposal source changed");
-  if ((await readTaskTarget(registry, proposal.target_id)).hash !== proposal.target_hash) return conflict("Target changed; prepare again");
+  if ((await readTaskTarget(registry, proposal.target_id)).hash !== proposal.target_hash) return fail("approval_stale", "Target changed; prepare again");
   if (await taskDecisionStatus(ctx, task)) return conflict("Decision binding changed");
   if (task.evidence.length || (task.schedule.kind === "event" && task.schedule.predicate === "premise")) {
     const verification = task.verification, now = (ctx.now ?? Date.now)();
@@ -169,8 +170,9 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
       result = { proposal, binding_status, preview: { before: target.payload, after: proposal.payload }, ...taskApprovalStatus(ctx, store, proposal, registry) }; return;
     }
     await validateTaskProposal(ctx, store, proposal, registry);
-    const observed = await readTaskTarget(registry, proposal.target_id); if (observed.hash !== proposal.target_hash) return conflict("Target changed; prepare again");
+    const observed = await readTaskTarget(registry, proposal.target_id); if (observed.hash !== proposal.target_hash) return fail("approval_stale", "Target changed; prepare again");
     if (operation === "task_challenge") {
+      if (!store.controls.enabled) return fail("feature_disabled", "Task feature disabled");
       const domain = TASK_ACTION_INPUTS.task_challenge.parse(raw).domain; requireTaskOwner(principal); requireTaskDomains(principal, [domain]);
       if (!proposal.required_domains.includes(domain) || !registry.keys.some(k => k.domain === domain)) return conflict("Owner domain has no enrolled key");
       const c = clock(ctx); if (c.boot_id === "unsupported") return conflict("Boot clock unsupported");

@@ -223,6 +223,8 @@ Client-Kennung. Anlegen ist standardmäßig unscharf, --arm braucht Owner-Rolle.
 Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
   bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
   bastra tasks auth revoke credential-id
+  bastra tasks boundary          Owner erklärt geschützte Grenze; Prozesse danach neu starten
+  bastra tasks execution-enable   Owner aktiviert lokalen Adapter und hebt Stopp auf
   bastra tasks keys enroll domain new-private-file
   bastra tasks approve|deny proposal-id domain private-key-file
 Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen

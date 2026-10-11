@@ -109,7 +109,7 @@ async function evidenceSnapshot(ctx: ReadContext, source: TaskSource, max: numbe
   if (ctx.deadline !== undefined && Date.now() >= ctx.deadline) throw new Error("source timeout");
   return snapshot;
 }
-async function verifyBoundEvidence(ctx: ReadContext, task: Task, store: TaskStore, now: number): Promise<{ outcome: Verification["outcome"]; reason: string }> {
+export async function verifyBoundEvidence(ctx: ReadContext, task: Task, store: TaskStore, now: number): Promise<{ outcome: Verification["outcome"]; reason: string }> {
   if (task.evidence.length > 10) return { outcome: "unavailable", reason: "source_budget" };
   for (const reference of task.evidence) {
     if (reference.state_updated_at !== undefined && (reference.state_updated_at > now || reference.state_updated_at > reference.observed_at)) return { outcome: "inconclusive", reason: "unattributable_state_age" };

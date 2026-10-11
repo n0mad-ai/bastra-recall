@@ -1,3 +1,4 @@
+import { declareTaskBoundary, enableTaskExecution } from "./task-execution-enable.js";
 import { friendlyTaskCreate, friendlyTaskResult, parseTaskOptions, taskWhen } from "./task-friendly.js";
 import { setupTaskHooks, taskClientCoverage } from "./task-setup.js";
 import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
@@ -36,6 +37,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
   try {
     const parsed = parseTaskOptions(args.argv ?? args.positional);
     const words = parsed.words, options = parsed.options;
+    if (args.sub === "boundary") { await declareTaskBoundary(); return 0; }
     if (args.sub === "setup-hooks") { await setupTaskHooks(); return 0; }
     if (args.sub === "client-status") {
       const status = await taskClientCoverage(); process.stdout.write((args.json ? JSON.stringify(status) : `${status.authorized ? "Client-Kennung gültig (Daemon muss laufen)" : "Keine Karten für diesen Client"}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) + "\n"); return 0;
@@ -70,6 +72,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       const principal = await authenticateTask(authorization);
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
+    if (args.sub === "execution-enable") { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization); return 0; }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
     if (input.id && !["get", "create"].includes(args.sub ?? "list") && !input.expected_revision) {

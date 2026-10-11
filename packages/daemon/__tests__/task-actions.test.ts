@@ -36,7 +36,7 @@ async function fixture(domains = ["personal"], protectedBoundary = true) {
 test("v1 migrates only empty actions and keeps tasks/cursors; capabilities never silently migrate", async () => {
   const f = await fixture(); const store = await readTaskStore(f.ctx.path);
   const raw = { ...store, schema_version: 1, proposals: [] };
-  assert.equal(decodeTaskStore(JSON.stringify(raw)).schema_version, 2);
+  assert.equal(decodeTaskStore(JSON.stringify(raw)).schema_version, 3);
   assert.deepEqual(decodeTaskStore(JSON.stringify(raw)).events, store.events);
   assert.deepEqual(decodeTaskStore(JSON.stringify(raw)).tasks, store.tasks);
   assert.throws(() => decodeTaskStore(JSON.stringify({ ...raw, approvals: [{ approved: true }] })), /empty/);

@@ -1,3 +1,5 @@
+import { isTaskExecution } from "./task-execution.js";
+import { forwardTaskExecutionMcp } from "./task-execution-client.js";
 /**
  * Start-up phase 7 (#1039): the standalone MCP stdio surface — tool list, the
  * call dispatcher (with #38 progress notifications) and the stdio transport.
@@ -106,6 +108,7 @@ export async function startStdioServer(opts: {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
 
+    if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
     if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
 
     // #482: same check as the REST boundary — the standalone stdio surface is

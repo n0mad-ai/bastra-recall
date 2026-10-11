@@ -1,3 +1,4 @@
+import { reconcilePendingTaskIntents } from "./task-execution.js";
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
 import { watch, existsSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
@@ -51,7 +52,7 @@ export class TaskRuntime {
       this.snapshot = snapshot; this.loaded = true; return changed;
     } catch { this.lastError = "task_store_unavailable"; this.ioStopped = true; throw new Error("Task store unavailable"); }
   }
-  get hasWork(): boolean { return this.snapshot.controls.enabled && this.snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state)); }
+  get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state)) || (this.ctx.executionHost === true && this.snapshot.intents.some(i => i.state === "pending"))); }
   contact(): void {
     if (this.stopped) return;
     this.queued = true;
@@ -76,6 +77,7 @@ export class TaskRuntime {
       }
       this.pollCursor = (this.pollCursor + visited) % this.snapshot.tasks.length;
       try {
+        if (this.ctx.executionHost && this.snapshot.intents.some(i => i.state === "pending")) await reconcilePendingTaskIntents(this.ctx);
         if (selected.size) {
           await observeTaskSources(this.ctx, true, sources);
           if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));

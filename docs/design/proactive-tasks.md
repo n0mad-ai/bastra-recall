@@ -529,3 +529,30 @@ Canonical API names used by this implementation are task_prepare, task_proposal,
 task_challenge, task_approval, task_revoke_approval, task_lease and task_release,
 with their /api/v1/<name> POST routes (OpenAPI). They supersede draft aliases in
 the initial route table; no partially implemented REST execute alias is advertised.
+
+P8 local reference adapter: task_execute / task_intent_reconcile /
+task_rollback_prepare are daemon-hosted POST tools; bridge/standalone stdio
+forward to the configured daemon. Store v3 migrates v2 only with empty execution
+arrays. The SAME strict store lock spans validated/spent intent, private backup,
+final live authority/source/target check, UTF-8 target CAS+rename and receipt.
+No network/provider call or shell execution. The target keeps its existing mode;
+backup and task records are private. All exact approval IDs are durably spent
+before adapter effects; neither a second lease nor a retry/new intent can reuse
+them. Lease holder, actor, fence, boot/wall expiry, source/decision/task binding,
+registry, feature/stop/adapter and every reserved proof are rechecked. A source
+event arriving but not evaluated blocks writing. Sources are bounded reads.
+A successful write is a receipt, never an invented owner acknowledgement or
+resolution. Crash before/after rename leaves a pending intent and spent proofs;
+startup/contact recovery observes exact resulting hash and records reconciled
+or unknown WITHOUT writing/retrying. Explicit reconcile uses the same rule.
+Rollback prepares a new exact CAS proposal from the bound private backup and
+requires NEW signatures/lease; intervening edits prohibit it. Unknown outcomes
+require owner review, no blind retry. Normal admission reserves receipt capacity.
+Local atomicity is relative to compliant task actors under the live-owner lock.
+A final synchronous read/CAS/rename cannot prevent arbitrary uncoordinated owner
+filesystem writes between syscalls; hostile same-UID runtime/filesystem access
+remains outside the declared protected boundary. No arbitrary external-writer
+transaction or preemptive cancellation of an admitted filesystem syscall claimed.
+Owner boundary declaration is explicit/unverified, stops execution and requires
+process restart; execution-enable confirms activating only the local adapter and
+lifting the stop. execution_stopped defaults true and only owner changes it.
