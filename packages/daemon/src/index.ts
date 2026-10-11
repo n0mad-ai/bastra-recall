@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   }
 
   await ensureLocalTaskAgent().then(result => {
-    console.error(`[bastra-recall] task agent access: ${result.reason}`);
+    console.error(`[bastra-recall] task agent access: ${result.reason}${!result.configured && result.reason !== "disabled" ? "; reminder cards unavailable — check bastra tasks client-status / setup-hooks" : ""}`);
   }).catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
 
   // The start-up phases (#1039), in their original order. Each module holds

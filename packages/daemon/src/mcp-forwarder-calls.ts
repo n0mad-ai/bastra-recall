@@ -4,6 +4,7 @@
  * against `/hook/recall` (SSE), and the one-shot session-context inject for
  * hookless clients.
  */
+import { taskClientHeaders } from "./task-client-auth.js";
 import { isTaskTool, taskClientAuthorization } from "./task-transport.js";
 import { type RecallStage } from "@bastra-recall/core";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
@@ -108,7 +109,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     return null;
   }
   try {
-    const resp = await fetchWithTimeout(`${DAEMON_URL}/hook/session-context`, { headers: process.env.BASTRA_TASK_TOKEN ? { "x-bastra-task-authorization": `Bearer ${process.env.BASTRA_TASK_TOKEN}` } : {} }, 1200);
+    const resp = await fetchWithTimeout(`${DAEMON_URL}/hook/session-context`, { headers: taskClientHeaders() }, 1200);
     if (resp.status === 404) {
       sessionContextPending = false;
       return null;
