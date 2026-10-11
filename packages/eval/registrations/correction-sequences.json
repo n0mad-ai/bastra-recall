@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "issue": 600,
+  "status": "protocol_registered",
+  "harness": "src/correction-sequences.ts",
+  "corpus": "fixtures/correction-sequences.json",
+  "protocol": {
+    "profile": "v1.1.0 core, BM25 and shipped hybrid embeddinggemma / weight 1.5 / k5",
+    "unit": "16 invented independent entities, dev/test splits, DE/EN; no tuning on test",
+    "families": [
+      "repeated value changes with return to initial value",
+      "polarity reversal",
+      "older-validity fact arriving last",
+      "unresolved conflicting sources"
+    ],
+    "truth": "latest validity time for non-conflict; conflicting peers remain a set, not arbitrary truth",
+    "projection": "reference type/equal storage dates; validity/source text in body, replacement links for current chain; no as-of API invoked",
+    "states": "ingest each version, then terminal component reload, hidden-directory archive of old version, restore old version",
+    "archive_scope": "filesystem fixture visibility only; not product archive API/security confirmation",
+    "metrics": [
+      "current-version hit@1/@5",
+      "obsolete top1",
+      "old version outranks current",
+      "conflict evidence completeness in pool",
+      "by-id old version access",
+      "terminal reload rank stability",
+      "old resurfacing after filesystem restore"
+    ],
+    "unmeasured": [
+      "answer accuracy/evidence fidelity/uncertainty/citations",
+      "historical as-of semantics",
+      "live ingestion/watchers",
+      "product archive/restore API and audits",
+      "field longevity",
+      "internal gold set/M1"
+    ],
+    "gate": "descriptive synthetic retrieval baseline; unsupported capabilities not passed"
+  },
+  "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>"
+}
