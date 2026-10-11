@@ -81,7 +81,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   if (operation === "task_due") {
     const input = taskDueInput.parse(raw); const store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
     const projection = taskDueProjection(store, principal, input, now);
-    await recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, now);
+    await recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, now, input.session, input.channel);
     const { client: _client, occurrenceIds: _ids, ...result } = projection; return result;
   }
   if (operation === "task_source_register") return registerTaskSource(ctx, authorization, raw);

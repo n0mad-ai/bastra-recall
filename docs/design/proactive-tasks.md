@@ -306,7 +306,8 @@ under a 10-watched-task/source admission budget; pure evaluation keeps its 100-c
 budget, snapshots share the bounded reader cache, and the tick admits no new source
 work past 5 s. Failed checks back off per task from 60 s to 1 h; unrelated clock tasks
 continue. Identical transactions do not rewrite snapshots. Actual presentation has
-at most 3 cards/2 KiB, attempt receipts per Actor/Session/Channel and persistent retry
+at most 3 cards/2 KiB, persistent retry budgets keyed by authenticated Actor/Role
+(session/channel are informational, never an authority or quota identity) and
 limits. Rendering never acknowledges or resolves; overflow remains pending. Explicit
 `task_due` can read a larger bounded projection; passive integration follows in P5b.
 
@@ -420,3 +421,12 @@ Run build/typecheck/full suites with invented data/own port, no real vault/6723/
 service files. Register #402/#598/#410 synthetic observation metadata separately
 from pending longitudinal confirmation. End-to-end notify/prepare/execute demo
 uses disposable artifacts; test approvals are labeled synthetic.
+
+
+P5a delivery retention: each occurrence holds at most 100 recent Actor/Role attempt
+summaries, with count/first/last/session/channel and a compacted-attempt total. Oldest
+summaries roll over; the record limit never blocks presentation. Sessions cannot mint
+new budgets. Agent attempts are rate/count bounded per Actor; owner presentation is
+always available and does not inherit another actor's exhaustion. Acknowledgement,
+resolution, occurrences and action receipts are never evicted by this compaction.
+`task_due` is marked as writing its attempt receipt (readOnlyHint=false).

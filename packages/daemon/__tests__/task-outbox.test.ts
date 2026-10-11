@@ -18,10 +18,12 @@ async function fixture() {
   return { ctx, auth, principal, input };
 }
 test("rendering and persisted attempts do not acknowledge or resolve; owner receipt is separate", async () => {
-  const f = await fixture(); const due = await callTaskCrud(f.ctx, f.auth, "task_due", { session: "session-a", channel: "mcp" }) as any;
+  const f = await fixture(); const agent = await mintTaskCredential(f.ctx.authPath, { actor_id: "agent", domains: ["personal"], role: "agent" });
+  const agentAuth = `Bearer ${agent.token}`;
+  const due = await callTaskCrud(f.ctx, agentAuth, "task_due", { session: "session-a", channel: "mcp" }) as any;
   assert.equal(due.cards.length, 1); let s = await readTaskStore(f.ctx.path);
   assert.equal(s.occurrences[0].attempts.length, 1); assert.equal(s.occurrences[0].acknowledgement, undefined); assert.equal(s.tasks[0].state, "due");
-  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", { session: "session-a", channel: "mcp" }) as any).cards.length, 0);
+  assert.equal((await callTaskCrud(f.ctx, agentAuth, "task_due", { session: "session-a", channel: "mcp" }) as any).cards.length, 0);
   const card = due.cards[0]; await callTaskCrud(f.ctx, f.auth, "task_acknowledge", { id: card.task_id, expected_revision: card.expected_revision, occurrence_id: card.occurrence_id });
   s = await readTaskStore(f.ctx.path); assert.ok(s.occurrences[0].acknowledgement); assert.equal(s.tasks[0].state, "due"); assert.equal(s.occurrences[0].resolution, undefined);
 });
@@ -36,8 +38,9 @@ test("disabled/purged relay and output overflow preserve pending work with no fa
 });
 test("several clients share one occurrence, bounded rendering rotates pending cards", async () => {
   const f = await fixture(); for (let i = 0; i < 4; i++) await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, idempotency_key: `more-${i}` });
-  await reconcileTaskTime(f.ctx); const first = await callTaskCrud(f.ctx, f.auth, "task_due", { session: "a", max_bytes: 16384 }) as any;
-  const next = await callTaskCrud(f.ctx, f.auth, "task_due", { session: "a", max_bytes: 16384 }) as any;
+  await reconcileTaskTime(f.ctx); const agent = await mintTaskCredential(f.ctx.authPath, { actor_id: "agent", domains: ["personal"], role: "agent" });
+  const agentAuth = `Bearer ${agent.token}`; const first = await callTaskCrud(f.ctx, agentAuth, "task_due", { session: "a", max_bytes: 16384 }) as any;
+  const next = await callTaskCrud(f.ctx, agentAuth, "task_due", { session: "a", max_bytes: 16384 }) as any;
   assert.equal(first.cards.length, 3); assert.equal(next.cards.length, 2);
   const other = await callTaskCrud(f.ctx, f.auth, "task_due", { session: "b", max_bytes: 16384 }) as any;
   assert.equal(other.cards.length, 3); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 5);
@@ -55,4 +58,27 @@ test("rendered block obeys byte budget and private domains remain absent", async
   const due = taskDueProjection(s, f.principal, taskDueInput.parse({}), 3000);
   assert.ok(Buffer.byteLength(taskDueText(due)) <= 2048);
   assert.equal(taskDueProjection(s, { ...f.principal, domains: ["other"] }, taskDueInput.parse({}), 3000).cards.length, 0);
+});
+test("120 attacker-selected sessions cannot exhaust another actor or owner delivery", async () => {
+  const f = await fixture(); const agent = await mintTaskCredential(f.ctx.authPath, { actor_id: "attacker", domains: ["personal"], role: "agent" });
+  for (let i = 0; i < 120; i++) await callTaskCrud(f.ctx, `Bearer ${agent.token}`, "task_due", { session: `s-${i}` });
+  let s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences[0].attempts.length, 1); assert.equal(s.tasks[0].state, "due");
+  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", { session: "real" }) as any).cards.length, 1);
+  const other = await mintTaskCredential(f.ctx.authPath, { actor_id: "other-agent", domains: ["personal"], role: "agent" });
+  assert.equal((await callTaskCrud(f.ctx, `Bearer ${other.token}`, "task_due", { session: "real" }) as any).cards.length, 1);
+  s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences[0].acknowledgement, undefined); assert.equal(s.occurrences[0].resolution, undefined);
+});
+test("the sample ring rolls over without blocking owner presentation or losing acknowledgement", async () => {
+  const f = await fixture(); const { transactTaskStore } = await import("../src/task-store.js");
+  await transactTaskStore(f.ctx.path, undefined, s => {
+    s.occurrences[0].attempts = Array.from({ length: 100 }, (_, i) => ({ at: 1, client: `legacy-${i}`, outcome: "attempted" }));
+  });
+  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {}) as any).cards.length, 1);
+  let s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences[0].attempts.length, 100); assert.equal(s.occurrences[0].compacted_attempts, 1);
+  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {}) as any).cards.length, 1);
+  s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences[0].attempts.length, 100); assert.equal(s.occurrences[0].attempts.at(-1)?.count, 2);
+});
+test("task_due accurately declares its attempt-receipt write", async () => {
+  const { taskTools } = await import("../src/task-transport.js");
+  assert.equal(taskTools.find(t => t.name === "task_due")?.annotations.readOnlyHint, false);
 });

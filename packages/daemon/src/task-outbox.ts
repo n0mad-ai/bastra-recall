@@ -11,7 +11,7 @@ export const taskDueInput = z.strictObject({ session: taskIdentitySchema.default
   max_bytes: z.number().int().min(256).max(16384).default(2048), include_acknowledged: z.boolean().default(false) });
 export type DueInput = z.infer<typeof taskDueInput>;
 export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, input: DueInput, now: number) {
-  const client = createHash("sha256").update(JSON.stringify(["task-client-v1", principal.actor_id, input.session, input.channel])).digest("hex");
+  const client = createHash("sha256").update(JSON.stringify(["task-client-v2", principal.actor_id, principal.role])).digest("hex");
   const candidates = store.controls.enabled && !store.controls.muted ? store.occurrences.filter(o => {
     const task = store.tasks.find(t => t.id === o.task_id);
     return task?.armed && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
@@ -25,8 +25,8 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
   let bytes = 0; let retryBlocked = 0; let overflow = 0;
   for (const occurrence of candidates) {
     const task = store.tasks.find(t => t.id === occurrence.task_id)!; const attempts = attemptCount(occurrence.id);
-    if (attempts.length >= task.notification_policy.max_attempts || occurrence.attempts.length >= 100
-      || (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms)) { retryBlocked++; continue; }
+    if (principal.role !== "owner" && (attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= task.notification_policy.max_attempts
+      || (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))) { retryBlocked++; continue; }
     const card = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`,
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
@@ -42,14 +42,26 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
 export function taskDueText(projection: ReturnType<typeof taskDueProjection>): string {
   return projection.cards.length ? `<bastra-due coverage="next-contact-only">${JSON.stringify({ cards: projection.cards, overflow: projection.overflow })}</bastra-due>` : "";
 }
-export async function recordTaskDelivery(path: string, principal: TaskPrincipal, client: string, occurrenceIds: string[], now: number): Promise<void> {
+export async function recordTaskDelivery(path: string, principal: TaskPrincipal, client: string, occurrenceIds: string[], now: number, session = "unknown", channel = "http"): Promise<void> {
   if (!occurrenceIds.length) return;
   await transactTaskStore(path, undefined, store => {
     for (const id of occurrenceIds) {
       const occurrence = store.occurrences.find(o => o.id === id); const task = occurrence && store.tasks.find(t => t.id === occurrence.task_id);
       if (!occurrence || !task || !task.owner_domains.every(d => principal.domains.includes(d)) || task.generation !== occurrence.generation || !task.armed
-        || ["resolved", "cancelled", "expired"].includes(task.state) || occurrence.resolution || occurrence.acknowledgement || occurrence.attempts.length >= 100) continue;
-      occurrence.attempts.push({ attempt_id: randomUUID(), at: now, client, outcome: "attempted" });
+        || ["resolved", "cancelled", "expired"].includes(task.state) || occurrence.resolution || occurrence.acknowledgement) continue;
+      const existing = occurrence.attempts.find(a => a.client === client);
+      if (existing) {
+        existing.first_at ??= existing.at; existing.at = now; existing.count = (existing.count ?? 1) + 1;
+        existing.attempt_id = randomUUID(); existing.last_session = session; existing.channel = channel;
+      } else {
+        if (occurrence.attempts.length >= 100) {
+          const oldest = occurrence.attempts.reduce((chosen, a, i, rows) => a.at < rows[chosen].at ? i : chosen, 0);
+          const [removed] = occurrence.attempts.splice(oldest, 1);
+          occurrence.compacted_attempts = (occurrence.compacted_attempts ?? 0) + (removed.count ?? 1);
+        }
+        occurrence.attempts.push({ attempt_id: randomUUID(), count: 1, first_at: now, at: now, client,
+          actor: principal.actor_id, role: principal.role, last_session: session, channel, outcome: "attempted" });
+      }
     }
   }, "control");
 }

@@ -11,7 +11,7 @@ import { PathLockUnavailableError } from "./path-lock.js";
 export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   description: `${name}: persisted commitment; agent capture stays unarmed. Owner command required for review, acknowledgement, resolution and rearm. Delivery does not resolve.`,
   inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
-  annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_due", destructiveHint: false },
+  annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined }; }
