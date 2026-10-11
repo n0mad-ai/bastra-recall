@@ -1,3 +1,4 @@
+import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -32,6 +33,7 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
 export async function cmdTasks(args: { sub: string | null; positional: string[] }): Promise<number> {
   try {
     const words = args.positional.slice(2);
+    if (args.sub === "keys") { await taskOwnerKeys(words); return 0; }
     if (args.sub === "auth") {
       if (!process.stdin.isTTY || !await confirm("Offline owner credential administration. Continue?"))
         throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
@@ -48,7 +50,9 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
       return 0;
     }
     const agent = words[0] === "agent"; if (agent) words.shift();
-    const input = words[0] ? await readTaskInputFile(words[0]) : {};
+    const signing = args.sub === "approve" || args.sub === "deny";
+    if (signing && agent) throw Object.assign(new Error("Owner signing terminal required"), { code: "forbidden" });
+    const input = signing ? {} : words[0] ? await readTaskInputFile(words[0]) : {};
     const authorization = agent ? await taskClientAuthorization() : `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ").catch(() => { throw new TaskCliInputError("Owner task commands need a controlling terminal. Use agent mode with its assigned credential for automation."); })}`;
     if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
     // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
@@ -56,6 +60,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
       const principal = await authenticateTask(authorization);
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
+    if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization); return 0; }
     process.stdout.write(JSON.stringify(await taskCliCall(args.sub ?? "list", input, authorization, resolveDaemonEndpoint().baseUrl), null, 2) + "\n");
     return 0;
   } catch (error) { const failure = taskFailure(error).body;

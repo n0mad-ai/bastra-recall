@@ -466,3 +466,19 @@ that event, independent of later verification. Vault edit/remove notifications
 immediately suppress bound cached cards; explicit due rechecks disk authority.
 After keep, further premise changes require explicit owner rebinding/review; the
 historical watch is disarmed and is never silently reinterpreted.
+
+P7 implemented contract: store v2 migrates v1 only when all action arrays were
+empty; proposals/challenges/approvals/leases are strict schemas. Intents/receipts
+remain empty until independently reviewed P8. Preparation reads only registered
+canonical local UTF-8 targets; no target writes. All affected ownership domains
+(task/target/evidence sources) are required, exact payload/source/task/registry
+bindings are signed. Approval records are reverified against their consumed
+challenge and pinned Ed25519 key, with wall AND boot-monotonic expiry. Owner
+CLI keys enroll / approve / deny unlocks encrypted keys only through /dev/tty,
+shows JSON-quoted exact before/after bytes and defaults confirmation to No.
+Missing protected boundary prevents lease authority; configuration is pinned at
+startup, rotation requires restart. Same-UID unrestricted runtime/key/config
+access remains outside the protection claim; execute remains absent in P7.
+Lease grants are serialized with monotone fences and hashed holder tokens;
+release/revoke stay available even if target/key configuration becomes unavailable.
+P8 construction MUST await independent review of this complete P7 protocol.

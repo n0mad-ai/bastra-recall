@@ -776,6 +776,167 @@ paths:
         "404": { $ref: "#/components/responses/TaskError" }
         "409": { $ref: "#/components/responses/TaskError" }
         "503": { $ref: "#/components/responses/TaskError" }
+  /task_prepare:
+    post:
+      operationId: task_prepare
+      summary: Exact task action prepare; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_proposal:
+    post:
+      operationId: task_proposal
+      summary: Exact task action proposal; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_challenge:
+    post:
+      operationId: task_challenge
+      summary: Exact task action challenge; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_approval:
+    post:
+      operationId: task_approval
+      summary: Exact task action approval; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_revoke_approval:
+    post:
+      operationId: task_revoke_approval
+      summary: Exact task action revoke_approval; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_lease:
+    post:
+      operationId: task_lease
+      summary: Exact task action lease; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_release:
+    post:
+      operationId: task_release
+      summary: Exact task action release; no execution in P7
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
   /tasks/events:
     post:
       operationId: taskEventSubmit

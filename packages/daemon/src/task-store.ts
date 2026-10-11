@@ -23,8 +23,14 @@ export function decodeTaskStore(raw: string): TaskStore {
   if (Buffer.byteLength(raw) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "task snapshot exceeds its hard limit; original preserved");
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new TaskStoreError("corrupt", "invalid task JSON; original preserved"); }
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1)
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1 && value.schema_version !== 2)
     throw new TaskStoreError("unsupported_version", "unsupported task schema; original preserved");
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 1) {
+    // v1 was strictly empty for actions. Never migrate unchecked capabilities.
+    const legacy = value as Record<string, unknown>;
+    if (["proposals", "challenges", "approvals", "leases", "intents", "receipts"].some(k => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length)) throw new TaskStoreError("corrupt", "v1 actions must be empty");
+    value = { ...legacy, schema_version: 2 };
+  }
   const parsed = taskStoreSchema.safeParse(value);
   if (!parsed.success) throw new TaskStoreError("corrupt", "invalid task schema or references; original preserved");
   return parsed.data;
@@ -83,6 +89,28 @@ function cleanStore(store: TaskStore): TaskStore {
 
 /** Enforce audit/lifecycle even for internal callers without a snapshot token. */
 function assertTaskProgress(before: TaskStore, after: TaskStore): void {
+  if (after.fencing_counter < before.fencing_counter || before.consumed_approval_ids.some(id => !after.consumed_approval_ids.includes(id)))
+    throw new TaskStoreError("conflict", "fences and permanently spent approval IDs cannot go backwards");
+  for (const old of before.proposals) {
+    const row = after.proposals.find(p => p.id === old.id);
+    if (!row || JSON.stringify({ ...row, status: old.status }) !== JSON.stringify(old) || (old.status !== "prepared" && row.status !== old.status))
+      throw new TaskStoreError("conflict", "exact proposal binding is immutable");
+  }
+  for (const old of before.leases) {
+    const row = after.leases.find(l => l.id === old.id);
+    if (!row || JSON.stringify({ ...row, state: old.state }) !== JSON.stringify(old) || (old.state !== "active" && row.state !== old.state))
+      throw new TaskStoreError("conflict", "lease identity/deadline/fence cannot renew or revive");
+  }
+  for (const old of before.challenges) {
+    const row = after.challenges.find(c => c.id === old.id);
+    if (!row || JSON.stringify({ ...row, consumed_at: old.consumed_at }) !== JSON.stringify(old) || (old.consumed_at !== undefined && row.consumed_at !== old.consumed_at))
+      throw new TaskStoreError("conflict", "challenge binding/consumption is immutable");
+  }
+  for (const old of before.approvals) {
+    const row = after.approvals.find(a => a.id === old.id);
+    if (!row || JSON.stringify({ ...row, revoked_at: old.revoked_at }) !== JSON.stringify(old) || (old.revoked_at !== undefined && row.revoked_at !== old.revoked_at))
+      throw new TaskStoreError("conflict", "approval proof and revocation are immutable");
+  }
   for (const old of before.tasks) {
     const next = after.tasks.find(t => t.id === old.id);
     if (!next) throw new TaskStoreError("conflict", "task deletion requires an explicit archive path");

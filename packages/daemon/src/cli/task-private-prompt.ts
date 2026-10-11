@@ -1,7 +1,7 @@
 /** Hidden owner input from the controlling terminal, never argv/env/stdin. */
 import { openSync } from "node:fs";
 import { ReadStream, WriteStream } from "node:tty";
-export async function taskPrivatePrompt(label: string): Promise<string> {
+export async function taskPrivatePrompt(label: string, passphrase = false): Promise<string> {
   const fd = openSync("/dev/tty", "r+");
   const input = new ReadStream(fd); const output = new WriteStream(openSync("/dev/tty", "w"));
   output.write(label); input.setRawMode(true); input.resume();
@@ -16,7 +16,7 @@ export async function taskPrivatePrompt(label: string): Promise<string> {
         if (char === "\u0003" || char === "\u0004") { finish(new Error("Owner input cancelled")); return; }
         if (char === "\r" || char === "\n") { finish(); return; }
         if (char === "\u007f") value = value.slice(0, -1);
-        else if (/^[A-Za-z0-9_-]$/.test(char) && value.length < 1024) value += char;
+        else if ((passphrase ? !/[\p{Cc}\p{Cf}]/u.test(char) : /^[A-Za-z0-9_-]$/.test(char)) && value.length < 1024) value += char;
       }
     });
     input.on("error", finish);

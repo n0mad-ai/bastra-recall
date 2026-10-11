@@ -111,9 +111,9 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "save_document",
       "save_memory",
       "save_product_doc",
-      "task_acknowledge", "task_cancel", "task_create", "task_due", "task_edit", "task_event", "task_get",
+      "task_approval", "task_challenge", "task_lease", "task_prepare", "task_proposal", "task_release", "task_revoke_approval", "task_acknowledge", "task_cancel", "task_create", "task_due", "task_edit", "task_event", "task_get",
       "task_list", "task_rearm", "task_reconcile", "task_reconsider", "task_resolve", "task_review", "task_snooze", "task_source_register",
-    ],
+    ].sort(),
     // #519: edit_memory joined the save tools. It changes one memory in place
     // and moves nothing, so it is not lifecycle — and leaving it out of the
     // surface a fresh install gets would push agents back to editing vault

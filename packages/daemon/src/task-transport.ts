@@ -1,3 +1,4 @@
+import { pinnedApprovalRegistry } from "./task-approval-keys.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { taskMemoryChanger, taskMemoryReader } from "./task-freshness.js";
 import { z } from "zod";
@@ -14,7 +15,7 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
-export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
+export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
 export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
