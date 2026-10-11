@@ -67,10 +67,30 @@
   },
   "measurement": {
     "verdict": "pending",
-    "started_at": null,
+    "started_at": "2026-10-11T08:25:45.171Z",
     "window_started_at": null,
     "window_version": null,
-    "public_aggregate": null
+    "public_aggregate": {
+      "run_kind": "contract-pending harness setup only; no feature or human study run",
+      "eval_commit": "09de170d2cb655321eb9ea6e98c72a9e5e275414",
+      "feature_commit": null,
+      "registered_protocol_version": 2,
+      "registered_protocol_sha256": "fb717b84a9e318c64cfaab0cc8de12dff4d428b62f34263d09905ab0a75df1d2",
+      "runner_sha256": "9ef4a5a1c09abb763452c45ccd7031f986ee846156a4884d5580489f27ca6b0d",
+      "dataset_sha256": "6a75fea2d0e09c3f990e54b08cda5e962d2a66e248473c9b6c00a81ec796138a",
+      "private_result_sha256": "26f4bdf295a8d67c391aaf941936ff4c19cbce057baad1e535ab058f6059608b",
+      "matrix_cases": 16,
+      "required_repetitions": 3,
+      "feature_runs_observed": 0,
+      "feature_runs_required": 48,
+      "harness_tests_passed": 37,
+      "harness_tests_failed": 0,
+      "eval_typechecks": "passed",
+      "outside_archive_guard": "rejected as expected",
+      "humans_enrolled": 0,
+      "longitudinal_days_observed": 0,
+      "limitations": "P0 #1159 is proposed; P2/P5/P8 and the real eval driver await publication. No window has started. No functional or longitudinal passed verdict."
+    }
   },
   "issue": 598,
   "experiment": "proactive-review-correction-usability",
