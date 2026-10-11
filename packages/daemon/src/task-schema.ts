@@ -41,7 +41,7 @@ export const taskDecisionSchema = z.strictObject({
 });
 
 export const taskSchema = z.strictObject({
-  id, revision, generation: revision, creation_hash: hash.optional(),
+  id, revision, generation: revision, creation_hash: hash.optional(), reminder_fingerprint: hash.optional(),
   created_at: instant, updated_at: instant,
   original_request: text, request_source: id, request_reference: id.optional(),
   origin: z.strictObject({ kind: z.enum(["user-request", "agent-observed"]), client: text, session: text, context: text }).optional(),
