@@ -4,6 +4,7 @@
  *
  * Moved verbatim out of `main()` in `index.ts`, with its `errorResult` helper.
  */
+import { finalizeTaskMcp } from "./task-delivery.js";
 import { taskTools, isTaskTool, callTaskMcp, taskClientAuthorization, defaultTaskContext } from "./task-transport.js";
 import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -101,6 +102,7 @@ export async function startStdioServer(opts: {
   const banterLang = (process.env.BASTRA_BANTER_LANG ?? "en").toLowerCase() === "de" ? "de" : "en";
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    const result = await (async () => {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
 
@@ -336,6 +338,9 @@ export async function startStdioServer(opts: {
     }
 
     return errorResult(`unknown tool: ${name}`);
+    })();
+    if (req.params.name === "task_due") return result;
+    return finalizeTaskMcp(result, defaultTaskContext(toolDeps), await taskClientAuthorization());
   });
 
   const transport = new StdioServerTransport();

@@ -68,6 +68,7 @@ const DEFAULT_BUDGET_TOKENS = 0;
 /** Welche Abschnitte es gibt. Der Name landet in der Antwort, also ist er
  *  Vertrag und keine Beschriftung. */
 export type SectionKind =
+  | "due"
   | "pinned"
   | "project"
   | "cross_project"
@@ -83,6 +84,7 @@ export type SectionKind =
  * Sorte Aussage ist — was in DIESEM Projekt gilt.
  */
 const RENDER_ORDER: SectionKind[] = [
+  "due",
   "pinned",
   "project",
   "cross_project",
@@ -102,6 +104,7 @@ const RENDER_ORDER: SectionKind[] = [
  * Start wiederkommt.
  */
 const PRIORITY: Record<SectionKind, number> = {
+  due: 0,
   pinned: 1,
   project: 2,
   cross_project: 3,
@@ -138,6 +141,8 @@ export interface SessionBudget {
 }
 
 export interface AssembleOptions {
+  /** Already authenticated cached projection supplied only by the transport. */
+  dueText?: string;
   /** Das erkannte Projekt, oder `null` für den projektlosen Weg. */
   project?: string | null;
   /** `startup` | `resume` | `clear` | `compact` — durchgereicht an die
@@ -430,6 +435,7 @@ export async function assembleSessionSections(
   };
 
   const producers: Array<{ kind: SectionKind; run: () => Promise<string[]> }> = [
+    ...(opts.dueText ? [{ kind: "due" as const, run: async () => [opts.dueText!] }] : []),
     {
       kind: "pinned",
       run: async () => {
@@ -583,7 +589,7 @@ export async function assembleSessionSections(
     lines: byKind.get(kind) ?? [],
   }));
 
-  const reports: SectionReport[] = RENDER_ORDER.map((kind) => {
+  const reports: SectionReport[] = RENDER_ORDER.filter(k => k !== "due" || opts.dueText !== undefined).map((kind) => {
     const lines = byKind.get(kind) ?? [];
     const included = keep.has(kind);
     return {

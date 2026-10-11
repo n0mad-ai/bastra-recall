@@ -97,6 +97,7 @@ export function postSessionContext(
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
+          ...(process.env.BASTRA_TASK_TOKEN ? { "x-bastra-task-authorization": `Bearer ${process.env.BASTRA_TASK_TOKEN}` } : {}),
           "Content-Length": payload.byteLength.toString(),
         },
         timeout: timeoutMs,
@@ -149,6 +150,7 @@ export function postRecall(
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
+          ...(process.env.BASTRA_TASK_TOKEN ? { "x-bastra-task-authorization": `Bearer ${process.env.BASTRA_TASK_TOKEN}` } : {}),
           "Content-Length": payload.byteLength.toString(),
         },
         timeout: timeoutMs,

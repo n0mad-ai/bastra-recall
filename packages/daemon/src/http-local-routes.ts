@@ -1,3 +1,5 @@
+import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
+import { defaultTaskContext } from "./task-transport.js";
 import { takeDraftReview } from "./draft-review.js";
 import { draftVaultId } from "./draft-promote.js";
 import { recordDeliveredDraftHints } from './draft-delivery.js';
@@ -138,8 +140,16 @@ export function dispatchLocalRoutes(
         const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () =>
           reflexPoolIds(vault),
         );
+        const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String(payload.session_id ?? "unknown"), "prompt");
+        let result = out;
+        if (due) {
+          const parsed = JSON.parse(out) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+          parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit",
+            additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
+          result = JSON.stringify(parsed); res.once("finish", due.record);
+        }
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(out);
+        res.end(result);
       })
       .catch(() => {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -218,7 +228,16 @@ export function dispatchLocalRoutes(
   // convention) — the contract is identical to the four above.
   // #490: the session lane among them takes the shared embedding warm-up,
   // injected here the same way the prompt lane takes its prewarmer.
-  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload,connected)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected), async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"))) return true;
+  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, async (out,payload,connected) => {
+    const notices = await appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected);
+    if (url !== "/hook/session") return notices;
+    const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String((payload as unknown as {session_id?: string}).session_id ?? "unknown"), "session");
+    if (!due || !connected()) return notices;
+    const parsed = JSON.parse(notices) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+    parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "SessionStart",
+      additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
+    res.once("finish", due.record); return JSON.stringify(parsed);
+  }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

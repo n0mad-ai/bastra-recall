@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { maybeTaskDueItem } from "./mcp-forwarder-calls.js";
 /**
  * bastra-recall MCP-stdio forwarder.
  *
@@ -289,10 +290,12 @@ async function main(): Promise<void> {
         liveStatusline.last_phrase_at = Date.now();
         flushStatusline();
         const sessionContext = await maybeSessionContextItem();
+        const taskDue = await maybeTaskDueItem();
         return {
           content: [
             { type: "text", text: JSON.stringify(result, null, 2) },
             ...(sessionContext ? [sessionContext] : []),
+            ...(taskDue ? [taskDue] : []),
           ],
         };
       } catch (err) {

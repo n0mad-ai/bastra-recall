@@ -65,6 +65,8 @@
  *     `Access-Control-Allow-Private-Network: true` beantwortet (nur wenn die
  *     Origin erlaubt ist).
  */
+import { installTaskHttpProjection } from "./task-delivery.js";
+import { defaultTaskContext } from "./task-transport.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { tasksPath } from "./task-store.js";
 import { createServer } from "node:http";
@@ -203,6 +205,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   const ctx = await createHttpServerContext(opts);
 
   const server = createServer((req, res) => {
+    installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
     const t0 = Date.now();
     const url = req.url ?? "";
     const method = req.method ?? "GET";

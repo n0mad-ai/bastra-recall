@@ -54,7 +54,9 @@ export function dispatchApiSurface(
   sendCors(res, allowedOrigin); // before the gate, so a 401/403 still carries CORS
 
   if (url.startsWith("/api/v1/tasks") || url.startsWith("/api/v1/task_")) {
-    if (reqOrigin && !allowedOrigin) { sendJson(res, 403, { error: "origin not allowed" }); return true; }
+    const sameOrigin = reqOrigin === `http://${req.headers.host}` && isLoopback(req) && isLoopbackHost(req.headers.host, []);
+    if (sameOrigin && reqOrigin) sendCors(res, reqOrigin);
+    if (reqOrigin && !allowedOrigin && !sameOrigin) { sendJson(res, 403, { error: "origin not allowed" }); return true; }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     return dispatchTaskHttp(req, res, method, url, defaultTaskContext(toolDeps));
   }

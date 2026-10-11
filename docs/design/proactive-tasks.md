@@ -430,3 +430,12 @@ new budgets. Agent attempts are rate/count bounded per Actor; owner presentation
 always available and does not inherit another actor's exhaustion. Acknowledgement,
 resolution, occurrences and action receipts are never evicted by this compaction.
 `task_due` is marked as writing its attempt receipt (readOnlyHint=false).
+
+P5b passive delivery: authenticated cached cards appear on successful MCP, REST JSON,
+session-context/session-hook and prompt-hook replies. Dedicated task credentials are
+forwarded separately from legacy bearer tokens. Streaming MCP appends cards after
+success; errors and unauthenticated clients receive none. Source evaluation is queued
+outside the hook hot path. The bridge starts the shared job only with a dedicated
+task credential and adds proactive_due beside successful results; consumers must
+render that field (otherwise explicit task_due is the available coverage). No reply
+or relay consumption is an acknowledgement or resolution.
