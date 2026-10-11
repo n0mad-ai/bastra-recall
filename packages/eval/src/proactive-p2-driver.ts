@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { PREMISE_CASES, runPremises } from "./proactive-premise-driver.js";
 import { ACTION_CASES, actionFixture, runActions } from "./proactive-action-driver.js";
 import type { FeatureDriver } from "./proactive-measurement-run.js";
 const arg = process.argv.indexOf("--feature-root");
@@ -27,10 +28,10 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 }
 
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P7:1181,P8:1183,P9:1182} : {}) },
-    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES],
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P4:1172,P6:1180,P7:1181,P8:1183,P9:1182} : {}) },
+    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES,...PREMISE_CASES],
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "synthetic registered local-artifact-v1 for action cases; none for notify/CRUD", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["premise-driver",createHash("sha256").update(readFileSync(new URL("./proactive-premise-driver.ts",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -52,7 +53,7 @@ const driver: FeatureDriver = {
     const crashPath=join(root,"fixture-crash.json");
     if(c.id==="external-success-no-receipt") {env.BASTRA_MEASUREMENT_CRASH_PATH=crashPath;env.NODE_OPTIONS+=` --import ${fileURLToPath(new URL("./proactive-crash-guard.mjs",import.meta.url))}`;}
     const clockPath = join(root,"fixture-clock.json");
-    if (ACTION_CASES.includes(c.id) || ["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
+    if (ACTION_CASES.includes(c.id) || PREMISE_CASES.includes(c.id) || ["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
       clock_mode: env.BASTRA_MEASUREMENT_NOW_PATH ? "child-only frozen Date.now; real host timers" : "real wall clock for auth/CRUD; no frozen-clock trigger claim", crud_schedule_at: Date.parse(context.reference_instant) + 86400000 }];
     const processes: ChildProcessWithoutNullStreams[] = [];
@@ -120,12 +121,14 @@ const driver: FeatureDriver = {
       const data = JSON.parse(raw.content[0].text);
       evidence.push({ transport: "actual-mcp-stdio", name, input: args, isError: raw.isError ?? false, result: data }); return data;
     }
-    const action = ACTION_CASES.includes(c.id) ? await actionFixture(feature,root,authPath,tokens,auth) : undefined;
+    const action = (ACTION_CASES.includes(c.id) || c.id==="supersession") ? await actionFixture(feature,root,authPath,tokens,auth) : undefined;
     let values: Record<string, boolean | number | string> = {};
     try {
       await start();
       const deliveryCases=["seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"];
-      if(ACTION_CASES.includes(c.id)) {
+      if(PREMISE_CASES.includes(c.id)) {
+        values=await runPremises(c,{http,input,root,vault,clockPath,taskPath,evidence,start,feature,fixture:action,stopDaemon:()=>stop(daemon!)});
+      } else if(ACTION_CASES.includes(c.id)) {
         values=await runActions(c,{http,input,fixture:action,clockPath,taskPath,evidence,start,crashPath,stopDaemon:()=>stop(daemon!)});
       } else if(deliveryCases.includes(c.id)) {
         const t0=Date.parse("2026-10-24T12:00:00Z");

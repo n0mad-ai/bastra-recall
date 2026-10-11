@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 11,
+  "registration_version": 12,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -668,7 +668,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective actual-daemon crash procedure for existing external-success-no-receipt scenario; earlier segments unchanged.",
+  "amendment": "Prospective real-file P6/C096 matrix procedure on the published corrected P8 stack; no human/longitudinal threshold change.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -731,5 +731,21 @@
       "retry": "original execute key returns historical outcome only; never resubmit as a new action",
       "scope": "three repetitions, every phase in each; all injected paths inside isolated root"
     }
+  },
+  "premise_runtime_procedure": {
+    "cases": [
+      "material-premise-change",
+      "unknown-source-controls",
+      "supersession"
+    ],
+    "repetitions": 3,
+    "files": "invented actual decision/assumption Markdown, exact core memoryRevision; actual registered versioned-value-v1 evidence JSON with bytehash/revision; daemon restarted to load each fixture",
+    "evaluation": "HTTP source/task/event APIs, no manual reconcile; current task contacts wait max5s for verification/due",
+    "material": "one occurrence on cheap vs costly, exact event retry stable, card original A/old costly/new cheap; no automatic memory edit; owner keep/change/snooze/stop separately, agent denied, actual disk change revision/idempotency and restart state",
+    "unknown": "unchanged verified; irrelevant/contested inconclusive; stale stale; removed actual evidence unavailable; zero reconsideration and original decision retained",
+    "supersession": "prepare exact proposal and synthetic proofs against valid original decision, then independently edit/cancel/supersede real Markdown; restart+due read; disarm exact binding, no silent rebind/spending, append-only history snapshot",
+    "pending": [
+      "P10 migration/downgrade"
+    ]
   }
 }
