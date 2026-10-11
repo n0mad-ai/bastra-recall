@@ -86,15 +86,15 @@
       "corrected_p4_head_check": "84a241ed focused tuple replay prepared; P5/P8 pending",
       "immutable_prior_segments": "Original P2/P3 successes and expanded review failures preserved separately",
       "latest_focused_segment": {
-        "feature_commit": "84a241edfe1072276c004ecc203cdceabb54d909",
+        "feature_commit": "b5a994ed695a87479aca0b21b8e319821a1ffc43",
         "selected_case": "p3-source-key-tuple-boundary",
         "observed": 3,
-        "passed": 0,
-        "failed": 3,
+        "passed": 3,
+        "failed": 0,
         "pending_matrix_rows": 72,
-        "finding": "Two accepted different-domain submissions reuse one foreign event receipt and one journal record."
+        "finding": "Tuple/source/actor/domain boundary fixed; two accepted submissions retain two separate events/IDs, no foreign receipt."
       },
-      "focused_scope_limit": "Only tuple boundary retested on 84a241ed; automatic evaluation verdict remains from the separately pinned full P4 segment, no pooling."
+      "focused_scope_limit": "Only tuple boundary independently retested on b5a994ed. This fixes that observed defect; last full-segment failure and unmeasured P5/P8/human/longitudinal gates remain separate, no full passed verdict."
     },
     "runtime_segments": [
       {
@@ -336,6 +336,45 @@
         "tuple_submissions_accepted_per_replay": 2,
         "tuple_events_stored_per_replay": 1,
         "foreign_domain_receipt_reused": true
+      },
+      {
+        "started_at": "2026-10-11T10:47:43.392Z",
+        "eval_commit": "724c60b2c9979d6408f57c4a178ef9d7e5cd2d8f",
+        "runner_sha256": "cd0da72b78fdd7038114c5f095e33e6a5d6a469ece8faf3793e816aee54276cf",
+        "driver_sha256": "0f3700fd86000c549da5523fa2772eb80d0b2a17d169a1c39cf1c1e8f088e944",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "b5a994ed695a87479aca0b21b8e319821a1ffc43",
+        "selected_case": "p3-source-key-tuple-boundary",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 7,
+            "sha256": "538bb6563af760a196b1f6de316b1784b6f1e86c456c50752d0eace1accaedc6"
+          },
+          {
+            "issue": 598,
+            "registration_version": 6,
+            "sha256": "8c4591b12b301d561ce261319a2c5a1088cb6b7ac6ee54b9219aaac1feab0627"
+          },
+          {
+            "issue": 410,
+            "registration_version": 6,
+            "sha256": "14598c998fa93500f82fc4c8119fc5fccc6c65a0e12a1bb9aa3a417c7df17b76"
+          }
+        ],
+        "private_result_sha256": "6725daec6146190789ee8335b5fe207e74005df595748aee9b1ea309c58d1183",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0,
+        "tuple_submissions_accepted_per_replay": 2,
+        "tuple_events_stored_per_replay": 2,
+        "foreign_domain_receipt_reused": false
       }
     ]
   },
