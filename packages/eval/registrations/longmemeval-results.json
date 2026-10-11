@@ -1,5 +1,5 @@
 {
-  "$comment": "Committed EXCERPT of the #500 run artifacts. The full files (3.4 MB, a 500-row per-question array each) live outside the repo at the path in `archive.directory`; this file carries what a number has to be checkable by — the identity of each run, its summary metrics and the sha256 of the file it was taken from — so the published figures stay verifiable when the large files are gone. Regenerating any row means re-running the command in `configurations[].measurement.command` of longmemeval-run.json.",
+  "$comment": "Committed EXCERPT of the #500 run artifacts. The full files (3.4 MB, a 500-row per-question array each) live outside the repo at the path in `archive.directory`; this file carries what a number has to be checkable by — the identity of each run, its summary metrics and the sha256 of the file it was taken from — so the published figures stay verifiable when the large files are gone. Regenerating any row means re-running the command in `configurations[].measurement.command` of longmemeval-run.json. The top-level archive is for the legacy runs; newer runs declare their own row-level archive locator.",
   "schema_version": 1,
   "archive": {
     "directory": "~/.bastra/longmemeval-runs/2026-09-09",
