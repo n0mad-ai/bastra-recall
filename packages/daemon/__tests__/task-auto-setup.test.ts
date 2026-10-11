@@ -1,3 +1,5 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { once } from "node:events";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -52,6 +54,21 @@ test("real upgraded daemon needs no setup command and preserves client configura
     await start(); const credential = JSON.parse(await readFile(join(data,"task-hook-token.json"),"utf8"));
     const call = async (name: string, input: unknown) => { const response = await fetch(base+`/api/v1/task_${name}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${credential.token}`},body:JSON.stringify(input)}); const body = await response.json() as any; assert.equal(response.status,200,JSON.stringify(body)); return body; };
     const task = await call("create",{idempotency_key:"automatic",original_request:"Synthetic upgrade deadline",goal:"Evaluate synthetic run",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()-1},timezone:"Europe/Madrid",scope:{kind:"personal",name:"upgrade"},owner_domains:["personal"],arm:true,origin:{kind:"agent-observed",client:"automatic-test",session:"synthetic",context:"Promised synthetic follow-up"}}); assert.equal(task.armed,true);
+    const waitOccurrence = async (id: string, delivered = false) => {
+      const until = Date.now()+10000;
+      while(Date.now()<until){ const snapshot=JSON.parse(await readFile(join(data,"tasks.json"),"utf8")); const occurrence=snapshot.occurrences.find((o:any)=>o.task_id===id);if(occurrence&&(!delivered||occurrence.attempts.length))return occurrence;await pause(25); }
+      throw new Error("own occurrence/delivery deadline");
+    };
+    await waitOccurrence(task.id); await pause(100);
+    const assembly=await fetch(base+"/hook/session-context",{method:"POST",headers:{"Content-Type":"application/json","x-bastra-task-authorization":`Bearer ${credential.token}`},body:JSON.stringify({assembly_only:true,session_id:"synthetic-session",budget:{tokens:4096}})});
+    assert.ok(!(await assembly.text()).includes("bastra-due"));assert.equal((await waitOccurrence(task.id)).attempts.length,0,"internal assembly records no delivery");
+    const hookEnv:NodeJS.ProcessEnv={...process.env,BASTRA_TASKS_PATH:join(data,"tasks.json"),BASTRA_VAULT_PATH:vault,BASTRA_DAEMON_URL:base,BASTRA_UPDATE_CHECK:"off"};delete hookEnv.BASTRA_TASK_TOKEN;
+    const hook=spawn(process.execPath,[fileURLToPath(new URL("../dist/session-hook.js",import.meta.url))],{env:hookEnv,stdio:["pipe","pipe","pipe"]});let output="",hookError="";hook.stdout.on("data",c=>{output+=c;});hook.stderr.on("data",c=>{hookError+=c;});hook.stdin.end(JSON.stringify({hook_event_name:"SessionStart",session_id:"synthetic-session",cwd:vault}));assert.equal((await once(hook,"close"))[0],0,hookError);
+    assert.match(output,/bastra-due/);assert.match(output,/Evaluate synthetic run/);assert.equal((output.match(/<bastra-due/g)||[]).length,1);
+    const delivered=await waitOccurrence(task.id,true);assert.equal(delivered.attempts.reduce((n:number,a:any)=>n+(a.count??1),0),1);assert.equal(delivered.acknowledgement,undefined);
+    const mcpTask=await call("create",{idempotency_key:"automatic-mcp",original_request:"Synthetic MCP reminder",goal:"MCP automatic reminder",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()-1},timezone:"Europe/Madrid",scope:{kind:"personal",name:"upgrade"},owner_domains:["personal"],arm:true,origin:{kind:"agent-observed",client:"automatic-test",session:"mcp",context:"Promised MCP follow-up"}});await waitOccurrence(mcpTask.id);await pause(100);
+    const client=new Client({name:"synthetic-session-test",version:"fixture"});const transport=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL("../dist/mcp-forwarder.js",import.meta.url))],env:Object.fromEntries(Object.entries(hookEnv).filter((pair):pair is [string,string]=>typeof pair[1]==="string")),stderr:"pipe"});
+    try {await client.connect(transport);const result=await client.callTool({name:"task_status",arguments:{}});const text=(result.content as Array<{text?:string}>).map(c=>c.text??"").join("\n");assert.match(text,/bastra-due/);assert.match(text,/MCP automatic reminder/);assert.equal((text.match(/<bastra-due/g)||[]).length,1);assert.equal((await waitOccurrence(mcpTask.id,true)).attempts.reduce((n:number,a:any)=>n+(a.count??1),0),1);}finally{await client.close();}
     const status = await call("status",{}); assert.equal(status.role,"agent"); assert.equal(status.controls.execution_stopped,true); assert.equal(status.approval.configured,false);
     await stop(); await start(); assert.equal(JSON.parse(await readFile(join(data,"task-hook-token.json"),"utf8")).token,credential.token); assert.equal((await call("get",{id:task.id})).id,task.id);
     assert.equal(await readFile(config,"utf8"),sentinel);

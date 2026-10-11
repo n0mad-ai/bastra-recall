@@ -1,4 +1,4 @@
-import { reminderDuplicate } from "./task-conversation.js";
+import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
 import { archiveTasks, restoreTaskArchive, archivedTask, readTaskArchive, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
@@ -153,7 +153,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       const limit = principal.role === "agent" && requestedArm && (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0" || !s.controls.enabled) ? "Conversational reminders disabled; saved unarmed" : undefined;
       const arm = requestedArm && !limit;
       if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
-      const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
+      const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, reminder_fingerprint: reminderFingerprint(values), revision: 0, generation: 0,
         last_event_sequence: s.events.at(-1)?.sequence ?? 0, created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
         request_source: principal.role === "owner" ? "owner-command" : values.origin?.kind ?? "agent-proposal", reference_at: now,
         state: "pending", armed: arm, review_reason: limit ?? (arm ? undefined : "Explicit owner review required"),
@@ -179,7 +179,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
       const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level"]
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
-      Object.assign(task, patch);
+      Object.assign(task, patch); delete task.reminder_fingerprint;
       if (triggerChanged) {
         task.generation++; delete task.snoozed_until; task.last_event_sequence = s.events.at(-1)?.sequence ?? 0; delete task.last_material_hash; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";

@@ -721,3 +721,11 @@ surface. This is the existing /ui loopback model, not proof of OS-user identity.
 Recommend ui.enabled=false on multi-user hosts. The actual access-boundary fix
 is deferred to [#1198](https://github.com/n0mad-ai/bastra-recall/issues/1198),
 not implemented in this stack. Owner/signature/execution checks remain unchanged.
+R5 integration corrections: conversational duplicate identity is a SHA-256 of
+canonical pre-scrub reminder definition (request/goal/resolution/cause and schedule,
+recurrence/domain/scope/evidence), excluding session/client/idempotency key. Persist
+only the digest, never the raw secret. Rows without a digest and edited definitions
+are conservatively not merged. Internal SessionStart context requests explicitly
+use assembly_only and omit task credentials; the assembler neither projects cards
+nor touches quiet/delivery state. The outer Hook response alone includes/records
+its card; hookless MCP context remains an actual forwarded output.
