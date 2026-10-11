@@ -111,7 +111,11 @@ export async function recoverTaskStore(path: string, actor: string): Promise<{ s
     try { backup = decodeTaskStore(await readFile(`${path}.backup`, "utf8")); }
     catch { throw new TaskStoreError("invalid_backup", "backup is absent or invalid; original preserved"); }
     let quarantine: string | null = `${path}.corrupt-${randomUUID()}`;
-    try { await copyFile(path, quarantine); await chmod(quarantine, 0o600); }
+    try {
+      await copyFile(path, quarantine); await chmod(quarantine, 0o600);
+      const original = await open(quarantine, "r");
+      try { await original.sync(); } finally { await original.close(); }
+    }
     catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") quarantine = null; else throw err; }
     backup.recovery_history.push({ id: randomUUID(), at: Date.now(), from_revision: backup.revision, actor, reason: "Explicit backup recovery; original quarantined when present" });
     backup.revision++;
