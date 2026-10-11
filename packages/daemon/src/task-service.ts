@@ -41,7 +41,7 @@ const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurre
 export const TASK_CRUD_OPERATIONS = ["task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
-  constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
+  constructor(public readonly code: "not_found" | "validation" | "conflict" | "protected_boundary_required", message: string) {
     super(message); this.name = "TaskServiceError";
   }
 }
@@ -115,7 +115,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     normalizeSchedule(input.schedule);
     requireTaskDomains(principal, input.owner_domains);
     if (input.arm) requireTaskOwner(principal);
-    if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("conflict", "execute monitoring requires protected owner configuration");
+    if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
     const creationHash = hash(input);
     const store = await transactTaskStore(ctx.path, undefined, async s => {
@@ -163,7 +163,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (operation === "task_review") {
       requireTaskOwner(principal);
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
-      if (task.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("conflict", "execute monitoring requires protected owner configuration");
+      if (task.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
       if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
       if (await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       task.last_event_sequence = s.events.at(-1)?.sequence ?? 0;

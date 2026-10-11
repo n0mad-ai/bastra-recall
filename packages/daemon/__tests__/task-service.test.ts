@@ -30,7 +30,7 @@ test("owner create-and-arm is explicit; forged user/actor/owner claims fail stri
   for (const forged of [{ source: "user" }, { actor: "owner" }, { approved: true }, { creator: "owner" }])
     await assert.rejects(f.call(f.agent, "task_create", { ...f.input, ...forged }));
   await assert.rejects(f.call(f.agent, "task_create", { ...f.input, arm: true }), { code: "forbidden" });
-  await assert.rejects(f.call(f.owner, "task_create", { ...f.input, idempotency_key: "exec", action_level: "execute", arm: true }), { code: "conflict" });
+  await assert.rejects(f.call(f.owner, "task_create", { ...f.input, idempotency_key: "exec", action_level: "execute", arm: true }), { code: "protected_boundary_required" });
 });
 test("domain reads hide existence and mutations never cross ownership", async () => {
   const f = await fixture(); const t = await f.call(f.owner, "task_create", f.input);

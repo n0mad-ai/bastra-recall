@@ -605,3 +605,14 @@ The material cache also contains the latest journal identity, so new intake wake
 checks held on an older inconclusive event; completed cursor advancement queues
 the next bounded turn. These guarantees concern accepted journal events; file/Git
 observation remains periodic snapshot observation, not a filesystem event log.
+
+P9 owner surfaces: separate tasks page at /ui/tasks.html (existing optional WebUI),
+explicit Owner token kept only in page memory. All task strings use textContent;
+no inline HTML from memories, events, wishes or draft payloads. Task CRUD, owner
+review/ack/resolve/reconsider choices, status/controls, exact proposal preview,
+existing CLI signing and authorized lease/execute are connected to the same routes.
+CLI default is readable German; --json remains the stable machine format. Explicit
+Owner due inspection survives mute/off/ack; passive delivery obeys the controls.
+Ambiguous local CLI creation remains unarmed and states its earlier-offset choice.
+Owner credential cache is interactive-only, outside agent access by Owner setup;
+never read by hook/MCP/agent authorization and not a signing substitute.

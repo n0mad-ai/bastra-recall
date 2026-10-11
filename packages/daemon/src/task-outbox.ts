@@ -13,14 +13,15 @@ export const taskDueInput = z.strictObject({ session: taskIdentitySchema.default
 export type DueInput = z.infer<typeof taskDueInput>;
 export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, input: DueInput, now: number, passive = false) {
   const client = createHash("sha256").update(JSON.stringify(["task-client-v2", principal.actor_id, principal.role])).digest("hex");
-  const candidates = store.controls.enabled && !store.controls.muted ? store.occurrences.filter(o => {
+  const ownerInspect = principal.role === "owner" && !passive;
+  const candidates = ownerInspect || (store.controls.enabled && !store.controls.muted) ? store.occurrences.filter(o => {
     const task = store.tasks.find(t => t.id === o.task_id);
     const action = store.intents.filter(i => i.task_id === o.task_id).at(-1);
     const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
     const critical = action && ["pending", "unknown"].includes(action.state) && o.attempts.find(a => a.client === client)?.last_action_key !== actionKey;
     return task?.armed && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
-      && !(task.state === "snoozed" && task.snoozed_until! > now) && !task.notification_policy.muted
-      && !o.resolution && (critical || input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
+      && !(task.state === "snoozed" && task.snoozed_until! > now) && (ownerInspect || !task.notification_policy.muted)
+      && !o.resolution && (ownerInspect || critical || input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
       && task.owner_domains.every(d => principal.domains.includes(d));
   }) : [];
   const attemptCount = (id: string) => store.occurrences.find(o => o.id === id)!.attempts.filter(a => a.client === client);
@@ -43,6 +44,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),
+      presentation: ownerInspect && (!store.controls.enabled || store.controls.muted || task.notification_policy.muted) ? "owner-inspection-delivery-paused" : "active",
       controls: ["acknowledge", "snooze", "resolve", "cancel"],
     };
     if (unseenReview && Buffer.byteLength(JSON.stringify(card)) > input.max_bytes - 256)

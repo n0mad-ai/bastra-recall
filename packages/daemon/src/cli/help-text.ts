@@ -206,8 +206,15 @@ const SURFACE_ARG = `Surfaces:
  */
 export const COMMAND_HELP: Record<string, string> = {
   tasks: `bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
-Usage: bastra tasks <create|list|due|status|setup-hooks|client-status> [options]
+Usage: bastra tasks <create|list|due|status|setup-hooks|client-status|ui> [options]
+Erster Zugang: tasks auth mint owner ich personal ~/.bastra/owner-task.token.
+Token im lokalen Editor kopieren, nur verborgen im Terminal/Browser eingeben.
+Optional tasks owner-login: private Ablage nur für interaktive Owner-CLI, nie Hooks/MCP.
+Dann tasks setup-hooks, tasks client-status, tasks create --goal "Test" --after 1m --arm.
+Nach Fälligkeit: tasks due, tasks acknowledge ID --occurrence VORKOMMEN, tasks resolve ID.
+Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung.
   bastra tasks create --goal "Nach sieben Tagen auswerten" --after 7d --domain personal --timezone Europe/Madrid --arm
+  bastra tasks create --goal "Täglich prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --every 1d --count 3
   bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid
   bastra tasks list | due | status [--json] [--agent]
   bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung

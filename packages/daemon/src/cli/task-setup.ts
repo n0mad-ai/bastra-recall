@@ -1,10 +1,10 @@
+import { ownerTaskAuthorization } from "./task-owner-access.js";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { authenticateTask, requireTaskOwner, mintTaskCredential, taskAuthPath } from "../task-auth.js";
 import { atomicWrite } from "../task-store.js";
 import { taskHookConfigPath, taskClientToken } from "../task-client-auth.js";
-import { taskPrivatePrompt } from "./task-private-prompt.js";
 import { withPathLock } from "../path-lock.js";
 export async function configureTaskHooks(authorization: string) {
   const owner = await authenticateTask(authorization); requireTaskOwner(owner);
@@ -14,7 +14,7 @@ export async function configureTaskHooks(authorization: string) {
   return { configured: true, credential_id: credential.credential_id };
 }
 export async function setupTaskHooks() {
-  await configureTaskHooks(`Bearer ${await taskPrivatePrompt("Owner task token (hidden): ")}`);
+  await configureTaskHooks(await ownerTaskAuthorization());
   process.stdout.write("Karten für lokale Hooks/MCP eingerichtet. Eigene Agent-Kennung; kein Owner-Schlüssel, keine Ausführungsfreigabe. Bei nächstem Kontakt, solange der Daemon läuft. BASTRA_TASK_TOKEN überschreibt diese Konfiguration.\n");
 }
 export async function taskClientCoverage() {

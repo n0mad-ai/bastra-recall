@@ -6,7 +6,7 @@ export function localWall(at: number, timezone: string): string {
   const get = (key: string) => parts.find(p => p.type === key)!.value;
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
-export function resolveTaskCalendar(local: string, timezone: string): { at: number; offset_minutes: number } {
+function calendarCandidates(local: string, timezone: string): Array<{ at: number; offset_minutes: number }> {
   const wall = Date.parse(`${local}Z`);
   if (!Number.isFinite(wall) || new Date(wall).toISOString().slice(0, 19) !== local) throw new Error("invalid calendar wall time");
   const offsets = new Set<number>();
@@ -17,8 +17,11 @@ export function resolveTaskCalendar(local: string, timezone: string): { at: numb
   const candidates = [...offsets].map(offset => ({ at: wall - offset, offset_minutes: offset / 60000 }))
     .filter(c => c.at >= 0 && Number.isInteger(c.offset_minutes) && localWall(c.at, timezone) === local).sort((a, b) => a.at - b.at);
   if (!candidates.length) throw new Error("calendar time is in a DST gap");
-  return candidates[0];
+  return candidates;
 }
+export function resolveTaskCalendar(local: string, timezone: string): { at: number; offset_minutes: number } { return calendarCandidates(local, timezone)[0]; }
+export function ambiguousTaskCalendar(local: string, timezone: string): boolean { return calendarCandidates(local, timezone).length > 1; }
+
 function shiftedWall(local: string, days: number): string { return new Date(Date.parse(`${local}Z`) + days * 86400000).toISOString().slice(0, 19); }
 export function timeSlot(task: Task, index: number): { at: number; key: string; local_time?: string; offset_minutes?: number } {
   if (task.schedule.kind === "event") throw new Error("event has no time slot");

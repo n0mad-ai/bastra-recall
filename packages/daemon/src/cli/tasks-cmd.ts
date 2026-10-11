@@ -1,5 +1,6 @@
+import { loginOwnerTaskAccess, ownerTaskAuthorization } from "./task-owner-access.js";
 import { declareTaskBoundary, enableTaskExecution } from "./task-execution-enable.js";
-import { friendlyTaskCreate, friendlyTaskResult, parseTaskOptions, taskWhen } from "./task-friendly.js";
+import { friendlyTaskCreate, friendlyTaskResult, friendlyTaskError, parseTaskOptions, taskWhen } from "./task-friendly.js";
 import { setupTaskHooks, taskClientCoverage } from "./task-setup.js";
 import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
 import { constants } from "node:fs";
@@ -7,7 +8,6 @@ import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { authenticateTask, mintTaskCredential, revokeTaskCredential, taskAuthPath } from "../task-auth.js";
 import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transport.js";
-import { taskPrivatePrompt } from "./task-private-prompt.js";
 import { confirm } from "./prompt.js";
 
 export class TaskCliInputError extends Error { readonly code = "validation"; }
@@ -37,6 +37,8 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
   try {
     const parsed = parseTaskOptions(args.argv ?? args.positional);
     const words = parsed.words, options = parsed.options;
+    if (args.sub === "owner-login") { await loginOwnerTaskAccess(); return 0; }
+    if (args.sub === "ui") { process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/tasks.html (UI aktivieren: bastra config set ui.enabled true)\n`); return 0; }
     if (args.sub === "boundary") { await declareTaskBoundary(); return 0; }
     if (args.sub === "setup-hooks") { await setupTaskHooks(); return 0; }
     if (args.sub === "client-status") {
@@ -54,7 +56,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       try {
         const credential = await mintTaskCredential(taskAuthPath(), { role: role as "owner" | "agent", actor_id: actor, domains: domains.split(",") }, operation === "rotate" ? previous : undefined);
         await out.writeFile(credential.token); await out.sync();
-        process.stdout.write(JSON.stringify({ credential_id: credential.credential_id, token_written: true }) + "\n");
+        process.stdout.write((args.json ? JSON.stringify({ credential_id: credential.credential_id, token_written: true }) : `Zugang angelegt: ${role === "owner" ? "Owner" : "Agent"} ${actor}, Domänen ${domains}. Token privat in der gewählten Datei; jetzt bastra tasks setup-hooks. Kennung ${credential.credential_id}.`) + "\n");
       } finally { await out.close(); }
       return 0;
     }
@@ -65,7 +67,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     if (options.id || (words[0] && !words[0].endsWith(".json"))) input.id = String(options.id ?? words[0]);
     if (options.revision) input.expected_revision = options.revision;
     if (options.occurrence) input.occurrence_id = options.occurrence;
-    const authorization = agent ? await taskClientAuthorization() : `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ").catch(() => { throw new TaskCliInputError("Owner task commands need a controlling terminal. Use agent mode with its assigned credential for automation."); })}`;
+    const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
     if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
     // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
     if (!agent) {
@@ -75,16 +77,17 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     if ((args.sub === "execution-enable" || args.sub === "resume")) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization); return 0; }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
-    if (input.id && !["get", "create"].includes(args.sub ?? "list") && !input.expected_revision) {
-      const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision = task.expected_revision;
-      if (options.until) input.until = taskWhen(String(options.until), task.timezone);
+    if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until)) {
+      const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision ??= task.expected_revision;
+      if (options.until) { try { input.until = taskWhen(String(options.until), task.timezone); } catch { throw new TaskCliInputError("Zeit nicht lesbar"); } }
     }
     if (args.sub === "due") input = { include_acknowledged: true, max_bytes: 16384 };
     const controls: Record<string, object> = { mute: { muted: true }, unmute: { muted: false }, off: { enabled: false }, on: { enabled: true }, stop: { execution_stopped: true }, resume: { execution_stopped: false } };
     const result = await taskCliCall(controls[args.sub ?? ""] ? "controls" : args.sub ?? "list", controls[args.sub ?? ""] ?? input, authorization, baseUrl);
     process.stdout.write((args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result)) + "\n");
+    if (!args.json && args.sub === "create" && options.goal && !options.timezone) process.stdout.write(`Zeitzone aus dem System angenommen: ${(result as any).timezone}. Mit --timezone bewusst festlegen.\n`);
     return 0;
   } catch (error) { const failure = taskFailure(error).body;
     if (error instanceof TaskCliInputError) failure.error = error.message;
-    process.stderr.write(JSON.stringify(failure) + "\n"); return 1; }
+    process.stderr.write((args.json ? JSON.stringify(failure) : friendlyTaskError(failure.code, args.sub)) + "\n"); return 1; }
 }

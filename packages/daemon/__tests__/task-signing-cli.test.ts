@@ -25,7 +25,7 @@ async function fixture() {
 const cli=fileURLToPath(new URL("../dist/cli.js",import.meta.url));
 test("compiled signing CLI rejects no terminal and agent mode; private prompt has no stdin fallback",async()=>{
   const f=await fixture();const run=async(args:string[])=>{const child=spawn(process.execPath,[cli,"tasks",...args],{env:f.env,stdio:["ignore","pipe","pipe"]});let errors="";child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");return{code,errors};};
-  try{assert.equal((await run(["approve",f.prepared.proposal.id,"personal",f.privateFile])).code,1);const agent=await run(["approve","agent",f.prepared.proposal.id,"personal",f.privateFile]);assert.equal(agent.code,1);assert.match(agent.errors,/forbidden/);}finally{await new Promise<void>(r=>f.server.close(()=>r()));}
+  try{assert.equal((await run(["approve",f.prepared.proposal.id,"personal",f.privateFile,"--json"])).code,1);const agent=await run(["approve","agent",f.prepared.proposal.id,"personal",f.privateFile,"--json"]);assert.equal(agent.code,1);assert.match(agent.errors,/forbidden/);}finally{await new Promise<void>(r=>f.server.close(()=>r()));}
 });
 test("real synthetic signing terminal: Enter declines, wrong passphrase is nonretryable, full binding precedes signing",async()=>{
   const f=await fixture();const py=`import os,pty,subprocess,select,time,sys
@@ -52,7 +52,7 @@ os.close(master)
 sys.stdout.buffer.write(out)
 sys.exit(0)
 `;
-  const run=async(mode:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","approve",f.prepared.proposal.id,"personal",f.privateFile],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token,CASE:mode},stdio:["ignore","pipe","pipe"]});let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);return output;};
+  const run=async(mode:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","approve",f.prepared.proposal.id,"personal",f.privateFile,"--json"],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token,CASE:mode},stdio:["ignore","pipe","pipe"]});let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);return output;};
   try{
     const declined=await run("decline");assert.match(declined,/forbidden/);assert.match(declined,/task_revision/);assert.match(declined,/source_revisions/);assert.match(declined,/registry_hash/);assert.match(declined,/target_path/);assert.ok(!declined.includes(f.owner.token));
     const wrong=await run("wrong");assert.match(wrong,/key_unlock_failed/);assert.match(wrong,/"retryable":false/);assert.equal((await import("../src/task-store.js").then(m=>m.readTaskStore(f.ctx.path))).approvals.length,0);
@@ -87,7 +87,7 @@ except OSError:pass
 os.close(master)
 sys.stdout.buffer.write(out)
 `;
- const run=async(op:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","keys",op,"personal",replacement,...(op==="rotate"?[f.privateFile]:[])],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");return output;};
+ const run=async(op:string)=>{const child=spawn("python3",["-c",py,process.execPath,cli,"tasks","keys",op,"personal",replacement,...(op==="rotate"?[f.privateFile]:[]),"--json"],{env:{...f.env,SYNTHETIC_OWNER:f.owner.token},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");return output;};
  try{
   const rejected=await run("enroll");assert.match(rejected,/conflict/);await assert.rejects(readFile(replacement));
   const {transactTaskStore,readTaskStore}=await import("../src/task-store.js");await transactTaskStore(f.ctx.path,undefined,s=>{s.controls.execution_stopped=false;});

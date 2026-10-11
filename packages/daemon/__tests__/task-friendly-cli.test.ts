@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
-import { friendlyTaskCreate } from "../src/cli/task-friendly.js";
+import { friendlyTaskCreate, friendlyTaskResult, friendlyTaskError } from "../src/cli/task-friendly.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { mintTaskCredential, revokeTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
@@ -36,7 +36,7 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
     const list = await run(["list", "--agent"]); assert.equal(list.code, 0); assert.match(list.output, /scharf/);
     const json = await run(["list", "--agent", "--json"]); assert.equal(JSON.parse(json.output).tasks.length, 1);
     const capture = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--timezone", "Europe/Madrid"]); assert.equal(capture.code, 0, capture.errors); assert.match(capture.output, /unscharf/);
-    const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm"]); assert.equal(denied.code, 1); assert.match(denied.errors, /forbidden/);
+    const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm"]); assert.equal(denied.code, 1); assert.match(denied.errors, /Owner/);
     assert.equal((await readTaskStore(ctx.path)).tasks.length, 2);
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); }
 });
@@ -62,4 +62,30 @@ test("global controls require owner/all domains, pause preserves obligations and
   await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{enabled:true,muted:false});const resumed=await readTaskStore(ctx.path);
   assert.deepEqual(resumed.tasks,paused.tasks);assert.deepEqual(resumed.approvals,paused.approvals);assert.deepEqual(resumed.leases,paused.leases);
   await assert.rejects(callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{execution_stopped:false}),/Protected/);
+});
+test("readable states, local times, controls, off-status and errors keep machine JSON separate",()=>{
+ const task:any={id:"task",goal:"Prüfen",schedule:{kind:"instant",at:Date.parse("2026-10-12T16:00:00Z")},timezone:"Europe/Madrid",armed:false,state:"snoozed",action_level:"notify",snoozed_until:Date.parse("2026-10-13T16:00:00Z"),deliveries:[]};
+ assert.match(friendlyTaskResult("snooze",task),/zurückgestellt/);assert.match(friendlyTaskResult("snooze",task),/18:00/);assert.match(friendlyTaskResult("rearm",task),/UNSCHARF/);
+ const base={controls:{enabled:false,muted:true,execution_stopped:true},runtime:{running:true,next_tick:0,last_error:null,backoff_ms:0},tasks:[task],sources:[],adapters:[],approval:{enrolled_domains:[],protected_boundary:false},capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000},intents:[],receipts:[]};
+ const status=friendlyTaskResult("status",base);assert.match(status,/Funktion: aus/);assert.match(status,/Automatik: aus/);assert.match(status,/Letzte Zustellung: noch keine/);assert.match(status,/Letzter Job-Fehler: keiner/);
+ task.verification={outcome:"inconclusive",reason:"irrelevant_claim",checked_at:123};
+ assert.match(friendlyTaskResult("status",base),/unklar\/strittig.*andere Prämisse/);
+ assert.match(friendlyTaskResult("mute",{controls:base.controls,resumed_authority:false}),/Stumm geschaltet/);assert.ok(!friendlyTaskResult("stop",{controls:base.controls,resumed_authority:false}).startsWith("{"));
+ assert.match(friendlyTaskError("not_found","cancel"),/unbekannt/);assert.match(friendlyTaskError("protected_boundary_required","resume"),/standardmäßig gestoppt/);
+});
+test("human recurrence is bounded and ambiguous autumn time stays visibly unarmed",()=>{
+ const repeating=friendlyTaskCreate({goal:"Täglich",when:"2026-10-12T18:00",timezone:"Europe/Madrid",every:"1d",count:"3"}) as any;assert.equal(repeating.recurrence.kind,"calendar");assert.equal(repeating.recurrence.count,3);
+ assert.throws(()=>friendlyTaskCreate({goal:"Endlos",after:"7d",every:"1d"}));
+ const ambiguous=friendlyTaskCreate({goal:"Herbst",when:"2026-10-25T02:30",timezone:"Europe/Madrid",arm:true}) as any;assert.equal(ambiguous.arm,false);assert.match(friendlyTaskResult("create",{...ambiguous,id:"fixture",state:"pending",armed:false}),/Mehrdeutige Ortszeit/);
+});
+test("explicit owner due is always inspectable when muted/off; passive clients stay quiet",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"owner-due-inspect-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"auth.json"),now:()=>120000};
+ const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains:["personal"]});
+ await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_create",friendlyTaskCreate({goal:"Fällig",after:"1m",timezone:"Europe/Madrid",arm:true},0));await reconcileTaskTime(ctx);
+ await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{enabled:false,muted:true});assert.equal((await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_due",{}) as any).cards.length,1);assert.equal((await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_due",{}) as any).cards.length,0);
+});
+test("private owner cache is separate from hook access, rejects automation and remains revocable",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"owner-cache-")),path=join(root,"tasks.json"),authPath=join(root,"task-auth.json"),previous=process.env.BASTRA_TASKS_PATH,token=process.env.BASTRA_TASK_TOKEN;process.env.BASTRA_TASKS_PATH=path;delete process.env.BASTRA_TASK_TOKEN;
+ try{const {saveOwnerTaskAccess,ownerTaskAccessPath,ownerTaskAuthorization}=await import("../src/cli/task-owner-access.js");const owner=await mintTaskCredential(authPath,{actor_id:"owner",role:"owner",domains:["personal"]});await saveOwnerTaskAccess(`Bearer ${owner.token}`);assert.equal((await stat(ownerTaskAccessPath())).mode&0o077,0);assert.equal(taskClientToken(),undefined);await assert.rejects(ownerTaskAuthorization(),/terminal/);const agent=await mintTaskCredential(authPath,{actor_id:"agent",role:"agent",domains:["personal"]});await assert.rejects(saveOwnerTaskAccess(`Bearer ${agent.token}`),/owner/);}
+ finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(token===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=token;}
 });
