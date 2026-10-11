@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 9,
+  "registration_version": 10,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -668,7 +668,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective P8 HTTP action replay procedure; supported case IDs explicitly separate published APIs from implemented matrix handlers. Prior immutable segments and thresholds retained.",
+  "amendment": "Prospective action fixture prerequisite corrected: Execute requires an actual due task. Earlier setup-only reference run aborted before a valid execute; retained as not_evaluable, never feature failure/pass.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -717,6 +717,7 @@
       "decision supersession",
       "crash/recovery injection",
       "P10 migrations"
-    ]
+    ],
+    "due_precondition": "Create past clock task or submit registered equality event; ordinary get contacts queue automatic evaluation; wait max5s for durable due then obtain current revision before prepare; no manual reconcile."
   }
 }
