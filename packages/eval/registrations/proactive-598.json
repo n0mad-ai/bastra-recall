@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 13,
+  "registration_version": 14,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -30,7 +30,8 @@
     "P8": "PR #1183 corrected f5f8f149; execute handlers pending independent runtime implementation",
     "P1": "PR #1164",
     "P3": "PR #1171 head e78ff4f4, three DST/recurrence replays observed",
-    "P5a": "PR #1175 head 87b80f3e; automatic startup/contact/periodic poll independently 3/3 passed"
+    "P5a": "PR #1175 head 87b80f3e; automatic startup/contact/periodic poll independently 3/3 passed",
+    "P10": "Draft PR #1186 frozen df3abfca"
   },
   "data_policy": {
     "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
@@ -1173,7 +1174,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective focused remeasurement on b93ab169. Builder documents 5s for small synthetic fixtures: require event-specific verification AND durable occurrence within one shared 5s interval from successful event acceptance. Earlier separate-wait procedures/results unchanged; no relaxed limit, no manual reconciliation.",
+  "amendment": "Prospective complete 75-row P10 measurement on frozen df3abfca, including the previously pending migration case. Keep existing shared 5s premise boundary and all prior immutable segments. Later builder pushes do not change this run head.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1264,5 +1265,16 @@
       "boundary_quote": "Kleine synthetische Fixtures verlangen gespeichertes ereignisspezifisches Pr\u00fcfergebnis UND Occurrence innerhalb5s.",
       "limits": "No universal bound for filesystem syscalls, lock contention, capacity errors or process pauses. Those do not silently become passing synthetic rows. Existing failed f5f8f149 segments retained."
     }
+  },
+  "full_p10_procedure": {
+    "feature_commit": "df3abfca2e495768cc5a2d29042d7ca08903f218",
+    "feature_pr": 1186,
+    "expected_cases": 25,
+    "repetitions": 3,
+    "expected_rows": 75,
+    "freeze_rule": "Detached clean feature worktree/build pinned before run; finish on this SHA regardless of later builder pushes.",
+    "migration": "Actual daemon ENOENT, v1 fixture accepted by original published 40419327 decoder, v2 empty-execution fixture; read identity/history then write persist v3. Original v1 reader rejects v3 downgrade without modifying bytes. Inject truncated/duplicate/future snapshots while stopped; real authenticated HTTP task_recover preserves exact quarantine originals, restores backup IDs/history, reports changes_may_be_missing, disarms and stops execution. Invented neighboring memory/draft sentinel bytes retained.",
+    "old_decoder_commit": "4041932736e24d4c78365fa9f3728376c12ca26f",
+    "limits": "Recovery is explicitly from possibly older backup, with documented loss warning and exact original preservation; no silent zero-loss claim. Functional synthetic matrix does not pass human/longitudinal/independent stable gates."
   }
 }

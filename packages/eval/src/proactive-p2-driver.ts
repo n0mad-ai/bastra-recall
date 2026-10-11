@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { runMigration } from "./proactive-migration-driver.js";
 import { PREMISE_CASES, runPremises } from "./proactive-premise-driver.js";
 import { ACTION_CASES, actionFixture, runActions } from "./proactive-action-driver.js";
 import type { FeatureDriver } from "./proactive-measurement-run.js";
@@ -27,11 +28,12 @@ async function stop(child: ChildProcessWithoutNullStreams) {
   if (!finished) { child.kill("SIGKILL"); await done; }
 }
 
+const legacyRoot=resolve(feature,"../messung-a-p2c-20261011");
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P4:1172,P6:1180,P7:1181,P8:1183,P9:1182} : {}) },
-    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES,...PREMISE_CASES],
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P4:1172,P6:1180,P7:1181,P8:1183,P9:1182} : {}), ...(existsSync(join(daemonDir,"task-maintenance.js")) ? {P10:1186,P9b:1184,P9c:1185} : {}) },
+    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES,...PREMISE_CASES,"migration-corruption"],
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "synthetic registered local-artifact-v1 for action cases; none for notify/CRUD", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["premise-driver",createHash("sha256").update(readFileSync(new URL("./proactive-premise-driver.ts",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["legacy-v1-store",createHash("sha256").update(readFileSync(join(legacyRoot,"packages/daemon/dist/task-store.js"))).digest("hex")], ["migration-driver",createHash("sha256").update(readFileSync(new URL("./proactive-migration-driver.ts",import.meta.url))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["premise-driver",createHash("sha256").update(readFileSync(new URL("./proactive-premise-driver.ts",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -126,7 +128,9 @@ const driver: FeatureDriver = {
     try {
       await start();
       const deliveryCases=["seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"];
-      if(PREMISE_CASES.includes(c.id)) {
+      if(c.id==="migration-corruption") {
+        values=await runMigration({http,create,taskPath,root,start,storeApi,legacyRoot,evidence,stopDaemon:()=>stop(daemon!)});
+      } else if(PREMISE_CASES.includes(c.id)) {
         values=await runPremises(c,{http,input,root,vault,clockPath,taskPath,evidence,start,feature,fixture:action,stopDaemon:()=>stop(daemon!)});
       } else if(ACTION_CASES.includes(c.id)) {
         values=await runActions(c,{http,input,fixture:action,clockPath,taskPath,evidence,start,crashPath,stopDaemon:()=>stop(daemon!)});
