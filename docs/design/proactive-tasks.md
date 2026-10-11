@@ -718,6 +718,6 @@ P11c review boundary: ui.enabled exposes Agent session bootstrap to **every loca
 process**, including another OS user who cannot read the credential file. A local
 proxy/tunnel that rewrites/removes Host/Origin to localhost may expose the same
 surface. This is the existing /ui loopback model, not proof of OS-user identity.
-Recommend ui.enabled=false on multi-user hosts, or BASTRA_TASK_UI_SESSION=0 to
-block creation/use of tokenless sessions while retaining explicit token login.
-Owner/signature/execution checks remain unchanged; the status reports the switch.
+Recommend ui.enabled=false on multi-user hosts. The actual access-boundary fix
+is deferred to [#1198](https://github.com/n0mad-ai/bastra-recall/issues/1198),
+not implemented in this stack. Owner/signature/execution checks remain unchanged.

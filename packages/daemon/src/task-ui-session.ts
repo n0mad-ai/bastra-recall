@@ -18,7 +18,7 @@ export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method
   void (async () => {
     try {
       res.setHeader("Cache-Control", "no-store");
-      if (process.env.BASTRA_TASK_UI_SESSION === "0" || !isLoopback(req) || !isLoopbackHost(req.headers.host, []) || !await getUiEnabled()) reject("forbidden");
+      if (!isLoopback(req) || !isLoopbackHost(req.headers.host, []) || !await getUiEnabled()) reject("forbidden");
       if (method !== "POST") reject("forbidden");
       const gate = gateLocalPost({ origin: req.headers.origin, host: req.headers.host, contentType: req.headers["content-type"], path: url });
       if (gate !== 200) reject("forbidden");
