@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 9,
+  "registration_version": 10,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -655,7 +655,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective action fixture prerequisite corrected: Execute requires an actual due task. Earlier setup-only reference run aborted before a valid execute; retained as not_evaluable, never feature failure/pass.",
+  "amendment": "Prospective source-action setup handles the published one-time freshness revision advance: on initial approval_stale fetch current task and prepare once again. Prior incomplete source-setup run remains not_evaluable.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -705,6 +705,7 @@
       "crash/recovery injection",
       "P10 migrations"
     ],
-    "due_precondition": "Create past clock task or submit registered equality event; ordinary get contacts queue automatic evaluation; wait max5s for durable due then obtain current revision before prepare; no manual reconcile."
+    "due_precondition": "Create past clock task or submit registered equality event; ordinary get contacts queue automatic evaluation; wait max5s for durable due then obtain current revision before prepare; no manual reconcile.",
+    "prepare_revision": "Initial prepare may initialize actual freshness and return approval_stale; allow one current-task fetch/reprepare only. Never reuse approvals or retry execute after binding drift."
   }
 }
