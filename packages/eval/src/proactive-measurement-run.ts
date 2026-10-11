@@ -6,10 +6,10 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
-import { PROACTIVE_CASES, summarizeObservations, type Observation, type ProactiveCase } from "./proactive-measurement.js";
+import { PROACTIVE_CASES, evaluateObservation, summarizeObservations, type Observation, type ProactiveCase } from "./proactive-measurement.js";
 
 export interface FeatureDriver {
-  metadata: { feature_commit: string; contract_prs: Record<string, number>; design_sha256: string; adapter: string; client: string; profile: string };
+  metadata: { feature_commit: string; contract_prs: Record<string, number>; design_sha256: string; adapter: string; client: string; profile: string; support_sha256?: Record<string, string> };
   /** Each run must reset state and derive observables from the real feature; no model verdicts. */
   run(c: ProactiveCase, context: { root: string; port: number; reference_instant: string; repetition: number; feature_root: string }): Promise<Observation>;
 }
@@ -79,6 +79,8 @@ async function main() {
       if (row.case_id !== c.id || row.repetition !== repetition) throw new Error("driver returned the wrong case/repetition");
       write(`${c.id}-${repetition}.json`, row); // Retain each row even if the next call crashes.
       rows.push(row);
+      const evaluated = evaluateObservation(c, row);
+      console.log(JSON.stringify({ case_id: c.id, repetition, verdict: evaluated.verdict, mismatches: evaluated.mismatches, missing: evaluated.missing }));
     }
     const summary = summarizeObservations(rows);
     const { results: _privateResults, ...aggregate } = summary;

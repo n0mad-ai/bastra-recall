@@ -1,0 +1,201 @@
+/** Actual P2 daemon/HTTP/MCP/CLI observations. No synthetic runtime or human attestations. */
+import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
+import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import type { FeatureDriver } from "./proactive-measurement-run.js";
+const arg = process.argv.indexOf("--feature-root");
+if (arg < 0) throw new Error("feature-root required");
+const feature = resolve(process.argv[arg + 1]);
+const commit = execFileSync("git", ["-C", feature, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const design = readFileSync(join(feature, "docs/design/proactive-tasks.md"), "utf8");
+const daemonDir = join(feature, "packages/daemon/dist");
+const auth = await import(pathToFileURL(join(daemonDir, "task-auth.js")).href);
+const storeApi = await import(pathToFileURL(join(daemonDir, "task-store.js")).href);
+const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+async function stop(child: ChildProcessWithoutNullStreams) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const done = once(child, "exit"); child.kill("SIGTERM");
+  const finished = await Promise.race([done.then(() => true), delay(2000).then(() => false)]);
+  if (!finished) { child.kill("SIGKILL"); await done; }
+}
+
+const driver: FeatureDriver = {
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169 },
+    design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js"].map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+  async run(c, context) {
+    const { root, port, repetition } = context;
+    if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
+    const vault = join(root, "vault"), taskPath = join(root, "data/tasks.json"), authPath = join(root, "data/task-auth.json");
+    mkdirSync(vault, { recursive: true, mode: 0o700 }); mkdirSync(join(root, "home"), { mode: 0o700 });
+    const base = `http://127.0.0.1:${port}`;
+    const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: join(root, "home"), USERPROFILE: join(root, "home"), TMPDIR: root,
+      BASTRA_MEASUREMENT_ROOT: root, BASTRA_TASKS_PATH: taskPath, BASTRA_VAULT_PATH: vault,
+      BASTRA_HTTP_PORT: String(port), BASTRA_DAEMON_URL: base, BASTRA_FORWARDER_SPAWN: "0",
+      BASTRA_EMBEDDING_PROVIDER: "none", BASTRA_UPDATE_CHECK: "off", BASTRA_CODE_AWARENESS: "0", BASTRA_TELEMETRY: "0",
+      BASTRA_LOG_PATH: join(root, "logs"), BASTRA_API_TOKEN: "legacy-fixture", BASTRA_RM_ARCHIVES: "0",
+      BASTRA_OLLAMA_AUTOSTART: "0", BASTRA_COMMONS_PATH: join(root, "commons"),
+      NODE_OPTIONS: `--import ${fileURLToPath(new URL("./proactive-network-guard.mjs", import.meta.url))}` };
+    const owner = await auth.mintTaskCredential(authPath, { actor_id: "fixture-owner", domains: ["personal"], role: "owner" });
+    const agent = await auth.mintTaskCredential(authPath, { actor_id: "fixture-agent", domains: ["personal"], role: "agent" });
+    const other = await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
+    const tokens: Record<string,string | undefined> = { owner: owner.token, agent: agent.token, other: other.token, legacy: "legacy-fixture", absent: undefined };
+    const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
+      clock_mode: "real wall clock for auth/CRUD; no frozen-clock trigger claim", schedule_at: Date.parse(context.reference_instant) }];
+    const processes: ChildProcessWithoutNullStreams[] = [];
+    const logs: Record<string, string> = {};
+    function child(name: string, entry: string, args: string[] = [], extra: NodeJS.ProcessEnv = {}) {
+      const p = spawn(process.execPath, [join(daemonDir, entry), ...args], { cwd: feature, env: { ...env, ...extra }, stdio: "pipe" });
+      processes.push(p); logs[name] = "";
+      p.stderr.on("data", d => { logs[name] += d.toString(); }); return p;
+    }
+    let daemon: ChildProcessWithoutNullStreams;
+    async function start() {
+      daemon = child(`daemon-${processes.length}`, "index.js"); daemon.stdout.resume();
+      for (let i = 0; i < 150; i++) {
+        if (daemon.exitCode !== null) throw new Error("daemon exited during setup");
+        try { const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(300) }); if (r.ok) { evidence.push({ health: await r.json() }); return; } } catch {}
+        await delay(100);
+      } throw new Error("isolated daemon startup timeout");
+    }
+    async function http(method: string, path: string, body: unknown = undefined, persona = "owner", headers: Record<string,string> = {}) {
+      const response = await fetch(base + path, { method, headers: { "Content-Type": "application/json", ...(tokens[persona] ? { Authorization: `Bearer ${tokens[persona]}` } : {}), ...headers },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000) });
+      const data = await response.json() as any; evidence.push({ transport: "http", method, path, persona, input: body, status: response.status, result: data });
+      return { status: response.status, data };
+    }
+    const input = (key = "fixture") => ({ idempotency_key: key, original_request: "Check invented run after seven days", goal: "Evaluate invented run",
+      resolution_condition: "Explicit fixture-owner resolution", schedule: { kind: "instant", at: Date.parse(context.reference_instant) }, timezone: "Europe/Madrid",
+      scope: { kind: "personal", name: "measurement" }, owner_domains: ["personal"] });
+    async function create(key = "fixture", persona = "owner") { const r = await http("POST", "/api/v1/tasks", input(key), persona); if (r.status !== 200) throw new Error("fixture creation failed"); return r.data; }
+    async function op(name: string, task: any, more: object = {}, persona = "owner") { return http("POST", `/api/v1/task_${name}`, { id: task.id, expected_revision: task.expected_revision, ...more }, persona); }
+    async function cli(sub: string, body: unknown) {
+      const path = join(root, `cli-${evidence.length}.json`); writeFileSync(path, JSON.stringify(body), { mode: 0o600 });
+      const p = child(`cli-${evidence.length}`, "cli.js", ["tasks", sub, "agent", path], { BASTRA_TASK_TOKEN: agent.token });
+      let stdout = "", stderr = ""; p.stdout.on("data", d => { stdout += d; }); p.stderr.on("data", d => { stderr += d; });
+      const [exit] = await once(p, "exit");
+      const data = JSON.parse(exit === 0 ? stdout : stderr.trim().split("\n").at(-1)!);
+      evidence.push({ transport: "cli-process", sub, input: body, exit, result: data }); return data;
+    }
+    let mcp: ChildProcessWithoutNullStreams | undefined;
+    let seq = 0;
+    const waiting = new Map<number, { ok: (v: any) => void; fail: (e: Error) => void }>();
+    async function rpc(method: string, params: object) {
+      const id = ++seq;
+      return new Promise<any>((ok, fail) => {
+        const timer = setTimeout(() => { waiting.delete(id); fail(new Error("MCP request timeout")); }, 10000);
+        waiting.set(id, { ok: v => { clearTimeout(timer); ok(v); }, fail: e => { clearTimeout(timer); fail(e); } });
+        mcp!.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      });
+    }
+    async function mcpCall(name: string, args: object) {
+      if (!mcp) {
+        mcp = child("mcp", "mcp-forwarder.js", [], { BASTRA_TASK_TOKEN: agent.token });
+        let pending = "";
+        mcp.stdout.on("data", d => {
+          pending += d; let n;
+          while ((n = pending.indexOf("\n")) >= 0) {
+            const line = pending.slice(0,n); pending = pending.slice(n+1);
+            const message = JSON.parse(line);
+            if (waiting.has(message.id)) { const w = waiting.get(message.id)!; waiting.delete(message.id); message.error ? w.fail(new Error(JSON.stringify(message.error))) : w.ok(message.result); }
+          }
+        });
+        await rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "measurement-fixture", version: "1" } });
+        mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })+"\n");
+      }
+      const raw = await rpc("tools/call", { name, arguments: args });
+      const data = JSON.parse(raw.content[0].text);
+      evidence.push({ transport: "actual-mcp-stdio", name, input: args, isError: raw.isError ?? false, result: data }); return data;
+    }
+    let values: Record<string, boolean | number | string> = {};
+    try {
+      await start();
+      if (c.id === "p2-auth-boundaries") {
+        const t = await create();
+        const checks = await Promise.all([
+          http("GET", "/api/v1/tasks", undefined, "absent"), http("GET", "/api/v1/tasks", undefined, "legacy"),
+          http("POST", "/api/v1/task_review", { id:t.id,expected_revision:t.expected_revision }, "agent"),
+          http("POST", "/api/v1/tasks", { ...input("forged"), arm:true }, "agent"),
+          http("POST", "/api/v1/tasks", { ...input("spoof"), source:"user",approved:true,actor:"fixture-owner" }, "agent"),
+          http("POST", "/api/v1/tasks", { ...input("cross-domain"), owner_domains:["other"] }, "agent"),
+        ]);
+        const hidden = await http("GET", `/api/v1/tasks/${t.id}`, undefined, "other");
+        const list = await http("GET", "/api/v1/tasks", undefined, "other");
+        const origin = await http("GET", "/api/v1/tasks", undefined, "owner", { Origin:"https://foreign.invalid" });
+        const rotated = await auth.mintTaskCredential(authPath,{actor_id:"fixture-agent",domains:["personal"],role:"agent"},agent.credential_id);
+        const old = await http("GET", "/api/v1/tasks", undefined, "agent"); tokens.agent=rotated.token;
+        const fresh = await http("GET", "/api/v1/tasks", undefined, "agent");
+        await auth.revokeTaskCredential(authPath,rotated.credential_id);
+        const revoked = await http("GET", "/api/v1/tasks", undefined, "agent");
+        values={unauthorised_successes:checks.filter(r=>r.status===200).length,cross_domain_visible:hidden.status!==404||list.data.tasks.length!==0,spoofed_authority:checks[4].status===200,revocation_immediate:old.status===401&&fresh.status===200&&revoked.status===401,foreign_origin_denied:origin.status===403};
+      } else if(c.id==="p2-transport-parity") {
+        const t = await create("fixture","agent");
+        const tool = await http("POST","/api/v1/task_create",input(),"agent");
+        const viaMcp = await mcpCall("task_create",input()); const viaCli = await cli("create",input());
+        const readMcp = await mcpCall("task_get",{id:t.id}); const readCli=await cli("get",{id:t.id});
+        const lists=[(await http("GET","/api/v1/tasks",undefined,"agent")).data,await mcpCall("task_list",{}),await cli("list",{})];
+        const denied={id:t.id,expected_revision:t.expected_revision};
+        const a=await http("POST","/api/v1/task_review",denied,"agent"),b=await mcpCall("task_review",denied),d=await cli("review",denied);
+        values={same_task_all_transports:[tool.data,viaMcp,viaCli,readMcp,readCli].every(v=>equal(v,t))&&lists.every(v=>equal(v.tasks,[t])),stored_tasks:JSON.parse(readFileSync(taskPath,"utf8")).tasks.length,agent_proposal_armed:t.armed,denial_codes_match:a.status===403&&a.data.code===b.code&&b.code===d.code};
+      } else if(c.id==="p2-owner-lifecycle") {
+        let t=await create(); const reviewed=await op("review",t); t=reviewed.data;
+        const armed=t.armed===true&&t.action_level==="notify";
+        const denied=await Promise.all(["acknowledge","resolve","rearm"].map(name=>op(name,t,{},"agent")));
+        const missing=await op("acknowledge",t,{occurrence_id:"nonexistent"});
+        const now=Date.now(); t=(await op("snooze",t,{until:now+3600000},"agent")).data;
+        const deadline=t.agent_snooze_deadline;
+        const bound=await op("snooze",t,{until:deadline+1},"agent");
+        const repeated=await op("snooze",t,{until:now+7200000},"agent"); t=repeated.data;
+        const gen=t.generation; const until=t.snoozed_until;
+        const cosmetic=await http("PATCH",`/api/v1/tasks/${t.id}`,{expected_revision:t.expected_revision,patch:{goal:"Cosmetic fixture change"}}); t=cosmetic.data;
+        const cosmeticOk=!t.armed&&t.generation===gen&&t.snoozed_until===until;
+        const trigger=await http("PATCH",`/api/v1/tasks/${t.id}`,{expected_revision:t.expected_revision,patch:{schedule:{kind:"instant",at:now+9000000}}}); t=trigger.data;
+        const editOk=cosmeticOk&&!t.armed&&t.state==="pending"&&t.generation===gen+1&&t.snoozed_until===undefined;
+        t=(await op("resolve",t)).data; const terminal=await op("review",t); const oldGen=t.generation;
+        t=(await op("rearm",t)).data;
+        const rearmOk=t.state==="pending"&&!t.armed&&t.generation===oldGen+1;
+        t=(await op("cancel",t)).data; const cancelReview=await op("review",t);
+        values={owner_notify_armed:armed,agent_ack_resolve_rearm_denied:denied.every(r=>r.status===403),missing_occurrence_ack_denied:missing.status===404,snooze_fixed_ceiling:bound.status===400&&repeated.status===200&&repeated.data.agent_snooze_deadline===deadline,edits_disarm:editOk,terminal_not_resurrected:terminal.status===409&&cancelReview.status===409,rearm_unarmed_new_generation:rearmOk};
+      } else if(c.id==="p2-durable-restart") {
+        let t=await create(); t=(await op("review",t)).data;
+        const before=JSON.parse(readFileSync(taskPath,"utf8")); await stop(daemon!); await start();
+        const r=await http("GET",`/api/v1/tasks/${t.id}`),m=await mcpCall("task_get",{id:t.id}),cl=await cli("get",{id:t.id});
+        const after=JSON.parse(readFileSync(taskPath,"utf8"));
+        values={task_equal_after_restart:[r.data,m,cl].every(v=>equal(v,t)),history_retained:equal(before.tasks[0].history,after.tasks[0].history),private_modes:[taskPath,`${taskPath}.backup`,authPath].every(p=>(statSync(p).mode&0o777)===0o600),fabricated_occurrences:after.occurrences.length};
+      } else if(c.id==="p2-concurrency-cas") {
+        const t=await create(); const original=JSON.parse(readFileSync(taskPath,"utf8")).tasks[0].history;
+        const raced=await Promise.all(["a","b"].map(goal=>http("PATCH",`/api/v1/tasks/${t.id}`,{expected_revision:t.expected_revision,patch:{goal}})));
+        const duplicates=await Promise.all([1,2,3,4].map(()=>http("POST","/api/v1/tasks",input("concurrent"))));
+        const drift=await http("POST","/api/v1/tasks",{...input("concurrent"),goal:"Changed payload"});
+        const after=JSON.parse(readFileSync(taskPath,"utf8")).tasks.find((x:any)=>x.id===t.id);
+        values={cas_winners:raced.filter(r=>r.status===200).length,cas_conflicts:raced.filter(r=>r.status===409).length,idempotent_ids:duplicates.every(r=>r.status===200)?new Set(duplicates.map(r=>r.data.id)).size:-1,idempotency_drift_denied:drift.status===409,history_append_only:equal(original,after.history.slice(0,original.length))&&after.history.length===original.length+1};
+      } else if(c.id==="p1-p2-corruption-recovery") {
+        const empty=await http("GET","/api/v1/tasks"); let t=await create(); t=(await op("review",t)).data;
+        const saved=readFileSync(taskPath,"utf8"); const old=t.expected_revision;
+        // Save an explicitly supported v1 round-trip as the recoverable snapshot, then corrupt only while stopped.
+        t=(await op("snooze",t,{until:Date.now()+60000})).data;
+        await stop(daemon!); writeFileSync(taskPath,'{"schema_version":1,',{mode:0o600}); await start();
+        const corrupt=await http("GET","/api/v1/tasks"); await stop(daemon!); const corruptBytes=readFileSync(taskPath,"utf8");
+        const future=JSON.stringify({...JSON.parse(saved),schema_version:999});writeFileSync(taskPath,future); await start();
+        const unsupported=await http("GET","/api/v1/tasks"); await stop(daemon!); const preserved=readFileSync(taskPath,"utf8")===future;
+        const recovered=await storeApi.recoverTaskStore(taskPath,"fixture-owner");
+        const originals=recovered.quarantine&&readFileSync(recovered.quarantine,"utf8")===future;
+        await start(); const get=await http("GET",`/api/v1/tasks/${t.id}`);
+        const stale=await http("POST","/api/v1/task_review",{id:t.id,expected_revision:old});
+        values={first_run_empty:empty.status===200&&empty.data.tasks.length===0,corruption_503:corrupt.status===503&&corrupt.data.code==="corrupt",future_version_503:unsupported.status===503&&unsupported.data.code==="unsupported_version",original_bytes_preserved:corruptBytes==='{"schema_version":1,'&&preserved&&Boolean(originals),recovery_disarmed:get.status===200&&get.data.armed===false,old_revision_denied:stale.status===409,private_modes:[taskPath,authPath,recovered.quarantine].every(p=>(statSync(p).mode&0o777)===0o600)};
+        evidence.push({published_storage_primitive:"recoverTaskStore",recovery:recovered,quarantine_sha256:createHash("sha256").update(readFileSync(recovered.quarantine)).digest("hex")});
+      } else throw new Error("unsupported published-stage fixture");
+      evidence.push({ task_snapshot: existsSync(taskPath)?JSON.parse(readFileSync(taskPath,"utf8")):null });
+      return { case_id:c.id,repetition,values,evidence };
+    } finally {
+      for(const p of processes.reverse()) await stop(p);
+      writeFileSync(join(root,"process-logs.json"),JSON.stringify(logs,null,2),{mode:0o600});
+      evidence.push({ process_logs:logs, all_children_stopped:processes.every(p=>p.exitCode!==null||p.signalCode!==null), blocked_network:existsSync(join(root,"blocked-network.jsonl"))?readFileSync(join(root,"blocked-network.jsonl"),"utf8"):"" });
+    }
+  }
+};
+export default driver;
