@@ -9,14 +9,21 @@ export function taskRequestAuth(req: IncomingMessage): string | undefined {
   const dedicated = req.headers["x-bastra-task-authorization"];
   return typeof dedicated === "string" ? dedicated : req.headers.authorization;
 }
+const passiveQuiet = new Map<string, number>();
 export async function taskAttachment(ctx: TaskServiceContext, authorization: string | undefined, session: string, channel: "mcp" | "http" | "session" | "prompt") {
   requestTaskReconciliation(ctx.path);
   try {
     const principal = await authenticateTask(authorization, ctx.authPath);
     const store = cachedTaskSnapshot(ctx.path); if (!store) return undefined;
     const input = taskDueInput.parse({ session: /^[a-z0-9][a-z0-9._:-]{0,95}$/.test(session) ? session : "unknown", channel });
-    const projection = taskDueProjection(store, principal, input, (ctx.now ?? Date.now)());
+    const projection = taskDueProjection(store, principal, input, (ctx.now ?? Date.now)(), true);
+    const now = (ctx.now ?? Date.now)();
+    for (const [key, until] of passiveQuiet) if (until <= now) passiveQuiet.delete(key);
+    const keep = projection.occurrenceIds.map(id => JSON.stringify([ctx.path, projection.client, id]));
+    if (keep.some(key => (passiveQuiet.get(key) ?? 0) > now)) return undefined;
     if (!projection.cards.length) return undefined;
+    if (passiveQuiet.size >= 5000) passiveQuiet.clear();
+    for (const key of keep) passiveQuiet.set(key, now + 60000);
     return { text: taskDueText(projection), due: { coverage: projection.coverage, cards: projection.cards, overflow: projection.overflow },
       record: () => { setImmediate(() => { void recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, (ctx.now ?? Date.now)(), input.session, channel).catch(() => undefined); }); } };
   } catch { return undefined; } // legacy/absent/revoked mapping never receives private work

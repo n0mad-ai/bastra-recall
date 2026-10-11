@@ -449,3 +449,12 @@ requires review. Old bindings remain historical and are never rebound automatica
 Before each evaluation, bounded disk-authoritative decision AND assumption reads
 reject revision/sensitivity/inactive/missing bindings, preserving history. Scope is
 local revisioned memories, not a newly implemented global temporal graph.
+P5b correction: injected due text is reference-only DATA, original requests quoted
+in escaped JSON (no embedded closing tags). Passive presentation has an Actor/Role
+minimum interval of 60s or configured retry interval, even for owners; explicit
+owner task_due remains available regardless of others' budgets. Acknowledged but
+unfinished work resurfaces passively at most daily. Pending state is preserved.
+Small session budgets keep a compact availability card with the explicit due
+command instead of silently dropping due work. P9/demo MUST provide one owner CLI
+setup command for hook task credentials and show honest per-client missing-token
+coverage. No automatic provider wakeup is claimed.
