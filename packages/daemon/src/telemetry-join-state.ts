@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hasWordForm } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import { tokens as words } from "./save-similarity.js";
@@ -469,7 +470,8 @@ export class JoinState {
 
       let matchStrength = 0;
       for (const token of entry.distinctive_tokens) {
-        if (inputTokens.has(token)) matchStrength++;
+        // An inflected form in the edit counts like the memory's own spelling.
+        if (hasWordForm(inputTokens, token)) matchStrength++;
       }
       if (!closeOnMiss && matchStrength < 2) continue; // stays open (#144)
       entry.closed = true;
