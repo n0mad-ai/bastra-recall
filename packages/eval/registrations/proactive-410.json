@@ -84,7 +84,17 @@
       "longitudinal_days_observed": 0,
       "functional_status": "failed: automatic evaluation absent (3/3) and distinct source/key tuples collapse across owner domains (3/3); returning file/Git transitions fixed (3/3)",
       "corrected_p4_head_check": "84a241ed focused tuple replay prepared; P5/P8 pending",
-      "immutable_prior_segments": "Original P2/P3 successes and expanded review failures preserved separately"
+      "immutable_prior_segments": "Original P2/P3 successes and expanded review failures preserved separately",
+      "latest_focused_segment": {
+        "feature_commit": "84a241edfe1072276c004ecc203cdceabb54d909",
+        "selected_case": "p3-source-key-tuple-boundary",
+        "observed": 3,
+        "passed": 0,
+        "failed": 3,
+        "pending_matrix_rows": 72,
+        "finding": "Two accepted different-domain submissions reuse one foreign event receipt and one journal record."
+      },
+      "focused_scope_limit": "Only tuple boundary retested on 84a241ed; automatic evaluation verdict remains from the separately pinned full P4 segment, no pooling."
     },
     "runtime_segments": [
       {
@@ -287,6 +297,45 @@
           "tuple_distinct_event_ids_per_replay": 1,
           "foreign_domain_receipt_reused": true
         }
+      },
+      {
+        "started_at": "2026-10-11T10:27:11.622Z",
+        "eval_commit": "dacdaae225dae96a60e3fa877eb255a4094e3f04",
+        "runner_sha256": "cd0da72b78fdd7038114c5f095e33e6a5d6a469ece8faf3793e816aee54276cf",
+        "driver_sha256": "0f3700fd86000c549da5523fa2772eb80d0b2a17d169a1c39cf1c1e8f088e944",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "failed",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 0,
+        "failed": 3,
+        "not_evaluable": 0,
+        "feature_commit": "84a241edfe1072276c004ecc203cdceabb54d909",
+        "selected_case": "p3-source-key-tuple-boundary",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 7,
+            "sha256": "5dbf149d15013bcad2dfeec5757b37f976fbab123841a7db2bd9713cf511c71d"
+          },
+          {
+            "issue": 598,
+            "registration_version": 6,
+            "sha256": "4229dd9d1cfd31b5e5a7a7fe8ec695ad7fbebed2b35698f2c19ee72a4caa7456"
+          },
+          {
+            "issue": 410,
+            "registration_version": 6,
+            "sha256": "09714a0ffb0b1e56155afe045c4aa230c2bf5bd8d59b1185c3959f599c73ec0c"
+          }
+        ],
+        "private_result_sha256": "d1631e64517b70a0b9285ca2281387feb828d4bde2f2de0db99972a155c5bd25",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0,
+        "tuple_submissions_accepted_per_replay": 2,
+        "tuple_events_stored_per_replay": 1,
+        "foreign_domain_receipt_reused": true
       }
     ]
   },

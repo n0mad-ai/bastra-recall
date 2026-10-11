@@ -25,7 +25,10 @@ P3 review controls plus the preregistered source-key tuple/domain boundary.
 The latter was registered in `71143079` before observation (#402 v7, #598/#410 v6).
 Two accepted different-domain submissions collapsed into one event and a reused
 foreign receipt on P4 465a6800, in 3/3 replays; complete run: 24 pass, 6 fail,
-45 pending. Current feature correction is being checked separately.
+45 pending. Focused replay on corrected P4 84a241ed also failed 3/3: two accepted
+submissions, one journal event and the same foreign event receipt. Other cases
+were not retested in that focused segment; the last full 465a6800 segment remains
+24 pass / 6 fail / 45 pending. No pooling across heads or selected subsets.
 The observation interface is not a competing task/API/storage schema.
 
 | Pinned clean feature head | Available cases | Replays passed | Full coverage |
