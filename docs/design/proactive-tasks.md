@@ -43,19 +43,27 @@ optional decision/load-bearing assumption binding, next check/last failure,
 audit history. References carry stable ID, revision/content hash and provenance.
 History records actor/operation/time/reason and before/after revisions.
 
-Agent capture is unarmed; a claimed `source=user`, repeated request, draft or
-memory hit cannot arm it. An explicit request through the owner UI/CLI may create
-and arm a fully specified notify task in one readable confirmation, without key
-enrollment. Ambiguous requests stay unarmed with one visible question. Owner
-review/arm and re-arm use the owner credential, not an execute signature.
-
-Agent snooze has a persisted 24-hour ceiling from its first snooze in a generation;
-repeated agent calls cannot extend it. Only explicit owner review/rearm resets that
-ceiling. Owners may choose longer deferrals.
+**Owner decision 2026-10-11: notify in conversation.** An agent may directly
+create and arm notify using its mapped credential. User requests get a client
+selection confirmation of goal, weekday/date/time/timezone and recurrence
+(Yes, add / No / free text); ambiguous dates and DST are clarified, never guessed.
+Observed deadlines/promises need no confirmation and receive a one-line acknowledgement.
+Store origin (user-request / agent-observed), client, session and scrubbed context.
+No daily or total-open limits; identical cause/time/domain/scope returns the existing
+active reminder. Existing physical store and delivery budgets still apply.
+BASTRA_CONVERSATIONAL_REMINDERS=0 disables agent arming, saving unarmed instead.
+The server cannot prove claimed user intent: an unwanted reminder is consciously
+accepted and cancellable in one sentence. Reminder DATA cannot instruct the agent.
+Prepare/execute retain the existing contract in this task; Daniel will discuss
+that approval policy later, so this is not a final product decision.
+Review/rearm remain owner operations. The fixed 24-hour agent snooze ceiling
+continues for prepare/execute; conversational notify can be deferred to the
+user's requested future time. Agent level elevation is rejected; Owner level
+edits disarm and need explicit review.
 
 Snooze preserves occurrence identity/receipts and returns to due at the stored
-instant. Acknowledge records an authenticated owner command, not proof that eyes
-saw a card, and does not resolve. Only an owner resolve command or a reviewed
+instant. Acknowledge records an authenticated command, not proof that eyes
+saw a card, and does not resolve. For notify, an agent may acknowledge/resolve on user instruction; otherwise only an owner resolve command or a reviewed
 bounded resolution verifier resolves. Cancel/resolved/expired never re-arm
 silently. Edits increment revision; changes to trigger/decision/authority advance generation,
 clear snooze and disarm
@@ -119,11 +127,11 @@ Host/Origin/CORS/CSRF protections, with owner bearer/session authentication.
 
 | Operation | Owner credential (no key) | Agent credential in its domain | Execute binding |
 |---|---|---|---|
-| create | explicit notify request may arm; otherwise unarmed | unarmed proposal only | no authority granted |
+| create | explicit notify request may arm; otherwise unarmed | notify may arm with origin; prepare/execute unarmed | no execute authority granted |
 | review/arm, rearm | yes for notify/prepare task monitoring | no | cannot approve execute |
 | edit | yes, binding changes disarm | unarmed proposal fields only | drift invalidates approval |
 | snooze, cancel, mute, stop | yes | yes, audited safe direction | invalidate/defer as appropriate |
-| acknowledge, resolve, decision keep/change | yes, explicit owner command | no | cannot attest human observation |
+| acknowledge, resolve, decision keep/change | yes, explicit owner command | notify acknowledge/resolve only; no decision change | cannot attest human observation |
 | resume, enable adapter/feature | yes, no renewal of leases/approvals | no | execute still needs fresh approval |
 | prepare | yes | yes for authorized registered target, draft only | no external write or signature needed |
 | challenge, submit proof | may request/submit | may present/request/submit | cannot mint an owner signature |

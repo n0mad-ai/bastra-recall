@@ -19,8 +19,8 @@ async function fixture() {
   return { ctx, owner, agent, other, call, input };
 }
 test("agent capture stays unarmed; owner explicitly reviews notify without signing key", async () => {
-  const f = await fixture(); const t = await f.call(f.agent, "task_create", f.input);
-  assert.equal(t.armed, false); assert.equal(t.creator, "agent"); assert.equal(t.action_level, "notify");
+  const f = await fixture(); const t = await f.call(f.agent, "task_create", { ...f.input, action_level: "prepare" });
+  assert.equal(t.armed, false); assert.equal(t.creator, "agent"); assert.equal(t.action_level, "prepare");
   await assert.rejects(f.call(f.agent, "task_review", { id: t.id, expected_revision: t.expected_revision }), { code: "forbidden" });
   const reviewed = await f.call(f.owner, "task_review", { id: t.id, expected_revision: t.expected_revision });
   assert.equal(reviewed.armed, true); assert.equal(reviewed.history.at(-1).actor, "owner");
@@ -29,7 +29,7 @@ test("owner create-and-arm is explicit; forged user/actor/owner claims fail stri
   const f = await fixture(); assert.equal((await f.call(f.owner, "task_create", { ...f.input, arm: true })).armed, true);
   for (const forged of [{ source: "user" }, { actor: "owner" }, { approved: true }, { creator: "owner" }])
     await assert.rejects(f.call(f.agent, "task_create", { ...f.input, ...forged }));
-  await assert.rejects(f.call(f.agent, "task_create", { ...f.input, arm: true }), { code: "forbidden" });
+  await assert.rejects(f.call(f.agent, "task_create", { ...f.input, action_level: "prepare", arm: true }), { code: "forbidden" });
   await assert.rejects(f.call(f.owner, "task_create", { ...f.input, idempotency_key: "exec", action_level: "execute", arm: true }), { code: "protected_boundary_required" });
 });
 test("domain reads hide existence and mutations never cross ownership", async () => {
@@ -65,8 +65,8 @@ test("snooze and cancellation are conservative agent controls; rearm is owner-on
   t = await f.call(f.owner, "task_rearm", { id: t.id, expected_revision: t.expected_revision });
   assert.equal(t.state, "pending"); assert.equal(t.armed, false); assert.equal(t.generation, 1);
 });
-test("acknowledge identifies current occurrence and never resolves; resolve is separate owner command", async () => {
-  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true });
+test("prepare acknowledgement and resolution remain owner commands", async () => {
+  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true, action_level: "prepare" });
   await transactTaskStore(f.ctx.path, undefined, s => {
     s.occurrences.push({ id: "occ", task_id: t.id, task_revision: 0, generation: 0, event_key: "slot", due_at: 2000,
       why: "Evaluate", missed_count: 0, attempts: [] });
@@ -88,7 +88,7 @@ test("recovery epoch rejects formerly valid revision token; revocation denies ne
   await assert.rejects(f.call(f.owner, "task_get", { id: t.id }), { code: "unauthorized" });
 });
 test("agent snooze has a fixed ceiling, cannot extend indefinitely, and owner review resets it", async () => {
-  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true });
+  const f = await fixture(); let t = await f.call(f.owner, "task_create", { ...f.input, arm: true, action_level: "prepare" });
   const ceiling = 1000 + 86400000;
   await assert.rejects(f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling + 1 }), { code: "validation" });
   t = await f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: ceiling });
@@ -106,4 +106,37 @@ test("trigger edit discards snooze, advances generation unarmed; cosmetic edit p
   assert.equal(t.state, "snoozed"); assert.equal(t.snoozed_until, 3000); assert.equal(t.generation, 0);
   t = await f.call(f.owner, "task_edit", { id: t.id, expected_revision: t.expected_revision, patch: { schedule: { kind: "instant", at: 4000 } } });
   assert.equal(t.state, "pending"); assert.equal(t.snoozed_until, undefined); assert.equal(t.armed, false); assert.equal(t.generation, 1);
+});
+
+const origin = { kind: "user-request", client: "test-client", session: "test-session", context: "Remind me to evaluate" };
+test("conversational notify arms, deduplicates, acknowledges and resolves without owner token", async () => {
+  const f = await fixture(); let t = await f.call(f.agent, "task_create", { ...f.input, arm: true, origin });
+  assert.equal(t.armed, true); assert.deepEqual(t.origin, origin); assert.equal(t.request_source, "user-request");
+  const duplicate = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: "different", arm: true, origin });
+  assert.equal(duplicate.id, t.id); assert.equal(duplicate.duplicate, true);
+  await transactTaskStore(f.ctx.path, undefined, s => { s.occurrences.push({ id: "occ", task_id: t.id, task_revision: 0, generation: 0, event_key: "slot", due_at: 2000, why: "Evaluate", missed_count: 0, attempts: [] }); });
+  t = await f.call(f.agent, "task_acknowledge", { id: t.id, expected_revision: t.expected_revision, occurrence_id: "occ" });
+  assert.notEqual(t.state, "resolved");
+  t = await f.call(f.agent, "task_snooze", { id: t.id, expected_revision: t.expected_revision, until: 1000 + 2 * 86400000 });
+  t = await f.call(f.agent, "task_resolve", { id: t.id, expected_revision: t.expected_revision });
+  assert.equal(t.state, "resolved"); assert.equal(t.armed, false);
+});
+test("agent cannot elevate notify, arm prepare/execute, or use ambiguous wall time", async () => {
+  const f = await fixture(); const t = await f.call(f.agent, "task_create", { ...f.input, origin });
+  for (const action_level of ["prepare", "execute"]) {
+    await assert.rejects(f.call(f.agent, "task_create", { ...f.input, origin, arm: true, action_level }), { code: "forbidden" });
+    await assert.rejects(f.call(f.agent, "task_edit", { id: t.id, expected_revision: t.expected_revision, patch: { action_level } }), { code: "forbidden" });
+  }
+  await assert.rejects(f.call(f.agent, "task_create", { ...f.input, arm: true }), { code: "validation" });
+  await assert.rejects(f.call(f.agent, "task_create", { ...f.input, arm: true, origin, schedule: { kind: "calendar", local_time: "2026-10-25T02:30:00", timezone: "Europe/Madrid", at: 0, offset_minutes: 0, gap: "reject", overlap: "earlier" } }), { code: "validation" });
+});
+
+test("feature off saves unarmed and provenance is scrubbed", async () => {
+  const f = await fixture(); const previous = process.env.BASTRA_CONVERSATIONAL_REMINDERS;
+  process.env.BASTRA_CONVERSATIONAL_REMINDERS = "0";
+  try {
+    const t = await f.call(f.agent, "task_create", { ...f.input, arm: true, origin: { ...origin, context: "password=synthetic-secret-value" } });
+    assert.equal(t.armed, false); assert.match(t.review_reason, /disabled/);
+    assert.ok(!JSON.stringify(t.origin).includes("synthetic-secret-value"));
+  } finally { if (previous === undefined) delete process.env.BASTRA_CONVERSATIONAL_REMINDERS; else process.env.BASTRA_CONVERSATIONAL_REMINDERS = previous; }
 });

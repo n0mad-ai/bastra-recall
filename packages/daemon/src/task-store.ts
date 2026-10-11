@@ -62,6 +62,7 @@ export function cleanText(value: string): string {
 function cleanTask(task: Task): Task {
   const out = structuredClone(task);
   for (const key of ["original_request", "goal", "resolution_condition"] as const) out[key] = cleanText(out[key]);
+  if (out.origin) for (const key of ["client", "session", "context"] as const) out.origin[key] = cleanText(out.origin[key]);
   if (out.verification?.refuted_value) out.verification.refuted_value = cleanText(out.verification.refuted_value);
   if (out.review_reason) out.review_reason = cleanText(out.review_reason);
   if (out.last_failure) out.last_failure.message = cleanText(out.last_failure.message);

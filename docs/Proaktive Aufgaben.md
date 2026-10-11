@@ -1,5 +1,13 @@
 # Aufgaben und Erinnerungen
 
+## Owner-Entscheidung 11.10.2026: notify im Gespräch
+
+Sag „erinnere mich …“: Der Agent bestätigt zunächst Was, Wochentag/Datum/Uhrzeit/Zeitzone und Wiederholung mit „Ja, eintragen“ / „Nein“ oder freier Verfeinerung. Mehrdeutige Zeit wird geklärt. Danach trägt er direkt scharf ein. Bemerkt er selbst eine Frist oder zugesagte Wiedervorlage, trägt er sie ohne Rückfrage ein: `→ Erinnerung eingetragen: <was> – <wann>`.
+
+Fällige Karten spricht er am Antwortanfang kurz an. „Erledigt“, „morgen nochmal“ oder „vergiss es“ bedient er für notify im Gespräch. Herkunft „auf Ansage“ / „vom Agenten bemerkt“, Client, Sitzung und geschwärzter Anlass bleiben sichtbar. Es gibt keine Tages- oder Offen-Obergrenze; gleiche Anlässe zur gleichen Zeit werden zusammengeführt. Technische Speicher-/Zustellbudgets bleiben. `BASTRA_CONVERSATIONAL_REMINDERS=0` schaltet den Gesprächsweg ab; dann wird nur unscharf gespeichert und dies mitgeteilt. Einmalige Arbeitsaufträge erzeugen keine Erinnerung.
+
+Der Server kann eine behauptete Ansage nicht beweisen. Diese Restgrenze ist bewusst akzeptiert: schlimmstenfalls eine ungewollte Erinnerung, im Gespräch abbrechbar. Prepare/execute behalten in diesem Auftrag den bisherigen Freigabeweg; Daniel möchte darüber später noch sprechen.
+
 Bastra merkt sich Aufgaben außerhalb einer Chatsitzung. Der Daemon prüft Fälligkeit automatisch; Karten erscheinen bei einem passenden nächsten Kontakt. Ein abwesender Client wird nicht automatisch geweckt. Zustellung ist nur ein Anzeigeversuch. Erst Quittieren bedeutet „gesehen“, Erledigen bedeutet „abgeschlossen“.
 
 ## Von null zur ersten Karte
@@ -33,7 +41,7 @@ Optional: `bastra tasks owner-login` speichert den Zugang privat für die intera
    bastra tasks list
    ```
 
-   Die Bestätigung nennt Wunsch, Zeitpunkt, Zeitzone, Zustand und scharf/unscharf. Ohne `--arm` bleibt sie unscharf. Wünsche eines Agenten bleiben immer unscharf. Owner-Prüfung schaltet scharf:
+   Die Bestätigung nennt Wunsch, Zeitpunkt, Zeitzone, Zustand und scharf/unscharf. Ohne `--arm` bleibt sie unscharf. Prepare-/Execute-Vorschläge eines Agenten bleiben unscharf. Owner-Prüfung schaltet scharf:
 
    ```sh
    bastra tasks review AUFGABEN_ID
@@ -59,7 +67,7 @@ bastra tasks snooze AUFGABEN_ID --until 18:00
 
 `--after 7d` meint sieben verstrichene Tage. `--when` ohne Offset meint Ortszeit in der angegebenen Zeitzone; ohne `--timezone` wird die Maschinenzeitzone sichtbar als Annahme genannt. Tages-/Wochenwiederholungen einer Ortszeit bleiben Kalenderwiederholungen. Jede Wiederholung braucht eine Anzahl oder `--end`.
 
-Eine nicht existierende Sommerzeit-Uhrzeit wird abgewiesen. Eine mehrdeutige Herbst-Uhrzeit wählt den früheren Zeitpunkt, bleibt beim CLI-Anlegen unscharf und zeigt den Grund. Der Owner prüft diese Wahl ausdrücklich mit `review`. `snooze --until 18:00` meint die nächste entsprechende Ortszeit; ein vollständiges Datum ist ebenfalls möglich. Agent-Snooze bleibt im festen 24-Stunden-Fenster.
+Eine nicht existierende Sommerzeit-Uhrzeit wird abgewiesen. Eine mehrdeutige Herbst-Uhrzeit wählt den früheren Zeitpunkt, bleibt beim CLI-Anlegen unscharf und zeigt den Grund. Der Owner prüft diese Wahl ausdrücklich mit `review`. `snooze --until 18:00` meint die nächste entsprechende Ortszeit; ein vollständiges Datum ist ebenfalls möglich. Agent-Snooze für prepare/execute bleibt im festen 24-Stunden-Fenster.
 
 ## Überblick und Steuerung
 

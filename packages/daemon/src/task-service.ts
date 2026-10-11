@@ -1,3 +1,4 @@
+import { reminderDuplicate } from "./task-conversation.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
 import { archiveTasks, restoreTaskArchive, archivedTask, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
@@ -11,7 +12,7 @@ import { taskDueInput, taskDueProjection, recordTaskDelivery } from "./task-outb
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
 import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
-import { resolveTaskCalendar } from "./task-clock.js";
+import { ambiguousTaskCalendar, resolveTaskCalendar } from "./task-clock.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { authenticateTask, requireTaskDomains, requireTaskOwner, type TaskPrincipal } from "./task-auth.js";
@@ -30,7 +31,7 @@ const editableSchema = z.strictObject({
   notification_policy: fields.notification_policy, budget: fields.budget,
 });
 export const taskCreateInputSchema = editableSchema.extend({
-  idempotency_key: identity, arm: z.boolean().default(false),
+  idempotency_key: identity, arm: z.boolean().default(false), origin: fields.origin,
   sensitivity: fields.sensitivity.default("private"),
   action_level: fields.action_level.default("notify"), evidence: fields.evidence.default([]),
   notification_policy: fields.notification_policy.default({ muted: false, retry_interval_ms: 60000, max_attempts: 10 }),
@@ -119,13 +120,17 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   }
   if (operation === "task_create") {
     const input = taskCreateInputSchema.parse(raw);
+    if (principal.role === "agent" && input.arm && input.schedule.kind === "calendar" && ambiguousTaskCalendar(input.schedule.local_time, input.schedule.timezone))
+      throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
     normalizeSchedule(input.schedule);
     requireTaskDomains(principal, input.owner_domains);
-    if (input.arm) requireTaskOwner(principal);
+    if (input.arm && input.action_level !== "notify") requireTaskOwner(principal);
+    if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
     if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
     const creationHash = hash(input);
     let archived: Awaited<ReturnType<typeof archivedTask>>;
+    let duplicateId: string | undefined;
     const store = await transactTaskStore(ctx.path, undefined, async s => {
       archived = s.tasks.some(t=>t.id===id) ? undefined : await archivedTask(ctx.path,s,id);
       const existing = s.tasks.find(t => t.id === id) ?? archived?.task;
@@ -134,17 +139,24 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
         if (existing.creation_hash !== creationHash) throw new TaskServiceError("conflict", "idempotency key already has a different request");
         return;
       }
-      const { idempotency_key: _key, arm, ...values } = input;
+      if (principal.role === "agent" && input.action_level === "notify") {
+        const duplicate = reminderDuplicate(s, input);
+        if (duplicate) { duplicateId = duplicate.id; return; }
+      }
+      const { idempotency_key: _key, arm: requestedArm, ...values } = input;
+      const limit = principal.role === "agent" && requestedArm && (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0" || !s.controls.enabled) ? "Conversational reminders disabled; saved unarmed" : undefined;
+      const arm = requestedArm && !limit;
       if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
       const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
         last_event_sequence: s.events.at(-1)?.sequence ?? 0, created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
-        request_source: principal.role === "owner" ? "owner-command" : "agent-proposal", reference_at: now,
-        state: "pending", armed: arm, review_reason: arm ? undefined : "Explicit owner review required",
+        request_source: principal.role === "owner" ? "owner-command" : values.origin?.kind ?? "agent-proposal", reference_at: now,
+        state: "pending", armed: arm, review_reason: limit ?? (arm ? undefined : "Explicit owner review required"),
         history: [{ at: now, actor: principal.actor_id, operation: "create", before_revision: 0, after_revision: 0, reason: "create" }],
       });
       if (arm && await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       s.tasks.push(task);
     });
+    if (duplicateId) return { ...view(store, findTask(store, duplicateId, principal)), duplicate: true };
     return archived && !store.tasks.some(t=>t.id===id) ? {...view(archived.snapshot,archived.task),archived:true,archive_id:archived.entry.id} : view(store, findTask(store, id, principal));
   }
   const input = operation === "task_edit" ? editInput.parse(raw)
@@ -154,6 +166,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
     if (operation === "task_edit") {
       const patch = editInput.parse(input).patch;
+      if (principal.role === "agent" && patch.action_level && patch.action_level !== task.action_level) requireTaskOwner(principal);
       if (patch.schedule) normalizeSchedule(patch.schedule);
       if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
         requireTaskOwner(principal);
@@ -179,10 +192,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
     const op = operation.slice(5) as TaskLifecycleOperation;
-    if (["acknowledge", "resolve", "rearm"].includes(op)) requireTaskOwner(principal);
+    if (op === "rearm" || (["acknowledge", "resolve"].includes(op) && task.action_level !== "notify")) requireTaskOwner(principal);
     const args = lifecycleInput.parse(input);
     if (op === "snooze" && (args.until === undefined || args.until <= now)) throw Object.assign(new TaskServiceError("validation","Future snooze required"),{reason:"snooze_past"});
-    if (op === "snooze" && principal.role === "agent") {
+    if (op === "snooze" && principal.role === "agent" && task.action_level !== "notify") {
       const ceiling = task.agent_snooze_deadline ?? now + 24 * 60 * 60 * 1000;
       if (args.until === undefined || args.until > ceiling) throw new TaskServiceError("validation", "agent snooze exceeds the fixed 24-hour window");
       task.agent_snooze_deadline = ceiling;
@@ -194,7 +207,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (!occurrence) throw new TaskServiceError("not_found", "occurrence absent in current generation");
       occurrence.acknowledgement ??= { at: now, actor: principal.actor_id, proof_id: principal.credential_id };
     }
-    if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: "Explicit owner resolution" };
+    if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: principal.role === "owner" ? "Explicit owner resolution" : "Conversational notify resolution" };
     const next = transitionTask(task, op, principal.actor_id, now, args.until);
     if (op === "rearm") next.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
     s.tasks[s.tasks.indexOf(task)] = next;

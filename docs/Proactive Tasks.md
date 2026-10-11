@@ -1,5 +1,13 @@
 # Tasks and reminders
 
+## Owner decision 2026-10-11: notify in conversation
+
+Say “remind me …”: the agent first confirms what, weekday/date/time/timezone and recurrence with “Yes, add” / “No” or free-text refinement. Ambiguous time is clarified. It then creates an armed notify reminder directly. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges in one line: `→ Erinnerung eingetragen: <was> – <wann>`.
+
+Due cards are briefly mentioned at response start. “Done”, “tomorrow again” or “forget it” control notify in conversation. Origin (user request / agent observed), client, session and scrubbed cause remain visible. There are no daily or open-reminder limits; identical cause/time is deduplicated. Physical store/delivery budgets still apply. `BASTRA_CONVERSATIONAL_REMINDERS=0` disables conversational arming; the agent reports an unarmed draft instead. One-off work requests do not become reminders.
+
+The server cannot prove claimed user intent. This residual boundary is consciously accepted: an unwanted reminder can be cancelled in conversation. Prepare/execute keep the existing approval path in this task; Daniel plans to discuss it later.
+
 Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Delivery is at next contact while the daemon runs; an absent client is not automatically awakened.
 
 ## 1 From zero to your first card
@@ -32,7 +40,7 @@ bastra tasks create --goal "Evaluate the run" --after 1m --timezone Europe/Madri
 bastra tasks list
 ```
 
-The confirmation shows what, when, timezone, state and armed/unarmed. Without --arm it stays unarmed; agent proposals always do. Owner review is explicit:
+The confirmation shows what, when, timezone, state and armed/unarmed. Without --arm it stays unarmed; prepare/execute agent proposals do. Owner review is explicit:
 
 ```sh
 bastra tasks review TASK_ID
@@ -56,7 +64,7 @@ bastra tasks create --goal "Daily review" --when 2026-10-12T18:00 --timezone Eur
 bastra tasks snooze TASK_ID --until 18:00
 ```
 
-After 7d means elapsed duration. Local --when uses the given timezone; an omitted timezone is explicitly reported as a system-timezone assumption. Local calendar repeats differ from elapsed days. Every repeat needs a count or --end. Nonexistent DST time rejects; ambiguous autumn time chooses the earlier instant but stays visibly unarmed until owner review. Simple snooze uses the next local 18:00; a full future date works too. Agents have a fixed 24-hour snooze ceiling.
+After 7d means elapsed duration. Local --when uses the given timezone; an omitted timezone is explicitly reported as a system-timezone assumption. Local calendar repeats differ from elapsed days. Every repeat needs a count or --end. Nonexistent DST time rejects; ambiguous autumn time chooses the earlier instant but stays visibly unarmed until owner review. Simple snooze uses the next local 18:00; a full future date works too. The fixed agent 24-hour snooze ceiling applies to prepare/execute.
 
 ## 3 Status and controls
 

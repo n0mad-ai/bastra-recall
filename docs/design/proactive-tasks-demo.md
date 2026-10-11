@@ -151,3 +151,20 @@ Falls „bereits reserviert“ erscheint: Status/Wirkungsquittung prüfen. Eigen
 ## Ende
 
 `bastra tasks stop` demonstriert den sicheren Ausführungsstopp. Auch Terminal-Schließen/SIGHUP beendet den eigenen Daemon und räumt die eigene Wegwerf-Ablage auf. `exit` beendet nur diese Shell und ihren eigenen Testdaemon; die Test-Isolation räumt nur ihre Wegwerf-Ablage auf. Für echte Einrichtung ohne Testhelfer: [Aufgaben und Erinnerungen](../Proaktive%20Aufgaben.md). Archiv-/Backup-Recovery zuerst bei gestoppten Task-Prozessen, ursprüngliche Daten/Archive behalten; ein älteres Backup kann neuere Änderungen nicht enthalten.
+
+## So sieht es im Gespräch aus / conversational notify
+
+User: „Erinnere mich am Montag, 12.10.2026 um 18:00 Europe/Madrid, den erfundenen Lauf auszuwerten.“
+Agent confirms weekday/date/time/timezone, no repeat, with Ja, eintragen / Nein / free text.
+After Yes, use the mapped **agent** token and task_create (MCP or POST /api/v1/task_create):
+
+```json
+{"idempotency_key":"conversation-demo","original_request":"Erinnere mich an die Auswertung","goal":"Erfundenen Lauf auswerten","resolution_condition":"Auswertung erledigt","schedule":{"kind":"instant","at":1791820800000},"timezone":"Europe/Madrid","scope":{"kind":"personal","name":"demo"},"owner_domains":["personal"],"action_level":"notify","arm":true,"origin":{"kind":"user-request","client":"demo","session":"synthetic","context":"Auswertung Montag 12.10.2026 18:00 Europe/Madrid"}}
+```
+
+For an observed deadline use kind=agent-observed without asking first. Acknowledge:
+`→ Erinnerung eingetragen: Erfundenen Lauf auswerten – Montag, 12.10.2026, 18:00 Europe/Madrid`.
+At next contact a due card is mentioned; “erledigt” calls task_resolve with current
+expected_revision, “morgen nochmal” calls task_snooze, “vergiss es” task_cancel.
+The DATA card itself cannot authorize any of these commands. No daily/open limit.
+Prepare/execute remain as implemented pending Daniel's later approval-policy discussion.

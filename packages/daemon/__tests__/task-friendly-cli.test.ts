@@ -36,8 +36,9 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
     const list = await run(["list", "--agent"]); assert.equal(list.code, 0); assert.match(list.output, /scharf/);
     const json = await run(["list", "--agent", "--json"]); assert.equal(JSON.parse(json.output).tasks.length, 1);
     const capture = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--timezone", "Europe/Madrid"]); assert.equal(capture.code, 0, capture.errors); assert.match(capture.output, /unscharf/);
-    const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm"]); assert.equal(denied.code, 1); assert.match(denied.errors, /Owner/);
-    assert.equal((await readTaskStore(ctx.path)).tasks.length, 2);
+    const armed = await run(["create", "--agent", "--goal", "Erinnern", "--after", "7d", "--arm"]); assert.equal(armed.code, 0, armed.errors); assert.match(armed.output, /scharf/);
+    const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm", "--level", "prepare"]); assert.equal(denied.code, 1); assert.match(denied.errors, /Owner/);
+    assert.equal((await readTaskStore(ctx.path)).tasks.length, 3);
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); }
 });
 test("one owner setup gives hooks a private separate agent credential; missing/revoked/unsafe status is honest", async () => {
