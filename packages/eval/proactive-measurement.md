@@ -57,7 +57,13 @@ exists yet. It does not attest the future P9 owner recovery UI/CLI.
 P3 additionally replays Madrid DST gap/overlap, calendar versus elapsed recurrence,
 latest catch-up, restart and clock rollback through the real daemon's reconcile
 API. A child-only preload reads a fixture clock file; no feature source changes.
-Timers keep their real monotonic clock. All 21 latest replays stopped every child
+Timers keep their real monotonic clock.
+For later integrated runs, CRUD-only tasks use the fixed reference instant plus
+24 hours, keeping them future-due throughout the authorized day. Trigger cases
+override the schedule explicitly. The first private evidence row records whether
+the child fixture clock is active. Earlier private artifacts are preserved; their
+first clock-mode description was generic, while their frozen-clock steps and the
+preload/config hashes record the actual injected-clock operation. All 21 latest replays stopped every child
 and recorded zero denied outbound connection attempts.
 
 ## Reproduce in an isolated checkout

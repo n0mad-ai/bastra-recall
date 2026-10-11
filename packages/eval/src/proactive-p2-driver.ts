@@ -27,7 +27,7 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 const driver: FeatureDriver = {
   metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}) },
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js"].map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -48,7 +48,7 @@ const driver: FeatureDriver = {
     const clockPath = join(root,"fixture-clock.json");
     if (["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
-      clock_mode: "real wall clock for auth/CRUD; no frozen-clock trigger claim", schedule_at: Date.parse(context.reference_instant) }];
+      clock_mode: env.BASTRA_MEASUREMENT_NOW_PATH ? "child-only frozen Date.now; real host timers" : "real wall clock for auth/CRUD; no frozen-clock trigger claim", crud_schedule_at: Date.parse(context.reference_instant) + 86400000 }];
     const processes: ChildProcessWithoutNullStreams[] = [];
     const logs: Record<string, string> = {};
     function child(name: string, entry: string, args: string[] = [], extra: NodeJS.ProcessEnv = {}) {
@@ -72,7 +72,7 @@ const driver: FeatureDriver = {
       return { status: response.status, data };
     }
     const input = (key = "fixture") => ({ idempotency_key: key, original_request: "Check invented run after seven days", goal: "Evaluate invented run",
-      resolution_condition: "Explicit fixture-owner resolution", schedule: { kind: "instant", at: Date.parse(context.reference_instant) }, timezone: "Europe/Madrid",
+      resolution_condition: "Explicit fixture-owner resolution", schedule: { kind: "instant", at: Date.parse(context.reference_instant) + 86400000 }, timezone: "Europe/Madrid",
       scope: { kind: "personal", name: "measurement" }, owner_domains: ["personal"] });
     async function create(key = "fixture", persona = "owner") { const r = await http("POST", "/api/v1/tasks", input(key), persona); if (r.status !== 200) throw new Error("fixture creation failed"); return r.data; }
     async function op(name: string, task: any, more: object = {}, persona = "owner") { return http("POST", `/api/v1/task_${name}`, { id: task.id, expected_revision: task.expected_revision, ...more }, persona); }
