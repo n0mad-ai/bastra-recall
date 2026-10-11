@@ -75,26 +75,25 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_same_head_disjoint_coverage_feature_commit": "2f9e030082ed1d9b2e8f8c24cae00077a77b6d61",
+      "latest_full_available_segment_feature_commit": "d77cdb425a701f0d7f91e187b2dfdb3ae00b92c4",
       "latest_observed_runs": 75,
       "latest_required_runs": 75,
       "latest_passed": 75,
       "latest_failed": 0,
       "latest_not_evaluable": 0,
       "remaining_runs": 0,
-      "focused_rows": 3,
-      "regression_rows": 72,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Material-premise correction3/3 passes unchanged default2048-byte budget; separate other72-row regression72/72 passes on same frozen head/protocol/eval/driver/dataset. Exact disjoint coverage75/75 verified; no cross-revision pooling. Generic availability notice at tiny budget has no specific receipt; actual audit confirms only3 regular-delivery attempts.",
+      "functional_status": "One complete frozen d77cdb42 run: all25 cases\u00d73,75 pass/0 fail/0 pending/0 missing fields. No selected/excluded rows. Driver/runner/dataset identical to prior replay; all budgets and time boundaries unchanged. Historical segments are preserved, never pooled.",
       "current_failed_cases": [],
-      "max_material_card_bytes": 1791,
-      "material_card_samples": 12,
-      "compact_material_cards": 6,
+      "code_dataset_identity_checks": {
+        "driver_sha256": true,
+        "runner_sha256": true,
+        "dataset_sha256": true
+      },
       "all_child_processes_stopped": true,
       "blocked_network_rows": 0,
-      "derived_coverage_sha256": "88f47b1e3a8ad885717070b27262859298e4db10448808e61c26b183342d2ed6",
-      "measurement_verdict": "functional registered coverage passed; human/longitudinal/independent stable confirmation remains pending; historical failed segments unchanged"
+      "measurement_verdict": "Registered synthetic functional matrix passed; human/longitudinal/final independent stable confirmation remains pending."
     },
     "runtime_segments": [
       {
@@ -993,6 +992,43 @@
           }
         ],
         "private_result_sha256": "c37dcbfc7830525175975c08eeecb252b8ce8ff021dc119d92a80e2b7ab81f2d",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T17:06:13.269Z",
+        "eval_commit": "52ad9bb6eddfb710a558b226c4c061da6883571b",
+        "runner_sha256": "717c20831bbfed201d1c81c7901ed9de0dc7a4fa8ac10fd3d8d15aa2763a47ce",
+        "driver_sha256": "1eef59e2e2aa680f6f51996e4a0e18bd614549dccbaeca3f6b1f1f894e40e776",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "passed",
+        "expected_runs": 75,
+        "observed_runs": 75,
+        "missing_runs": 0,
+        "passed": 75,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "d77cdb425a701f0d7f91e187b2dfdb3ae00b92c4",
+        "selected_case": null,
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 18,
+            "sha256": "f92c5d53855719786f34f814f4391476af692db4b12ae619e6d95580f677413f"
+          },
+          {
+            "issue": 598,
+            "registration_version": 17,
+            "sha256": "5c175622bca9425f21ade04e375ddde8f88b47336b840b307fbc7a18fa52c50d"
+          },
+          {
+            "issue": 410,
+            "registration_version": 17,
+            "sha256": "1fe5bbc5a921bd2e92fc2ae340d49df68b350224ba9ede20d0289a2059f90141"
+          }
+        ],
+        "private_result_sha256": "734805e5dafdac29b8a666dec14907e66237e31d76c15f65c0a82ed6d2d0588e",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
       }

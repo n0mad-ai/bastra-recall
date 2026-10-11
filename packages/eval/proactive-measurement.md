@@ -19,28 +19,26 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix has25 cases, three repetitions each (75 required rows).
-On frozen corrected P10 #1186 `2f9e030082ed1d9b2e8f8c24cae00077a77b6d61`,
-material-premise passes **3/3** with unchanged standard task_due budget2048 bytes.
-The separate regression passes **72/72**, excluding only that already measured
-case. Both runs share exact head/protocol/eval/driver/dataset identity. A private
-derived coverage check rejects duplicate case/repetition pairs and confirms
-**75 passed, 0 failed, 0 pending, 0 missing fields** across these disjoint rows.
-This is registered functional coverage, not a new empirical rate/window.
+The registered matrix has 25 cases, three repetitions each (75 required rows).
+One complete frozen P10 #1186 run at
+`d77cdb425a701f0d7f91e187b2dfdb3ae00b92c4` passes **75/75: 75 passed,
+0 failed, 0 pending, 0 not evaluable or missing fields**. No selected/excluded
+rows or combining of earlier runs. Protocol #402 v18 and #598/#410 v17 were
+registered before the first feature call.
 
-Twelve reconsideration cards remain visible, six compact, largest1791 bytes,
-zero overflow. Original A/reason, costly→cheap, stable event/occurrence semantics,
-shared5s deadline and owner keep/change/snooze/stop/CAS/restart remain checked.
-At256-byte overflow budget the published generic availability notice has no
-specific task/occurrence ID or receipt; the prospective protocol permits this
-notice while retaining durable overflow/stable IDs/no fabricated acknowledgement.
-Actual attempt audit confirms only the three normal specific deliveries.
+Driver, runner and dataset hashes match the previous replay. Budgets/time limits
+are unchanged: default task_due2048 bytes, tiny overflow256, explicit normal
+inspection16384, shared premise5000ms, polling65000ms, creation quiescence5500ms.
+All75 child cleanup audits pass, zero blocked network attempts; private archives
+retain0700/0600 modes. This confirms the registered functional matrix on this
+head; no extra source-budget negative cases or human usability outcomes are
+silently inferred from the new feature changes.
 
-All75 child cleanup audits pass, zero blocked network attempts. All historical
-failed/partial/corrected segments remain unchanged, including df3abfca's
-72 passed/3 failed card-overflow result. No cross-head/protocol pooling. #402/#598/
-#410 human, longitudinal and final independent stable gates remain pending.
-No human or longitudinal window started.
+All earlier failed/partial/corrected segments remain unchanged, including the
+card overflow on df3abfca and separate3+72 coverage on2f9e0300. No cross-head/
+protocol pooling or retrospective relabelling. #402/#598/#410 human, longitudinal
+and final independent stable gates remain pending. No human/longitudinal window
+started.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
