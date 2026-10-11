@@ -4,7 +4,9 @@
 Registrations use the existing JSON registration directory and version/amendment
 convention. They were committed before runs in `c65394bf`; version 2 only records
 [P0 #1159](https://github.com/n0mad-ai/bastra-recall/pull/1159), proposed design head
-`313621f8a85648603c83c5eb106405fbc0b51d50`. No statistical rule changed.
+`313621f8a85648603c83c5eb106405fbc0b51d50`. No statistical threshold changed. #402 version 3 clarifies three total runs per
+scenario to match the prepared matrix, before any feature/study observations;
+prior setup manifests contained zero observations.
 
 - [#402 trigger/delivery](registrations/proactive-402.json): labelled due and
   non-trigger opportunities, separate attempts/acknowledgements/resolutions,
