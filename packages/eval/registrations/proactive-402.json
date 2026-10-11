@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 15,
+  "registration_version": 16,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1194,7 +1194,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective complete 75-row P10 measurement on frozen df3abfca, including the previously pending migration case. Keep existing shared 5s premise boundary and all prior immutable segments. Later builder pushes do not change this run head.",
+  "amendment": "Prospective card correction replay on frozen 2f9e0300: three prior material-premise rows with UNCHANGED default task_due budget, followed by separate regression of the other 72 rows on the same head. No criterion relaxation, no replacement of historical failures.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1296,5 +1296,18 @@
     "migration": "Actual daemon ENOENT, v1 fixture accepted by original published 40419327 decoder, v2 empty-execution fixture; read identity/history then write persist v3. Original v1 reader rejects v3 downgrade without modifying bytes. Inject truncated/duplicate/future snapshots while stopped; real authenticated HTTP task_recover preserves exact quarantine originals, restores backup IDs/history, reports changes_may_be_missing, disarms and stops execution. Invented neighboring memory/draft sentinel bytes retained.",
     "old_decoder_commit": "4041932736e24d4c78365fa9f3728376c12ca26f",
     "limits": "Recovery is explicitly from possibly older backup, with documented loss warning and exact original preservation; no silent zero-loss claim. Functional synthetic matrix does not pass human/longitudinal/independent stable gates."
+  },
+  "card_correction_procedure": {
+    "feature_commit": "2f9e030082ed1d9b2e8f8c24cae00077a77b6d61",
+    "feature_pr": 1186,
+    "focused_case": "material-premise-change",
+    "focused_rows": 3,
+    "due_input": {},
+    "default_max_bytes": 2048,
+    "standard_budget_unchanged": true,
+    "criteria": "Original event-specific verification+occurrence within shared5s; same Claim retry ID; explainable card original A, costly\u2192cheap; owner keep/change/snooze/stop and CAS/restart. Both full and bounded product cards assessed against the same semantic criteria.",
+    "regression": "All other24 registered cases\u00d73=72 rows, explicit excluded_case in manifest; unchanged stimuli/thresholds, no grouping across old heads.",
+    "freeze_rule": "Detached own clean worktree; do not follow later pushes during these runs.",
+    "scope": "Functional only; no human/longitudinal/independent stable gate pass inferred."
   }
 }

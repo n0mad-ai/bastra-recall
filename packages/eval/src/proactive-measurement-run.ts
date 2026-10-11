@@ -29,11 +29,12 @@ async function main() {
   const args = process.argv.slice(2);
   const opts: Record<string, string> = {};
   for (let i = 0; i < args.length; i += 2) {
-    if (!["--out-dir", "--driver", "--feature-root", "--case"].includes(args[i]) || !args[i + 1] || opts[args[i]]) throw new Error("usage: --out-dir PRIVATE_ARCHIVE_CHILD [--driver module --feature-root isolated-checkout]");
+    if (!["--out-dir", "--driver", "--feature-root", "--case", "--exclude-case"].includes(args[i]) || !args[i + 1] || opts[args[i]]) throw new Error("usage: --out-dir PRIVATE_ARCHIVE_CHILD [--driver module --feature-root isolated-checkout]");
     opts[args[i]] = args[i + 1];
   }
   if (!opts["--out-dir"] || Boolean(opts["--driver"]) !== Boolean(opts["--feature-root"])) throw new Error("out-dir required; driver and feature-root must be supplied together");
   if (opts["--case"] && !PROACTIVE_CASES.some(c => c.id === opts["--case"])) throw new Error("only a preregistered case may be selected");
+  if (opts["--exclude-case"] && (!PROACTIVE_CASES.some(c => c.id === opts["--exclude-case"]) || opts["--case"])) throw new Error("exclude-case must be registered and cannot be combined with case");
   const archive = realpathSync(join(homedir(), ".bastra", "eval-runs"));
   const out = resolve(opts["--out-dir"]);
   // Resolve the existing parent to prevent symlink escapes before exclusive mkdir.
@@ -67,14 +68,14 @@ async function main() {
   mkdirSync(out, { mode: 0o700 });
   const write = (name: string, value: unknown) => writeFileSync(join(out, name), JSON.stringify(value, null, 2) + "\n", { mode: 0o600, flag: "wx" });
   const started = new Date().toISOString();
-  const manifest = { selected_case: opts["--case"] ?? null, command: [process.execPath, ...process.execArgv, ...process.argv.slice(1)], started_at: started, evidence_class: "synthetic_functional_only", eval_commit: evalCommit, runner_sha256: runnerHash,
+  const manifest = { excluded_case: opts["--exclude-case"] ?? null, selected_case: opts["--case"] ?? null, command: [process.execPath, ...process.execArgv, ...process.argv.slice(1)], started_at: started, evidence_class: "synthetic_functional_only", eval_commit: evalCommit, runner_sha256: runnerHash,
     driver_sha256: opts["--driver"] ? hash(readFileSync(opts["--driver"], "utf8")) : null,
     registration, dataset_sha256: hash(JSON.stringify(PROACTIVE_CASES)), runtime: process.version,
     feature: driver?.metadata ?? null, longitudinal_window_started_at: null };
   write("manifest.json", manifest); // Persist identity before any feature call.
   const rows: Observation[] = [];
   try {
-    if (driver && featureRoot) for (const c of PROACTIVE_CASES.filter(c => (!opts["--case"] || c.id === opts["--case"]) && (!driver!.metadata.supported_cases || driver!.metadata.supported_cases.includes(c.id)) && c.dependencies.every(p => Number.isSafeInteger(driver!.metadata.contract_prs[p]) && driver!.metadata.contract_prs[p] > 0))) for (let repetition = 1; repetition <= 3; repetition++) {
+    if (driver && featureRoot) for (const c of PROACTIVE_CASES.filter(c => (!opts["--case"] || c.id === opts["--case"]) && c.id !== opts["--exclude-case"] && (!driver!.metadata.supported_cases || driver!.metadata.supported_cases.includes(c.id)) && c.dependencies.every(p => Number.isSafeInteger(driver!.metadata.contract_prs[p]) && driver!.metadata.contract_prs[p] > 0))) for (let repetition = 1; repetition <= 3; repetition++) {
       const root = mkdtempSync(join(tmpdir(), "bastra-proactive-measurement-"));
       const context = { root, port: await privatePort(), reference_instant: "2026-10-11T12:00:00Z", repetition, feature_root: featureRoot };
       write(`${c.id}-${repetition}-context.json`, context);
