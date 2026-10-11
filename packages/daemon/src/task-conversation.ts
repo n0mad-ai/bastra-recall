@@ -13,9 +13,10 @@ export async function reminderFingerprint(path: string, input: ReminderDefinitio
     evidence: input.evidence, decision: input.decision ?? null,
   });
 }
-export async function reminderDuplicate(path: string, store: TaskStore, input: ReminderDefinition): Promise<Task | undefined> {
+export async function reminderDuplicate(path: string, store: TaskStore, input: ReminderDefinition, legacyInput?: ReminderDefinition): Promise<Task | undefined> {
   const fingerprint = await reminderFingerprint(path,input); if (!fingerprint) return;
   // Old/edited rows have no recoverable raw content: prefer a separate reminder.
-  return store.tasks.find(t => t.action_level === "notify" && !["resolved", "cancelled", "expired"].includes(t.state)
-    && t.reminder_fingerprint === fingerprint);
+  const find = (value: string | undefined) => value && store.tasks.find(t => t.action_level === "notify" && !["resolved", "cancelled", "expired"].includes(t.state)
+    && t.reminder_fingerprint === value);
+  return find(fingerprint) || (legacyInput ? find(await reminderFingerprint(path,legacyInput)) : undefined) || undefined;
 }
