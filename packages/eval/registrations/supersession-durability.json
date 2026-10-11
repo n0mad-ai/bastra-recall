@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 644,
-  "status": "protocol_registered",
+  "status": "baseline_registered",
   "harness": "src/supersession-durability.ts",
   "corpus": "fixtures/supersession-durability.json",
   "protocol": {
@@ -23,5 +23,17 @@
     "future_gate": "candidate: zero predecessor rank inversions, unchanged id access, and no internal gold-set regression; adoption requires owner decision and measured hybrid coverage",
     "order_control": "Repeat all queries with reversed filename order and identical memory ids/content; report score ties separately. Primary summary uses old-first; reversed control is separate."
   },
-  "command": "node --import tsx packages/eval/src/supersession-durability.ts --out <artifact>"
+  "command": "node --import tsx packages/eval/src/supersession-durability.ts --out <artifact>",
+  "measurement": {
+    "engine": {
+      "repo_commit": "bb196509d5c535f40e717b9bdc36c3681617e317",
+      "repo_dirty": false,
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+    },
+    "results": "registrations/supersession-durability-results.json",
+    "corpus_sha256": "d4f9e8db364abe7ef6ac00f7e689761211f8265d0a57bd8314c7b08b70ca6b22",
+    "preregistered_protocol_sha256": "5e3291de9902096a6b8cad2fd860e648883b3635d01d917426d955436e476314",
+    "verdict_sha256": "0af1d073dbb07f555e917efe4da8806dd018ea225f21f153178d4c763ee78286",
+    "repeat_identical": true
+  }
 }
