@@ -32,7 +32,7 @@ test("five outcomes preserve source, revision and actual state age, never turn s
   s.sources[0].enabled = false; assert.equal(verifyTaskEvent(task, event, s, 1000).outcome, "unavailable");
   const result = verifyTaskEvent(task, event, s, 1000); assert.equal(result.state_updated_at, 1000); assert.equal(result.source_revision, "0");
 });
-async function premiseFixture(value: string, provenance = "attributable") {
+async function premiseFixture(value: string, provenance = "attributable", claimId = "assumption") {
   const f = await fixture(); const raw = JSON.stringify({ claim_id: "assumption", claim_revision: "v1", value, state_updated_at: 1000, provenance });
   const evidenceRevision = taskValueHash(raw); await writeFile(join(f.root, "evidence.json"), raw);
   await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "evidence", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "evidence.json" });
@@ -42,7 +42,7 @@ async function premiseFixture(value: string, provenance = "attributable") {
     evidence: [{ source_id: "evidence", id: "evidence", revision: evidenceRevision, hash: evidenceRevision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }],
   });
   const event = { source_id: "producer", source_revision: 0, dedup_key: "claim", value: "structured claim event", state_updated_at: 1000,
-    claim: { claim_id: "assumption", claim_revision: "v1", value, evidence_id: "evidence", evidence_revision: evidenceRevision } };
+    claim: { claim_id: claimId, claim_revision: "v1", value, evidence_id: "evidence", evidence_revision: evidenceRevision } };
   await callTaskCrud(f.ctx, f.auth, "task_event", event); return { ...f, event };
 }
 test("versioned-value verifier refutes only matching fresh attributed snapshot; unchanged stays quiet", async () => {
@@ -60,8 +60,7 @@ test("contested, irrelevant, missing, revised and stale evidence cannot fabricat
   assert.equal((await readTaskStore(changed.ctx.path)).tasks[0].verification?.outcome, "stale");
   const old = await premiseFixture("cheap"); old.ctx.now = () => 2001; await assessTaskFreshness(old.ctx); await reconcileTaskTime(old.ctx);
   assert.equal((await readTaskStore(old.ctx.path)).tasks[0].verification?.outcome, "stale");
-  const irrelevant = await premiseFixture("cheap");
-  await callTaskCrud(irrelevant.ctx, irrelevant.auth, "task_event", { ...irrelevant.event, dedup_key: "other", claim: { ...irrelevant.event.claim, claim_id: "irrelevant" } });
+  const irrelevant = await premiseFixture("cheap", "attributable", "irrelevant");
   await assessTaskFreshness(irrelevant.ctx); await reconcileTaskTime(irrelevant.ctx); assert.equal((await readTaskStore(irrelevant.ctx.path)).occurrences.length, 0);
 });
 test("unavailable evidence retries the same journal event after recovery, not condition=false", async () => {
@@ -154,4 +153,16 @@ test("versioned claim retry ignores input/persisted key order and preserves its 
   assert.equal((await callTaskCrud(f.ctx, f.auth, "task_event", reordered) as {event_id:string}).event_id, first.id);
   await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, claim: { ...f.event.claim, value: "different" } }), { code: "conflict" });
   await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, claim: { ...f.event.claim, evidence_revision: "different" } }), { code: "conflict" });
+});
+
+test("later irrelevant events never skip an accepted earlier premise change", async () => {
+  const f = await premiseFixture("cheap");
+  await callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, dedup_key: "later", claim: { ...f.event.claim, claim_id: "irrelevant" } });
+  await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx);
+  const s = await readTaskStore(f.ctx.path);
+  assert.equal(s.occurrences.length, 1);
+  assert.equal(s.tasks[0].verification?.event_id, s.events[0].id);
+  assert.equal(s.tasks[0].verification?.outcome, "refuted");
+  await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx);
+  assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
 });

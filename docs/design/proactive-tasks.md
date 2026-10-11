@@ -469,3 +469,11 @@ falsely inferred. Unchanged failing sources without a new event retain up to1h
 retry backoff. Measurement should wait for the saved event-specific verification
 and occurrence, not just the first verification commit (evaluation is a separate
 atomic commit).
+
+Journal assessment is ordered per task cursor: the first unprocessed source event
+is checked before any later event. A later irrelevant/contested event cannot hide
+an earlier accepted change. An unassessed middle event is never silently skipped.
+The material cache also contains the latest journal identity, so new intake wakes
+checks held on an older inconclusive event; completed cursor advancement queues
+the next bounded turn. These guarantees concern accepted journal events; file/Git
+observation remains periodic snapshot observation, not a filesystem event log.

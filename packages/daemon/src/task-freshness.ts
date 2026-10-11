@@ -40,12 +40,19 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
     return { id, raw, body: memory.body, revision: memoryRevision(raw), sensitivity: memory.fm.sensitivity ?? "public" };
   };
 }
+export function taskEventToAssess(task: Task, store: TaskStore): TaskEvent | undefined {
+  if (task.schedule.kind !== "event") return undefined;
+  const sourceId = task.schedule.source_id, cursor = task.last_event_sequence ?? 0;
+  const events = store.events.filter(e => e.source_id === sourceId);
+  return events.find(e => e.sequence > cursor) ?? events.at(-1);
+}
 /** Cache admission key is captured from the snapshot ACTUALLY assessed. */
 export function taskCheckMaterial(task: Task, store: TaskStore): string {
-  const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+  const event = taskEventToAssess(task, store);
   const sources = store.sources.filter(s => (task.schedule.kind === "event" && s.id === task.schedule.source_id) || task.evidence.some(e => e.source_id === s.id))
     .map(s => [s.id, s.revision, s.enabled]).sort((a,b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
-  return canonicalTaskValue(["task-check-v2", taskBindingHash(task), event?.id ?? null, event?.sequence ?? null, sources]);
+  const latest = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+  return canonicalTaskValue(["task-check-v2", taskBindingHash(task), event?.id ?? null, event?.sequence ?? null, latest?.id ?? null, sources]);
 }
 function result(task: Task, event: TaskEvent, source: TaskSource | undefined, now: number, outcome: Verification["outcome"], reason: string): Verification {
   return { outcome, reason, source_id: event.source_id, source_revision: event.source_revision, event_id: event.id,
@@ -155,7 +162,7 @@ export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?
   const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
   for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
     if (Date.now() - started >= maxMs) break;
-    const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+    const event = taskEventToAssess(task, store);
     if (!event && task.schedule.kind === "event") { assessed.set(task.id, taskCheckMaterial(task, store)); continue; }
     const observed = event ?? { id: "clock", dedup_key: "clock", sequence: 0, source_id: "clock", source_revision: "clock", actor: "task-source-reader", owner_domains: task.owner_domains, sensitivity: task.sensitivity, observed_at: (ctx.now ?? Date.now)(), state_updated_at: (ctx.now ?? Date.now)(), value: "clock" };
     const boundedCtx: ReadContext = { ...ctx, deadline: Date.now() + Math.min(task.budget.timeout_ms, maxMs - (Date.now() - started)), sourceCache, sourceReads };

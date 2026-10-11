@@ -110,8 +110,7 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
             || cached.state_updated_at === undefined || cached.state_updated_at > now || cached.state_updated_at > cached.observed_at
             || !task.evidence.every(e => store.sources.some(s => s.id === e.source_id && s.enabled) && (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at)))
             || now - cached.state_updated_at > cached.max_age_ms) {
-            if (store.events.some(e => e.source_id === event.source_id && e.sequence > event.sequence)) { task.last_event_sequence = event.sequence; continue; }
-            break;
+            break; // ordered evidence checks: never skip an unassessed middle event
           }
           verification = cached;
         }
