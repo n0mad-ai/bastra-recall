@@ -70,9 +70,9 @@ function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule
 }
 async function normalizeSchedule(path: string, schedule: Task["schedule"], sourceKind?: string): Promise<void> {
   if (schedule.kind === "event") {
-    const supplied = !["git", "memory"].includes(sourceKind ?? "") && /^[a-f0-9]{64}$/.test(schedule.expected);
+    const supplied = schedule.predicate !== "git-ref" && !["git", "memory"].includes(sourceKind ?? "") && /^[a-f0-9]{64}$/.test(schedule.expected);
     schedule.expected_hash = await privateContentComparison(path, schedule.expected, supplied);
-    if (supplied && sourceKind !== "file") schedule.expected = "Private content baseline";
+    if (/^[a-f0-9]{64}$/.test(schedule.expected) && !["file", "git", "memory"].includes(sourceKind ?? "")) schedule.expected = "Private content baseline";
   }
   if (schedule.kind === "calendar") {
     try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
@@ -138,6 +138,8 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (legacyInput.schedule.kind === "event") legacyInput.schedule.expected_hash = legacyInput.schedule.predicate === "content-version" && /^[a-f0-9]{64}$/.test(legacyInput.schedule.expected)
       ? legacyInput.schedule.expected : createHash("sha256").update(legacyInput.schedule.expected,"utf8").digest("hex");
     else legacyInput.schedule = structuredClone(input.schedule);
+    const previousDisplayInput = structuredClone(input);
+    if (previousDisplayInput.schedule.kind === "event" && legacyInput.schedule.kind === "event") previousDisplayInput.schedule.expected = legacyInput.schedule.expected;
     requireTaskDomains(principal, input.owner_domains);
     if (input.arm && input.action_level !== "notify") requireTaskOwner(principal);
     if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
@@ -154,13 +156,14 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
         if (existing.creation_hash !== creationHash) {
           // Pre-content-HMAC keyed create identities still prove an exact old retry.
           // Reconstruct only the submitted request, never the stored scrubbed text.
-          if (existing.creation_hash !== await privateTaskComparison(ctx.path,"create",legacyInput))
+          if (existing.creation_hash !== await privateTaskComparison(ctx.path,"create",legacyInput)
+            && existing.creation_hash !== await privateTaskComparison(ctx.path,"create",previousDisplayInput))
             throw new TaskServiceError("conflict", "idempotency key already has a different request");
         }
         return;
       }
       if (principal.role === "agent" && input.action_level === "notify") {
-        const duplicate = await reminderDuplicate(ctx.path, s, input, input.schedule.kind === "event" ? legacyInput : undefined);
+        const duplicate = await reminderDuplicate(ctx.path, s, input, input.schedule.kind === "event" ? [legacyInput,previousDisplayInput] : []);
         if (duplicate) { duplicateId = duplicate.id; return; }
       }
       const { idempotency_key: _key, arm: requestedArm, ...values } = input;
