@@ -19,9 +19,13 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix now has 24 cases, three repetitions each (72 required runs):
+The registered matrix now has 25 cases, three repetitions each (75 required runs):
 14 original build-plan rows, migration/containment rows, six P1/P2 cases and two
-P3 review controls.
+P3 review controls plus the preregistered source-key tuple/domain boundary.
+The latter was registered in `71143079` before observation (#402 v7, #598/#410 v6).
+Two accepted different-domain submissions collapsed into one event and a reused
+foreign receipt on P4 465a6800, in 3/3 replays; complete run: 24 pass, 6 fail,
+45 pending. Current feature correction is being checked separately.
 The observation interface is not a competing task/API/storage schema.
 
 | Pinned clean feature head | Available cases | Replays passed | Full coverage |
@@ -93,6 +97,9 @@ Raw receipts/state/errors/requests stay in 0700/0600 private artifacts under the
 existing eval-run archive. Public registration sections contain only counts,
 hashes and revisions. Output paths outside that archive and overwrites are refused.
 Without a driver the runner writes a pending setup report with zero observations.
+For a focused corrected-head replay, `--case REGISTERED-ID` runs only that
+registered case (three repetitions); all other matrix rows remain pending and
+the private manifest records the selection. No unregistered case can be run.
 Missing stage dependencies leave their cases pending. Each named subrun must
 execute before its combined assertion is returned. Violated invariants remain
 failed even when other evidence is missing; incomplete rows are not evaluable.
