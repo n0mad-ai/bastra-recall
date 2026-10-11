@@ -1,3 +1,4 @@
+import { dropLegacyTaskComparisons, migrateTaskComparisons } from "./task-private-comparison.js";
 import { discoverTaskArchiveExports,validateTaskArchivePrune } from "./task-archive.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
@@ -38,12 +39,13 @@ export function decodeTaskStore(raw: string): TaskStore {
     if (["intents", "receipts"].some(k => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length)) throw new TaskStoreError("corrupt", "v2 execution state must be empty");
     value = { ...legacy, schema_version: 3 };
   }
+  if (value && typeof value === "object") dropLegacyTaskComparisons(value);
   const parsed = taskStoreSchema.safeParse(value);
   if (!parsed.success) throw new TaskStoreError("corrupt", "invalid task schema or references; original preserved");
   return parsed.data;
 }
 
-export async function readTaskStore(path = tasksPath()): Promise<TaskStore> {
+async function readTaskStoreRaw(path: string): Promise<TaskStore> {
   let raw: string;
   try { raw = await readFile(path, "utf8"); }
   catch (err) {
@@ -51,6 +53,10 @@ export async function readTaskStore(path = tasksPath()): Promise<TaskStore> {
     throw err;
   }
   return decodeTaskStore(raw);
+}
+
+export async function readTaskStore(path = tasksPath()): Promise<TaskStore> {
+  await migrateTaskComparisons(path); return readTaskStoreRaw(path);
 }
 
 /** Private text is scrubbed, while opaque IDs/revisions keep exact identity. */
@@ -166,9 +172,10 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
   snapshot: () => TaskStore; assertOwnership: () => void;
   commit: (mutate: (store: TaskStore) => void | Promise<void>, kind?: TaskMutationKind) => Promise<TaskStore>;
 }) => Promise<T>): Promise<T> {
+  await migrateTaskComparisons(path);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   return withPathLock(path, async assertOwnership => {
-    let store = await readTaskStore(path);
+    let store = await readTaskStoreRaw(path);
     const commit = async (mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal"): Promise<TaskStore> => {
       const draft = structuredClone(store);
       await mutate(draft);
