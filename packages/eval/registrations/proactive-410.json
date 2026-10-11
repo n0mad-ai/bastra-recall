@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 20,
+  "registration_version": 21,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1440,7 +1440,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective93-row replay on frozen eaf5da01, unchanged budgets/Owner policy/expected behavioural outcomes. Exact event retry+drift guards strengthened in existing tuple-boundary case; migration adds valid legacy content SHA equality in main+backup, same event ID retry and drift rejection. Day reference advanced prospectively to2026-10-12T12:00Z so CRUD-only +24h stays future; all prior results immutable.",
+  "amendment": "Prospective corrected v1 fixture for eaf5da01 replay: omit optional creation_hash after strict original v1 decoder rejects the newly copied HMAC. No fabricated legacy SHA or authority migration. Earlier uncompleted setup/host-stop artifacts retained as not_evaluable, not feature failure; all behavioural assertions/budgets and keyed-source migration checks unchanged.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1844,6 +1844,7 @@
       "material premise change",
       "raw/redacted dedup"
     ],
-    "scope": "Private comparison field removal from API is not absence of verification; behavioural assertions stay. No dictionary/privacy/human/OS proof inferred."
+    "scope": "Private comparison field removal from API is not absence of verification; behavioural assertions stay. No dictionary/privacy/human/OS proof inferred.",
+    "legacy_fixture": "Use original public v1 field schema with optional creation_hash absent; do not carry current HMAC into v1 SHA field. Strict original decoder validates fixture before any installation; preserve IDs/history. Earlier focus40/full39 incomplete runs retained, corrected full run newly pinned."
   }
 }

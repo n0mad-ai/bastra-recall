@@ -10,6 +10,7 @@ export async function runMigration(x:any):Promise<Record<string,boolean|number|s
  const first=await http('GET','/api/v1/tasks');const t=await create('migration');const base=JSON.parse(readFileSync(taskPath,'utf8'));
  const pick=(value:any,shape:any)=>Object.fromEntries(Object.keys(shape).filter(k=>Object.hasOwn(value,k)).map(k=>[k,value[k]]));
  const legacy=pick(base,schema.taskStoreSchema.shape);legacy.schema_version=1;legacy.tasks=base.tasks.map((task:any)=>pick(task,schema.taskSchema.shape));
+ for(const task of legacy.tasks)delete task.creation_hash; // optional v1 SHA field cannot contain new HMAC; no fabricated legacy hash
  old.decodeTaskStore(JSON.stringify(legacy)); // genuine v1 accepted by original published decoder
  let migrations=first.status===200&&first.data.tasks.length===0,loss=0;
  for(const version of [1,2]){
