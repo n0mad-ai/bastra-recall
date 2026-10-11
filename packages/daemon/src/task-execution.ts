@@ -33,7 +33,8 @@ async function freshSources(ctx: TaskServiceContext, task: Task, store: TaskStor
   ctx = { ...ctx, ...{ deadline: Date.now() + task.budget.timeout_ms } };
   if (task.schedule.kind === "event") {
     const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-    if (!event || task.last_event_sequence !== event.sequence) fail("approval_stale", "Unprocessed newer source event");
+    // The cursor includes foreign sources; only an own event beyond it is unprocessed.
+    if (!event || (task.last_event_sequence ?? 0) < event.sequence) fail("approval_stale", "Unprocessed newer source event");
     const source = store.sources.find(s => s.id === event.source_id)!;
     if (source.kind === "file") {
       const root = realpathSync(source.root!), path = resolve(root, source.path!);

@@ -235,3 +235,27 @@ test("legacy proposal migration retires binding chain without losing spent retry
  const rollback=await callTaskCrud(f.ctx,f.auth,"task_rollback_prepare",{receipt_id:done.receipt.id}) as any;assert.equal(rollback.proposal.binding_version,2);assert.notEqual(rollback.proposal.id,oldRollbackId,"fresh rollback cannot reuse a retired v1 identity");assert.equal(rollback.proposal.status,"prepared");await f.approve(rollback.proposal.id);await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{execution_stopped:false});const lease=await callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:rollback.proposal.id}) as any;
  await callTaskCrud(f.ctx,f.auth,"task_execute",{proposal_id:rollback.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"fresh-rollback"});assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");assert.ok((await readTaskStore(path)).consumed_approval_ids.includes(f.proof.approval_id));
 });
+
+
+test("event execution uses its source cursor, ignoring foreign events but retaining own-event and binding guards",async()=>{
+ for(const mode of ["foreign-processed","foreign-unprocessed","own-unprocessed","own-processed","binding-drift"]){
+  const f=await fixture();
+  for(const id of ["own","foreign"])await callTaskCrud(f.ctx,f.ownerAuth,"task_source_register",{id,kind:"event",producer_actor:"owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:10000,enabled:true});
+  let task=await callTaskCrud(f.ctx,f.auth,"task_get",{id:f.prepared.proposal.task_id}) as any;
+  task=await callTaskCrud(f.ctx,f.ownerAuth,"task_edit",{id:task.id,expected_revision:task.expected_revision,patch:{schedule:{kind:"event",source_id:"own",predicate:"equals",expected:"ready"}}}) as any;
+  await callTaskCrud(f.ctx,f.ownerAuth,"task_review",{id:task.id,expected_revision:task.expected_revision});
+  const event=(source_id:string,dedup_key:string)=>callTaskCrud(f.ctx,f.ownerAuth,"task_event",{source_id,source_revision:0,dedup_key,value:source_id==="own"?"ready":"unrelated",state_updated_at:1000});
+  await event("own","own-1");await event("foreign","foreign-1");await event("foreign","foreign-2");await reconcileTaskTime(f.ctx);
+  const {assessTaskFreshness}=await import("../src/task-freshness.js");await assessTaskFreshness(f.ctx);task=await callTaskCrud(f.ctx,f.auth,"task_get",{id:task.id}) as any;
+  const snapshot=await readTaskStore(f.ctx.path);assert.equal(snapshot.tasks[0].last_event_sequence,3);assert.equal(snapshot.events.find(e=>e.source_id==="own")!.sequence,1);
+  const prepared=await callTaskCrud(f.ctx,f.auth,"task_prepare",{id:task.id,expected_revision:task.expected_revision,target_id:"artifact",payload:"new\n"}) as any;await f.approve(prepared.proposal.id);
+  const lease=await callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:prepared.proposal.id}) as any;
+  const approved=await callTaskCrud(f.ctx,f.auth,"task_proposal",{proposal_id:prepared.proposal.id}) as any;assert.equal(approved.binding_status,"current");assert.equal(approved.approved,true);
+  if(mode==="foreign-unprocessed")await event("foreign","foreign-late");
+  if(mode.startsWith("own-")){await event("own","own-late");if(mode==="own-processed")await reconcileTaskTime(f.ctx);}
+  if(mode==="binding-drift"){task=await callTaskCrud(f.ctx,f.auth,"task_get",{id:task.id}) as any;task=await callTaskCrud(f.ctx,f.ownerAuth,"task_edit",{id:task.id,expected_revision:task.expected_revision,patch:{goal:"Changed reviewed goal"}}) as any;await callTaskCrud(f.ctx,f.ownerAuth,"task_review",{id:task.id,expected_revision:task.expected_revision});}
+  const input={proposal_id:prepared.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"source-cursor"};
+  if(mode.startsWith("foreign-")){const result=await callTaskCrud(f.ctx,f.auth,"task_execute",input) as any;assert.equal(result.state,"succeeded");assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"new\n");}
+  else{await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",input),{code:"approval_stale"},mode);assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);}
+ }
+});
