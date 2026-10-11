@@ -173,3 +173,5 @@ A local single-user installation opens a short-lived **Agent-role** browser sess
 
 The browser session grants reminders and their conversational controls, not level elevation, Owner arming or execution approval. Prepare/execute retain the existing contract pending Daniel's later discussion.
 Local-access boundary: any process running as the same OS user can read/use the private Agent token. A single Owner identity supplies its assigned domains, matching existing setup-hooks so project reminders remain reachable; this grants no Owner signatures. Multiple Owners require explicit setup. Corrupt, overly permissive or revoked files are reported by normal task status, Doctor and once at daemon start; cards remain unavailable until Owner repair. Replacement of a missing automatically generated file revokes the previously managed automatic credentials.
+
+Unsafe/corrupt or revoked reminder access detected at startup also produces one public Hook/MCP status hint per session. The hint contains no private task data and acknowledges nothing.

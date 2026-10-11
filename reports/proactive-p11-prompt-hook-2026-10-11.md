@@ -9,9 +9,9 @@ process actually received a card; the other arms received none.
 
 | Arm | n | Median ms | p95 ms | Maximum ms |
 |---|---:|---:|---:|---:|
-| v1.1.0, no tasks | 30 | 91.80 | 94.26 | 94.34 |
-| P11b P2, no tasks | 30 | 92.77 | 97.68 | 97.75 |
-| P11b P2, due card | 30 | 93.69 | 95.87 | 96.41 |
+| v1.1.0, no tasks | 30 | 91.41 | 98.07 | 98.69 |
+| P11b P2, no tasks | 30 | 92.07 | 97.18 | 97.77 |
+| P11b P2, due card | 30 | 92.44 | 97.01 | 141.09 |
 
 All measured samples were below 200 ms. This small empty-vault process fixture
 is not a large-vault latency claim or long-term pass. Raw timings, runtime/host,

@@ -62,7 +62,9 @@ test("missing managed token retires former automatic access; unsafe file is visi
   await ensureLocalTaskAgent(); const token = taskClientToken()!; await authenticateTask(`Bearer ${token}`,join(root,"task-auth.json"));
   await unlink(taskHookConfigPath()); await ensureLocalTaskAgent(); assert.notEqual(taskClientToken(),token);
   await assert.rejects(authenticateTask(`Bearer ${token}`,join(root,"task-auth.json")),{code:"unauthorized"});
-  await chmod(taskHookConfigPath(),0o644); const access=await taskAgentAccessStatus(); assert.equal(access.authorized,false); assert.match(access.hint,/stumm/);
+  await chmod(taskHookConfigPath(),0o644); await ensureLocalTaskAgent(); const {taskAttachment}=await import("../src/task-delivery.js"); const ctx={path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")};
+  const warning=await taskAttachment(ctx,undefined,"access-fixture","prompt");assert.match(warning?.text??"",/Karten bleiben stumm/);assert.equal(await taskAttachment(ctx,undefined,"access-fixture","prompt"),undefined);
+  const access=await taskAgentAccessStatus(); assert.equal(access.authorized,false); assert.match(access.hint,/stumm/);
   const {callTaskCrud}=await import("../src/task-service.js"); const owner=await mintTaskCredential(join(root,"task-auth.json"),{actor_id:"owner",role:"owner",domains:["personal"]});
   const status=await callTaskCrud({path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")},`Bearer ${owner.token}`,"task_status",{}) as any;assert.equal(status.agent_access.reason,"unsafe-or-corrupt");
 }));
