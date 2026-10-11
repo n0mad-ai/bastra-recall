@@ -1,6 +1,6 @@
 /** Eval child network boundary: only its assigned loopback daemon port is allowed. */
 import { Socket } from 'node:net';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 const original = Socket.prototype.connect;
 Socket.prototype.connect = function (...args) {
@@ -15,3 +15,8 @@ Socket.prototype.connect = function (...args) {
   }
   return original.apply(this,args);
 };
+
+// Deterministic fixture clock in the child only. Timers keep their real monotonic clock.
+if (process.env.BASTRA_MEASUREMENT_NOW_PATH) {
+  Date.now = () => { const now = Number(readFileSync(process.env.BASTRA_MEASUREMENT_NOW_PATH, 'utf8')); if (!Number.isSafeInteger(now) || now < 0) throw new Error('invalid fixture clock'); return now; };
+}

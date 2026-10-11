@@ -24,7 +24,7 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 }
 
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169 },
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}) },
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
     support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js"].map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
@@ -44,6 +44,8 @@ const driver: FeatureDriver = {
     const agent = await auth.mintTaskCredential(authPath, { actor_id: "fixture-agent", domains: ["personal"], role: "agent" });
     const other = await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
     const tokens: Record<string,string | undefined> = { owner: owner.token, agent: agent.token, other: other.token, legacy: "legacy-fixture", absent: undefined };
+    const clockPath = join(root,"fixture-clock.json");
+    if (c.id === "dst-recurrence-rollback") { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
       clock_mode: "real wall clock for auth/CRUD; no frozen-clock trigger claim", schedule_at: Date.parse(context.reference_instant) }];
     const processes: ChildProcessWithoutNullStreams[] = [];
@@ -173,6 +175,31 @@ const driver: FeatureDriver = {
         const drift=await http("POST","/api/v1/tasks",{...input("concurrent"),goal:"Changed payload"});
         const after=JSON.parse(readFileSync(taskPath,"utf8")).tasks.find((x:any)=>x.id===t.id);
         values={cas_winners:raced.filter(r=>r.status===200).length,cas_conflicts:raced.filter(r=>r.status===409).length,idempotent_ids:duplicates.every(r=>r.status===200)?new Set(duplicates.map(r=>r.data.id)).size:-1,idempotency_drift_denied:drift.status===409,history_append_only:equal(original,after.history.slice(0,original.length))&&after.history.length===original.length+1};
+      } else if(c.id==="dst-recurrence-rollback") {
+        const setClock = (iso: string | number) => { const at=typeof iso==="number"?iso:Date.parse(iso);writeFileSync(clockPath,String(at));evidence.push({frozen_clock:at}); };
+        const reconcile = async () => { const r=await http("POST","/api/v1/tasks/reconcile",{});if(r.status!==200)throw new Error("reconcile fixture failed"); };
+        const snapshot = () => JSON.parse(readFileSync(taskPath,"utf8"));
+        const cal = (local_time:string) => ({kind:"calendar",local_time,timezone:"Europe/Madrid",gap:"reject",overlap:"earlier",at:0,offset_minutes:0});
+        const gap=await http("POST","/api/v1/tasks",{...input("gap"),arm:true,schedule:cal("2026-03-29T02:30:00")});
+        const overlap=await http("POST","/api/v1/tasks",{...input("overlap"),arm:true,schedule:cal("2026-10-25T02:30:00"),recurrence:{kind:"calendar",interval:1,count:2,catch_up:"latest"}});
+        if(overlap.status!==200)throw new Error("overlap creation failed");
+        setClock("2026-10-25T00:29:59Z");await reconcile();const before=snapshot().occurrences.length;
+        setClock("2026-10-25T00:30:00Z");await reconcile();const first=snapshot();
+        setClock("2026-10-25T01:30:00Z");await reconcile();const second=snapshot();
+        await stop(daemon!);await start();await reconcile();const restarted=snapshot();
+        setClock("2026-10-24T12:00:00Z");await reconcile();const rolled=snapshot();
+        setClock("2026-10-26T01:30:00Z");await reconcile();const calendarDone=snapshot();
+        const at=Date.parse("2026-11-01T00:00:00Z");setClock(at-1000);
+        const recurrence=await http("POST","/api/v1/tasks",{...input("elapsed"),arm:true,schedule:{kind:"duration",reference_at:at-1000,duration_ms:1000,at},recurrence:{kind:"elapsed",interval:1000,count:5,catch_up:"latest"}});
+        setClock(at+2500);await reconcile();const catchup=snapshot();
+        setClock(at+10000);await reconcile();await reconcile();const done=snapshot();
+        const calTask=first.tasks.find((t:any)=>t.id===overlap.data.id);
+        const caught=catchup.occurrences.filter((o:any)=>o.task_id===recurrence.data.id);
+        const finalElapsed=done.occurrences.filter((o:any)=>o.task_id===recurrence.data.id);
+        const calendarOccurrences=calendarDone.occurrences.filter((o:any)=>o.task_id===overlap.data.id);
+        const correct=gap.status===400&&overlap.data.schedule.at===Date.parse("2026-10-25T00:30:00Z")&&overlap.data.schedule.offset_minutes===120&&before===0&&first.occurrences.length===1&&calTask.next_slot.at===Date.parse("2026-10-26T01:30:00Z")&&second.occurrences.length===1&&restarted.occurrences.length===1&&rolled.occurrences.length===1&&calendarOccurrences.length===2&&calendarOccurrences[1].due_at-calendarOccurrences[0].due_at===25*3600000&&recurrence.status===200&&caught.length===1&&caught[0].due_at===at+2000&&caught[0].missed_count===2&&finalElapsed.length===2&&finalElapsed[1].due_at===at+4000&&done.tasks.find((t:any)=>t.id===recurrence.data.id).next_slot===undefined;
+        values={declared_policy_followed_all_subruns:correct,duplicate_occurrences:done.occurrences.length-new Set(done.occurrences.map((o:any)=>o.id)).size};
+        evidence.push({gap,overlap,before,first,second,restarted,rolled,calendarDone,catchup,done});
       } else if(c.id==="p1-p2-corruption-recovery") {
         const empty=await http("GET","/api/v1/tasks"); let t=await create(); t=(await op("review",t)).data;
         const saved=readFileSync(taskPath,"utf8"); const old=t.expected_revision;
