@@ -6,16 +6,16 @@ const number = z.number().int().nonnegative().safe();
 export const proposalSchema = z.strictObject({ id, revision: number, task_id: id, task_revision: number, generation: number,
   recovery_epoch: z.string().min(1).max(160), actor: id, created_at: number, target_id: id, target_hash: hash,
   operation: z.literal("replace-utf8"), rollback_of: id.optional(), payload: z.string().max(16384), payload_hash: hash,
-  task_binding: hash, registry_hash: hash, required_domains: z.array(id).min(1).max(32),
+  task_binding: hash.optional(), binding_version: z.literal(2).optional(), registry_hash: hash, required_domains: z.array(id).min(1).max(32),
   source_revisions: z.array(z.strictObject({ id: z.string().max(160), revision: z.string().max(160) })).max(100),
   scope: z.strictObject({ kind: z.enum(["personal", "project", "team"]), name: id }), sensitivity: z.enum(["public", "private", "restricted"]),
-  status: z.enum(["prepared", "denied", "revoked"]),
+  status: z.enum(["prepared", "denied", "revoked", "stale"]),
 });
 export const challengeSchema = z.strictObject({ id, proposal_id: id, domain: id, nonce: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  binding_hash: hash, created_at: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(),
+  binding_hash: hash.optional(), created_at: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(),
   consumed_at: number.optional() });
 export const approvalSchema = z.strictObject({ id, proposal_id: id, domain: id, challenge_id: id, key_id: id,
-  binding_hash: hash, registry_hash: hash, signature: z.string().max(256), decision: z.enum(["approve", "deny"]),
+  binding_hash: hash.optional(), registry_hash: hash, signature: z.string().max(256).optional(), decision: z.enum(["approve", "deny"]),
   created_at: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(), revoked_at: number.optional() });
 export const leaseSchema = z.strictObject({ id, task_id: id, proposal_id: id, actor: id, holder_token_hash: hash,
   fence: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(), state: z.enum(["active", "released", "expired"]) });

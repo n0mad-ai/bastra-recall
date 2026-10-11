@@ -89,3 +89,15 @@ test("legacy expected/event/claim/material/source digests migrate in live, backu
  const retry=await callTaskCrud(ctx,f.auth,"task_event",event) as any;assert.equal(retry.event_id,migrated.events[0].id);assert.equal((await readTaskStore(path)).events.length,1);
  const {reconcileTaskTime}=await import("../src/task-events.js");const evaluated=await reconcileTaskTime(ctx);const {verifyTaskEvent}=await import("../src/task-freshness.js");assert.equal(verifyTaskEvent(evaluated.tasks[0],evaluated.events[0],evaluated,1000).outcome,"verified");assert.equal(evaluated.occurrences.length,0,"unchanged material stays quiet after migration");
 });
+
+test("generic event content-version digest stays private in create, migration and cold export",async()=>{
+ const f=await fixture(),raw="password=0427",digest=createHash("sha256").update(raw).digest("hex");
+ await callTaskCrud(f.ctx,f.ownerAuth,"task_source_register",{id:"generic",kind:"event",producer_actor:"agent",owner_domains:["personal"],sensitivity:"private",max_age_ms:10000,enabled:true});
+ const made=await callTaskCrud(f.ctx,f.ownerAuth,"task_create",{...f.input,schedule:{kind:"event",source_id:"generic",predicate:"content-version",expected:digest}}) as any;
+ assert.equal(made.schedule.expected,"Private content baseline");assert.ok(!JSON.stringify(made).includes(digest));
+ const s=await readTaskStore(f.ctx.path);if(s.tasks[0].schedule.kind!=="event")throw new Error();s.tasks[0].schedule.expected=digest; // already-HMAC R7 store, before this display correction
+ const path=join(f.root,"display-legacy.json");await writeFile(path,JSON.stringify(s),{mode:0o600});await writeFile(path+".backup",JSON.stringify(s),{mode:0o600});await writeFile(privateComparisonPath(path),await readFile(privateComparisonPath(f.ctx.path)),{mode:0o600});
+ const ctx={...f.ctx,path},get=await callTaskCrud(ctx,f.ownerAuth,"task_get",{id:made.id}) as any;assert.equal(get.schedule.expected,"Private content baseline");
+ await callTaskCrud(ctx,f.ownerAuth,"task_resolve",{id:made.id,expected_revision:get.expected_revision});const before=await readTaskStore(path);const archive=await callTaskCrud(ctx,f.ownerAuth,"task_archive",{task_ids:[made.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch}) as any;
+ for(const file of [path,path+".backup",taskArchivePath(path,archive.archive_id)])assert.ok(!(await readFile(file,"utf8")).includes(digest));
+});
