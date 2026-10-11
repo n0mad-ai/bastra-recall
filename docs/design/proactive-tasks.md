@@ -439,3 +439,13 @@ outside the hook hot path. The bridge starts the shared job only with a dedicate
 task credential and adds proactive_due beside successful results; consumers must
 render that field (otherwise explicit task_due is the available coverage). No reply
 or relay consumption is an acknowledgement or resolution.
+
+P5b correction: injected due text is reference-only DATA, original requests quoted
+in escaped JSON (no embedded closing tags). Passive presentation has an Actor/Role
+minimum interval of 60s or configured retry interval, even for owners; explicit
+owner task_due remains available regardless of others' budgets. Acknowledged but
+unfinished work resurfaces passively at most daily. Pending state is preserved.
+Small session budgets keep a compact availability card with the explicit due
+command instead of silently dropping due work. P9/demo MUST provide one owner CLI
+setup command for hook task credentials and show honest per-client missing-token
+coverage. No automatic provider wakeup is claimed.
