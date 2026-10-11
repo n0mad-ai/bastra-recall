@@ -49,6 +49,8 @@ async function migrateContentComparisons(path: string, store: any): Promise<void
       if (/^[a-f0-9]{64}$/.test(schedule.expected_hash ?? "")) {
         const old = schedule.expected_hash;
         schedule.expected_hash = await privateContentComparison(path, old, true);
+        // The old cache binding contains the former public digest; discard it.
+        delete task.verification;
         if (/^[a-f0-9]{64}$/.test(schedule.expected) && !store.sources?.some((source:any)=>source.id===schedule.source_id && ["git","memory"].includes(source.kind)) && !["content-version", "git-ref"].includes(schedule.predicate)) schedule.expected = "Private content baseline";
       }
     }
@@ -82,6 +84,7 @@ export function exportTaskComparisons(store: any): void {
   for (const task of store.tasks ?? []) if (task.schedule?.kind === "event" && /^[a-f0-9]{64}$/.test(task.schedule.expected)
     && !store.sources?.some((source:any)=>source.id===task.schedule.source_id && ["git","memory"].includes(source.kind))
     && !["content-version", "git-ref"].includes(task.schedule.predicate)) task.schedule.expected = "Private content baseline";
+  for (const task of store.tasks ?? []) delete task.verification;
   strip(store);
 }
 const migrated = new Set<string>();
