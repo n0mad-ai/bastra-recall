@@ -27,14 +27,16 @@ export async function boundedTaskRead(path: string, max: number, strictUtf8 = fa
   } finally { await handle.close(); }
 }
 export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
-  return async (id: string): Promise<TaskMemorySnapshot> => {
+  return async (id: string, budget?: {max_bytes:number;timeout_ms:number}): Promise<TaskMemorySnapshot> => {
     const indexed = deps.vault.get(id);
     if (indexed && indexed.fm.id !== id) throw new Error("memory cache identity disagreement");
-    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: 1024 * 1024, maxFiles: 1000, deadline: Date.now() + 1000 });
+    const max=budget?.max_bytes??1024*1024,deadline=Date.now()+(budget?.timeout_ms??1000);
+    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: max, maxFiles: 1000, deadline });
     if (located.kind !== "unique") throw new Error("memory binding unresolved");
     const root = await realpath(deps.vaultPath); const target = await realpath(located.filePath);
     const rel = relative(root, target); if (rel.startsWith("..") || isAbsolute(rel) || target !== resolve(root, relative(resolve(deps.vaultPath), resolve(located.filePath)))) throw new Error("memory escaped");
-    const raw = await boundedTaskRead(target, 1024 * 1024);
+    const raw = await boundedTaskRead(target, max);
+    if(Date.now()>deadline)throw Object.assign(new Error("memory timeout"),{code:"source_timeout"});
     const occupant = occupantOfRaw(raw, target); if (occupant.kind !== "memory" || occupant.id !== id) throw new Error("memory rebound");
     const memory = parseMemoryWith(matter, raw, target, Date.now());
     return { id, raw, body: memory.body, revision: memoryRevision(raw), sensitivity: memory.fm.sensitivity ?? "public" };
@@ -74,7 +76,7 @@ export function taskCheckMaterial(task: Task, store: TaskStore): string {
   const sources = store.sources.filter(s => (task.schedule.kind === "event" && s.id === task.schedule.source_id) || task.evidence.some(e => e.source_id === s.id))
     .map(s => [s.id, s.revision, s.enabled]).sort((a,b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
   const latest = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-  return canonicalTaskValue(["task-check-v2", taskBindingHash(task), event?.id ?? null, event?.sequence ?? null, latest?.id ?? null, sources]);
+  return canonicalTaskValue(["task-check-v2", taskBindingHash(task),task.budget, event?.id ?? null, event?.sequence ?? null,event?.observation_bytes??null,event?.observation_ms??null, latest?.id ?? null, sources]);
 }
 function result(task: Task, event: TaskEvent, source: TaskSource | undefined, now: number, outcome: Verification["outcome"], reason: string): Verification {
   return { outcome, reason, source_id: event.source_id, source_revision: event.source_revision, event_id: event.id,
@@ -87,6 +89,11 @@ export function verifyTaskEvent(task: Task, event: TaskEvent, store: TaskStore, 
   if (!source?.enabled) return out("unavailable", "source_disabled_or_missing");
   if (event.source_revision !== String(source.revision) || event.actor !== source.producer_actor
     || !source.owner_domains.every(d => task.owner_domains.includes(d))) return out("inconclusive", "source_identity_drift");
+  if(source.kind!=="event") {
+    if(event.observation_bytes===undefined||event.observation_ms===undefined)return out("unavailable","observation_budget_unknown");
+    if(event.observation_bytes>task.budget.max_source_bytes)return out("unavailable","source_budget");
+    if(event.observation_ms>task.budget.timeout_ms)return out("unavailable","source_timeout");
+  }
   if (event.state_updated_at === undefined || event.state_updated_at > event.observed_at || event.observed_at > now)
     return out("inconclusive", "unattributable_state_age");
   if (now - event.state_updated_at > source.max_age_ms) return out("stale", "state_too_old");
@@ -110,7 +117,7 @@ async function evidenceSnapshot(ctx: ReadContext, source: TaskSource, max: numbe
   ctx.sourceReads?.set(source.id, (ctx.sourceReads.get(source.id) ?? 0) + 1);
   const pending = (async () => {
   if (source.kind === "memory" && ctx.memoryRead) {
-    const snap = await ctx.memoryRead(source.memory_id!);
+    const snap = await ctx.memoryRead(source.memory_id!,{max_bytes:max,timeout_ms:Math.max(1,Math.min(1000,(ctx.deadline??Date.now()+1000)-Date.now()))});
     if (Buffer.byteLength(snap.raw) > max || (snap.sensitivity !== "public" && source.sensitivity === "public")) throw new Error("evidence disclosure denied");
     return snap;
   }

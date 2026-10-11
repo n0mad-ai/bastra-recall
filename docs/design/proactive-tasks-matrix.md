@@ -42,7 +42,7 @@ Origin gates even with valid token, secret comparisons and collision-safe keys,
 canonical claim/create/execute retries and cross-locale signatures, v1/v2→v3 and
 unsupported/corrupt preservation, archive cold idempotency/fresh rollback, missing
 leaf temp cleanup/foreign remainder visibility, older-backup archive reconciliation,
-spent proof after archive AND repair, Git/automatic control target denial, package.json warning, healthy event clears global I/O stop after recovered store, protected target roots and real compiled recover --lock/target CLI, safe text UI and
+retained spent proof after archive/repair and epoch replay protection when newer unarchived IDs are missing, Git/automatic control target denial, package.json warning, healthy event clears global I/O stop after recovered store, protected target roots and real compiled recover --lock/target CLI, safe text UI and
 state-aware controls. `task-demo-shell.test.ts` exercises the documented isolated
 shell, real setup-hooks/target registration and own-daemon restart without hand
 editing the registry. All child processes and artifacts use private disposable data.

@@ -79,14 +79,14 @@ export class TaskRuntime {
       try {
         if (this.ctx.executionHost && this.snapshot.intents.some(i => i.state === "pending")) await reconcilePendingTaskIntents(this.ctx);
         if (selected.size) {
-          await observeTaskSources(this.ctx, true, sources);
+          await observeTaskSources(this.ctx, true, sources,selected);
           if (Date.now() - started < 5000) assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
           const task = this.snapshot.tasks.find(t => t.id === id); if (!task || !assessed.has(id)) continue;
-          const failed = ["unavailable", "inconclusive", "stale"].includes(task.verification?.outcome ?? "") || task.last_failure?.code === "source_unavailable";
+          const failed = ["unavailable", "inconclusive", "stale"].includes(task.verification?.outcome ?? "") || ["source_unavailable","source_budget","source_timeout"].includes(task.last_failure?.code??"");
           const delay = failed ? Math.min(Math.max((this.checks.get(id)?.backoff ?? 0) * 2, task.budget.poll_interval_ms), 3600000) : task.budget.poll_interval_ms;
           this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: assessed.get(id)! });
           this.backoff = Math.max(this.backoff, failed ? delay : 0); if (failed) this.lastError = "source_unavailable";

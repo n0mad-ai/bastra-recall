@@ -109,7 +109,7 @@ const eventSchema = z.strictObject({
   sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
   actor: taskIdentitySchema, owner_domains: domains, observed_at: instant,
   state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
-  value: text, value_hash: hash.optional(), claim: taskClaimSchema.optional(),
+  value: text, value_hash: hash.optional(), claim: taskClaimSchema.optional(), observation_bytes:instant.optional(), observation_ms:instant.optional(),
 });
 
 const occurrenceSchema = z.strictObject({

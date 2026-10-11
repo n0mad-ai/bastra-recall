@@ -164,7 +164,7 @@ export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskSt
   });
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
-export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false, allowedSources?: ReadonlySet<string>): Promise<void> {
+export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false, allowedSources?: ReadonlySet<string>, allowedTasks?:ReadonlySet<string>): Promise<void> {
   const snapshot = await readTaskStore(ctx.path); if (!snapshot.controls.enabled) return;
   let count = 0; const started = Date.now();
   for (const source of snapshot.sources) {
@@ -172,7 +172,11 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
     if (allowedSources && !allowedSources.has(source.id)) continue;
     if (activeOnly && !snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
     if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
-    const now = (ctx.now ?? Date.now)();
+    const watchers=snapshot.tasks.filter(t=>t.armed&&t.schedule.kind==="event"&&t.schedule.source_id===source.id&&!["resolved","cancelled","expired"].includes(t.state));
+    const charged=watchers.filter(t=>!allowedTasks||allowedTasks.has(t.id));if(activeOnly&&!charged.length)continue;
+    const maxBytes=charged.length?Math.max(...charged.map(t=>t.budget.max_source_bytes)):1024*1024;
+    const maxMs=Math.min(1000,charged.length?Math.max(...charged.map(t=>t.budget.timeout_ms)):1000,Math.max(1,5000-(Date.now()-started)));
+    const intakeStarted=Date.now();let observedBytes=0;const now = (ctx.now ?? Date.now)();
     try {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let value: string;
@@ -182,7 +186,8 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
       if (source.kind !== "memory" && root !== source.root) throw new Error("registered root changed");
       if (source.kind === "memory") {
         if (!ctx.memoryRead) throw new Error("memory reader unavailable");
-        const memory = await ctx.memoryRead(source.memory_id!);
+        const memory = await ctx.memoryRead(source.memory_id!,{max_bytes:maxBytes,timeout_ms:maxMs});
+        observedBytes=Buffer.byteLength(memory.raw);if(observedBytes>maxBytes)throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
         if (memory.sensitivity !== "public" && source.sensitivity === "public") throw new Error("memory sensitivity drift");
         return memory.revision;
       } else if (source.kind === "file") {
@@ -190,36 +195,46 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
         if (rel.startsWith("..") || isAbsolute(rel) || (await lstat(target)).isSymbolicLink() || await realpath(target) !== target) throw new Error("path containment");
         const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
-          if ((await handle.stat()).size > 1024 * 1024) throw new Error("source byte budget");
-          const bytes = Buffer.alloc(1024 * 1024 + 1); const read = await handle.read(bytes, 0, bytes.length, 0);
-          if (read.bytesRead > 1024 * 1024) throw new Error("source byte budget");
+          if ((await handle.stat()).size > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
+          const bytes = Buffer.alloc(maxBytes + 1); const read = await handle.read(bytes, 0, bytes.length, 0);
+          observedBytes=read.bytesRead;if (read.bytesRead > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
           return taskValueHash(bytes.subarray(0, read.bytesRead).toString("utf8"));
         }
         finally { await handle.close(); }
       } else {
-        const value = (await exec("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: 1000, maxBuffer: 4096 })).stdout.trim();
+        if(maxBytes<41)throw Object.assign(new Error("git byte budget"),{code:"source_budget"});
+        const output = (await exec("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: maxMs, maxBuffer: Math.min(4096,maxBytes) })).stdout;observedBytes=Buffer.byteLength(output);if(observedBytes>maxBytes)throw Object.assign(new Error("git byte budget"),{code:"source_budget"});const value=output.trim();
         if (!/^[a-f0-9]{40,64}$/.test(value)) throw new Error("invalid git revision");
         return value;
       }
 
-        })(), new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error("source timeout")), Math.min(1000, Math.max(1, 5000 - (Date.now() - started)))); })]);
+        })(), new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(Object.assign(new Error("source timeout"),{code:"source_timeout"})), maxMs); })]);
       } finally { if (timeout) clearTimeout(timeout); }
+      const observedMs=Date.now()-intakeStarted;if(observedMs>maxMs)throw Object.assign(new Error("source timeout"),{code:"source_timeout"});
       await transactTaskStore(ctx.path, undefined, s => {
         const current = s.sources.find(row => row.id === source.id);
         if (!current || !current.enabled || current.revision !== source.revision) return;
         const observed = taskValueHash(value);
-        for (const task of s.tasks) if (task.armed && task.schedule.kind === "event" && task.schedule.source_id === source.id && task.last_failure?.code === "source_unavailable") {
+        for (const task of s.tasks) if (charged.some(t=>t.id===task.id) && observedBytes<=task.budget.max_source_bytes && observedMs<=task.budget.timeout_ms && ["source_unavailable","source_budget","source_timeout"].includes(task.last_failure?.code??"")) {
           delete task.last_failure; audit(task, now, "source-recovered");
         }
-        if (current.last_value_hash === observed) return;
+        const previous=[...s.events].reverse().find(e=>e.source_id===source.id);
+        if (current.last_value_hash === observed && previous?.value===value && previous.source_revision===String(current.revision)) {
+          // Resource reinspection is metadata, never a new material event/age.
+          if(previous.observation_bytes!==observedBytes||previous.observation_ms===undefined||charged.some(t=>(previous.observation_ms!>t.budget.timeout_ms)!==(observedMs>t.budget.timeout_ms))){previous.observation_bytes=observedBytes;previous.observation_ms=observedMs;}
+          return;
+        }
+        const same=current.last_value_hash===observed;
         current.observation_number++;
-        appendEvent(s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), now, now);
+        const event=appendEvent(s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), same?(previous?.state_updated_at??now):now, now);
+        event.observation_bytes=observedBytes;event.observation_ms=observedMs;
         current.last_value_hash = observed;
       });
-    } catch {
+    } catch(error) {
+      const code=(error as any)?.code==="source_timeout"||(error as any)?.killed?"source_timeout":(error as any)?.code==="source_budget"||(error as any)?.code==="ERR_CHILD_PROCESS_STDIO_MAXBUFFER"?"source_budget":"source_unavailable";
       await transactTaskStore(ctx.path, undefined, s => {
-        for (const task of s.tasks) if (task.schedule.kind === "event" && task.schedule.source_id === source.id && task.last_failure?.code !== "source_unavailable") {
-          task.last_failure = { at: now, code: "source_unavailable", message: "Registered source cannot be observed" }; audit(task, now, "source-failed");
+        for (const task of s.tasks) if ((charged.length?charged.some(t=>t.id===task.id):task.schedule.kind === "event" && task.schedule.source_id === source.id) && task.last_failure?.code !== code) {
+          task.last_failure = { at: now, code, message: code==="source_budget"?"Quell-Bytegrenze überschritten":code==="source_timeout"?"Zeitbudget der Quelle überschritten":"Registered source cannot be observed" }; audit(task, now, "source-failed");
         }
       }, "control");
     }

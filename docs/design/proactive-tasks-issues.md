@@ -87,7 +87,7 @@ prior package/integration reviews. [Matrix](proactive-tasks-matrix.md),
 - [x] Stable mapped actor identity, occurrence/action idempotency, live holder token,
   local strict process lock/fence, expiry/recovery/unknown and no old authority revival.
 - [x] Multiple real processes cannot duplicate logical firing or signed effect;
-  spent proof remains spent after archive AND older-backup repair.
+  archived/readable spent proof survives repair; new recovery epoch also blocks old authority when recent unarchived IDs are unavailable.
 - [ ] Federated leases, partitions, merge/echo-aware epistemic coordination.
 
 ## #656 visibility

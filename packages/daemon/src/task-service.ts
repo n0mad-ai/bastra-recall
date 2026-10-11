@@ -74,7 +74,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch (error) { throw Object.assign(new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"),{reason:(error as any)?.reason}); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; executionHost?: boolean; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string, budget?: {max_bytes:number;timeout_ms:number}) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; executionHost?: boolean; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
