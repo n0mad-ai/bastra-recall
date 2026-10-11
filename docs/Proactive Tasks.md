@@ -1,6 +1,6 @@
 # Tasks and reminders
 
-Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Presentation, owner acknowledgement, completion and an action receipt are different records. Delivery is at next contact while the daemon runs; an absent client is not automatically awakened.
+Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Delivery is at next contact while the daemon runs; an absent client is not automatically awakened.
 
 ## 1 From zero to your first card
 
@@ -133,7 +133,7 @@ For rollback, select a successful receipt under **Wirkungen und Abgleich**, prep
 
 ## 7 Resource limits, archives and repair
 
-Per-task intervals, timeout and byte allowance apply to source intake and evidence checks. Global turns have at most 10 assessments/5 s, source reads at most 1 s and 1 MiB, poll 60 s, unchanged failure backoff up to 1 h, active snapshot 4 MiB (normal admission 75 %). Shared source admission follows eligible consumers and each task independently rejects results above its limit. New accepted events bypass old backoff; errors/lock/capacity/process suspension prevent a universal wallclock guarantee.
+Per-task intervals, timeout and byte allowance apply to source intake and evidence checks. Global turns have at most 10 assessments/5 s, source reads at most 1 s and 1 MiB, poll 60 s, unchanged failure backoff up to 1 h, active snapshot 4 MiB (normal admission 75 %). Shared source admission follows eligible consumers and each task independently rejects results above its limit. Memory intake includes the unique-file locator: the byte limit covers the sum of scanned Markdown files. Too-small byte allowance reports source_budget / “Quell-Bytegrenze überschritten”, timeout reports source_timeout, with no trigger. Deadlines prevent accepting late results; they do not promise atomic interruption of arbitrary OS I/O. New accepted events bypass old backoff; errors/lock/capacity/process suspension prevent a universal wallclock guarantee.
 
 ```sh
 bastra tasks stop

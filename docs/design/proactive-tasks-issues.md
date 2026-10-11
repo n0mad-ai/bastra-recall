@@ -28,7 +28,7 @@ prior package/integration reviews. [Matrix](proactive-tasks-matrix.md),
 
 ## #250 integration
 
-- [x] All14 original cases mapped to executable final tests; real compiled daemon
+- [x] All 14 original cases mapped to executable final tests; real compiled daemon
   notify/prepare/execute, crash reconciliation and separately approved rollback.
 - [x] Shared lifecycle/source/action contract across MCP/HTTP/CLI/UI and supported
   session/prompt/hookless contact; budget/coverage/unknown outcomes explicit.
@@ -104,7 +104,7 @@ prior package/integration reviews. [Matrix](proactive-tasks-matrix.md),
   acknowledgement/safety/cost definitions and aggregate functional report.
 - [x] #598: readable cards, why/source state, Owner options/decline, private signing
   preview and real CLI/DOM/disposable-demo fixtures available for the existing study.
-- [x] #410: local14-case matrix, corruption/archive/permission/crash/fencing/recovery,
+- [x] #410: local 14-case matrix, corruption/archive/permission/crash/fencing/recovery,
   actual reversible adapter and prior independent review corrections integrated.
 - [ ] Human comprehension, false acceptance/rejection, interruption cost, longitudinal
   rates/net utility/causal benefit and stable V2 promotion criteria remain pending.

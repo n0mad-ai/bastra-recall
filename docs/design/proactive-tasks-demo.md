@@ -103,7 +103,11 @@ In der Seite **Aktualisieren**, denselben Vorschlag erneut öffnen. **Exakt frei
 
 Im Abschnitt **Wirkungen und Abgleich** die erfolgreiche Quittung wählen, **Rückabwicklung vorbereiten**. Neue Vorschlags-ID mit approve signieren, aktualisieren und exakt ausführen. Der ursprüngliche Inhalt wird nur bei unverändertem freigegebenem Nachzustand zurückgestellt. Eigene zwischenzeitliche Bearbeitung blockiert Rollback. Jede Rückabwicklung braucht neue konkrete Signaturen/Lease/CAS; alte Freigaben werden nie wieder lebendig.
 
-„Ausgang unklar – Abgleich nötig“ bedeutet: Ziel prüfen, keine automatische Wiederholung. Der Abgleich liest nur und erkennt den exakten Zielhash oder hält unknown fest. Eigene hashpassende Temp-Reste werden auch bei fehlendem Ziel entfernt; fremde Reste bleiben sichtbar. Für reproduzierbaren Crash **nach erfolgreichem Rename vor Receipt** dient der echte Prozess-Test unten; den Demo-Daemon nicht willkürlich als Erfolgsbeleg abschießen.
+„Ausgang unklar – Abgleich nötig“ bedeutet: Ziel prüfen, keine automatische Wiederholung. Der Abgleich liest nur und erkennt den exakten Zielhash oder hält unknown fest. Eigene hashpassende Temp-Reste werden auch bei fehlendem Ziel entfernt; fremde Reste bleiben sichtbar. Für reproduzierbaren Crash **nach erfolgreichem Rename vor Receipt** dient der folgende echte Prozess-Test (aus dem Checkout, nur eigene synthetische Fixtures); den Demo-Daemon nicht willkürlich als Erfolgsbeleg abschießen.
+
+```sh
+node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/task-final-e2e.test.ts
+```
 
 ## 5 Eine Entscheidung tatsächlich neu bewerten
 

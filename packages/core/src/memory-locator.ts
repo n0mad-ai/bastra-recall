@@ -208,7 +208,7 @@ export async function scanVaultForIdAsync(
   vaultRoot: string,
   id: string,
   stats?: IdScanStats,
-  budget?: { maxBytes: number; maxFiles: number; deadline: number },
+  budget?: { maxBytes: number; maxFiles: number; deadline: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
 ): Promise<Located> {
   const found: string[] = [];
   const unreadable: string[] = [];
@@ -249,9 +249,9 @@ async function walkAsync(
   out: string[],
   unreadable: string[],
   stats: IdScanStats,
-  budget?: { maxBytes: number; maxFiles: number; deadline: number; reserved: number; entries: number },
+  budget?: { maxBytes: number; maxFiles: number; deadline: number; reserved: number; entries: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
 ): Promise<void> {
-  if (budget && Date.now() >= budget.deadline) { unreadable.push(dir); return; }
+  if (budget && Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); unreadable.push(dir); return; }
   stats.dirs++;
   let entries;
   try {
@@ -263,7 +263,7 @@ async function walkAsync(
   }
   const files: string[] = [];
   for (const e of entries) {
-    if (budget && (++budget.entries > budget.maxFiles || Date.now() >= budget.deadline)) { unreadable.push(dir); return; }
+    if (budget && (++budget.entries > budget.maxFiles || Date.now() >= budget.deadline)) { budget.onLimit?.(Date.now() >= budget.deadline ? "timeout" : "files"); unreadable.push(dir); return; }
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
@@ -282,14 +282,15 @@ async function walkAsync(
         try {
           if (!budget) raw = await readFile(full, "utf8");
           else {
-            if (Date.now() >= budget.deadline) throw new Error("scan budget");
+            if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan budget"); }
             const handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW);
             try {
               const size = (await handle.stat()).size;
-              if (budget.reserved + size > budget.maxBytes) throw new Error("scan byte budget");
+              if (budget.reserved + size > budget.maxBytes) { budget.onLimit?.("bytes"); throw new Error("scan byte budget"); }
               budget.reserved += size;
               const bytes = Buffer.alloc(size + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
-              if (result.bytesRead > size || Date.now() >= budget.deadline) throw new Error("scan changed or timed out");
+              if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan timed out"); }
+              if (result.bytesRead > size) throw new Error("scan changed");
               raw = bytes.subarray(0, result.bytesRead).toString("utf8");
             } finally { await handle.close(); }
           }

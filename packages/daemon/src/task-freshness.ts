@@ -20,9 +20,10 @@ export function taskBindingHash(task: Task): string {
 export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const info = await handle.stat(); if (!info.isFile() || info.size > max) throw new Error("source byte budget");
+    const info = await handle.stat(); if (!info.isFile()) throw new Error("source is not a regular file");
+    if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
     const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
-    if (result.bytesRead > max) throw new Error("source byte budget");
+    if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
     return strictUtf8 ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, result.bytesRead)) : bytes.subarray(0, result.bytesRead).toString("utf8");
   } finally { await handle.close(); }
 }
@@ -31,7 +32,9 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
     const indexed = deps.vault.get(id);
     if (indexed && indexed.fm.id !== id) throw new Error("memory cache identity disagreement");
     const max=budget?.max_bytes??1024*1024,deadline=Date.now()+(budget?.timeout_ms??1000);
-    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: max, maxFiles: 1000, deadline });
+    let limit: string | undefined;
+    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: max, maxFiles: 1000, deadline, onLimit: reason => { limit ??= reason; } });
+    if (limit) throw Object.assign(new Error("Memory-Aufnahmebudget überschritten"), { code: limit === "timeout" ? "source_timeout" : "source_budget", reason: limit === "files" ? "memory_scan_budget" : undefined });
     if (located.kind !== "unique") throw new Error("memory binding unresolved");
     const root = await realpath(deps.vaultPath); const target = await realpath(located.filePath);
     const rel = relative(root, target); if (rel.startsWith("..") || isAbsolute(rel) || target !== resolve(root, relative(resolve(deps.vaultPath), resolve(located.filePath)))) throw new Error("memory escaped");

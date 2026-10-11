@@ -234,7 +234,7 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
       const code=(error as any)?.code==="source_timeout"||(error as any)?.killed?"source_timeout":(error as any)?.code==="source_budget"||(error as any)?.code==="ERR_CHILD_PROCESS_STDIO_MAXBUFFER"?"source_budget":"source_unavailable";
       await transactTaskStore(ctx.path, undefined, s => {
         for (const task of s.tasks) if ((charged.length?charged.some(t=>t.id===task.id):task.schedule.kind === "event" && task.schedule.source_id === source.id) && task.last_failure?.code !== code) {
-          task.last_failure = { at: now, code, message: code==="source_budget"?"Quell-Bytegrenze überschritten":code==="source_timeout"?"Zeitbudget der Quelle überschritten":"Registered source cannot be observed" }; audit(task, now, "source-failed");
+          task.last_failure = { at: now, code, message: code==="source_budget"?((error as any)?.reason==="memory_scan_budget"?"Memory-Suchgrenze überschritten":"Quell-Bytegrenze überschritten"):code==="source_timeout"?"Zeitbudget der Quelle überschritten":"Registered source cannot be observed" }; audit(task, now, "source-failed");
         }
       }, "control");
     }

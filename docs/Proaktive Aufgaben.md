@@ -1,6 +1,6 @@
 # Aufgaben und Erinnerungen
 
-Bastra merkt sich Aufgaben außerhalb einer Chatsitzung. Der Daemon prüft Fälligkeit automatisch; Karten erscheinen bei einem passenden nächsten Kontakt. Ein abwesender Client wird nicht automatisch geweckt. Quittieren bedeutet „gesehen“, Erledigen bedeutet „abgeschlossen“.
+Bastra merkt sich Aufgaben außerhalb einer Chatsitzung. Der Daemon prüft Fälligkeit automatisch; Karten erscheinen bei einem passenden nächsten Kontakt. Ein abwesender Client wird nicht automatisch geweckt. Zustellung ist nur ein Anzeigeversuch. Erst Quittieren bedeutet „gesehen“, Erledigen bedeutet „abgeschlossen“.
 
 ## Von null zur ersten Karte
 
@@ -74,6 +74,8 @@ bastra tasks stop
 
 Status nennt An/Aus, Zustandszahlen, nächste Prüfung, letzte Zustellung, Fehler und Backoff. `mute` verschiebt passive Zustellung. `off` hält automatische Auswertung und Zustellung an. `stop` hält nur Ausführung an; Erinnern/Vorbereiten bleiben nutzbar. Nichts davon erledigt eine Aufgabe. Ausführung ist als sicherer Standard gestoppt. Nur ein Owner mit geschützter Konfiguration kann `execution-enable` bestätigen; dies erneuert weder abgelaufene Signaturen noch Leases.
 
+Lebende Reservierungen stehen in `status`. Wenn „bereits reserviert“ erscheint: zuerst Wirkungsstatus/Quittungen prüfen. Nur deine eigene Reservierung kannst du mit `bastra tasks release ID` freigeben; andernfalls ihren Ablauf nach höchstens 30 Sekunden abwarten. Dies macht keine Wirkung rückgängig und erneuert keine Freigabe. Der Browser verhindert Doppelklicks und gibt nach einem fehlgeschlagenen Versuch seine eigene Reservierung frei. Den Vorschlag erneut öffnen und prüfen; keine automatische Wiederholung bei unklarem Ausgang.
+
 `--json` gibt das Maschinenformat aus. Ohne diesen Schalter sind Ergebnisse und Fehler lesbare deutsche Meldungen. Erweiterte Quellen/Evidenz können weiterhin per `--input` übergeben werden.
 
 ## Browser und Entscheidung prüfen
@@ -85,7 +87,7 @@ bastra tasks ui
 
 Die Aufgaben-Seite fragt den Token ab und hält ihn nur in der geöffneten Seite. Sie zeigt Aufgaben, Karten, Quellen und Freigaben. Anlegen ist standardmäßig unscharf; Owner-Prüfung, Quittieren, Zurückstellen, Erledigen und Beenden bleiben getrennt. Daten werden als Text dargestellt. Für eine widerlegte tragende Annahme zeigt die Karte alte Entscheidung, geänderte Prämisse, Evidenz und Unsicherheit. Beibehalten, Ändern, Zurückstellen und Überwachung beenden sind eigene Owner-Wahlen. Beibehalten schaltet den historischen Watch ab; weitere Änderungen brauchen eine neue Owner-Bindung.
 
-Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die CLI entsperrt Signing-Schlüssel und signiert die ganze Bindung; die Browser-Kennung und automatische Klicks ersetzen diese Signatur nicht. Jede betroffene Domäne muss zustimmen. Für Execute sind zusätzlich ein aktivierter registrierter lokaler Adapter, eine lebende Lease und eine fällige scharfe Aufgabe erforderlich. Die geschützte Grenze ist eine ausdrückliche, technisch nicht geprüfte Owner-Zusicherung über fehlenden Agent-Zugriff auf Daten, Schlüssel und Laufzeit. Ohne diese Grenze bleibt Execute gesperrt. Der nächste Abschnitt richtet den Referenzadapter ein; die vollständige Wegwerf-Demo steht in `docs/design/proactive-tasks-demo.md`.
+Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die CLI entsperrt Signing-Schlüssel und signiert die ganze Bindung; die Browser-Kennung und automatische Klicks ersetzen diese Signatur nicht. Jede betroffene Domäne muss zustimmen. Für Execute sind zusätzlich ein aktivierter registrierter lokaler Adapter, eine lebende Lease und eine fällige scharfe Aufgabe erforderlich. Die geschützte Grenze ist eine ausdrückliche, technisch nicht geprüfte Owner-Zusicherung über fehlenden Agent-Zugriff auf Daten, Schlüssel und Laufzeit. Ohne diese Grenze bleibt Execute gesperrt. Agenten mit uneingeschränkten Rechten unter derselben OS-Benutzerkennung erfüllen diese Grenze nicht. Das Speichern einer Entscheidung allein schaltet keine Überwachung scharf. Unbekannte, strittige, veraltete oder nicht erreichbare Evidenz widerlegt keine Prämisse. Ändern braucht eine ausdrückliche Owner-Wahl und eine echte CAS-Memoryrevision; gewöhnliche Memoryfelder werden nicht ergänzt. Der nächste Abschnitt richtet den Referenzadapter ein; die vollständige Wegwerf-Demo steht in `docs/design/proactive-tasks-demo.md`.
 
 ## Ein lokales Ziel registrieren
 
@@ -100,11 +102,40 @@ bastra tasks boundary
 bastra tasks execution-enable
 ```
 
+Alle Rückfragen haben Nein als Standard. Schlüssel-Einschreibung fragt nach Zustimmung, dem **verborgenen Owner-Aufgaben-Token**, einer **neuen verborgenen Passphrase** mit mindestens 12 Zeichen und deren Wiederholung. `boundary` fragt nach dem verborgenen Token und der ausdrücklichen Grenzerklärung. `execution-enable` fragt Zustimmung. `approve` zeigt die ganze Bindung, fragt Zustimmung und danach die **verborgene Schlüssel-Passphrase**. Token und Schlüssel gehören außerhalb des Agent-Zugriffs; nicht im Chat teilen.
+
 Zielregistrierung ersetzt keine vorhandene Kennung still. Sie stoppt Ausführung und setzt die Grenzerklärung zurück. Der Owner sieht vor Bestätigung den konkreten Pfad und die Domänen. Die Browser-Seite zeigt exakte Vorher/Nachher-Inhalte; alle Bindungsdetails bleiben zusätzlich aufklappbar. Signing-Schlüssel bleiben am Owner-Terminal, die ganze Bindung wird vor dem Signieren angezeigt. Jeder Write und jedes Rollback braucht neue konkrete Signaturen aller Pflichtdomänen, eine frische Lease und einen unveränderten Zielstand. `resume` fragt lesbar mit Nein als Standard; Nein ändert nichts.
+
+## Vorbereiten, freigeben, ausführen und zurückrollen
+
+Nach Zielregistrierung, Neustart und `execution-enable`:
+
+```sh
+bastra tasks create --goal "Geprüftes lokales Artefakt ersetzen" --when 2000-01-01T00:00:00Z --timezone Europe/Madrid --domain personal --level execute --arm
+bastra tasks ui
+```
+
+Der bewusst vergangene Zeitpunkt macht diese neue Aufgabe fällig. In der Browser-Seite **Vorbereiten** wählen, Ziel-ID und exakte neue Bytes eingeben. Vorher/Nachher prüfen; das Ziel bleibt unverändert. Vorschlags-ID übernehmen und am getrennten Owner-Terminal signieren:
+
+```sh
+bastra tasks approve VORSCHLAGS_ID personal /OWNERORDNER/approval-key.json
+```
+
+Prüfe die ganze lesbare Bindung: Aufgabe, Zielpfad, Quellrevisionen, Domänen, Ablauf, Inhalt-Hash und alle Zielbytes. Zustimmung bestätigen, Passphrase verborgen eingeben. Jede betroffene Domäne muss separat signieren; Browser-Token oder eine API-Zustimmung ersetzen keine Signatur.
+
+Browser **Aktualisieren**, denselben Vorschlag erneut öffnen. **Exakt freigegeben ausführen** ist nur bei vollständiger aktueller Freigabe verfügbar. Der Daemon prüft unter der Sperre unmittelbar vor dem Schreiben erneut, verbraucht die Freigabe und speichert die Absicht vor dem Effekt. Status nennt Absichten und Quittungen; dies erledigt die Aufgabe nicht automatisch.
+
+Für Rollback unter **Wirkungen und Abgleich** eine erfolgreiche Quittung wählen, **Rückabwicklung vorbereiten**. Die neue Vorschlags-ID erneut mit `approve` signieren, aktualisieren, exakt ausführen. Rollback braucht neue Signaturen, eine frische Reservierung und unveränderten freigegebenen Zielstand; zwischenzeitliche Bearbeitung blockiert es. Es bleibt nach Erledigen, Abbrechen und Zurückstellen verfügbar.
+
+Ein Abbruch führt zu exaktem Hash-Abgleich oder sichtbarem „Ausgang unklar – Abgleich nötig“, niemals blindem Wiederholen. Nur eigene hashgebundene Temp-Reste werden bereinigt; fremde Reste bleiben sichtbar. Notify/prepare benötigen keinen Signing-Schlüssel und keine Grenzerklärung. Execute benötigt echte OS-Trennung, alle Pflichtdomänen und eine aktuelle Aufgaben-/Ziel-/Quell-/Inhalt-/Ablaufbindung.
 
 ## Budgets, Archiv und Reparatur
 
-Status und Seite nennen pro Aufgabe Prüfintervall, Timeout und Quell-Bytegrenze sowie die globalen Grenzen: höchstens 10 Quellprüfungen und 5 s Quellbudget je Lauf, 60 s Poll, höchstens 1 s pro Quelllesung, 4 MiB aktive Momentaufnahme (Normalbetrieb bis 75 %). Unveränderte Fehlquellen gehen bis 1 h in Backoff. Neue angenommene Ereignisse umgehen diesen Backoff; sie werden geordnet beim Kontakt oder nächsten Poll geprüft. Fünf Sekunden sind für kleine gesunde Tests vorgesehen, keine harte Garantie bei blockiertem Dateisystem, Lock-Konkurrenz oder Prozesspause.
+Status und Seite nennen pro Aufgabe Prüfintervall, Timeout und Quell-Bytegrenze sowie die globalen Grenzen: höchstens 10 Quellprüfungen und 5 s Quellbudget je Lauf, 60 s Poll, höchstens 1 s pro Quelllesung, 4 MiB aktive Momentaufnahme (Normalbetrieb bis 75 %). Diese Aufgabe-Grenzen gelten sowohl für **Aufnahme der registrierten Quelle** als auch für **Evidenzprüfung**. Die globale Obergrenze pro Quelllesung ist 1 MiB; eine kleinere Aufgaben-Bytegrenze oder ein kleinerer Timeout gilt zusätzlich. Für gemeinsam genutzte Quellen richtet sich die Aufnahme nach dem größten aktuell zugelassenen Verbraucher. Jede Aufgabe prüft danach die tatsächlich gespeicherten Bytes und Laufzeit gegen ihre eigene Grenze: Eine kleine Aufgabe kann nicht von der größeren Erlaubnis einer anderen profitieren.
+
+Bei Memory umfasst die begrenzte Aufnahme auch die eindeutige Suche nach der Datei: Die Bytegrenze gilt für die Summe der dabei gelesenen Markdown-Dateien. Zu kleines Bytebudget meldet `source_budget` / „Quell-Bytegrenze überschritten“, überschrittene Zeit `source_timeout`; die Quelle feuert dann nicht. Das begrenzt die Annahme verspäteter Ergebnisse und verspricht keine atomare Unterbrechbarkeit beliebiger Betriebssystem-I/O.
+
+Unveränderte Fehlquellen gehen bis 1 h in Backoff. Neue angenommene Ereignisse umgehen diesen Backoff; sie werden geordnet beim Kontakt oder nächsten Poll geprüft. Fünf Sekunden sind für kleine gesunde Tests vorgesehen, keine harte Garantie bei blockiertem Dateisystem, Lock-Konkurrenz oder Prozesspause.
 
 ```sh
 bastra tasks stop
@@ -120,8 +151,14 @@ Unklare Wirkungen bleiben als „Abgleich nötig“ sichtbar; kein automatischer
 
 Zielschutz: `--root` ist ein ausdrücklich gewählter enger Arbeitsordner. Die Rückfrage nennt seinen realen, symlink-aufgelösten Pfad; außerhalb des aktuellen Projektordners erscheint eine Warnung. Aufgaben-/Schlüsselordner, `~/.bastra`, Vault, Agent-/Hook-/Client-/Dienst-Konfiguration und Shell-Profile sind fest gesperrt, ebenso Wurzeln, die solche Orte umfassen. Für vorhandene Ziele: `targets update ID --root DIR --path FILE --domain DOMAIN` oder `targets remove ID`. Beide verlangen Owner-Bestätigung, stoppen Ausführung und setzen die Grenzerklärung zurück; neu starten und erneut prüfen. Bei Schlüssel-Einschreibung registriert Bastra den privaten Schlüsselordner als gesperrten Ort; Schlüssel gehören in einen separaten Owner-Ordner.
 
-Recovery meldet stets, dass Änderungen nach dem älteren Backup fehlen können. Private gültige kalte Exporte werden mit dem Backup-Index abgeglichen; ihre History/Idempotenz und verbrauchten Freigaben bleiben erreichbar. Eine vor dem Backup archivierte Aufgabe kann als abgeschlossener aktiver Verlauf zurückkommen und zugleich im Archiv stehen. Das ist keine neue Aufgabe oder Freigabe. Original und Archiv prüfen; nichts wird still gelöscht. Bei lesbarem Original werden Archivindex, verbrauchte Freigaben und Fencing-Maximum zusätzlich vereinigt. Nicht validierbare Archivdateien blockieren die Reparatur und bleiben zur Owner-Prüfung erhalten.
+Recovery meldet stets, dass Änderungen nach dem älteren Backup fehlen können. Private gültige kalte Exporte werden mit dem Backup-Index abgeglichen; ihre History/Idempotenz und verbrauchten Freigaben bleiben erreichbar. Eine nach dem Backup archivierte Aufgabe kann als abgeschlossener aktiver Verlauf zurückkommen und zugleich im Archiv stehen. Das ist keine neue Aufgabe oder Freigabe. Original und Archiv prüfen; nichts wird still gelöscht. Bei lesbarem Original werden Archivindex, verbrauchte Freigaben und Fencing-Maximum zusätzlich vereinigt. Nicht validierbare Archivdateien blockieren die Reparatur und bleiben zur Owner-Prüfung erhalten.
 
 Git-Steuerung (`.git` einschließlich Hooks/config/HEAD/refs), `.husky`, `.github/workflows`, `.envrc` und `.npmrc` sind ebenfalls gesperrt. `package.json` ist als ausdrücklich gewählte Arbeitsdatei zulässig, aber die Rückfrage warnt immer vor später ausführbaren Install-/Test-/Start-Skripten; jede konkrete Änderung braucht weiter exakte Owner-Freigabe.
 
 Recovery-Grenze: Ist das Original unlesbar und das Backup älter als eine jüngste unarchivierte Wirkung, können deren Verbrauchs-ID und Quittung fehlen. Bekannte archivierte/lesbare Verbrauchs-IDs werden vereinigt; neue Epoch und unscharfer/gestoppter Zustand blockieren trotzdem die alte Freigabe. Das ist Replay-Schutz, keine vollständige Rekonstruktion des jüngsten Verlaufs. Original und Ziel prüfen.
+
+## Wegwerf-Demo
+
+Die [20–30-minütige Demo](design/proactive-tasks-demo.md) startet einen eigenen Daemon/Port/Benutzerbereich mit erfundenen Daten. Sie zeigt CLI/Browser-Erinnerung, Zurückstellen, Vorbereiten/Signieren/Ausführen/Rollback und vorbereitete Entscheidungsdateien. Geerbte Test-/Output-Einstellungen werden neutralisiert; Terminal-Schließen beendet nur den eigenen Daemon und räumt die eigene Ablage auf. Keine echte Mensch-/OS-Grenze oder Langzeitwirkung wird daraus abgeleitet.
+
+Siehe [14-Fälle-Matrix](design/proactive-tasks-matrix.md) und [englische Anleitung](Proactive%20Tasks.md). Menschliches Verständnis, Unterbrechungskosten und Langzeitnutzen bleiben gesondert zu prüfen.
