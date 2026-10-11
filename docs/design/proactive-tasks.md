@@ -207,7 +207,11 @@ Composite IDs use domain-separated, unambiguous structured tuples, never a colon
 joined source/key. Journal dedup binds source ID/version/kind, ownership domains,
 authenticated actor and producer key; occurrence identity binds task/generation/
 ownership and occurrence key. Idempotency already hashes a canonical object. P7
-approval bindings must use the same unambiguous canonical encoding.
+approval bindings must use the same unambiguous canonical encoding. Existing
+journal IDs remain unchanged: legacy source:key hashes are accepted only when
+source ID/revision, actor and ownership domains match the current binding exactly.
+A foreign source alias never returns the old ID; it gets its own framed event.
+No memory migration or bulk journal rewrite is performed.
 
 Manual `task_reconcile` is owner-only and requires every stored task ownership
 domain; daemon-owned reconciliation is internal. Registration counters distinguish

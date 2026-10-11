@@ -189,3 +189,14 @@ test("dedup tuples distinguish colon aliases across owner domains without exposi
   const s = await readTaskStore(f.ctx.path); assert.equal(s.events.length, 2); assert.notEqual(returned[0], returned[1]);
   for (let i = 0; i < 2; i++) assert.equal(s.events.find(e => e.id === returned[i])!.source_id, ids[i]);
 });
+test("legacy dedup lookup preserves own IDs but never accepts another source's colon alias", async () => {
+  const f = await fixture();
+  for (const id of ["collision:a", "collision"]) await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id, producer_actor: "owner" });
+  const first = { source_id: "collision:a", source_revision: 0, dedup_key: "b", value: "same", state_updated_at: 1000 };
+  await callTaskCrud(f.ctx, f.auth, "task_event", first);
+  const s = await readTaskStore(f.ctx.path); const legacy = taskValueHash("collision:a:b"); s.events[0].id = legacy; s.events[0].dedup_key = legacy;
+  await writeFile(f.ctx.path, JSON.stringify(s));
+  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_event", first) as any).event_id, legacy);
+  const second = await callTaskCrud(f.ctx, f.auth, "task_event", { ...first, source_id: "collision", dedup_key: "a:b" }) as any;
+  assert.notEqual(second.event_id, legacy); assert.equal((await readTaskStore(f.ctx.path)).events.length, 2);
+});

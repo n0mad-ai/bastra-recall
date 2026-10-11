@@ -35,7 +35,10 @@ function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRe
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
   const value_hash = source.kind === "file" ? value : taskValueHash(value);
   const dedup_key = taskEventKey(source, actor, key);
-  const existing = store.events.find(e => e.dedup_key === dedup_key);
+  const legacy = taskValueHash(`${sourceId}:${key}`);
+  const existing = store.events.find(e => e.dedup_key === dedup_key)
+    ?? store.events.find(e => e.dedup_key === legacy && e.source_id === source.id && e.source_revision === String(source.revision)
+      && e.actor === actor && JSON.stringify([...e.owner_domains].sort()) === JSON.stringify([...source.owner_domains].sort()));
   if (existing) {
     if (existing.value_hash !== value_hash || existing.source_revision !== String(sourceRevision)) throw Object.assign(new Error("dedup key drift"), { code: "conflict" });
     return existing;
