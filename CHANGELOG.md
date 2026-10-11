@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-11
+
 ### Security
 
 - The pending suggestion relay now redacts recognizable credentials with the
@@ -3317,7 +3319,8 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
-[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.1
 [1.0.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.0
 [0.9.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.2
