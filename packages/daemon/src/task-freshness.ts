@@ -53,6 +53,7 @@ export function verifyTaskEvent(task: Task, event: TaskEvent, store: TaskStore, 
   if (event.state_updated_at === undefined || event.state_updated_at > event.observed_at || event.observed_at > now)
     return out("inconclusive", "unattributable_state_age");
   if (now - event.state_updated_at > source.max_age_ms) return out("stale", "state_too_old");
+  if (task.evidence.some(e => e.state_updated_at !== undefined && (e.state_updated_at > now || e.state_updated_at > e.observed_at))) return out("inconclusive", "unattributable_state_age");
   if (task.evidence.some(e => e.provenance !== "attributable")) return out("inconclusive", "unknown_or_contested_evidence");
   if (task.evidence.some(e => e.observed_at > now || now - (e.state_updated_at ?? e.observed_at) > e.max_age_ms)) return out("stale", "evidence_too_old");
   if (task.schedule.kind !== "event" || !task.schedule.expected_hash || !event.value_hash) return out("inconclusive", "missing_comparison_hash");
@@ -89,6 +90,7 @@ async function evidenceSnapshot(ctx: ReadContext, source: TaskSource, max: numbe
 async function verifyBoundEvidence(ctx: ReadContext, task: Task, store: TaskStore, now: number): Promise<{ outcome: Verification["outcome"]; reason: string }> {
   if (task.evidence.length > 10) return { outcome: "unavailable", reason: "source_budget" };
   for (const reference of task.evidence) {
+    if (reference.state_updated_at !== undefined && (reference.state_updated_at > now || reference.state_updated_at > reference.observed_at)) return { outcome: "inconclusive", reason: "unattributable_state_age" };
     if (reference.provenance !== "attributable") return { outcome: "inconclusive", reason: "unknown_or_contested_evidence" };
     if (reference.observed_at > now || now - (reference.state_updated_at ?? reference.observed_at) > reference.max_age_ms)
       return { outcome: "stale", reason: "evidence_too_old" };
@@ -126,11 +128,16 @@ export async function verifyTaskSource(ctx: ReadContext, task: Task, event: Task
     if (snap.revision !== claim.evidence_revision || (reference?.hash && reference.hash !== taskValueHash(snap.raw))) return out("stale", "evidence_revision_drift");
     const data = claimEvidence.safeParse(JSON.parse(snap.body));
     if (!data.success || data.data.provenance !== "attributable") return out("inconclusive", "evidence_not_attributable");
-    if (data.data.state_updated_at > now || now - data.data.state_updated_at > reference!.max_age_ms) return out("stale", "producer_state_too_old");
+    if (data.data.state_updated_at > now || data.data.state_updated_at > event.observed_at || data.data.state_updated_at > reference!.observed_at) return out("inconclusive", "unattributable_state_age");
+    if (now - data.data.state_updated_at > reference!.max_age_ms) return out("stale", "producer_state_too_old");
     if (data.data.claim_id !== claim.claim_id || data.data.claim_revision !== claim.claim_revision || taskValueHash(data.data.value) !== claim.value_hash)
       return out("inconclusive", "claim_evidence_mismatch");
     return { ...out(claim.value_hash === task.schedule.expected_hash ? "verified" : "refuted", "verified_claim_snapshot"), state_updated_at: data.data.state_updated_at, max_age_ms: Math.min(basic.max_age_ms, reference!.max_age_ms) };
   } catch { return out("unavailable", "evidence_read_failed"); }
+}
+function verificationChanged(before: Verification | undefined, after: Verification): boolean {
+  const stable = (v: Verification) => ({ ...v, checked_at: 0, observed_at: v.event_id === "clock" ? 0 : v.observed_at });
+  return !before || JSON.stringify(stable(before)) !== JSON.stringify(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */
 export async function assessTaskFreshness(ctx: TaskServiceContext): Promise<void> {
@@ -149,13 +156,13 @@ export async function assessTaskFreshness(ctx: TaskServiceContext): Promise<void
       : verifyBoundEvidence(boundedCtx, task, store, (ctx.now ?? Date.now)()).then(evidence => ({ ...unavailable, ...evidence, source_id: "clock", event_id: "clock", state_updated_at: Math.min(...task.evidence.map(e => e.state_updated_at ?? e.observed_at)), max_age_ms: Math.min(...task.evidence.map(e => e.max_age_ms)) })),
       new Promise<Verification>(resolve => { timer = setTimeout(() => resolve(unavailable), task.budget.timeout_ms); })]);
     if (timer) clearTimeout(timer);
-    updates.push({ id: task.id, verification });
+    if (verificationChanged(task.verification, verification)) updates.push({ id: task.id, verification });
   }
   if (!updates.length) return;
   await transactTaskStore(ctx.path, undefined, s => {
     for (const update of updates) {
       const task = s.tasks.find(t => t.id === update.id); if (!task || taskBindingHash(task) !== update.verification.binding_hash) continue;
-      if (task.verification && JSON.stringify({ ...task.verification, checked_at: 0 }) === JSON.stringify({ ...update.verification, checked_at: 0 })) continue;
+      if (!verificationChanged(task.verification, update.verification)) continue;
       const before = task.revision++; task.verification = update.verification; task.updated_at = update.verification.checked_at;
       task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "freshness", before_revision: before, after_revision: task.revision, reason: update.verification.reason });
     }

@@ -94,10 +94,12 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
         if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d))
           || !event.value_hash || !task.schedule.expected_hash) { task.last_event_sequence = event.sequence; continue; }
         let verification = verifyTaskEvent(task, event, store, now);
-        if (verification.reason === "premise_requires_evidence_verifier" || task.evidence.length) {
+        if (verification.reason === "premise_requires_evidence_verifier" || (task.evidence.length && ["verified", "refuted"].includes(verification.outcome))) {
           const cached = task.verification;
           if (!cached || cached.event_id !== event.id || cached.binding_hash !== taskBindingHash(task)
-            || cached.state_updated_at === undefined || now - cached.state_updated_at > cached.max_age_ms) {
+            || cached.state_updated_at === undefined || cached.state_updated_at > now || cached.state_updated_at > cached.observed_at
+            || !task.evidence.every(e => store.sources.some(s => s.id === e.source_id && s.enabled) && (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at)))
+            || now - cached.state_updated_at > cached.max_age_ms) {
             if (store.events.some(e => e.source_id === event.source_id && e.sequence > event.sequence)) { task.last_event_sequence = event.sequence; continue; }
             break;
           }
@@ -121,7 +123,9 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
       if (task.evidence.length) {
         const verification = task.verification;
         if (!verification || verification.binding_hash !== taskBindingHash(task) || verification.outcome !== "verified"
-          || verification.state_updated_at === undefined || now - verification.state_updated_at > verification.max_age_ms) continue;
+          || verification.state_updated_at === undefined || verification.state_updated_at > now || verification.state_updated_at > verification.observed_at
+          || !task.evidence.every(e => store.sources.some(s => s.id === e.source_id && s.enabled) && (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at)))
+          || now - verification.state_updated_at > verification.max_age_ms) continue;
       }
       // The saved next slot is frozen across restarts/tzdata changes.
       if (task.next_slot && task.next_slot.at > now) continue;

@@ -212,7 +212,14 @@ Neither requires hashing the hash again.
 
 Event: monotonic sequence, source ID/version, actor/domain, observed_at,
 producer state_updated_at where meaningful, sensitivity, dedup key, bounded
-value/evidence. File/ref sources observe snapshots at polling/contact, not every
+value/evidence. For file/Git/memory revision observations, state_updated_at denotes the instant
+the adapter observed that revision, not a producer heartbeat or live-state age.
+Structured premise evidence separately requires its attributable producer timestamp;
+reading an old status file now cannot refresh that timestamp. Future state_updated_at
+or state_updated_at later than observed_at is inconclusive. Identical freshness
+checks perform no writes; checked_at/clock read time alone never adds an audit.
+
+File/ref sources observe snapshots at polling/contact, not every
 intermediate change. Registered paths reject symlink/escape; Git uses a fixed
 argument vector. No arbitrary shell expression, URL or execution of verify_cmd.
 
