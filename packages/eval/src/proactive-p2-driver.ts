@@ -13,6 +13,7 @@ const commit = execFileSync("git", ["-C", feature, "rev-parse", "HEAD"], { encod
 const design = readFileSync(join(feature, "docs/design/proactive-tasks.md"), "utf8");
 const daemonDir = join(feature, "packages/daemon/dist");
 const auth = await import(pathToFileURL(join(daemonDir, "task-auth.js")).href);
+const sourceApi = existsSync(join(daemonDir,"task-events.js")) ? await import(pathToFileURL(join(daemonDir,"task-events.js")).href) : undefined;
 const storeApi = await import(pathToFileURL(join(daemonDir, "task-store.js")).href);
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -45,7 +46,7 @@ const driver: FeatureDriver = {
     const other = await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
     const tokens: Record<string,string | undefined> = { owner: owner.token, agent: agent.token, other: other.token, legacy: "legacy-fixture", absent: undefined };
     const clockPath = join(root,"fixture-clock.json");
-    if (c.id === "dst-recurrence-rollback") { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
+    if (["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
       clock_mode: "real wall clock for auth/CRUD; no frozen-clock trigger claim", schedule_at: Date.parse(context.reference_instant) }];
     const processes: ChildProcessWithoutNullStreams[] = [];
@@ -116,7 +117,44 @@ const driver: FeatureDriver = {
     let values: Record<string, boolean | number | string> = {};
     try {
       await start();
-      if (c.id === "p2-auth-boundaries") {
+      if (c.id === "p3-automatic-evaluation") {
+        const t0=Date.parse("2026-10-24T12:00:00Z");
+        const setClock=(at:number)=>{writeFileSync(clockPath,String(at));evidence.push({frozen_clock:at});};
+        const count=(id:string)=>JSON.parse(readFileSync(taskPath,"utf8")).occurrences.filter((o:any)=>o.task_id===id).length;
+        const wait=async(id:string,budget:number)=>{const end=Date.now()+budget;while(count(id)===0&&Date.now()<end){if(daemon!.exitCode!==null)throw new Error("daemon died in automatic evaluation");await delay(100);}return count(id);};
+        const make=async(key:string,at:number)=>{const r=await http("POST","/api/v1/tasks",{...input(key),arm:true,schedule:{kind:"instant",at}});if(r.status!==200)throw new Error("automatic task creation failed");return r.data;};
+        setClock(t0);const startup=await make("automatic-start",t0+1000);await stop(daemon!);setClock(t0+1000);
+        // No HTTP health probe or MCP contact at restart: only launch the real daemon and inspect private durable state.
+        daemon=child(`daemon-${processes.length}`,"index.js");daemon.stdout.resume();
+        const startCount=await wait(startup.id,5000);console.log(JSON.stringify({case_id:c.id,repetition,phase:"startup",logical_firings:startCount,expected:1}));
+        const contact=await make("automatic-contact",t0+2000);setClock(t0+2000);
+        await http("GET",`/api/v1/tasks/${contact.id}`);const contactCount=await wait(contact.id,5000);
+        console.log(JSON.stringify({case_id:c.id,repetition,phase:"next-contact",logical_firings:contactCount,expected:1}));
+        const polling=await make("automatic-poll",t0+3000);setClock(t0+3000);
+        const pollCount=await wait(polling.id,65000);
+        console.log(JSON.stringify({case_id:c.id,repetition,phase:"poll",logical_firings:pollCount,expected:1}));
+        values={startup_logical_firings:startCount,contact_logical_firings:contactCount,poll_logical_firings:pollCount,manual_reconcile_calls:evidence.filter(e=>e.path?.includes("reconcile")).length};
+      } else if(c.id === "p3-returning-source-transitions") {
+        const repo=join(root,"fixture-repository");mkdirSync(repo,{mode:0o700});const artifact=join(root,"source.txt");writeFileSync(artifact,"A",{mode:0o600});
+        const git=(...args:string[])=>execFileSync("git",["-C",repo,...args],{encoding:"utf8",env:{...env,GIT_CONFIG_GLOBAL:"/dev/null",GIT_CONFIG_NOSYSTEM:"1"}}).trim();
+        git("init","-b","fixture");
+        const commitFixture=(name:string)=>git("-c","user.name=Fixture","-c","user.email=fixture@example.invalid","-c","commit.gpgsign=false","commit","--allow-empty","-m",name);
+        commitFixture("A");const a=git("rev-parse","HEAD");commitFixture("B");const b=git("rev-parse","HEAD");git("update-ref","refs/heads/observed",a);
+        const common={producer_actor:"task-source-reader",owner_domains:["personal"],sensitivity:"private",max_age_ms:100000,enabled:true};
+        for(const source of [{...common,id:"file-watch",kind:"file",root,path:"source.txt"},{...common,id:"git-watch",kind:"git",root:repo,ref:"refs/heads/observed"}]){
+          const r=await http("POST","/api/v1/tasks/sources",source);if(r.status!==200)throw new Error("returning source registration failed");
+        }
+        await stop(daemon!);let quiet=true;
+        const ctx={path:taskPath,authPath,now:()=>Number(readFileSync(clockPath,"utf8"))};
+        for(const [i,value] of ["A","B","A","B"].entries()){
+          writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")+i*1000));writeFileSync(artifact,value);git("update-ref","refs/heads/observed",value==="A"?a:b);
+          await sourceApi!.observeTaskSources(ctx);const first=JSON.parse(readFileSync(taskPath,"utf8"));
+          await sourceApi!.observeTaskSources(ctx);const second=JSON.parse(readFileSync(taskPath,"utf8"));quiet&&=first.events.length===second.events.length;
+          evidence.push({transition:i+1,file_value:value,git_ref:value==="A"?a:b,first_snapshot:first,unchanged_snapshot:second});
+        }
+        const events=JSON.parse(readFileSync(taskPath,"utf8")).events;
+        values={file_events:events.filter((e:any)=>e.source_id==="file-watch").length,git_events:events.filter((e:any)=>e.source_id==="git-watch").length,unchanged_polls_quiet:quiet,distinct_event_ids:new Set(events.map((e:any)=>e.id)).size};
+      } else if (c.id === "p2-auth-boundaries") {
         const t = await create();
         const checks = await Promise.all([
           http("GET", "/api/v1/tasks", undefined, "absent"), http("GET", "/api/v1/tasks", undefined, "legacy"),
