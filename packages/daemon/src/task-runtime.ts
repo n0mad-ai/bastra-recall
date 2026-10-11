@@ -4,7 +4,7 @@ import { basename, dirname, relative, sep } from "node:path";
 import { emptyTaskStore, type TaskStore } from "./task-schema.js";
 import { readTaskStore } from "./task-store.js";
 import { observeTaskSources, reconcileTaskTime } from "./task-events.js";
-import { assessTaskFreshness } from "./task-freshness.js";
+import { taskEventToAssess, taskCheckMaterial, assessTaskFreshness } from "./task-freshness.js";
 import { onTaskSnapshot, onTaskWake } from "./task-runtime-signal.js";
 import type { TaskServiceContext } from "./task-service.js";
 
@@ -63,33 +63,35 @@ export class TaskRuntime {
     if (!this.hasWork || !this.loaded || (this.ioStopped && (this.ctx.now ?? Date.now)() < this.nextTick)) return; // no interval reads/writes when empty/unarmed
     const now = (this.ctx.now ?? Date.now)();
     this.busy = (async () => {
-      const started = Date.now(); const selected = new Set<string>(); const sources = new Set<string>();
+      const started = Date.now(); let assessed = new Map<string,string>(); const selected = new Set<string>(); const sources = new Set<string>();
       let visited = 0;
       while (visited < this.snapshot.tasks.length && selected.size < 10) {
         const task = this.snapshot.tasks[(this.pollCursor + visited++) % this.snapshot.tasks.length];
         if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
-        const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-        const material = JSON.stringify(["task-check-v1", event?.value_hash, event?.claim?.value_hash, event?.state_updated_at]);
+        const event = taskEventToAssess(task, this.snapshot);
+        const material = taskCheckMaterial(task, this.snapshot);
         const previous = this.checks.get(task.id);
         if (previous && now < previous.next && previous.material === material) continue;
-        selected.add(task.id); if (task.schedule.kind === "event") sources.add(task.schedule.source_id);
+        selected.add(task.id); if (task.schedule.kind === "event" && (!event || task.verification?.event_id === event.id)) sources.add(task.schedule.source_id);
       }
       this.pollCursor = (this.pollCursor + visited) % this.snapshot.tasks.length;
       try {
         if (selected.size) {
           await observeTaskSources(this.ctx, true, sources);
-          if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
+          if (Date.now() - started < 5000) assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
-          const task = this.snapshot.tasks.find(t => t.id === id)!;
+          const task = this.snapshot.tasks.find(t => t.id === id); if (!task || !assessed.has(id)) continue;
           const failed = ["unavailable", "inconclusive", "stale"].includes(task.verification?.outcome ?? "") || task.last_failure?.code === "source_unavailable";
           const delay = failed ? Math.min(Math.max((this.checks.get(id)?.backoff ?? 0) * 2, task.budget.poll_interval_ms), 3600000) : task.budget.poll_interval_ms;
-          const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-          this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: JSON.stringify(["task-check-v1", event?.value_hash, event?.claim?.value_hash, event?.state_updated_at]) });
+          this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: assessed.get(id)! });
           this.backoff = Math.max(this.backoff, failed ? delay : 0); if (failed) this.lastError = "source_unavailable";
         }
+        // Accepted/new events never inherit a failed or older snapshot's backoff.
+        if (this.snapshot.tasks.some(t => { if (!t.armed || t.schedule.kind !== "event") return false; const sourceId = t.schedule.source_id; return this.snapshot.events.some(e => e.source_id === sourceId)
+          && this.checks.get(t.id)?.material !== taskCheckMaterial(t, this.snapshot); })) this.queued = true;
         this.nextTick = Math.min(now + 60000, ...[...this.checks.values()].map(c => c.next));
       } catch { this.ioStopped = true; this.lastError = "task_job_unavailable"; this.backoff = Math.min(Math.max(this.backoff * 2, 60000), 3600000); this.nextTick = now + this.backoff; }
     })();
