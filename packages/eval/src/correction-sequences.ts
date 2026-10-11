@@ -25,7 +25,7 @@ const digest = tags.models.find(m => m.name === "embeddinggemma:latest")?.digest
 if (!digest) throw new Error("no identified local embeddinggemma");
 const provider = new OllamaEmbeddingProvider({ baseURL, model: "embeddinggemma", keepAlive: "10m" });
 const work = await mkdtemp(join(tmpdir(), "correction-sequences-"));
-type Row = { order: string; scores: number[]; old_current_score_tie: boolean | null; strict_old_score_advantage: boolean | null; obsolete_top1_same_value: boolean | null; incorrect_value_top1: boolean | null; case: string; split: string; language: string; kind: string; phase: string; stage: number; query: number; arm: string;
+type Row = { order: string; index_order: string[]; top_score_tie: boolean; obsolete_top1_score_tie: boolean | null; scores: number[]; old_current_score_tie: boolean | null; strict_old_score_advantage: boolean | null; obsolete_top1_same_value: boolean | null; incorrect_value_top1: boolean | null; case: string; split: string; language: string; kind: string; phase: string; stage: number; query: number; arm: string;
   ranked: string[]; current_ids: string[]; current_hit_at_1: boolean | null; current_hit_at_5: boolean | null;
   obsolete_top1: boolean | null; obsolete_outranks_current: boolean | null; conflict_complete: boolean | null;
   oldest_reachable: boolean; reload_ranks_equal: boolean | null };
@@ -68,7 +68,9 @@ try {
         const topValue = known.find(v => v.id === ranked[0])?.value;
         const key = `${arm}-${qi}`; signatures.set(key, ranked);
         const conflict = c.kind === "conflict" && known.length > 1;
-        rows.push({ order, scores: hits.map(h => h.score),
+        rows.push({ order, index_order: vault.list().map(m => m.fm.id),
+          top_score_tie: hits.length > 1 && hits[0].score === hits[1].score,
+          obsolete_top1_score_tie: conflict ? null : old.includes(ranked[0]) && score(ranked[0]) === currentScore, scores: hits.map(h => h.score),
           old_current_score_tie: conflict ? null : old.some(id => score(id) === currentScore),
           strict_old_score_advantage: conflict ? null : old.some(id => score(id) > currentScore),
           obsolete_top1_same_value: conflict ? null : old.includes(ranked[0]) && topValue === currentValue,
@@ -95,6 +97,8 @@ try {
  }
 } finally { await rm(work, { recursive: true, force: true }); }
 const summarize = (xs: Row[]): Record<string, number> => ({ trials: xs.length,
+  top_score_tie: xs.filter(r => r.top_score_tie).length,
+  obsolete_top1_score_tie: xs.filter(r => r.obsolete_top1_score_tie).length,
   old_current_score_tie: xs.filter(r => r.old_current_score_tie).length,
   strict_old_score_advantage: xs.filter(r => r.strict_old_score_advantage).length,
   obsolete_top1_same_value: xs.filter(r => r.obsolete_top1_same_value).length,
