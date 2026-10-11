@@ -56,7 +56,7 @@
     },
     {
       "issue": 644,
-      "status": "measured_synthetic_bm25_and_shipped_hybrid_baselines",
+      "status": "measured_subset",
       "pr": 1160,
       "registration": "supersession-durability.json",
       "results": "supersession-durability-results.json",
@@ -75,7 +75,14 @@
         "n": 36,
         "order_control_trials": 36,
         "strict_predecessor_score_inversions": 24,
-        "gates_passed": []
+        "gates_passed": [],
+        "status": "measured_subset",
+        "query_class_predecessor_leads_both_orders": {
+          "old-anchor": "20/24",
+          "paraphrase": "16/24",
+          "neutral": "12/24"
+        },
+        "interpretation": "24 versus 17 strict advantages is not deterioration evidence because BM25 has 18 ties; replaces raw ranking only; product archive/daemon/agent answer paths unmeasured."
       }
     },
     {
@@ -136,17 +143,11 @@
     },
     {
       "issue": 600,
-      "status": "synthetic_retrieval_sequence_subset_measured",
+      "status": "measured_subset",
       "pr": 1176,
       "registration": "correction-sequences.json",
       "results": "correction-sequences-results.json",
       "entities": 16,
-      "trials_per_arm": 176,
-      "correction_opportunities_per_arm": 128,
-      "obsolete_top1": {
-        "bm25": 110,
-        "hybrid": 96
-      },
       "remaining": [
         "answer/evidence/uncertainty/citation quality",
         "historical as-of semantics",
@@ -155,11 +156,107 @@
         "field longevity",
         "M1"
       ],
-      "gates_passed": []
+      "gates_passed": [],
+      "trials_per_arm_per_order": 176,
+      "correction_opportunities_per_arm_per_order": 56,
+      "orders": [
+        "original",
+        "reversed"
+      ],
+      "ingest_by_order_arm": {
+        "original": {
+          "bm25": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 22,
+            "strict_old_score_advantage": 56,
+            "obsolete_top1_same_value": 16,
+            "incorrect_value_top1": 40,
+            "current_evaluable": 56,
+            "current_hit_at_1": 0,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 56,
+            "obsolete_outranks_current": 56,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          },
+          "hybrid": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 0,
+            "strict_old_score_advantage": 49,
+            "obsolete_top1_same_value": 11,
+            "incorrect_value_top1": 38,
+            "current_evaluable": 56,
+            "current_hit_at_1": 7,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 49,
+            "obsolete_outranks_current": 49,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          }
+        },
+        "reversed": {
+          "bm25": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 22,
+            "strict_old_score_advantage": 56,
+            "obsolete_top1_same_value": 16,
+            "incorrect_value_top1": 40,
+            "current_evaluable": 56,
+            "current_hit_at_1": 0,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 56,
+            "obsolete_outranks_current": 56,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          },
+          "hybrid": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 0,
+            "strict_old_score_advantage": 44,
+            "obsolete_top1_same_value": 9,
+            "incorrect_value_top1": 35,
+            "current_evaluable": 56,
+            "current_hit_at_1": 12,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 44,
+            "obsolete_outranks_current": 44,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          }
+        }
+      },
+      "controls": "24 non-conflict trials each per arm/order: reload and restore repeat ingest end state; hide-old changes pool. Not extra independent opportunities.",
+      "interpretation": "Raw replaces-path core ranking; superseded_by ignored. Same-value returns separated; hit@5 trivial at <=4 memories/k5. Previous gap-persists claim withdrawn.",
+      "artifact_sha256": "60726f3e1349b7e8792332ee226aa941ed1980430262ef6b4d9fcdedee37b6a5",
+      "engine": {
+        "repo_commit": "fc40eb797ad025c8d6e6ac8b5f913622f216d99f",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      }
     },
     {
       "issue": 1058,
-      "status": "supported_exact_flat_scaling_subset_measured",
+      "status": "measured_subset",
       "pr": 1177,
       "registration": "flat-scale-subset.json",
       "results": "flat-scale-subset-results.json",
