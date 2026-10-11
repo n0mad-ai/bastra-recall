@@ -1,4 +1,6 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
+import { taskValueHash, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
+import { resolveTaskCalendar } from "./task-clock.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { authenticateTask, requireTaskDomains, requireTaskOwner, type TaskPrincipal } from "./task-auth.js";
@@ -27,7 +29,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
@@ -54,12 +56,29 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 function hash(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
+function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule"], {kind: "event"}>, domains: string[]): void {
+  const source = store.sources.find(s => s.id === schedule.source_id && s.enabled);
+  if (!source || !source.owner_domains.every(d => domains.includes(d)) || !schedule.expected_hash)
+    throw new TaskServiceError("validation", "Registered source and an exact owner-reviewed baseline are required");
+}
+function normalizeSchedule(schedule: Task["schedule"]): void {
+  if (schedule.kind === "event") schedule.expected_hash = taskValueHash(schedule.expected);
+  if (schedule.kind === "calendar") {
+    try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
+    catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
+  }
+}
 export interface TaskServiceContext { path: string; authPath: string; now?: () => number }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 export async function callTaskCrud(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (operation === "task_source_register") return registerTaskSource(ctx, authorization, raw);
+  if (operation === "task_event") return submitTaskEvent(ctx, authorization, raw);
+  if (operation === "task_reconcile") {
+    z.strictObject({}).parse(raw); await reconcileTaskTime(ctx); return { reconciled: true };
+  }
   if (operation === "task_list") {
     z.strictObject({}).parse(raw);
     const store = await readTaskStore(ctx.path);
@@ -70,7 +89,9 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
     return view(store, findTask(store, input.id, principal));
   }
   if (operation === "task_create") {
-    const input = taskCreateInputSchema.parse(raw); requireTaskDomains(principal, input.owner_domains);
+    const input = taskCreateInputSchema.parse(raw);
+    normalizeSchedule(input.schedule);
+    requireTaskDomains(principal, input.owner_domains);
     if (input.arm) requireTaskOwner(principal);
     if (input.arm && input.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
@@ -83,6 +104,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
         return;
       }
       const { idempotency_key: _key, arm, ...values } = input;
+      if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
       s.tasks.push(taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
         created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
         request_source: principal.role === "owner" ? "owner-command" : "agent-proposal", reference_at: now,
@@ -99,6 +121,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
     if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
     if (operation === "task_edit") {
       const patch = editInput.parse(input).patch;
+      if (patch.schedule) normalizeSchedule(patch.schedule);
       if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
         requireTaskOwner(principal);
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
@@ -106,7 +129,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
       Object.assign(task, patch);
       if (triggerChanged) {
-        task.generation++; delete task.snoozed_until;
+        task.generation++; delete task.snoozed_until; delete task.last_event_sequence; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
       } task.armed = false; task.review_reason = "Edited binding requires explicit owner review";
       audit(task, principal, "edit", now);
@@ -117,6 +140,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
       requireTaskOwner(principal);
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
       if (task.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
+      if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
       task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
     const op = operation.slice(5) as TaskLifecycleOperation;
@@ -142,6 +166,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
 }
 
 export const TASK_INPUT_SCHEMAS = {
+  task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,

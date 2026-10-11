@@ -30,7 +30,7 @@ export const taskScheduleSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("event"), source_id: id,
     predicate: z.enum(["equals", "content-version", "git-ref", "premise"]),
-    expected: text, verifier_id: id.optional(),
+    expected: text, expected_hash: hash.optional(), verifier_id: id.optional(),
   }),
 ]);
 
@@ -66,6 +66,7 @@ export const taskSchema = z.strictObject({
     id, revision: id, option: text, reason: text, assumption_id: id,
     assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
   }).optional(),
+  last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
   history: z.array(z.strictObject({
@@ -79,6 +80,8 @@ export const taskSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "snoozed task requires an instant" });
   if (task.schedule.kind === "duration" && task.schedule.at !== task.schedule.reference_at + task.schedule.duration_ms)
     ctx.addIssue({ code: "custom", message: "duration instant disagrees with reference" });
+  if (task.recurrence && ((task.schedule.kind === "event") || (task.recurrence.kind === "calendar" && task.schedule.kind !== "calendar")))
+    ctx.addIssue({ code: "custom", message: "recurrence kind and schedule disagree" });
   if (task.schedule.kind === "event" && task.schedule.predicate === "premise" && !task.schedule.verifier_id)
     ctx.addIssue({ code: "custom", message: "premise requires a registered verifier" });
   try { new Intl.DateTimeFormat("en", { timeZone: task.timezone }); }
@@ -91,7 +94,7 @@ const eventSchema = z.strictObject({
   sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
   actor: taskIdentitySchema, owner_domains: domains, observed_at: instant,
   state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
-  value: text,
+  value: text, value_hash: hash.optional(),
 });
 
 const occurrenceSchema = z.strictObject({
@@ -102,11 +105,25 @@ const occurrenceSchema = z.strictObject({
   resolution: z.strictObject({ at: instant, actor: taskIdentitySchema, reason: text }).optional(),
 });
 
+export const taskSourceSchema = z.strictObject({
+  schema_version: z.literal(1), id: taskIdentitySchema, revision: revision,
+  owner_domains: domains, sensitivity: z.enum(["public", "private", "restricted"]),
+  kind: z.enum(["event", "file", "git", "memory"]), producer_actor: taskIdentitySchema,
+  root: z.string().min(1).max(4096).optional(), path: z.string().min(1).max(4096).optional(),
+  ref: z.string().regex(/^refs\/(heads|tags)\/[a-zA-Z0-9._/-]+$/).max(256).optional(),
+  memory_id: id.optional(), max_age_ms: instant, enabled: z.boolean(),
+}).superRefine((s, ctx) => {
+  if ((s.kind === "file" && (!s.root || !s.path)) || (s.kind === "git" && (!s.root || !s.ref)) || (s.kind === "memory" && !s.memory_id))
+    ctx.addIssue({ code: "custom", message: "source registration incomplete" });
+});
+export type TaskSource = z.infer<typeof taskSourceSchema>;
+
 // Action records become strict, named schemas in P7 before any action API exists.
 // Empty arrays are the only accepted v1 P1 action state; no unchecked capability.
 const emptyActions = z.array(z.never()).max(0);
 export const taskStoreSchema = z.strictObject({
-  schema_version: z.literal(TASK_STORE_VERSION), revision, recovery_epoch: id, fencing_counter: revision,
+  schema_version: z.literal(TASK_STORE_VERSION), revision, recovery_epoch: id, fencing_counter: revision, evaluation_cursor: revision.default(0),
+  sources: z.array(taskSourceSchema).max(1000).default([]),
   tasks: z.array(taskSchema).max(TASK_MAX_ROWS), events: z.array(eventSchema).max(10000),
   checkpoint: revision, occurrences: z.array(occurrenceSchema).max(10000),
   proposals: emptyActions, challenges: emptyActions, approvals: emptyActions,
@@ -120,7 +137,7 @@ export const taskStoreSchema = z.strictObject({
     adapters: z.record(id, z.strictObject({ enabled: z.boolean(), coverage: z.string().max(256) })),
   }),
 }).superRefine((store, ctx) => {
-  for (const rows of [store.tasks, store.events, store.occurrences]) {
+  for (const rows of [store.tasks, store.events, store.occurrences, store.sources]) {
     if (new Set(rows.map(row => row.id)).size !== rows.length)
       ctx.addIssue({ code: "custom", message: "duplicate record identity" });
   }
@@ -140,8 +157,8 @@ export type TaskStore = z.infer<typeof taskStoreSchema>;
 
 /** ENOENT is the pre-feature migration: memories and drafts remain untouched. */
 export function emptyTaskStore(): TaskStore {
-  return { schema_version: 1, revision: 0, recovery_epoch: "initial", fencing_counter: 0,
-    tasks: [], events: [], checkpoint: 0, occurrences: [], proposals: [],
+  return { schema_version: 1, revision: 0, recovery_epoch: "initial", fencing_counter: 0, evaluation_cursor: 0,
+    sources: [], tasks: [], events: [], checkpoint: 0, occurrences: [], proposals: [],
     challenges: [], approvals: [], leases: [], intents: [], receipts: [], consumed_approval_ids: [], recovery_history: [],
     controls: { enabled: true, muted: false, execution_stopped: true, adapters: {} } };
 }

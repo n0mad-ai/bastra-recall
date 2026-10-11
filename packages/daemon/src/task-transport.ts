@@ -48,6 +48,9 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       let id: string | undefined;
       const tool = pathname.slice("/api/v1/".length);
       if (isTaskTool(tool) && method === "POST") operation = tool;
+      else if (pathname === "/api/v1/tasks/events" && method === "POST") operation = "task_event";
+      else if (pathname === "/api/v1/tasks/sources" && method === "POST") operation = "task_source_register";
+      else if (pathname === "/api/v1/tasks/reconcile" && method === "POST") operation = "task_reconcile";
       else if (pathname === "/api/v1/tasks" || pathname === "/api/v1/tasks/") {
         operation = method === "GET" ? "task_list" : method === "POST" ? "task_create" : undefined;
       } else {
