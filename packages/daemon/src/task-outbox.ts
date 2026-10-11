@@ -71,5 +71,11 @@ export async function recordTaskDelivery(path: string, principal: TaskPrincipal,
     }
   }, "control");
 }
-export function cachedTaskSnapshot(path: string): TaskStore | undefined { const runtime = taskRuntime(path);
-  return runtime?.lastError === "task_store_unavailable" || runtime?.lastError === "task_job_unavailable" ? undefined : runtime?.snapshot; }
+export function cachedTaskSnapshot(path: string): TaskStore | undefined {
+  const runtime = taskRuntime(path);
+  if (!runtime || runtime.lastError === "task_store_unavailable" || runtime.lastError === "task_job_unavailable") return undefined;
+  if (!runtime.invalidBindings.size) return runtime.snapshot;
+  const snapshot = structuredClone(runtime.snapshot);
+  for (const task of snapshot.tasks) if (task.decision && (runtime.invalidBindings.has(task.decision.id) || runtime.invalidBindings.has(task.decision.assumption_id))) task.armed = false;
+  return snapshot;
+}

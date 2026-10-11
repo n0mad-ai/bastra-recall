@@ -68,7 +68,7 @@ export const taskSchema = z.strictObject({
   }),
   evidence: z.array(taskReferenceSchema).max(100),
   decision: taskDecisionSchema.optional(),
-  decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: hash, new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
+  decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: hash, new_memory_hash: hash.optional(), updated_date: z.string().optional(), new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
   last_material_hash: hash.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   verification: z.lazy(() => taskVerificationSchema).optional(),
@@ -113,7 +113,7 @@ const eventSchema = z.strictObject({
 
 const occurrenceSchema = z.strictObject({
   id, task_id: id, task_revision: revision, generation: revision,
-  event_key: id, due_at: instant, why: text, missed_count: revision,
+  event_key: id, new_premise: text.optional(), due_at: instant, why: text, missed_count: revision,
   attempts: z.array(z.strictObject({ attempt_id: id.optional(), count: revision.optional(), first_at: instant.optional(), actor: taskIdentitySchema.optional(), role: z.enum(["owner", "agent"]).optional(), last_session: taskIdentitySchema.optional(), channel: id.optional(), at: instant, client: id, outcome: id })).max(100),
   compacted_attempts: revision.optional(),
   acknowledgement: z.strictObject({ at: instant, actor: taskIdentitySchema, proof_id: id }).optional(),

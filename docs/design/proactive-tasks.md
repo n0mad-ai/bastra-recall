@@ -444,7 +444,7 @@ P6 implementation: owner task_reconsider chooses keep/change/snooze/stop for one
 current reconsideration occurrence. Keep resolves that material event, retaining
 monitoring; change persists a disarmed intent before core ID/CAS memory mutation,
 requires the exact decision revision, and keeps old decision/evidence in append-only
-history. A write marker and exact body identify a prior interrupted write; drift
+history. The exact planned resulting-byte hash is persisted in the task intent before the write and identifies a prior interrupted write; drift
 requires review. Old bindings remain historical and are never rebound automatically.
 Before each evaluation, bounded disk-authoritative decision AND assumption reads
 reject revision/sensitivity/inactive/missing bindings, preserving history. Scope is
@@ -458,3 +458,11 @@ Small session budgets keep a compact availability card with the explicit due
 command instead of silently dropping due work. P9/demo MUST provide one owner CLI
 setup command for hook task credentials and show honest per-client missing-token
 coverage. No automatic provider wakeup is claimed.
+
+P6 correction: no proactive_change_id or other new field is added to the memory
+schema. Idempotency belongs to the task intent (planned exact resulting-byte hash
+and fixed updated date). Each occurrence snapshots its verified new premise from
+that event, independent of later verification. Vault edit/remove notifications
+immediately suppress bound cached cards; explicit due rechecks disk authority.
+After keep, further premise changes require explicit owner rebinding/review; the
+historical watch is disarmed and is never silently reinterpreted.

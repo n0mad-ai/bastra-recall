@@ -74,6 +74,7 @@ function cleanStore(store: TaskStore): TaskStore {
   for (const event of next.events) event.value = cleanText(event.value);
   for (const occurrence of next.occurrences) {
     occurrence.why = cleanText(occurrence.why);
+    if (occurrence.new_premise) occurrence.new_premise = cleanText(occurrence.new_premise);
     if (occurrence.resolution) occurrence.resolution.reason = cleanText(occurrence.resolution.reason);
   }
   for (const recovery of next.recovery_history) recovery.reason = cleanText(recovery.reason);

@@ -53,7 +53,7 @@ export function reconsiderationCard(task: Task, occurrence: TaskStore["occurrenc
   if (!task.decision || task.schedule.kind !== "event" || task.schedule.predicate !== "premise") return undefined;
   const event = store.events.find(e => occurrence.event_key === `event:${e.id}`);
   if (!event?.claim) return undefined;
-  return { kind: "reconsideration", decision: { ...task.decision, option: task.decision.option.slice(0, 160), reason: task.decision.reason.slice(0, 160), premise: task.decision.premise.slice(0, 160), alternatives: task.decision.alternatives.slice(0, 3).map(a => a.slice(0, 80)) }, old_premise: task.decision.premise.slice(0, 160), new_premise: task.verification?.refuted_value?.slice(0, 160),
+  return { kind: "reconsideration", decision: { ...task.decision, option: task.decision.option.slice(0, 160), reason: task.decision.reason.slice(0, 160), premise: task.decision.premise.slice(0, 160), alternatives: task.decision.alternatives.slice(0, 3).map(a => a.slice(0, 80)) }, old_premise: task.decision.premise.slice(0, 160), new_premise: occurrence.new_premise?.slice(0, 160),
     changed_value_hash: event.claim.value_hash, new_evidence: { id: event.claim.evidence_id, revision: event.claim.evidence_revision, observed_at: event.observed_at, state_updated_at: event.state_updated_at },
     old_evidence: task.evidence.slice(0, 3), uncertainty: "A verified premise change invites review; no replacement has been chosen", choices: ["keep", "change", "snooze", "stop"] };
 }
@@ -83,13 +83,17 @@ export async function reconsiderTask(ctx: TaskServiceContext, authorization: str
     if (await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding changed");
     if (input.choice === "change") {
       if (!ctx.memoryChange || input.change!.expected_memory_revision !== task.decision!.revision) throw new TaskStoreError("conflict", "exact decision revision required");
+      const updatedDate = new Date().toISOString().slice(0, 10);
+      const snap = await ctx.memoryRead!(task.decision!.id);
+      const planned = matter.stringify(input.change!.body, { ...matter(snap.raw).data, updated: updatedDate });
+      const newMemoryHash = createHash("sha256").update(planned).digest("hex");
       audit(task, principal.actor_id, "decision-change-intent", now, true);
       task.decision_change = { id: changeId!, actor: principal.actor_id, expected_memory_revision: input.change!.expected_memory_revision, binding_hash: digest([task.generation, task.decision, task.evidence, task.owner_domains]),
-        new_body_hash: bodyHash!, new_option: input.change!.option, new_reason: input.change!.reason, status: "pending" };
+        new_body_hash: bodyHash!, new_memory_hash: newMemoryHash, updated_date: updatedDate, new_option: input.change!.option, new_reason: input.change!.reason, status: "pending" };
       task.armed = false; task.review_reason = "Confirmed decision change pending; old watch disarmed";
     } else if (input.choice === "keep") {
       occurrence.resolution = { at: now, actor: principal.actor_id, reason: "Keep original decision for this material event" };
-      task.state = "pending"; audit(task, principal.actor_id, "decision-keep", now, true);
+      task.state = "pending"; task.armed = false; task.review_reason = "Kept decision; further premise changes require owner rebinding"; audit(task, principal.actor_id, "decision-keep", now, true);
     } else if (input.choice === "stop") {
       task.armed = false; task.state = "cancelled"; audit(task, principal.actor_id, "decision-stop", now, true);
     } else {
@@ -99,14 +103,14 @@ export async function reconsiderTask(ctx: TaskServiceContext, authorization: str
   }, "control");
   if (input.choice !== "change") return { choice: input.choice, task: find(store).task };
   // Persisted intent precedes memory write. A crash is retryable with the same payload,
-  // and a marker under core's ID/CAS boundary recognizes precisely our prior write.
+  // and the persisted exact planned-byte hash recognizes precisely our prior write.
   const result = await transactTaskStore(ctx.path, undefined, async s => {
     const current = await authenticateTask(authorization, ctx.authPath); requireTaskOwner(current);
     const { task, occurrence } = find(s); const intent = task.decision_change;
     if (!intent || intent.id !== changeId || intent.status === "applied") return;
     if (["cancelled", "resolved", "expired"].includes(task.state)) throw new TaskStoreError("conflict", "decision change was stopped");
     if (intent.binding_hash !== digest([task.generation, task.decision, task.evidence, task.owner_domains])) throw new TaskStoreError("conflict", "decision change binding drifted");
-    const revision = await ctx.memoryChange!(task.decision!.id, intent.expected_memory_revision, input.change!.body, intent.id);
+    const revision = await ctx.memoryChange!(task.decision!.id, intent.expected_memory_revision, input.change!.body, intent.id, intent.new_memory_hash, intent.updated_date);
     intent.status = "applied"; intent.resulting_revision = revision;
     occurrence.resolution = { at: now, actor: principal.actor_id, reason: "Owner confirmed new decision revision" };
     task.review_reason = "Decision changed; old binding retained, new monitoring requires owner review";

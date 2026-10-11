@@ -12,6 +12,7 @@ export class TaskRuntime {
   snapshot: TaskStore = emptyTaskStore();
   lastTick: number | null = null; lastError: string | null = null; nextTick = 0;
   reads = 0; backoff = 0; ioStopped = false;
+  readonly invalidBindings = new Set<string>();
   readonly checks = new Map<string, { next: number; backoff: number; material: string }>();
   private pollCursor = 0; private stopped = false; private busy: Promise<void> | null = null;
   private queued = false; private loaded = false; private watcher?: FSWatcher;
@@ -20,6 +21,9 @@ export class TaskRuntime {
   constructor(readonly ctx: TaskServiceContext) {
     this.unsubscribe = [onTaskSnapshot(ctx.path, store => { this.snapshot = store; this.loaded = true; this.installWatcher(); }),
       onTaskWake(ctx.path, () => this.contact())];
+    if (ctx.memorySubscribe) this.unsubscribe.push(ctx.memorySubscribe(id => {
+      this.invalidBindings.add(id); this.contact();
+    }));
     this.installWatcher();
     this.ready = this.refresh().then(() => this.tick()).catch(() => undefined);
   }
@@ -76,7 +80,7 @@ export class TaskRuntime {
           await observeTaskSources(this.ctx, true, sources);
           if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
-        if (Date.now() - started < 5000) this.snapshot = await reconcileTaskTime(this.ctx);
+        if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
           const task = this.snapshot.tasks.find(t => t.id === id)!;

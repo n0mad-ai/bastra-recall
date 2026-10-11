@@ -42,16 +42,20 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
 /** Owner-only revisioned body change via the existing ID/CAS mutation boundary. */
 export function taskMemoryChanger(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
   const reader = taskMemoryReader(deps);
-  return async (id: string, revision: string, body: string, changeId: string): Promise<string> => {
+  return async (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string): Promise<string> => {
     const snapshot = await reader(id);
-    const fm = matter(snapshot.raw).data;
-    if (fm.proactive_change_id === changeId && snapshot.body.trim() === body.trim()) return snapshot.revision;
+    // Recovery is recognized by exact resulting bytes recorded before the write.
+    // Never add an idempotency marker to the user's memory frontmatter.
+    if (expectedHash && taskValueHash(snapshot.raw) === expectedHash) return snapshot.revision;
     if (snapshot.revision !== revision) throw Object.assign(new Error("Decision revision changed"), { code: "conflict" });
     const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: 1024 * 1024, maxFiles: 1000, deadline: Date.now() + 1000 });
     if (located.kind !== "unique") throw Object.assign(new Error("Decision absent or ambiguous"), { code: "conflict" });
     const outcome = await mutateMemoryFile(located.filePath, id, {
-      precondition: raw => { if (memoryRevision(raw) !== revision) throw Object.assign(new Error("Decision revision changed"), { code: "conflict" }); },
-      body: () => body, frontmatter: current => ({ ...current, proactive_change_id: changeId, updated: new Date().toISOString().slice(0, 10) }),
+      precondition: raw => {
+        if (memoryRevision(raw) !== revision || (expectedHash && taskValueHash(matter.stringify(body, { ...matter(raw).data, updated: updatedDate })) !== expectedHash))
+          throw Object.assign(new Error("Decision revision changed"), { code: "conflict" });
+      },
+      body: () => body, frontmatter: current => ({ ...current, updated: updatedDate ?? new Date().toISOString().slice(0, 10) }),
     }, { vaultRoot: deps.vaultPath, op: "proactive_decision_change" });
     if (outcome.kind !== "written") throw Object.assign(new Error("Decision CAS failed"), { code: "conflict" });
     return outcome.revision;

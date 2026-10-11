@@ -17,7 +17,7 @@ async function fixture() {
   const decisionPath = join(vaultPath, "decision.md"); const assumptionPath = join(vaultPath, "assumption.md");
   await writeFile(decisionPath, decisionRaw); await writeFile(assumptionPath, assumptionRaw);
   const vault = new Vault(vaultPath); await vault.init(); const deps = { vault, vaultPath };
-  const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => 1000, memoryRead: taskMemoryReader(deps), memoryChange: taskMemoryChanger(deps) };
+  const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => 1000, memoryRead: taskMemoryReader(deps), memoryChange: taskMemoryChanger(deps), memorySubscribe: (listener: (id: string) => void) => vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) };
   const owner = await mintTaskCredential(ctx.authPath, { actor_id: "owner", domains: ["personal"], role: "owner" }); const auth = `Bearer ${owner.token}`;
   const agent = await mintTaskCredential(ctx.authPath, { actor_id: "agent", domains: ["personal"], role: "agent" });
   const source = { id: "producer", kind: "event", producer_actor: "owner", owner_domains: ["personal"], sensitivity: "private", max_age_ms: 1000, enabled: true };
@@ -47,7 +47,7 @@ test("actual decision/assumption revisions yield one explainable reconsideration
   assert.equal(due.cards.length, 1); assert.equal(due.cards[0].reconsideration.decision.option, "A");
   assert.equal(due.cards[0].reconsideration.old_premise, "costly"); assert.equal(due.cards[0].reconsideration.new_premise, "cheap");
   await f.command("keep"); await callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, dedup_key: "same-material" }); await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx);
-  const s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences.length, 1); assert.equal(s.tasks[0].armed, true);
+  const s = await readTaskStore(f.ctx.path); assert.equal(s.occurrences.length, 1); assert.equal(s.tasks[0].armed, false);
   assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {} ) as any).cards.length, 0);
   assert.ok(s.tasks[0].history.at(-2)?.decision_snapshot || s.tasks[0].history.some(h => h.operation === "decision-keep" && h.decision_snapshot));
 });
@@ -73,7 +73,7 @@ test("owner change writes a real new CAS memory revision, retains old history an
   const f = await fixture(); await reconcileTaskTime(f.ctx);
   const change = { idempotency_key: "new-choice", expected_memory_revision: memoryRevision(f.decisionRaw), body: "Choose B now; maintenance premise changed.", option: "B", reason: "Lower maintenance" };
   const result = await f.command("change", { change }); const raw = await readFile(f.decisionPath, "utf8");
-  assert.match(raw, /Choose B now/); assert.equal(memoryRevision(raw), result.revision);
+  assert.ok(!raw.includes("proactive_change_id")); assert.match(raw, /Choose B now/); assert.equal(memoryRevision(raw), result.revision);
   const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].armed, false); assert.equal(s.tasks[0].decision!.option, "A"); assert.equal(s.tasks[0].decision_change!.status, "applied");
   const retry = await f.command("change", { change }); assert.equal(retry.revision, result.revision); assert.equal(await readFile(f.decisionPath, "utf8"), raw);
   await assert.rejects(f.command("change", { change: { ...change, body: "different" } }), /differs/);
@@ -88,4 +88,17 @@ test("crash after memory write resumes exact intent without a second write; conc
   const g = await fixture(); await reconcileTaskTime(g.ctx); await writeFile(g.decisionPath, g.decisionRaw + "External edit");
   await assert.rejects(g.command("change", { change: { ...change, expected_memory_revision: memoryRevision(g.decisionRaw) } }), /binding changed/);
   assert.match(await readFile(g.decisionPath, "utf8"), /External edit/);
+});
+
+test("occurrence premise survives later verification and edited memories withdraw cached cards immediately", async () => {
+  const f = await fixture(); await reconcileTaskTime(f.ctx);
+  const { startProactiveTaskJob } = await import("../src/daemon-jobs.js"); const { cachedTaskSnapshot } = await import("../src/task-outbox.js");
+  const { reconsiderationCard } = await import("../src/task-reconsideration.js"); const job = startProactiveTaskJob(f.ctx); await job.runtime.ready;
+  try {
+    const s = await readTaskStore(f.ctx.path); s.tasks[0].verification!.refuted_value = "unrelated later value";
+    assert.equal(reconsiderationCard(s.tasks[0], s.occurrences[0], s)!.new_premise, "cheap");
+    await writeFile(f.decisionPath, f.decisionRaw + "Changed"); await f.vault.reindexFile(f.decisionPath);
+    assert.equal(cachedTaskSnapshot(f.ctx.path)!.tasks[0].armed, false);
+    assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {}) as any).cards.length, 0);
+  } finally { job.stop(); await job.runtime.settle(); }
 });

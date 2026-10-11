@@ -1,5 +1,5 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
-import { reconsiderTask, taskReconsiderInput, taskDecisionStatus } from "./task-reconsideration.js";
+import { reconsiderTask, taskReconsiderInput, taskDecisionStatus, checkTaskDecisions } from "./task-reconsideration.js";
 import { taskDueInput, taskDueProjection, recordTaskDelivery, cachedTaskSnapshot } from "./task-outbox.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
@@ -73,7 +73,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string) => Promise<string> }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; memorySubscribe?: (listener: (id: string) => void) => () => void }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
@@ -81,7 +81,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   const now = (ctx.now ?? Date.now)();
   if (operation === "task_reconsider") return reconsiderTask(ctx, authorization, raw);
   if (operation === "task_due") {
-    const input = taskDueInput.parse(raw); const store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
+    const input = taskDueInput.parse(raw);
+    let store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
+    if (store.tasks.some(t => t.armed && t.decision && t.owner_domains.every(d => principal.domains.includes(d))))
+      store = await transactTaskStore(ctx.path, undefined, s => checkTaskDecisions(ctx, s));
     const projection = taskDueProjection(store, principal, input, now);
     await recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, now, input.session, input.channel);
     const { client: _client, occurrenceIds: _ids, ...result } = projection; return result;

@@ -79,7 +79,7 @@ function fire(store: TaskStore, task: Task, key: string, due: number, now: numbe
   const id = taskValueHash(JSON.stringify(["task-occurrence-v1", task.id, task.generation, [...task.owner_domains].sort(), key]));
   if (store.occurrences.some(o => o.id === id)) return;
   store.occurrences.push({ id, task_id: task.id, task_revision: task.revision, generation: task.generation,
-    event_key: key, due_at: due, why: "Registered condition is due; evaluation is not a passed measurement gate", missed_count: missed, attempts: [] });
+    event_key: key, ...(task.decision && task.schedule.kind === "event" && task.schedule.predicate === "premise" ? { new_premise: task.verification?.refuted_value } : {}), due_at: due, why: "Registered condition is due; evaluation is not a passed measurement gate", missed_count: missed, attempts: [] });
   task.state = "due"; delete task.snoozed_until; audit(task, now, "fire");
 }
 /** Pure bounded transaction; journal and logical occurrences commit together. */
