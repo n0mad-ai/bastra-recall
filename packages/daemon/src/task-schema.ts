@@ -12,6 +12,7 @@ const id = z.string().min(1).max(160);
 export const taskIdentitySchema = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,95}$/);
 const text = z.string().min(1).max(4096);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const comparison = z.string().regex(/^(?:hmac-v1:)?[a-f0-9]{64}$/);
 const domains = z.array(taskIdentitySchema).min(1).max(32).refine(v => new Set(v).size === v.length, "duplicate owner domains");
 
 export const taskReferenceSchema = z.strictObject({
@@ -41,7 +42,7 @@ export const taskDecisionSchema = z.strictObject({
 });
 
 export const taskSchema = z.strictObject({
-  id, revision, generation: revision, creation_hash: hash.optional(), reminder_fingerprint: hash.optional(),
+  id, revision, generation: revision, creation_hash: comparison.optional(), reminder_fingerprint: comparison.optional(),
   created_at: instant, updated_at: instant,
   original_request: text, request_source: id, request_reference: id.optional(),
   origin: z.strictObject({ kind: z.enum(["user-request", "agent-observed"]), client: text, session: text, context: text }).optional(),
@@ -145,7 +146,7 @@ export const taskStoreSchema = z.strictObject({
   proposals: z.array(proposalSchema).max(1000), challenges: z.array(challengeSchema).max(10000), approvals: z.array(approvalSchema).max(10000),
   leases: z.array(leaseSchema).max(1000), intents: z.array(intentSchema).max(1000), receipts: z.array(receiptSchema).max(10000),
   consumed_approval_ids: z.array(id).max(10000),
-  archives: z.array(z.strictObject({id:z.string().uuid(),hash,at:instant,actor:taskIdentitySchema,task_ids:z.array(id).min(1).max(1000),intent_keys:z.array(hash).max(1000),owner_domains:domains})).max(1000).default([]),
+  archives: z.array(z.strictObject({id:z.string().uuid(),hash,at:instant,actor:taskIdentitySchema,task_ids:z.array(id).min(1).max(1000),intent_keys:z.array(hash).max(1000),owner_domains:domains,creation_bindings:z.record(id,comparison).optional()})).max(1000).default([]),
   recovery_history: z.array(z.strictObject({
     id, at: instant, from_revision: revision, actor: id, reason: text,
   })).max(1000),
