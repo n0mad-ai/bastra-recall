@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 4,
+  "registration_version": 5,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -277,7 +277,7 @@
     "confirmation": "Working reversible artifact adapter, rollback and independent integrated-head review required. Reuse adequate #402/#598 confirmation; their pending status keeps combined confirmation pending.",
     "scope": "This registration confirms the proactive slice only; it cannot pass the full shared/federated V2 #410 checklist or replace #400."
   },
-  "$comment_amendment": "After independent P3 review, before running these NEW scenarios: add automatic start/contact/poll evaluation without task_reconcile and returning file/Git transitions A,B,A,B. Earlier 18/21 passing mechanical replays did not cover these properties and are preserved at their original registration hashes/versions. No retroactive criterion changes; rerun old e78ff4f4 then the corrected #1171 head as separate segments. Human/longitudinal thresholds unchanged.",
+  "$comment_amendment": "Prospective integration-fixture clarification before any P5 run: CRUD-only tasks stay future-due at reference+24h. Automatic start/contact/poll tests first hold the child clock before due and allow 5500ms for the create-mutation wake to settle, then advance the clock and measure the named path. This prevents a queued create-wake from masquerading as the periodic poll. Previous failed P3 runs remain unchanged at v5/v4 hashes; no retrospective reclassification or threshold change. Human/longitudinal rules unchanged.",
   "functional_supplement": {
     "registered_before_runtime": true,
     "repetitions": 3,
@@ -383,7 +383,8 @@
     ],
     "isolated_profile": "actual daemon + HTTP, MCP stdio forwarder and CLI subprocesses; invented owner/agent tokens only; no human-approval evidence",
     "recovery_boundary": "P1 published storage primitive while daemon stopped; no invented recovery API",
-    "window_started_at": null
+    "window_started_at": null,
+    "crud_schedule_rule": "Fixed reference instant + 24 hours, so CRUD-only tasks cannot become due during later authorized-day integration replays. Explicit trigger scenarios override schedule."
   },
   "p3_review_supplement": {
     "cases": [
@@ -428,6 +429,8 @@
     },
     "polling_rule": "No task API/hook contact during poll wait, only private snapshot reads. Published 60s cadence plus 5s tick budget. Host real timers, frozen child Date.now. No manual task_reconcile in any of the three subruns.",
     "returning_source_rule": "Four real file/ref changes A,B,A,B; actual observeTaskSources primitive called once and then repeated unchanged at each value. This isolates journal adapter behavior from the automatic-scheduling defect. No fabricated events.",
-    "version_rule": "Old e78ff4f4 baseline and each corrected feature head are separate immutable segments; prior mechanical passes are not complete P3 confirmation."
+    "version_rule": "Old e78ff4f4 baseline and each corrected feature head are separate immutable segments; prior mechanical passes are not complete P3 confirmation.",
+    "mutation_wake_settle_ms": 5500,
+    "future_due_precondition": "After each creation, wait 5500ms with frozen child clock before due; require zero occurrences before advance. Startup probes no HTTP at restart; next-contact uses one ordinary GET; polling permits no client contacts."
   }
 }

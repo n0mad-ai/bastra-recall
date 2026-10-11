@@ -104,6 +104,12 @@ npm run check:types --workspace=@bastra-recall/eval
 
 Evaluator tests use manufactured rows only to test missing data, denial/failure
 classification and incomplete gates. Those rows are not feature evidence.
+Before P5 observations, the prospective protocol adds 5500ms of quiescence
+with the fixture clock held before due after each automatic-test task creation.
+The host requires zero occurrences, then advances the clock. This separates
+startup, next-contact and periodic-poll paths from a queued create-mutation wake.
+Previously failed P3 artifacts keep their original protocol hashes/verdicts.
+
 Latest eval typechecks and six evaluator tests pass. Initial registration/evaluator
 verification passed 37 tests. CI is tracked separately for each pushed eval head.
 

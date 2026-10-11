@@ -123,14 +123,14 @@ const driver: FeatureDriver = {
         const count=(id:string)=>JSON.parse(readFileSync(taskPath,"utf8")).occurrences.filter((o:any)=>o.task_id===id).length;
         const wait=async(id:string,budget:number)=>{const end=Date.now()+budget;while(count(id)===0&&Date.now()<end){if(daemon!.exitCode!==null)throw new Error("daemon died in automatic evaluation");await delay(100);}return count(id);};
         const make=async(key:string,at:number)=>{const r=await http("POST","/api/v1/tasks",{...input(key),arm:true,schedule:{kind:"instant",at}});if(r.status!==200)throw new Error("automatic task creation failed");return r.data;};
-        setClock(t0);const startup=await make("automatic-start",t0+1000);await stop(daemon!);setClock(t0+1000);
+        setClock(t0);const startup=await make("automatic-start",t0+1000);await delay(5500);if(count(startup.id)!==0)throw new Error("future startup task fired early");await stop(daemon!);setClock(t0+1000);
         // No HTTP health probe or MCP contact at restart: only launch the real daemon and inspect private durable state.
         daemon=child(`daemon-${processes.length}`,"index.js");daemon.stdout.resume();
         const startCount=await wait(startup.id,5000);console.log(JSON.stringify({case_id:c.id,repetition,phase:"startup",logical_firings:startCount,expected:1}));
-        const contact=await make("automatic-contact",t0+2000);setClock(t0+2000);
+        const contact=await make("automatic-contact",t0+2000);await delay(5500);if(count(contact.id)!==0)throw new Error("future contact task fired early");setClock(t0+2000);
         await http("GET",`/api/v1/tasks/${contact.id}`);const contactCount=await wait(contact.id,5000);
         console.log(JSON.stringify({case_id:c.id,repetition,phase:"next-contact",logical_firings:contactCount,expected:1}));
-        const polling=await make("automatic-poll",t0+3000);setClock(t0+3000);
+        const polling=await make("automatic-poll",t0+3000);await delay(5500);if(count(polling.id)!==0)throw new Error("future poll task fired early");setClock(t0+3000);
         const pollCount=await wait(polling.id,65000);
         console.log(JSON.stringify({case_id:c.id,repetition,phase:"poll",logical_firings:pollCount,expected:1}));
         values={startup_logical_firings:startCount,contact_logical_firings:contactCount,poll_logical_firings:pollCount,manual_reconcile_calls:evidence.filter(e=>e.path?.includes("reconcile")).length};
