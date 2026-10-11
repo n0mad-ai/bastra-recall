@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 11,
+  "registration_version": 12,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -668,7 +668,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective source-action setup handles the published one-time freshness revision advance: on initial approval_stale fetch current task and prepare once again. Prior incomplete source-setup run remains not_evaluable.",
+  "amendment": "Prospective actual-daemon crash procedure for existing external-success-no-receipt scenario; earlier segments unchanged.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -719,6 +719,17 @@
       "P10 migrations"
     ],
     "due_precondition": "Create past clock task or submit registered equality event; ordinary get contacts queue automatic evaluation; wait max5s for durable due then obtain current revision before prepare; no manual reconcile.",
-    "prepare_revision": "Initial prepare may initialize actual freshness and return approval_stale; allow one current-task fetch/reprepare only. Never reuse approvals or retry execute after binding drift."
+    "prepare_revision": "Initial prepare may initialize actual freshness and return approval_stale; allow one current-task fetch/reprepare only. Never reuse approvals or retry execute after binding drift.",
+    "crashes": {
+      "phases": [
+        "SIGKILL before target rename after durable spending/intent",
+        "SIGKILL after target rename before receipt",
+        "SIGKILL before recovery receipt commit, then second daemon restart"
+      ],
+      "injection": "measurement-only child preload intercepts node fs rename at exact registered temp target/store; self-disarms before kill; no feature edit",
+      "assertions": "two domain proof IDs spent; pending before restart; readonly startup unknown/reconciled receipt; same intent idempotent retry changes neither bytes nor mtime; one receipt; after-write case gets separately approved exact rollback",
+      "retry": "original execute key returns historical outcome only; never resubmit as a new action",
+      "scope": "three repetitions, every phase in each; all injected paths inside isolated root"
+    }
   }
 }
