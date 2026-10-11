@@ -165,7 +165,8 @@ All transports share schemas/results. HTTP prefix `/api/v1/tasks`, CLI prefix
 | enrollment status | task_approval_status | GET /approval-status | approval-status | domain redacted read |
 | key/credential bootstrap | none | none | auth mint/rotate/revoke; approval-key init/rotate | owner outside runtime |
 
-Structured errors: code/message/retryable, resulting revision. Common statuses:
+Structured errors: error/code/status/retryable. Successful task responses include
+expected_revision; failed mutations preserve the stored revision. Common statuses:
 401 absent credential, 403 wrong role/domain/actor, 404 absent, 409 revision/binding
 conflict or spent challenge, 400 validation, 422 unknown owner, 503 lock/backpressure/
 source unavailable. Expired/revoked/denied/stale signatures have distinct codes

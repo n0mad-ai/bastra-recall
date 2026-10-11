@@ -14,11 +14,12 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath() }; }
 export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
-  const code = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
+  const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
   const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
     validation: 400, conflict: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
   // Do not echo raw validation values, paths, authorization or filesystem errors.
+  const code = reported in statuses ? reported : "unavailable";
   const status = statuses[code] ?? 503;
   return { status, body: { error: `Task operation failed: ${code}`, code, retryable: status === 503, status } };
 }
@@ -63,7 +64,9 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
         }
       }
       if (!operation) { sendJson(res, 404, { error: "Task route absent", code: "not_found", retryable: false }); return; }
-      let input: Record<string, unknown> = method === "GET" ? {} : await readJsonBody(req, MAX_BODY_BYTES);
+      let input: Record<string, unknown> = method === "GET" ? {} : await readJsonBody(req, MAX_BODY_BYTES).catch(() => {
+        throw Object.assign(new Error("Invalid bounded task JSON request"), { code: "validation" });
+      });
       if (id) {
         if ("id" in input && input.id !== id) throw new z.ZodError([]);
         input = { ...input, id };

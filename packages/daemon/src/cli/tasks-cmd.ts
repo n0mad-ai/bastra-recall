@@ -6,13 +6,16 @@ import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transp
 import { taskPrivatePrompt } from "./task-private-prompt.js";
 import { confirm } from "./prompt.js";
 
-async function jsonFile(path: string): Promise<unknown> {
+export class TaskCliInputError extends Error { readonly code = "validation"; }
+export async function readTaskInputFile(path: string): Promise<unknown> {
+  try {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size > 256 * 1024) throw new Error("Bounded JSON input required");
     return JSON.parse(await handle.readFile("utf8"));
   } finally { await handle.close(); }
+  } catch { throw new TaskCliInputError("Task input must be a readable file containing valid JSON (up to 256 KiB)."); }
 }
 /** Agent mode is explicit. Owner mode always asks privately, ignoring agent env. */
 export async function taskCliCall(sub: string, input: unknown, authorization: string, baseUrl: string): Promise<unknown> {
@@ -45,8 +48,8 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
       return 0;
     }
     const agent = words[0] === "agent"; if (agent) words.shift();
-    const input = words[0] ? await jsonFile(words[0]) : {};
-    const authorization = agent ? await taskClientAuthorization() : `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ")}`;
+    const input = words[0] ? await readTaskInputFile(words[0]) : {};
+    const authorization = agent ? await taskClientAuthorization() : `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ").catch(() => { throw new TaskCliInputError("Owner task commands need a controlling terminal. Use agent mode with its assigned credential for automation."); })}`;
     if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
     // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
     if (!agent) {
@@ -55,5 +58,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
     }
     process.stdout.write(JSON.stringify(await taskCliCall(args.sub ?? "list", input, authorization, resolveDaemonEndpoint().baseUrl), null, 2) + "\n");
     return 0;
-  } catch (error) { process.stderr.write(JSON.stringify(taskFailure(error).body) + "\n"); return 1; }
+  } catch (error) { const failure = taskFailure(error).body;
+    if (error instanceof TaskCliInputError) failure.error = error.message;
+    process.stderr.write(JSON.stringify(failure) + "\n"); return 1; }
 }
