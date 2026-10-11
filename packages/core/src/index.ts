@@ -18,6 +18,7 @@ export {
   QUERY_MAX_CHARS,
 } from "./query-normalize.js";
 export { PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, FUNCTION_WORDS, ALTERNATIVE_WORDS } from "./stopwords.js";
+export { segmentWords, hasSpacelessScript } from "./segment.js";
 export {
   capBm25Query,
   BM25_QUERY_MAX_CHARS,
