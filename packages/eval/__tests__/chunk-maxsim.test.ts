@@ -23,3 +23,11 @@ test("max-sim collapses before document cap and never averages", () => {
   const owners = new Map(hits.map(h => [h.id, h.id.startsWith("a") ? "a" : "b"]));
   assert.deepEqual(maxPerDocument(hits, owners), [{ id: "a", score: 1 }, { id: "b", score: 0.8 }]);
 });
+
+test("corpus special-token spellings are ordinary source text", () => {
+  const text = "Literal <|endoftext|> and <|fim_prefix|> remain verbatim. ".repeat(100);
+  const chunks = sourceChunks(text);
+  assert.equal(chunks[0].start, 0);
+  assert.equal(chunks.at(-1)!.end, text.length);
+  for (const c of chunks) assert.equal(c.text, text.slice(c.start, c.end));
+});

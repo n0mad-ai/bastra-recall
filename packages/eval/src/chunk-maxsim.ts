@@ -4,7 +4,7 @@ const encoder = getEncoding("cl100k_base");
 export const CHUNK_TOKENS = 400;
 export const OVERLAP_TOKENS = 80;
 export interface SourceChunk { text: string; start: number; end: number; tokens: number }
-const count = (s: string): number => encoder.encode(s).length;
+const count = (s: string): number => encoder.encode(s, [], []).length;
 const safeBoundary = (s: string, at: number): number =>
   at > 0 && at < s.length && /[\uDC00-\uDFFF]/.test(s[at]) && /[\uD800-\uDBFF]/.test(s[at - 1]) ? at - 1 : at;
 

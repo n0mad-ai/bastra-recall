@@ -12,15 +12,34 @@
     "lexical": "production SearchIndex.recall over every chunk, maximum score per session; collapse before top-50 document cap",
     "dense": "production EmbeddingIndex/embeddinggemma on each chunk; query normalization from production; maximum cosine over ALL chunk vectors per session, not mean",
     "fusion": "production fuseRRF, K=5, dense weight=1.5, arm caps=50 documents, final depth=20",
-    "arms": ["whole_bm25", "chunk_bm25", "maxsim_dense", "whole_bm25_maxsim", "chunk_bm25_maxsim"],
-    "endpoints": ["session recall_any@1/@3/@5/@10/@20", "MRR@20", "per-question-type recall", "paired rank-1 wins/losses", "vectors/session, raw vector bytes, persisted bytes, backfill time, query latency"],
+    "arms": [
+      "whole_bm25",
+      "chunk_bm25",
+      "maxsim_dense",
+      "whole_bm25_maxsim",
+      "chunk_bm25_maxsim"
+    ],
+    "endpoints": [
+      "session recall_any@1/@3/@5/@10/@20",
+      "MRR@20",
+      "per-question-type recall",
+      "paired rank-1 wins/losses",
+      "vectors/session, raw vector bytes, persisted bytes, backfill time, query latency"
+    ],
     "primary": "whole_bm25_maxsim R@1 versus matched #1081 hybrid; lexical counterpart separately versus whole_bm25",
     "inference": "descriptive measured comparison; no shipping threshold chosen after results; metadata replication and corpus-frequency changes are part of the lexical arm",
-    "not_measured": ["answer quality", "main gold set and M1 gates", "real-vault retrieval effect", "multi-vector production storage format"],
-    "gate": "none for measurement; no production adoption or passed internal gate"
+    "not_measured": [
+      "answer quality",
+      "main gold set and M1 gates",
+      "real-vault retrieval effect",
+      "multi-vector production storage format"
+    ],
+    "gate": "none for measurement; no production adoption or passed internal gate",
+    "literal_special_tokens": "Tokenizer special-token spellings in public source are counted as ordinary text, unchanged."
   },
   "commands": [
     "node --import tsx packages/eval/src/chunk-maxsim-run.ts --corpus <cleaned-S> --mode lexical --out <artifact>",
     "node --import tsx packages/eval/src/chunk-maxsim-run.ts --corpus <cleaned-S> --mode dense --out <artifact>"
-  ]
+  ],
+  "amendment": "Pre-dense-run robustness repair: initial lexical attempt stopped at question 352 on a literal special-token spelling. No complete result or gate was reported. Corrected tokenizer mode and restart the full lexical run; preserve the incomplete attempt privately."
 }
