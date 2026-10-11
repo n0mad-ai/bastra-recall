@@ -118,7 +118,8 @@
         }
       },
       "same_retriever_class": "agentmemory-longmemeval-r5",
-      "$comment_class": "Here `matches` and `same_retriever_class` are the same figure, and that is what makes this the comparison that carries: agentmemory's 95.2% is their BM25+Vector row with, in their words, \"No LLM in the loop\" — the same retriever class as ours, at the same depth, on the same 500."
+      "$comment_class": "Here `matches` and `same_retriever_class` are the same figure, and that is what makes this the comparison that carries: agentmemory's 95.2% is their BM25+Vector row with, in their words, \"No LLM in the loop\" — the same retriever class as ours, at the same depth, on the same 500.",
+      "$comment_legacy_identity": "Legacy id default is retained; this is the v1.0.0 equal-weight record, not today's shipped default."
     },
     {
       "id": "mempalace-matched",
@@ -193,6 +194,124 @@
       },
       "same_retriever_class": "mempalace-longmemeval-hybrid-r5",
       "$comment_class": "`matches` names the figure whose MEASUREMENT CONFIGURATION this run reproduces — same absent reader, same absent judge, same top-50 depth, same user-turn document. It does NOT mean the two systems retrieve alike, and here they do not: MemPalace's 96.6% is their DENSE-ONLY row, ours is BM25 + dense + RRF. Putting our 97.2% beside their 96.6% therefore compares a hybrid against a non-hybrid baseline, and reads as a win that was never earned. The row in their table that matches our retriever class is `same_retriever_class` below, at 98.4% — ABOVE us. Both are quoted, and the second one first."
+    },
+    {
+      "id": "shipped-default-v1.1.0",
+      "matches": "agentmemory-longmemeval-r5",
+      "cli": "--arms bm25,hybrid --k 20 (shipped vector weight 1.5)",
+      "turns": "all — `role: content`, both sides of the session, as agentmemory's chunkSessionToText does",
+      "self_figure": {
+        "id": "bastra-recall-v1.1.0-longmemeval-r5",
+        "system": "bastra-recall",
+        "evidence_class": "project_self_measurement",
+        "source": "packages/eval/src/longmemeval-run.ts",
+        "locus": "registrations/longmemeval-run.json, configurations[shipped-default-v1.1.0].measurement.results",
+        "reader": "none — retrieval only, no answer generation",
+        "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+        "top_k": "R@5 from a top-20 candidate list",
+        "top_k_note": "longmemeval-run.ts is called with --k 20, as agentmemory searches with limit 20",
+        "context_budget": "none — no reader, so nothing is fitted into a context",
+        "retriever_class": "lexical+dense fused, no reranker",
+        "retriever_class_note": "SearchIndex.recallHybrid — production BM25 + EmbeddingIndex, fused with fuseRRF, nothing on the query path"
+      },
+      "measurement": {
+        "command": "BASTRA_EMBEDDING_MODEL=embeddinggemma npm run longmemeval --workspace=@bastra-recall/eval -- --corpus <cleaned-S> --arms bm25,hybrid --k 20 --out <local-artifact>",
+        "embedding_model": "embeddinggemma",
+        "embedding_model_identity": {
+          "model": "embeddinggemma:latest",
+          "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+          "ollama_version": "0.40.3",
+          "same_digest_as_observed_before_run": true
+        },
+        "run_out": "longmemeval-v110.json (durable local artifact; location in private handover)",
+        "repo_tag": "v1.1.0",
+        "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+        "code_hash": "771642995ba6aa2107fdace0dd5b2cf5cf84d2418f9e879ed89296b393f0a78d",
+        "engine": {
+          "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+          "core_src_files": 61,
+          "repo_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+          "repo_dirty": false
+        },
+        "rrf_vector_weight": 1.5,
+        "results": {
+          "bm25": {
+            "r@1": 0.614,
+            "r@3": 0.776,
+            "r@5": 0.846,
+            "r@10": 0.92,
+            "r@20": 0.972,
+            "ndcg@10": 0.7089807860110351,
+            "mrr": 0.7164404859416464
+          },
+          "hybrid": {
+            "r@1": 0.832,
+            "r@3": 0.964,
+            "r@5": 0.982,
+            "r@10": 0.984,
+            "r@20": 0.996,
+            "ndcg@10": 0.8978705456775917,
+            "mrr": 0.8965052308802307
+          }
+        },
+        "n_questions": 500,
+        "n_documents_indexed": 23854,
+        "survival_dense": 2.5972278842234036,
+        "far_retention": {
+          "bm25": 0.8428891736066624,
+          "hybrid": 0.9837484861379334
+        },
+        "by_type": {
+          "knowledge-update": {
+            "n": 78,
+            "bm25": 0.8589743589743589,
+            "hybrid": 1
+          },
+          "multi-session": {
+            "n": 133,
+            "bm25": 0.8646616541353384,
+            "hybrid": 1
+          },
+          "single-session-assistant": {
+            "n": 56,
+            "bm25": 0.8571428571428571,
+            "hybrid": 1
+          },
+          "single-session-preference": {
+            "n": 30,
+            "bm25": 0.7666666666666667,
+            "hybrid": 0.9666666666666667
+          },
+          "single-session-user": {
+            "n": 70,
+            "bm25": 0.7857142857142857,
+            "hybrid": 0.9428571428571428
+          },
+          "temporal-reasoning": {
+            "n": 133,
+            "bm25": 0.8646616541353384,
+            "hybrid": 0.9699248120300752
+          }
+        },
+        "retrieval_only": true,
+        "no_reader_or_judge": true,
+        "comparison_to_offline_refusion": {
+          "r_at_1_confirmed": true,
+          "r_at_5_confirmed": true,
+          "mrr_rounds_to_registered_0_897": true
+        },
+        "repeated_full_run": false,
+        "hardware": {
+          "platform": "darwin",
+          "arch": "arm64",
+          "os_release": "27.0.0",
+          "cpu_model": "Apple M4 Pro",
+          "logical_cpus": 14,
+          "total_memory_bytes": 25769803776
+        }
+      },
+      "same_retriever_class": "agentmemory-longmemeval-r5",
+      "$comment_class": "Same protocol/retriever class as legacy default, but measured end-to-end at the shipped weight from a clean v1.1.0 tag. A single run, no new determinism claim."
     }
   ],
   "$comment_headline": "WHAT STANDS AGAINST WHAT. Against agentmemory the comparison is like-for-like — their fused BM25+vector row, no reranker, 500 questions — and our default configuration is ahead, 98.2% against 95.2%, with the lexical control BELOW theirs (84.6% against 86.2%). Against MemPalace it is not: their published 96.6% is a DENSE-ONLY baseline, and their row that matches our retriever class stands at 98.4%, above our 97.2%. So the honest summary is that this arm is ahead of one published system and behind the comparable configuration of the other. An earlier version of this registration quoted only the 96.6% and read 97.2% as clearing it; that was a hybrid measured against a non-hybrid, and it was wrong. If a reference-matched configuration scores lower than our default, the lower number is the one quoted. A configuration is chosen to match a comparator, never to win against one.",
@@ -229,6 +348,7 @@
     "run_out": "~/.bastra/longmemeval-runs/2026-09-09/longmemeval-s-uncleaned.json"
   },
   "$comment_determinism": "The default configuration was run twice across a cosmetic edit to the harness. The artifacts are identical in EVERY field except code_hash itself — not to four decimals but exactly, survival_dense to its last digit, and all 500 per-question ranking lists in the same order. An earlier wording here claimed only \"identical to four decimals\" and understated its own evidence.",
-  "$comment_engine": "Why an engine hash sits beside the code hash at all: `code_hash` covers this arm's harness and loader, the convention goldset-run.ts:hashCode() follows and the right one for an internal ablation, where both arms see the same engine and its version cancels. For an EXTERNAL figure it is the wrong pin — #500 asks for a number that is versioned and re-runnable, and what a reader of \"97.2% R@5\" needs later is which revision of search.ts earned it, not which revision of the printer printed it. Runs after d955191 record this block themselves; the ones below carry it backfilled and say so.",
-  "$comment_missing_arm": "The comparison that WOULD be like-for-like against MemPalace's 96.6% is our dense arm alone, and this harness has no such arm — `--arms` offers bm25 and hybrid only. That is the measurement missing from this result, named rather than worked around; adding a vector-only arm is the obvious next step and is deliberately not shipped untested here."
+  "$comment_engine": "Legacy runs retain explicitly hand-backfilled engine fields. The v1.1.0 shipped-default run carries the unmodified machine-written engine block from a clean tag checkout.",
+  "$comment_missing_arm": "The comparison that WOULD be like-for-like against MemPalace's 96.6% is our dense arm alone, and this harness has no such arm — `--arms` offers bm25 and hybrid only. That is the measurement missing from this result, named rather than worked around; adding a vector-only arm is the obvious next step and is deliberately not shipped untested here.",
+  "shipped_default_configuration": "shipped-default-v1.1.0"
 }
