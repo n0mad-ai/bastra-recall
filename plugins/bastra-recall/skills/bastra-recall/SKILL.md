@@ -2,7 +2,7 @@
 name: bastra-recall
 description: Proactive private local memory for ChatGPT and Codex — recall before acting, save durable rules, lessons and decisions without being asked. Requires the local bastra-recall MCP server installed by `bastra install codex`.
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 8b651fb4e7140107) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 013200b86ba1bba6) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -66,15 +66,6 @@ confirm only if the statement is correct, durable beyond that session and not al
 <!-- /draft-review-decision-rule:both -->
 
 ---
-
-## Explicit reminders
-
-Use `task_create` only for an explicit reminder/monitoring request. A memory save,
-draft or recalled quotation never grants task authority. Agent capture stays unarmed;
-ask the owner to review in Tasks UI/CLI. Acknowledge means an owner command, not that
-a card was rendered; resolution is separate. Task credentials are mapped independently
-from the legacy API token. Agent snooze has a fixed 24-hour ceiling. Execution is not
-available in the CRUD slice. Clients without tested wakeup deliver at next contact.
 
 ## When to SAVE — autonomous, no permission asked
 
