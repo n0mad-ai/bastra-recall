@@ -50,7 +50,11 @@ to P5, so an internal engine alone cannot pass that control. Earlier mechanical 
 
 Each revision is a separate segment; repeated observations across revisions are
 not pooled into an empirical error rate. No human or longitudinal window started.
-P5 delivery and P8 execution remain pending. Coverage also requires their P4/P6/
+P5a #1175 (87b80f3e) is published: independent automatic startup/contact/
+periodic-poll control passes 3/3, one occurrence per phase and no manual
+reconcile. Create-wake quiescence is enforced before advancing the child clock.
+The broader available-regression run is in progress. Passive P5b delivery and
+P8 execution remain pending. Coverage also requires their P4/P6/
 P7/P9/P10 dependencies where named by each case.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
@@ -133,7 +137,9 @@ coverage. Preserve earlier raw artifacts and code segments. Stop all created
 processes in `finally`. Synthetic signing keys later test mechanics, not a real
 human approval or protected owner key boundary.
 
-Current observed invariant failures are reported as failed for #402/#410; the
+Earlier observed invariant failures remain failed in their historical segments.
+Corrected independent tuple/runtime controls now pass; combined issue
+confirmation is pending. The
 unstarted human study stays pending. Adequate registered human,
 longitudinal and independent-review evidence is still required. Consent and actual
 opportunities are required before starting those windows; elapsed time cannot

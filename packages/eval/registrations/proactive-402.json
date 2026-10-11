@@ -26,10 +26,11 @@
   "dependencies": {
     "P0": "PR #1159 amended/reviewed design",
     "P2": "PR #1170 (P2c), stacked over #1167/#1169",
-    "P5": "waiting for delivery contract; PR number unknown",
+    "P5": "Passive delivery integration P5b not yet published; original P5-dependent product cases still pending",
     "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown",
     "P1": "PR #1164",
-    "P3": "PR #1171 head e78ff4f4, three DST/recurrence replays observed"
+    "P3": "PR #1171 head e78ff4f4, three DST/recurrence replays observed",
+    "P5a": "PR #1175 head 87b80f3e; automatic startup/contact/periodic poll independently 3/3 passed"
   },
   "data_policy": {
     "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
@@ -68,7 +69,7 @@
     ]
   },
   "measurement": {
-    "verdict": "failed",
+    "verdict": "pending",
     "started_at": "2026-10-11T08:25:45.171Z",
     "window_started_at": null,
     "window_version": null,
@@ -94,7 +95,18 @@
         "pending_matrix_rows": 72,
         "finding": "Tuple/source/actor/domain boundary fixed; two accepted submissions retain two separate events/IDs, no foreign receipt."
       },
-      "focused_scope_limit": "Only tuple boundary independently retested on b5a994ed. This fixes that observed defect; last full-segment failure and unmeasured P5/P8/human/longitudinal gates remain separate, no full passed verdict."
+      "focused_scope_limit": "Only tuple boundary independently retested on b5a994ed. This fixes that observed defect; last full-segment failure and unmeasured P5/P8/human/longitudinal gates remain separate, no full passed verdict.",
+      "latest_automatic_segment": {
+        "feature_commit": "87b80f3e792c9f86d88f9e30647cf41059768b79",
+        "case": "p3-automatic-evaluation",
+        "observed": 3,
+        "passed": 3,
+        "failed": 0,
+        "other_matrix_rows_unmeasured": 72,
+        "startup_contact_poll_firings_each": 1,
+        "manual_reconcile_calls": 0
+      },
+      "current_scope_status": "Both independent-review defects (returning sources / automatic runtime) and the later tuple-binding defect have passing isolated corrected-head evidence; full matrix, passive P5b delivery, P8 execution and human/longitudinal confirmation remain pending."
     },
     "runtime_segments": [
       {
@@ -375,6 +387,49 @@
         "tuple_submissions_accepted_per_replay": 2,
         "tuple_events_stored_per_replay": 2,
         "foreign_domain_receipt_reused": false
+      },
+      {
+        "started_at": "2026-10-11T11:01:02.855Z",
+        "eval_commit": "3fa143dd8cc1287d0bf6ba16ca1e26ba494fcf37",
+        "runner_sha256": "cd0da72b78fdd7038114c5f095e33e6a5d6a469ece8faf3793e816aee54276cf",
+        "driver_sha256": "b2bca9b2da2b4f476d0003f75f127da8d9e099004520a07b41ddab3a6df3ca8b",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "87b80f3e792c9f86d88f9e30647cf41059768b79",
+        "selected_case": "p3-automatic-evaluation",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 7,
+            "sha256": "729170a35de237df7fa4239345d16a727fa575ca0dd1215d4fa6c1028375c591"
+          },
+          {
+            "issue": 598,
+            "registration_version": 6,
+            "sha256": "1ed897823043ed9d5bebb931222665fc0dbef6cd4bed5e94d2def0f3ddd26ae6"
+          },
+          {
+            "issue": 410,
+            "registration_version": 6,
+            "sha256": "5bd6b617f01dce8cce0eef4337a6c4db3cc2dc3cba020a6ba0a95c2fc9745776"
+          }
+        ],
+        "private_result_sha256": "62a35ad31dfd29c4494feaab1b7d20c0bf54e466c6b6909d5a038e3d40ad21bf",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0,
+        "automatic_phase_results": {
+          "startup_firings_per_replay": 1,
+          "next_contact_firings_per_replay": 1,
+          "periodic_poll_firings_per_replay": 1,
+          "manual_reconcile_calls": 0,
+          "mutation_wake_settle_ms": 5500
+        }
       }
     ]
   },
