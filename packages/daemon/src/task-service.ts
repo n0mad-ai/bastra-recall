@@ -135,6 +135,9 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
     const sourceKind = input.schedule.kind === "event" ? (await readTaskStore(ctx.path)).sources.find(s=>input.schedule.kind === "event" && s.id === input.schedule.source_id)?.kind : undefined;
     await normalizeSchedule(ctx.path, input.schedule, sourceKind === "git" || sourceKind === "memory");
+    if (legacyInput.schedule.kind === "event") legacyInput.schedule.expected_hash = legacyInput.schedule.predicate === "content-version" && /^[a-f0-9]{64}$/.test(legacyInput.schedule.expected)
+      ? legacyInput.schedule.expected : createHash("sha256").update(legacyInput.schedule.expected,"utf8").digest("hex");
+    else legacyInput.schedule = structuredClone(input.schedule);
     requireTaskDomains(principal, input.owner_domains);
     if (input.arm && input.action_level !== "notify") requireTaskOwner(principal);
     if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
@@ -151,21 +154,13 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
         if (existing.creation_hash !== creationHash) {
           // Pre-content-HMAC keyed create identities still prove an exact old retry.
           // Reconstruct only the submitted request, never the stored scrubbed text.
-          legacyInput.schedule = structuredClone(input.schedule);
-          if (legacyInput.schedule.kind === "event") {
-            const original = taskCreateInputSchema.parse(raw).schedule;
-            if (original.kind !== "event") throw new TaskServiceError("conflict", "idempotency binding differs");
-            legacyInput.schedule.expected = original.expected;
-            legacyInput.schedule.expected_hash = original.predicate === "content-version" && /^[a-f0-9]{64}$/.test(original.expected)
-              ? original.expected : createHash("sha256").update(original.expected,"utf8").digest("hex");
-          }
           if (existing.creation_hash !== await privateTaskComparison(ctx.path,"create",legacyInput))
             throw new TaskServiceError("conflict", "idempotency key already has a different request");
         }
         return;
       }
       if (principal.role === "agent" && input.action_level === "notify") {
-        const duplicate = await reminderDuplicate(ctx.path, s, input);
+        const duplicate = await reminderDuplicate(ctx.path, s, input, input.schedule.kind === "event" ? legacyInput : undefined);
         if (duplicate) { duplicateId = duplicate.id; return; }
       }
       const { idempotency_key: _key, arm: requestedArm, ...values } = input;

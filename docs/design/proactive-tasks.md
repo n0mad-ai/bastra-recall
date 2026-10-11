@@ -762,7 +762,7 @@ The decision-body retry digest is separately keyed with `decision-body`.
 Valid live snapshots/backups convert old content comparison digests directly to
 HMAC, preserving equality and journal IDs without reconstructing masked text.
 Old comparison-derived verification caches are discarded, also from exports.
-Existing keyed create identities can still prove an exact pre-migration submitted
+Existing keyed create and reminder identities can still prove an exact pre-migration submitted
 request: the old normalization is computed transiently for that identity check.
 Plain legacy create/reminder hashes still cannot prove retries and remain removed.
 A changed task binding invalidates old cached verification/approval bindings;
