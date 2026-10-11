@@ -23,8 +23,12 @@ The registered matrix has 25 cases, three repetitions each (75 required runs).
 On corrected P8 stack `f5f8f14924e72d446c65c8771c087c72f3d144ac`, the complete
 P1/P2/P3/notify segment passed **48/48**, including ordinary passive contact,
 seven-day synthetic clock advance, offline restart, relay overflow/off/purge,
-multi-client identity and acknowledged unfinished work. A later full available
-72-replay segment is running; the P10 migration case remains unavailable.
+multi-client identity and acknowledged unfinished work. The final full available
+segment completed **72/75 observed: 66 passed, 6 failed, 3 pending**. The P10
+migration case remains unavailable. All 72 child-process audits confirm cleanup;
+zero blocked network attempts. Three failed material-premise rows also lack
+owner-control ground truth because an automatic occurrence never appeared.
+Those missing fields cannot count as successful owner controls.
 
 Separate focused action segments each pass **3/3**: exact reversible write with
 newly approved rollback, containment/revocation, two-domain approval/fencing,
@@ -141,4 +145,4 @@ longitudinal and independent-review evidence is still required. Consent and actu
 opportunities are required before starting those windows; elapsed time cannot
 change their verdicts.
 
-Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 action handlers and measurement-only SIGKILL preload are now implemented; source-file hashes are included in each manifest. Protocol #402 v13 and #598/#410 v12 pin the P6 real-file and action procedures. The host also records explicit supported case IDs, so published APIs alone cannot fabricate matrix coverage.
+Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 action handlers and measurement-only SIGKILL preload are implemented; source-file hashes are included in each manifest. Protocol #402 v13 and #598/#410 v12 pin the P6 real-file and action procedures. The host also records explicit supported case IDs, so published APIs alone cannot fabricate matrix coverage.

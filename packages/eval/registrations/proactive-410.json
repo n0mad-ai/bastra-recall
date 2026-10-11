@@ -75,21 +75,27 @@
     "window_version": null,
     "public_aggregate": {
       "latest_full_available_segment_feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
-      "latest_observed_runs": 48,
+      "latest_observed_runs": 72,
       "latest_required_runs": 75,
-      "latest_passed": 48,
-      "latest_failed": 0,
+      "latest_passed": 66,
+      "latest_failed": 6,
       "latest_not_evaluable": 0,
-      "remaining_runs": 27,
+      "remaining_runs": 3,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Notify/P1-P3 48/48 pass; focused P8 action/crash and decision-supersession controls pass 3/3 each, separate segments. P6 unknown-source runtime 3/3 fails missing automatic verification; identical versioned-claim retry rejected with conflict. Full available P8 matrix remeasurement in progress. P10 migration not published.",
+      "functional_status": "Notify/P1-P3 48/48 pass; focused P8 action/crash and decision-supersession controls pass 3/3 each, separate segments. P6 unknown-source runtime 3/3 fails missing automatic verification; identical versioned-claim retry rejected with conflict. Full available corrected P8 segment: 72 observed / 75 required, 66 pass / 6 fail / 3 P10 migration replays pending. Material-premise and unknown-source cases fail all three repetitions; some owner-control evidence is missing because automatic reconsideration never appeared.",
       "measurement_verdict": "pending human/longitudinal; observed functional failures for #402/#410 prevent confirmation",
       "known_current_failures": [
         "identical versioned-claim event retry returns conflict due key-order comparison",
         "some fresh irrelevant/contested source events lack automatic persisted verification within registered 5s contact deadline; no false occurrence observed"
       ],
-      "incomplete_segments_retained": 5
+      "incomplete_segments_retained": 5,
+      "latest_missing_field_rows": 3,
+      "current_failed_cases": [
+        "material-premise-change",
+        "unknown-source-controls"
+      ],
+      "verifier_diagnostic": "Readonly actual verifier confirms inconclusive irrelevant/contested snapshots; diagnostic is not a registered case pass."
     },
     "runtime_segments": [
       {
@@ -772,6 +778,42 @@
         "private_result_sha256": "9c6f14a9e70f92bb872732dc8955200e19121d86557f9d19e0016adc91e25ed5",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:36:24.234Z",
+        "eval_commit": "fd6302c9e06abc68c0bbdc9a0ac4fe638ab8745e",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "e05d8eff0a08611db20f0a64ea8b266fbac5a78084fa347be37c0c548daf0cf6",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "failed",
+        "expected_runs": 75,
+        "observed_runs": 72,
+        "missing_runs": 3,
+        "passed": 66,
+        "failed": 6,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 13,
+            "sha256": "7810b39e4c4a090a6a543c677a41be0974c8972874460ca3ed8295d532eee7b5"
+          },
+          {
+            "issue": 598,
+            "registration_version": 12,
+            "sha256": "0d717b78cee30ab3534a698994274d1b5b467f6c8c42e42b540109d4a60c6405"
+          },
+          {
+            "issue": 410,
+            "registration_version": 12,
+            "sha256": "aab0bbb336f4f51f7452f3c099ff76b7f46fd2afb67aa80860060f2e493bd7d3"
+          }
+        ],
+        "private_result_sha256": "8aed0469fdf878721122d25747ad30837c4e299678478a0f307a029902cd0d46",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
       }
     ],
     "incomplete_runtime_segments": [
@@ -820,7 +862,8 @@
         "reason_category": "observed missing automatic occurrence after two failed complete rows",
         "private_abort_sha256": "a31c1ddedfbc08a96b853b7c770cf1e7aa86303ecdfe7ce711a72cc1b9469669"
       }
-    ]
+    ],
+    "readonly_diagnostic_sha256": "0fb5468a21c4dd96723e402d8901ee145a4fdbade55c336b500a466b470f644a"
   },
   "issue": 410,
   "experiment": "proactive-combined-safety-recovery",
