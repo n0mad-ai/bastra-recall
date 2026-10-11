@@ -76,25 +76,25 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_full_available_segment_feature_commit": "e8485af72c386da7d5b284d8b3913ac7bbcef2a9",
-      "latest_observed_runs": 75,
-      "latest_required_runs": 75,
-      "latest_passed": 75,
+      "latest_full_available_segment_feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+      "latest_observed_runs": 93,
+      "latest_required_runs": 93,
+      "latest_passed": 93,
       "latest_failed": 0,
       "latest_not_evaluable": 0,
       "remaining_runs": 0,
+      "existing_case_positions_observed": 75,
+      "new_rows_observed": 18,
+      "owner_decision_replaced_case_definitions": 3,
+      "old_row_expectations_marked_replaced": 9,
+      "replacement_label": "durch Owner-Entscheidung 11.10. ersetzt",
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Final daily frozen e8485af7 complete run: all25 cases\u00d73,75 pass/0 fail/0 pending/0 missing fields. No filters. Driver/runner/dataset and all budgets/time boundaries unchanged from d77cdb42. All earlier segments retained; no pooling.",
+      "functional_status": "Frozen375702ff complete93-row run passes:75 existing-case positions under explicitly versioned notify replacements plus18 new rows. Real session-hook/prompt-hook subprocesses each receive one card/attempt with automatic0600Agent access and no env token/mint/setup command; restart/client config retained. No notify upgrade; raw secret-aware dedup; agent ack/snooze30\u219260days/resolve/cancel; finite40-reminder quota probe all pass. Prepare/execute and budgets unchanged. Earlier raw outcomes and old expectations retained, not silently relabelled.",
       "current_failed_cases": [],
-      "code_dataset_identity_checks": {
-        "driver_sha256": true,
-        "runner_sha256": true,
-        "dataset_sha256": true
-      },
       "all_child_processes_stopped": true,
       "blocked_network_rows": 0,
-      "measurement_verdict": "Registered synthetic functional matrix passed; human/longitudinal/final independent stable confirmation remains pending. Work complete for today."
+      "measurement_verdict": "Synthetic functional93-row matrix passed; human chat-confirmation/understanding, UI-tab visual QA, OS/large-vault/longitudinal/independent stable confirmation remain separate/pending."
     },
     "runtime_segments": [
       {
@@ -1067,6 +1067,117 @@
           }
         ],
         "private_result_sha256": "3d51ca5a81cb1719610667a8dbd1584b550e31488b434e2adc1786ba7d583210",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T20:55:45.911Z",
+        "eval_commit": "6df2218a5b6336fbdf61b8aff4f5fb9c1d7ce6ec",
+        "runner_sha256": "da872dbefb311d44310e00673b3e90234b6fd721edbac0b745a8d976c683f0ee",
+        "driver_sha256": "623596284c9defcf588005f4860d34eb30623177ba742094644421581cde9b33",
+        "dataset_sha256": "3b6b4b2587b683c3bc0b628d58d6a8400ea177b63c601160153a9c629b4055f0",
+        "functional_verdict": "passed",
+        "expected_runs": 93,
+        "observed_runs": 93,
+        "missing_runs": 0,
+        "passed": 93,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+        "selected_case": null,
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 20,
+            "sha256": "70f9130ef84ccf095558250fb1f86a0718cca6dfeb5a13a50d66b0496024f504"
+          },
+          {
+            "issue": 598,
+            "registration_version": 19,
+            "sha256": "a83b7563ca2e48f46fdfa906fe9f3abd7efc67279086ea7a94c88c830d46deef"
+          },
+          {
+            "issue": 410,
+            "registration_version": 19,
+            "sha256": "44935d67cf55d57bfd5eac0225ad94b1474f1bd95338ede0802d72b3398fde3c"
+          }
+        ],
+        "private_result_sha256": "1d68dd1b2c9d60287fbbc3c5e098b62d39ffa0e220fae0d770152c3af427c1f3",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T20:57:06.522Z",
+        "eval_commit": "6df2218a5b6336fbdf61b8aff4f5fb9c1d7ce6ec",
+        "runner_sha256": "da872dbefb311d44310e00673b3e90234b6fd721edbac0b745a8d976c683f0ee",
+        "driver_sha256": "623596284c9defcf588005f4860d34eb30623177ba742094644421581cde9b33",
+        "dataset_sha256": "3b6b4b2587b683c3bc0b628d58d6a8400ea177b63c601160153a9c629b4055f0",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+        "selected_case": "p11-session-hook-auto",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 20,
+            "sha256": "70f9130ef84ccf095558250fb1f86a0718cca6dfeb5a13a50d66b0496024f504"
+          },
+          {
+            "issue": 598,
+            "registration_version": 19,
+            "sha256": "a83b7563ca2e48f46fdfa906fe9f3abd7efc67279086ea7a94c88c830d46deef"
+          },
+          {
+            "issue": 410,
+            "registration_version": 19,
+            "sha256": "44935d67cf55d57bfd5eac0225ad94b1474f1bd95338ede0802d72b3398fde3c"
+          }
+        ],
+        "private_result_sha256": "f394efdc1068e2392cc1e61a1adec4d5b1536fe42e70a6532673fff05288a6dc",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T20:57:06.522Z",
+        "eval_commit": "6df2218a5b6336fbdf61b8aff4f5fb9c1d7ce6ec",
+        "runner_sha256": "da872dbefb311d44310e00673b3e90234b6fd721edbac0b745a8d976c683f0ee",
+        "driver_sha256": "623596284c9defcf588005f4860d34eb30623177ba742094644421581cde9b33",
+        "dataset_sha256": "3b6b4b2587b683c3bc0b628d58d6a8400ea177b63c601160153a9c629b4055f0",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+        "selected_case": "p11-prompt-hook-auto",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 20,
+            "sha256": "70f9130ef84ccf095558250fb1f86a0718cca6dfeb5a13a50d66b0496024f504"
+          },
+          {
+            "issue": 598,
+            "registration_version": 19,
+            "sha256": "a83b7563ca2e48f46fdfa906fe9f3abd7efc67279086ea7a94c88c830d46deef"
+          },
+          {
+            "issue": 410,
+            "registration_version": 19,
+            "sha256": "44935d67cf55d57bfd5eac0225ad94b1474f1bd95338ede0802d72b3398fde3c"
+          }
+        ],
+        "private_result_sha256": "7bbec08ec0c62583fdfcab18bfe1b2d1eb3c3c7739aa0d20193b33f68901f871",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
       }

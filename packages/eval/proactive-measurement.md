@@ -19,25 +19,34 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix has 25 cases, three repetitions each (75 required rows).
-The final daily complete frozen P10 #1186 run at
-`e8485af72c386da7d5b284d8b3913ac7bbcef2a9` passes **75/75: 75 passed,
-0 failed, 0 pending, 0 not evaluable or missing fields**. No filters or combining
-of earlier runs. Protocol #402 v19 and #598/#410 v18 preceded the first call.
+Owner decision **11 October 2026** explicitly changes conversational notify
+arming and control rights. Three prior case definitions (nine row expectations)
+are preserved exactly in each registration and labelled **durch Owner-Entscheidung
+11.10. ersetzt**. The new definitions grant notify arming/resolution/unbounded
+snooze; Owner review/rearm and prepare/execute guards stay unchanged. Historical
+raw pass/fail outcomes are not rewritten.
 
-Driver, runner and dataset hashes match d77cdb42. All budgets/deadlines remain
-unchanged: default task_due 2048 bytes, tiny overflow 256, explicit normal
-inspection 16384, shared premise 5000ms, polling 65000ms, quiescence 5500ms.
-All 75 child cleanup audits pass, zero blocked network attempts; private archives
-retain 0700/0600 modes. This is coverage of the registered functional scenarios,
-including existing Memory reads; it does not add human/UI or special Memory
-budget negative outcomes to the protocol.
+Frozen P11 #1197 `375702ffe81565b2a5ca2122024d53bd52afd98b` complete run:
+**93 passed, 0 failed, 0 pending, 0 missing/not evaluable**. It covers all75 original
+case positions under the explicitly amended expectations plus18 new rows (six
+new cases×3), registered before runtime in #402 v20/#598/#410 v19.
 
-All historical failed/partial/corrected segments remain unchanged, including
-card overflow on df3abfca, disjoint 3+72 coverage on 2f9e0300 and full d77cdb42
-coverage. No cross-head/protocol pooling or retrospective relabelling. #402/#598/
-#410 human, longitudinal and final independent stable gates remain pending.
-No human/longitudinal window started. Measurement work is complete for today.
+New rows test actual session-hook.js and prompt-hook.js processes with a fresh
+empty-access daemon that provisions its own private Agent file, without env token,
+manual mint or setup command. One frame/attempt, no implicit acknowledgement,
+stable restart access and unchanged synthetic existing client settings are checked.
+Other new rows test no upgrade, same content/time dedup across client/session/key,
+identical redacted secret requests versus distinct raw secrets, conversation
+ack/snooze30→60days/resolve/cancel and a finite40-reminder two-day quota probe.
+Two separate hook-focused validation segments also pass3/3 each; not pooled.
+
+All93 full-run child cleanup audits pass, zero blocked network attempts,0700/0600
+raw archives. Existing budgets/time limits stay unchanged. Human confirmation via
+AskUserQuestion, actual conversational understanding, visual UI-tab/OS/large-vault/
+longitudinal and final independent stable gates are not inferred from tool/hook
+fixtures. No human or longitudinal window started. #1198 access boundaries remain
+outside this measurement request; the intentionally accepted policy is not
+silently tightened by the harness.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
