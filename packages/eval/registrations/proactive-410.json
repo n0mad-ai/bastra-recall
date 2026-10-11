@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 12,
+  "registration_version": 13,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1074,7 +1074,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective real-file P6/C096 matrix procedure on the published corrected P8 stack; no human/longitudinal threshold change.",
+  "amendment": "Prospective focused remeasurement on b93ab169. Builder documents 5s for small synthetic fixtures: require event-specific verification AND durable occurrence within one shared 5s interval from successful event acceptance. Earlier separate-wait procedures/results unchanged; no relaxed limit, no manual reconciliation.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1146,12 +1146,24 @@
     ],
     "repetitions": 3,
     "files": "invented actual decision/assumption Markdown, exact core memoryRevision; actual registered versioned-value-v1 evidence JSON with bytehash/revision; daemon restarted to load each fixture",
-    "evaluation": "HTTP source/task/event APIs, no manual reconcile; current task contacts wait max5s for verification/due",
+    "evaluation": "HTTP source/task/event APIs, no manual reconcile; healthy small synthetic fixtures use a shared real-host 5000ms deadline from successful task_event response: exact accepted event verification, plus one durable occurrence for material change. Owner controls begin only after that condition. Host timings archived; child Date.now remains frozen.",
     "material": "one occurrence on cheap vs costly, exact event retry stable, card original A/old costly/new cheap; no automatic memory edit; owner keep/change/snooze/stop separately, agent denied, actual disk change revision/idempotency and restart state",
     "unknown": "unchanged verified; irrelevant/contested inconclusive; stale stale; removed actual evidence unavailable; zero reconsideration and original decision retained",
     "supersession": "prepare exact proposal and synthetic proofs against valid original decision, then independently edit/cancel/supersede real Markdown; restart+due read; disarm exact binding, no silent rebind/spending, append-only history snapshot",
     "pending": [
       "P10 migration/downgrade"
-    ]
+    ],
+    "remeasurement": {
+      "feature_head": "b93ab1694cbb7fab0bfd811ca3b468c4e957ae87",
+      "cases": [
+        "material-premise-change",
+        "unknown-source-controls"
+      ],
+      "repetitions": 3,
+      "deadline_ms": 5000,
+      "boundary_source": "Builder handover Claim-Retry corrected / measurement limit; docs/design/proactive-tasks.md",
+      "boundary_quote": "Kleine synthetische Fixtures verlangen gespeichertes ereignisspezifisches Pr\u00fcfergebnis UND Occurrence innerhalb5s.",
+      "limits": "No universal bound for filesystem syscalls, lock contention, capacity errors or process pauses. Those do not silently become passing synthetic rows. Existing failed f5f8f149 segments retained."
+    }
   }
 }
