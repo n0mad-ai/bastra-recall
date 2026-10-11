@@ -1,101 +1,102 @@
 # Proactive measurements (#402 / #598 / #410)
 
-[Measurement milestone #30](https://github.com/n0mad-ai/bastra-recall/milestone/30).
-Registrations use the existing JSON registration directory and version/amendment
-convention. They were committed before runs in `c65394bf`; version 2 only records
-[P0 #1159](https://github.com/n0mad-ai/bastra-recall/pull/1159), proposed design head
-`313621f8a85648603c83c5eb106405fbc0b51d50`. No statistical threshold changed. #402 version 3 clarifies three total runs per
-scenario to match the prepared matrix, before any feature/study observations;
-prior setup manifests contained zero observations.
+Measurement PR [#1158](https://github.com/n0mad-ai/bastra-recall/pull/1158), milestone
+[#30](https://github.com/n0mad-ai/bastra-recall/milestone/30). Protocols were committed
+before observations in `c65394bf`. Later amendments pin reviewed P0/P1/P2 contracts,
+clarify three total repetitions, and register six P1/P2 mechanics cases in `22e62f25`
+before any runtime run. Longitudinal/human thresholds remain unchanged.
 
-- [#402 trigger/delivery](registrations/proactive-402.json): labelled due and
-  non-trigger opportunities, separate attempts/acknowledgements/resolutions,
-  14-day minimum and minimum denominators per supported profile. Time alone
-  cannot pass this window.
+- [#402 trigger/delivery](registrations/proactive-402.json): 14-day minimum and
+  labelled due/non-trigger denominators. Delivery, acknowledgement and resolution
+  remain separate. A green synthetic case cannot pass this window.
 - [#598 review/correction](registrations/proactive-598.json): 24 consented humans,
-  counterbalanced presentation comparison, false acceptance and true rejection
-  measured separately. Synthetic responses cannot stand in for human decisions.
-- [#410 safety/recovery](registrations/proactive-410.json): full proactive matrix,
-  real reversible reference adapter, recovery and independent integrated-head
-  review. This covers the proactive slice, not the whole federated V2 checklist.
+  counterbalanced presentation comparison with false acceptance/true rejection.
+- [#410 safety/recovery](registrations/proactive-410.json): proactive matrix,
+  reversible reference adapter and independent integrated-head review. This cannot
+  pass the whole shared/federated V2 checklist or replace #400.
 
-## Prepared fixtures and published-contract dependencies
+## Current functional evidence
 
-`src/proactive-measurement.ts` defines the 14 build-plan matrix rows and two
-additional migration/containment rows, with three repetitions each: 48 runs.
-Each stimulus names separate failure/control subruns where applicable. A driver
-must actually exercise every named subrun before returning `*_all_subruns`.
-The resulting counts are functional coverage, never empirical sample sizes.
-The fixture IDs/observable assertions are a measurement interface, not an API,
-task schema, second scheduler, or alternative storage contract.
+The registered matrix has 22 cases, three repetitions each (66 required runs):
+14 original build-plan rows, migration/containment rows, and six new P1/P2 cases.
+The observation interface is not a competing task/API/storage schema.
 
-P0 declares `task_create`/`task_review` and `/api/v1/tasks`, proposal-versus-armed
-state, expected revisions, signed owner review, stable occurrence slots and
-next-contact-only coverage. The proposed store is task-owned; render/relay reads
-cannot attest acknowledgement. Clock/DST fixtures must follow its reviewed
-reject/shift-forward and earlier/later policies. Synthetic signing keys may
-exercise signatures in temporary roots, but cannot prove owner isolation or
-human approval. P0 explicitly leaves execute disabled without a protected owner
-key/configuration boundary. The #410 study must retain this limitation.
+| Pinned clean feature head | Available cases | Replays passed | Full coverage |
+|---|---:|---:|---|
+| P2c #1170 `4041932736e24d4c78365fa9f3728376c12ca26f` | 6 | 18/18 | 18/66, pending |
+| P3 #1171 `e78ff4f4808bafcc942759c69f584cf72d58f0b2` | 7 | 21/21 | 21/66, pending |
 
-Waiting on **P2 (canonical CRUD)**, **P5 (delivery)** and **P8 (execution)**:
-PR numbers have not been published at preparation time. P1/P3/P4/P6/P7/P9/P10
-also gate their corresponding matrix rows. No guessed JSON DTO or runtime
-feature adapter is implemented before these contracts exist.
+Each revision is a separate segment; repeated observations across revisions are
+not pooled into an empirical error rate. No human or longitudinal window started.
+P5 delivery and P8 execution remain pending. Coverage also requires their P4/P6/
+P7/P9/P10 dependencies where named by each case.
 
-## Run now
+The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
+uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
+agent-versus-owner authority, revocation/rotation, idempotency, CAS, lifecycle,
+restart and explicit stopped-daemon P1 backup recovery. Owner HTTP credentials
+are invented test credentials, not human provenance. CLI coverage uses agent
+mode; owner `/dev/tty` interaction, direct-MCP and bridge processes are not claimed.
+Recovery uses the published P1 storage primitive because no recovery transport
+exists yet. It does not attest the future P9 owner recovery UI/CLI.
 
-From the isolated eval checkout, choose a fresh child of the existing private
-archive (the runner rejects output elsewhere and refuses overwrites):
+P3 additionally replays Madrid DST gap/overlap, calendar versus elapsed recurrence,
+latest catch-up, restart and clock rollback through the real daemon's reconcile
+API. A child-only preload reads a fixture clock file; no feature source changes.
+Timers keep their real monotonic clock. All 21 latest replays stopped every child
+and recorded zero denied outbound connection attempts.
+
+## Reproduce in an isolated checkout
+
+Fetch the pinned head into a new worktree under `~/.codex/worktrees/`. Install
+its lockfile and build core, statusline and daemon there. The task driver reads
+that tree's built modules; it records the head, lockfile/build hashes and driver/
+network-preload hashes. It rejects tracked modifications. No production daemon,
+vault, services or provider writes are used.
 
 ```sh
 node --import tsx packages/eval/src/proactive-measurement-run.ts \
-  --out-dir ~/.bastra/eval-runs/proactive-a-20261011-contract-pending
+  --out-dir ~/.bastra/eval-runs/NEW-PRIVATE-RUN \
+  --driver packages/eval/src/proactive-p2-driver.ts \
+  --feature-root ~/.codex/worktrees/ISOLATED-PINNED-FEATURE-HEAD
 ```
 
-Without a driver this records versions/hashes and **0/48 observed runs, pending**.
-It does not start a longitudinal window or a daemon. Raw manifests/receipts go
-only to private 0700/0600 artifacts; console output is aggregate only.
+The host creates a fresh data root and OS-assigned loopback port for each replay,
+persists its manifest before feature calls and writes every raw row privately.
+The driver passes a clean child environment with a temporary home, empty invented
+vault, task/credential paths, embeddings/update checks off and auto-spawn disabled.
+Its network preload only permits the assigned loopback port, refuses 6723 and
+records denied connections. This is a trusted Node driver boundary, not an OS
+sandbox for arbitrary imported code. No unreviewed module may be loaded as driver.
+
+Raw receipts/state/errors/requests stay in 0700/0600 private artifacts under the
+existing eval-run archive. Public registration sections contain only counts,
+hashes and revisions. Output paths outside that archive and overwrites are refused.
+Without a driver the runner writes a pending setup report with zero observations.
+Missing stage dependencies leave their cases pending. Each named subrun must
+execute before its combined assertion is returned. Violated invariants remain
+failed even when other evidence is missing; incomplete rows are not evaluable.
 
 ```sh
 node --import tsx --test packages/eval/__tests__/proactive-measurement.test.ts
 npm run check:types --workspace=@bastra-recall/eval
 ```
 
-These verify the measurement evaluator's refusal of missing observations,
-fabricated acknowledgements, unsafe effects and duplicate/unregistered rows.
-Manufactured responses inside tests are evaluator test data, not feature evidence.
+Evaluator tests use manufactured rows only to test missing data, denial/failure
+classification and incomplete gates. Those rows are not feature evidence.
+Latest eval typechecks and six evaluator tests pass. Initial registration/evaluator
+verification passed 37 tests. CI is tracked separately for each pushed eval head.
 
-## Bind the real driver after publication
+## Later stages
 
-Implement an eval-only module exporting the `FeatureDriver` interface from
-`src/proactive-measurement-run.ts`. Pin its feature SHA, actual published P-stage
-PR numbers, P0 design hash, supported client/adapter and profile. Invoke only
-published APIs or services of that clean feature worktree, using the per-run
-invented data root and loopback port supplied by the host (never 6723). Install
-synthetic credentials/keys only inside that root; do not load the real user's
-configuration. Tear down every started process in `finally`, preserving data.
+Check the builder handover for published P5/P8 heads, fetch clean measurement
+worktrees, extend the eval driver against their published APIs and rerun affected
+cases. Declare only implemented driver stages; a file or interface alone is not
+coverage. Preserve earlier raw artifacts and code segments. Stop all created
+processes in `finally`. Synthetic signing keys later test mechanics, not a real
+human approval or protected owner key boundary.
 
-```sh
-node --import tsx packages/eval/src/proactive-measurement-run.ts \
-  --out-dir ~/.bastra/eval-runs/NEW-PRIVATE-RUN \
-  --driver ./packages/eval/src/PUBLISHED-CONTRACT-DRIVER.ts \
-  --feature-root ~/.codex/worktrees/ISOLATED-FEATURE-HEAD
-```
-
-That driver file is deliberately not provided yet. The host runs only cases
-whose complete stage dependencies are declared published; missing stages keep
-coverage pending. Each driver observation must include local raw receipts,
-state snapshots and artifact before/after hashes, not just `passed=true`.
-Independent review of the driver must check its derivation of each assertion.
-The host is not an OS sandbox: the eval driver is trusted code reviewed before
-use; the assigned directory/port is its mandatory scope, not an enforcement
-claim. Never load an unreviewed contributor module as a driver.
-
-Every row is privately saved before the next scenario. Known invariant failures
-remain failed even if another observation is missing. Incomplete evidence is
-not evaluable. Changed code/config/profile creates a new version segment.
-Public reports contain counts/hashes/revisions only; do not publish private
-artifacts, their paths, credentials, original requests or participant IDs.
-Longitudinal/human studies need their consented profile and adequate registered
-samples; today's window start remains null.
+All three issue verdicts remain pending until the respective registered human,
+longitudinal and independent-review evidence is adequate. Consent and actual
+opportunities are required before starting those windows; elapsed time cannot
+change their verdicts.
