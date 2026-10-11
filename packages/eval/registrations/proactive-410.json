@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 15,
+  "registration_version": 16,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1181,7 +1181,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective card correction replay on frozen 2f9e0300: three prior material-premise rows with UNCHANGED default task_due budget, followed by separate regression of the other 72 rows on the same head. No criterion relaxation, no replacement of historical failures.",
+  "amendment": "Prospective regression procedure accounts for the published generic availability notice at a tiny budget: it is not a specific task card or receipt. Original durable retention/no fabricated acknowledgement/stable IDs criteria and material default2048 remain unchanged; prior empty-output observations retained.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1295,6 +1295,7 @@
     "criteria": "Original event-specific verification+occurrence within shared5s; same Claim retry ID; explainable card original A, costly\u2192cheap; owner keep/change/snooze/stop and CAS/restart. Both full and bounded product cards assessed against the same semantic criteria.",
     "regression": "All other24 registered cases\u00d73=72 rows, explicit excluded_case in manifest; unchanged stimuli/thresholds, no grouping across old heads.",
     "freeze_rule": "Detached own clean worktree; do not follow later pushes during these runs.",
-    "scope": "Functional only; no human/longitudinal/independent stable gate pass inferred."
+    "scope": "Functional only; no human/longitudinal/independent stable gate pass inferred.",
+    "tiny_budget_regression": "At256 bytes, allow only generic availability cards without task/occurrence IDs; zero specific card/attempt from the tiny-budget call. Overflow5 and all durable due IDs remain; normal/disabled/purged subruns still require three actual specific cards. Generic visibility is not acknowledgement or resolution."
   }
 }

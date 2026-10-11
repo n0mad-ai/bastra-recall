@@ -153,7 +153,7 @@ const driver: FeatureDriver = {
           await stop(daemon!);env.BASTRA_PENDING_RELAY="0";await start();const disabled=await due({max_bytes:16384});states.push(snapshot());
           const purge=child("relay-purge","cli.js",["drafts","purge"]);let output="";purge.stdout.on("data",d=>output+=d);const [exit]=await once(purge,"exit");if(exit!==0)throw new Error("isolated relay purge command failed");evidence.push({relay_purge_exit:exit,output});
           const purged=await due({max_bytes:16384});states.push(snapshot());
-          values={due_retained_all_subruns:overflow.overflow===5&&overflow.cards.length===0&&[normal,disabled,purged].every(r=>r.pending===5&&r.cards.length===3)&&states.every(s=>s.occurrences.length===5&&s.tasks.every((t:any)=>t.state==="due")),fabricated_acknowledgements:states.reduce((n,s)=>n+counts(s).ack,0),stable_retry_ids_all_subruns:states.every(s=>equal(s.occurrences.map((o:any)=>o.id).sort(),originalIds))};
+          values={due_retained_all_subruns:overflow.overflow===5&&overflow.cards.every((card:any)=>card.kind==="availability"&&!card.occurrence_id&&!card.task_id)&&states[0].occurrences.every((o:any)=>o.attempts.length<=1)&&[normal,disabled,purged].every(r=>r.pending===5&&r.cards.length===3)&&states.every(s=>s.occurrences.length===5&&s.tasks.every((t:any)=>t.state==="due")),fabricated_acknowledgements:states.reduce((n,s)=>n+counts(s).ack,0),stable_retry_ids_all_subruns:states.every(s=>equal(s.occurrences.map((o:any)=>o.id).sort(),originalIds))};
           evidence.push({overflow,normal,disabled,purged,states});
         } else {
           const after=c.id==="seven-day-evaluation"?7*86400000:1000;
