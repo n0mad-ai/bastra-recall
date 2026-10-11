@@ -76,3 +76,17 @@ test("every CRUD operation has a canonical strict MCP definition", () => {
   assert.deepEqual(taskTools.map(t => t.name), [...TASK_CRUD_OPERATIONS]);
   for (const def of taskTools) assert.equal((def.inputSchema as any).additionalProperties, false);
 });
+test("malformed and oversized request bodies are non-retryable validation errors", async () => {
+  const f = await fixture(); try {
+    for (const body of ["{bad", JSON.stringify({ original_request: "a".repeat(256 * 1024 + 1) })]) {
+      const response = await fetch(`${f.base}/api/v1/tasks`, { method: "POST", headers: { Authorization: `Bearer ${f.owner.token}`, "Content-Type": "application/json" }, body });
+      assert.equal(response.status, 400); const error = await response.json() as any;
+      assert.equal(error.code, "validation"); assert.equal(error.retryable, false);
+    }
+  } finally { await f.close(); }
+});
+test("unknown errors never expose raw filesystem codes", () => {
+  const failure = taskFailure(Object.assign(new Error("invented private path"), { code: "ENOENT" }));
+  assert.equal(failure.body.code, "unavailable"); assert.ok(!JSON.stringify(failure).includes("ENOENT"));
+  assert.ok(!JSON.stringify(failure).includes("private path"));
+});
