@@ -48,6 +48,27 @@ describe("bash-fail-hook: readExitCode", () => {
     assert.equal(readExitCode({ stderr: "make: exited with status 2 (quoted from a log)" }), null);
     assert.equal(readExitCode({ content: "Exit code 3" }), null);
   });
+  it("reads a Codex unified-exec status from its header, wherever the header puts it", () => {
+    // Shape of codex-rs/core/src/tools/context.rs `response_header` (rust-v0.162.1): Wall time
+    // always comes before the status, Chunk ID and a truncation preamble may come before that.
+    // Revert check: read only `output`'s first line again → all three go red (null).
+    const header = (status: string, pre = "") =>
+      `${pre}Chunk ID: 3f2a91\nWall time: 0.0120 seconds\n${status}\nOriginal token count: 12\nOutput:\n`;
+    assert.equal(readExitCode(normalizeToolResponse(header("Process exited with code 2") + "fatal: not a git repository")), 2);
+    assert.equal(
+      readExitCode(normalizeToolResponse(header("Process exited with code 1", "Warning: truncated output (original token count: 9000)\nTotal output lines: 400\n\n") + "…")),
+      1,
+    );
+    assert.equal(readExitCode(normalizeToolResponse("Wall time: 1.2000 seconds\nProcess exited with code 5\nOutput:\n")), 5);
+  });
+  it("never reads a status out of the output below a Codex header", () => {
+    // A successful command whose own output quotes a status line. Revert check: scan the whole
+    // `output` (or more than the header) → this goes red (1 instead of 0).
+    const ok = "Chunk ID: 77\nWall time: 0.0100 seconds\nProcess exited with code 0\nOutput:\nProcess exited with code 1\nExit code 3";
+    assert.equal(readExitCode(normalizeToolResponse(ok)), 0);
+    const running = "Wall time: 5.0000 seconds\nProcess running with session ID 4\nOutput:\nProcess exited with code 1";
+    assert.equal(readExitCode(normalizeToolResponse(running)), null);
+  });
   it("reads a Codex status only from the head line of plain output", () => {
     assert.equal(readExitCode(normalizeToolResponse("Exit code: 4\nWall time: 1s")), 4);
     assert.equal(readExitCode(normalizeToolResponse("ok\nlog line: exited with code 9")), null);
