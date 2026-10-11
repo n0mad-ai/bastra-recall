@@ -20,25 +20,24 @@ Longitudinal/human thresholds remain unchanged.
 ## Current functional evidence
 
 The registered matrix has 25 cases, three repetitions each (75 required rows).
-One complete frozen P10 #1186 run at
-`d77cdb425a701f0d7f91e187b2dfdb3ae00b92c4` passes **75/75: 75 passed,
-0 failed, 0 pending, 0 not evaluable or missing fields**. No selected/excluded
-rows or combining of earlier runs. Protocol #402 v18 and #598/#410 v17 were
-registered before the first feature call.
+The final daily complete frozen P10 #1186 run at
+`e8485af72c386da7d5b284d8b3913ac7bbcef2a9` passes **75/75: 75 passed,
+0 failed, 0 pending, 0 not evaluable or missing fields**. No filters or combining
+of earlier runs. Protocol #402 v19 and #598/#410 v18 preceded the first call.
 
-Driver, runner and dataset hashes match the previous replay. Budgets/time limits
-are unchanged: default task_due 2048 bytes, tiny overflow 256, explicit normal
-inspection 16384, shared premise 5000ms, polling 65000ms, creation quiescence 5500ms.
+Driver, runner and dataset hashes match d77cdb42. All budgets/deadlines remain
+unchanged: default task_due 2048 bytes, tiny overflow 256, explicit normal
+inspection 16384, shared premise 5000ms, polling 65000ms, quiescence 5500ms.
 All 75 child cleanup audits pass, zero blocked network attempts; private archives
-retain 0700/0600 modes. This confirms the registered functional matrix on this
-head; no extra source-budget negative cases or human usability outcomes are
-silently inferred from the new feature changes.
+retain 0700/0600 modes. This is coverage of the registered functional scenarios,
+including existing Memory reads; it does not add human/UI or special Memory
+budget negative outcomes to the protocol.
 
-All earlier failed/partial/corrected segments remain unchanged, including the
-card overflow on df3abfca and separate 3+72 coverage on 2f9e0300. No cross-head/
-protocol pooling or retrospective relabelling. #402/#598/#410 human, longitudinal
-and final independent stable gates remain pending. No human/longitudinal window
-started.
+All historical failed/partial/corrected segments remain unchanged, including
+card overflow on df3abfca, disjoint 3+72 coverage on 2f9e0300 and full d77cdb42
+coverage. No cross-head/protocol pooling or retrospective relabelling. #402/#598/
+#410 human, longitudinal and final independent stable gates remain pending.
+No human/longitudinal window started. Measurement work is complete for today.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
