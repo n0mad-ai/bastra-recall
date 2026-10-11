@@ -126,6 +126,7 @@ const driver: FeatureDriver = {
       evidence.push({ transport: "actual-mcp-stdio", name, input: args, isError: raw.isError ?? false, result: data }); return data;
     }
     const action = (ACTION_CASES.includes(c.id) || c.id==="supersession") ? await actionFixture(feature,root,authPath,tokens,auth) : undefined;
+    if(automaticConversation){mkdirSync(join(root,"home/.claude"),{recursive:true,mode:0o700});writeFileSync(join(root,"home/.claude/settings.json"),'{"mcpServers":{"foreign":{"command":"synthetic"}},"hooks":{"keep":true}}',{mode:0o600});}
     let values: Record<string, boolean | number | string> = {};
     try {
       await start();

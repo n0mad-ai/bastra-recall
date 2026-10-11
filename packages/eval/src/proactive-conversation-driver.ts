@@ -9,7 +9,7 @@ export async function runConversation(c:any,x:any):Promise<Record<string,boolean
  if(!await waitUntil(()=>existsSync(configPath)))throw new Error('automatic agent access absent');
  const accessBytes=readFileSync(configPath,'utf8');const access=JSON.parse(accessBytes);tokens.agent=access.token;
  const principal=await auth.authenticateTask(`Bearer ${access.token}`,authPath);
- const config=join(root,'foreign-client-settings.json');const sentinel='{"mcpServers":{"foreign":{"command":"synthetic"}},"hooks":{"keep":true}}';writeFileSync(config,sentinel,{mode:0o600});
+ const config=join(root,'home/.claude/settings.json');const sentinel='{"mcpServers":{"foreign":{"command":"synthetic"}},"hooks":{"keep":true}}';
  const snapshot=()=>JSON.parse(readFileSync(taskPath,'utf8'));
  let now=Date.parse('2026-10-24T12:00:00Z');const setClock=(at:number)=>{now=at;writeFileSync(clockPath,String(at));};
  const call=(name:string,body:any)=>http('POST',`/api/v1/task_${name}`,body,'agent');
