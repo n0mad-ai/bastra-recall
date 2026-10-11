@@ -12,6 +12,7 @@ const feature = resolve(process.argv[arg + 1]);
 const commit = execFileSync("git", ["-C", feature, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const design = readFileSync(join(feature, "docs/design/proactive-tasks.md"), "utf8");
 const daemonDir = join(feature, "packages/daemon/dist");
+const { configFingerprint } = await import(pathToFileURL(join(daemonDir,"daemon-spawn-env.js")).href);
 const auth = await import(pathToFileURL(join(daemonDir, "task-auth.js")).href);
 const sourceApi = existsSync(join(daemonDir,"task-events.js")) ? await import(pathToFileURL(join(daemonDir,"task-events.js")).href) : undefined;
 const storeApi = await import(pathToFileURL(join(daemonDir, "task-store.js")).href);
@@ -27,7 +28,7 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 const driver: FeatureDriver = {
   metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}) },
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -61,7 +62,7 @@ const driver: FeatureDriver = {
       daemon = child(`daemon-${processes.length}`, "index.js"); daemon.stdout.resume();
       for (let i = 0; i < 150; i++) {
         if (daemon.exitCode !== null) throw new Error("daemon exited during setup");
-        try { const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(300) }); if (r.ok) { evidence.push({ health: await r.json() }); return; } } catch {}
+        try { const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(300) }); if (r.ok) { const health = await r.json() as any; if (health.build_revision !== commit || health.config_fingerprint !== configFingerprint(env)) throw new Error("health identity disagrees with pinned isolated configuration"); evidence.push({ health }); return; } } catch {}
         await delay(100);
       } throw new Error("isolated daemon startup timeout");
     }
