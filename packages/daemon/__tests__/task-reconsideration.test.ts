@@ -10,7 +10,7 @@ import { readTaskStore } from "../src/task-store.js";
 import { taskMemoryReader, taskMemoryChanger, assessTaskFreshness } from "../src/task-freshness.js";
 import { taskDecisionStatus } from "../src/task-reconsideration.js";
 import { taskValueHash, reconcileTaskTime } from "../src/task-events.js";
-async function fixture() {
+async function fixture(long=false) {
   const root = await mkdtemp(join(tmpdir(), "task-reconsider-")); const vaultPath = join(root, "vault"); await mkdir(vaultPath);
   const decisionRaw = '---\nid: decision\ntitle: Decision\nscope: fixture\ntype: decision\nsummary: Chose A\nsensitivity: private\n---\nChose A because maintenance costs are high.\n';
   const assumptionRaw = '---\nid: assumption\ntitle: Assumption\nscope: fixture\ntype: reference\nsummary: Maintenance cost\nsensitivity: private\n---\ncostly\n';
@@ -26,9 +26,9 @@ async function fixture() {
   const raw = JSON.stringify({ claim_id: "assumption", claim_revision: assumptionRevision, value: "cheap", state_updated_at: 1000, provenance: "attributable" });
   await writeFile(join(root, "evidence.json"), raw); const evidenceRevision = taskValueHash(raw);
   await callTaskCrud(ctx, auth, "task_source_register", { ...source, id: "evidence", kind: "file", producer_actor: "task-source-reader", root, path: "evidence.json" });
-  await callTaskCrud(ctx, auth, "task_create", { idempotency_key: "reconsider", original_request: "Reconsider A when maintenance is cheaper", goal: "Reconsider A", resolution_condition: "Owner chooses", timezone: "Europe/Madrid", scope: { kind: "personal", name: "fixture" }, owner_domains: ["personal"], arm: true,
+  await callTaskCrud(ctx, auth, "task_create", { idempotency_key: "reconsider", original_request: long?"Nach Prüfung der langfristigen ökonomischen Annahme sollen Alternativen vollständig erklärt werden. ".repeat(12):"Reconsider A when maintenance is cheaper", goal: long?"Ökonomische Neubewertung der Wartungskosten und sämtlicher begründeter Alternativen. ".repeat(8):"Reconsider A", resolution_condition: "Owner chooses", timezone: "Europe/Madrid", scope: { kind: "personal", name: "fixture" }, owner_domains: ["personal"], arm: true,
     schedule: { kind: "event", source_id: "producer", predicate: "premise", expected: "costly", verifier_id: "versioned-value-v1" },
-    decision: { id: "decision", revision: memoryRevision(decisionRaw), option: "A", reason: "Maintenance cost", assumption_id: "assumption", assumption_revision: assumptionRevision, premise: "costly", alternatives: ["B"] },
+    decision: { id: "decision", revision: memoryRevision(decisionRaw), option: "A", reason: long?"Die ursprünglich gewählte Alternative benötigt höhere Wartungskosten und zusätzliche Überprüfungen. ".repeat(12):"Maintenance cost", assumption_id: "assumption", assumption_revision: assumptionRevision, premise: "costly", alternatives: ["B"] },
     evidence: [{ source_id: "evidence", id: "evidence", revision: evidenceRevision, hash: evidenceRevision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }] });
   const event = { source_id: "producer", source_revision: 0, dedup_key: "cheaper", value: "Maintenance evidence", state_updated_at: 1000,
     claim: { claim_id: "assumption", claim_revision: assumptionRevision, value: "cheap", evidence_id: "evidence", evidence_revision: evidenceRevision } };
@@ -101,4 +101,11 @@ test("occurrence premise survives later verification and edited memories withdra
     assert.equal(cachedTaskSnapshot(f.ctx.path)!.tasks[0].armed, false);
     assert.equal((await callTaskCrud(f.ctx, f.auth, "task_due", {}) as any).cards.length, 0);
   } finally { job.stop(); await job.runtime.settle(); }
+});
+
+test("long reconsideration survives the standard 2048-byte API/passive budget with choices and get details",async()=>{
+ const f=await fixture(true);const {startProactiveTaskJob}=await import("../src/daemon-jobs.js"),{taskAttachment}=await import("../src/task-delivery.js"),{taskDueText}=await import("../src/task-outbox.js");let job:ReturnType<typeof startProactiveTaskJob>|undefined;
+ try{await reconcileTaskTime(f.ctx);const due=await callTaskCrud(f.ctx,f.auth,"task_due",{}) as any;assert.equal(due.cards.length,1);assert.equal(due.overflow,0);assert.equal(due.cards[0].compact,true);assert.match(due.cards[0].detail_command,/bastra tasks get/);assert.deepEqual(due.cards[0].reconsideration.choices,["keep","change","snooze","stop"]);assert.ok(Buffer.byteLength(taskDueText(due))<=2048);
+ job=startProactiveTaskJob(f.ctx);await job.runtime.ready;const credential=await mintTaskCredential(f.ctx.authPath,{actor_id:"long-card-reader",role:"agent",domains:["personal"]});const attached=await taskAttachment(f.ctx,`Bearer ${credential.token}`,"long-session","mcp");assert.ok(attached);assert.equal(attached.due.cards.length,1);assert.ok((attached.due.cards[0].reconsideration as any).choices.includes("change"));assert.match(attached.text,/bastra tasks get/);assert.ok(Buffer.byteLength(attached.text)<=2048);
+ }finally{job?.stop();await job?.runtime.settle();await f.vault.stop();}
 });

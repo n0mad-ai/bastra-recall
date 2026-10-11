@@ -50,9 +50,22 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
     if (unseenReview && Buffer.byteLength(JSON.stringify(card)) > input.max_bytes - 256)
       card = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`, goal: task.goal.slice(0,80), due_at: occurrence.due_at, timezone: task.timezone,
         why_now: "Abgleich nötig: unklarer Ausführungsausgang", action_outcome: { intent_id: action!.id, state: action!.state, review_hint: "Abgleich nötig" }, controls: ["inspect", "reconcile"] };
-    const size = Buffer.byteLength(JSON.stringify(card));
+    const encodedBytes = (value:unknown) => Buffer.byteLength(JSON.stringify(value).replaceAll("<","\\u003c").replaceAll(">","\\u003e"));
+    const limit = input.max_bytes - 256;
+    if (encodedBytes(card) > limit) {
+      const r=card.reconsideration as ReturnType<typeof reconsiderationCard>;
+      card={occurrence_id:occurrence.id,task_id:task.id,expected_revision:`${store.recovery_epoch}:${task.revision}`,goal:task.goal.slice(0,64),due_at:occurrence.due_at,timezone:task.timezone,acknowledged:!!occurrence.acknowledgement,
+        why_now:r?"Geprüfte Prämissenänderung: Entscheidung neu bewerten, keine automatische Umkehr.":unseenReview?"Abgleich nötig":"Fälliger Auslöser, kein bestätigtes Ergebnis.",compact:true,detail_command:`bastra tasks get ${task.id}`,
+        ...(r?{reconsideration:{kind:r.kind,decision:{option:r.decision.option.slice(0,48),reason:r.decision.reason.slice(0,48),alternatives:r.decision.alternatives.slice(0,2).map(a=>a.slice(0,24))},old_premise:r.old_premise.slice(0,48),new_premise:r.new_premise?.slice(0,48),new_evidence:{id:r.new_evidence.id.slice(0,48),revision:r.new_evidence.revision.slice(0,64),observed_at:r.new_evidence.observed_at,state_updated_at:r.new_evidence.state_updated_at},uncertainty:"Gekürzte Daten; Details prüfen. Keine Alternative gewählt.",choices:r.choices}}:{}),
+        ...(card.action_outcome?{action_outcome:card.action_outcome}:{}),controls:["inspect","acknowledge","snooze","resolve"]};
+      if(encodedBytes(card)>limit) card={occurrence_id:occurrence.id,task_id:task.id,expected_revision:`${store.recovery_epoch}:${task.revision}`,goal:task.goal.slice(0,24),due_at:occurrence.due_at,timezone:task.timezone,compact:true,why_now:r?"Neubewertung fällig; geänderte Prämisse, keine automatische Umkehr.":"Fällig; Details prüfen.",detail_command:`bastra tasks get ${task.id}`};
+    }
+    const size = encodedBytes(card);
     if (cards.length >= 3 || bytes + size > input.max_bytes - 256) { overflow++; continue; }
     cards.push(card); occurrenceIds.push(occurrence.id); bytes += size;
+  }
+  if(!cards.length && overflow && candidates.length){
+    cards.push({kind:"availability",summary:"Fällige Aufgaben warten auf Prüfung.",detail_command:"bastra tasks due"});
   }
   return { coverage: "next-contact-only", cards, pending: candidates.length, overflow, retry_blocked: retryBlocked, client, occurrenceIds };
 }

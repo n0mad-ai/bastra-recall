@@ -30,7 +30,7 @@ test("rendering and persisted attempts do not acknowledge or resolve; owner rece
 test("disabled/purged relay and output overflow preserve pending work with no fabricated attempt", async () => {
   const f = await fixture(); const store = await readTaskStore(f.ctx.path);
   const small = taskDueProjection(store, f.principal, taskDueInput.parse({ max_bytes: 256 }), 3000);
-  assert.equal(small.cards.length, 0); assert.equal(small.overflow, 1); assert.equal(store.occurrences[0].attempts.length, 0);
+  assert.equal(small.cards.length, 1); assert.equal(small.cards[0].kind, "availability"); assert.equal(small.overflow, 1); assert.equal(store.occurrences[0].attempts.length, 0);
   const before = await readFile(f.ctx.path, "utf8"); const saved = process.env.BASTRA_PENDING_RELAY;
   try { process.env.BASTRA_PENDING_RELAY = "0"; assert.equal(taskDueProjection(store, f.principal, taskDueInput.parse({}), 3000).cards.length, 1); }
   finally { if (saved === undefined) delete process.env.BASTRA_PENDING_RELAY; else process.env.BASTRA_PENDING_RELAY = saved; }
