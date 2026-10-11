@@ -25,19 +25,21 @@ const digest = tags.models.find(m => m.name === "embeddinggemma:latest")?.digest
 if (!digest) throw new Error("no identified local embeddinggemma");
 const provider = new OllamaEmbeddingProvider({ baseURL, model: "embeddinggemma", keepAlive: "10m" });
 const work = await mkdtemp(join(tmpdir(), "correction-sequences-"));
-type Row = { case: string; split: string; language: string; kind: string; phase: string; stage: number; query: number; arm: string;
+type Row = { order: string; scores: number[]; old_current_score_tie: boolean | null; strict_old_score_advantage: boolean | null; obsolete_top1_same_value: boolean | null; incorrect_value_top1: boolean | null; case: string; split: string; language: string; kind: string; phase: string; stage: number; query: number; arm: string;
   ranked: string[]; current_ids: string[]; current_hit_at_1: boolean | null; current_hit_at_5: boolean | null;
   obsolete_top1: boolean | null; obsolete_outranks_current: boolean | null; conflict_complete: boolean | null;
   oldest_reachable: boolean; reload_ranks_equal: boolean | null };
 const rows: Row[] = [];
 try {
- for (const c of cases) {
-  const dir = join(work, c.id), memories = join(dir, "memories"), hidden = join(dir, ".fixture-archive");
+ for (const order of ["original", "reversed"]) for (const original of cases) {
+  // Reverse the ID/filename role mapping and file creation order; chronological ingestion and text stay fixed.
+  const c = { ...original, versions: original.versions.map((v, i) => ({ ...v, id: order === "original" ? v.id : original.versions[original.versions.length - 1 - i].id })) };
+  const dir = join(work, order, c.id), memories = join(dir, "memories"), hidden = join(dir, ".fixture-archive");
   await mkdir(memories, { recursive: true }); await mkdir(hidden);
   let known: Version[] = [];
   const evaluate = async (phase: string, stage: number, expectedRanks?: Map<string, string[]>): Promise<Map<string, string[]>> => {
     const current = c.kind === "conflict" ? known.map(v => v.id) : [known.slice().sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0].id];
-    for (const v of known) {
+    for (const v of (order === "original" ? known : known.slice().reverse())) {
       const previous = known.filter(other => other.valid_from < v.valid_from).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0];
       const links = c.kind === "conflict" ? "" : `${previous ? `replaces: ${previous.id}\n` : ""}${v.id !== current[0] ? `superseded_by: ${current[0]}\n` : ""}`;
       const body = `${c.title}: ${v.value}. Valid from ${v.valid_from}. Source ${v.source}.`;
@@ -60,9 +62,17 @@ try {
         const ranked = hits.map(h => h.id), old = known.filter(v => !current.includes(v.id)).map(v => v.id);
         const rank = (id: string): number => { const n = ranked.indexOf(id); return n < 0 ? Infinity : n; };
         const bestCurrent = Math.min(...current.map(rank));
+        const score = (id: string): number => hits.find(h => h.id === id)?.score ?? -Infinity;
+        const currentScore = Math.max(...current.map(score));
+        const currentValue = known.find(v => v.id === current[0])!.value;
+        const topValue = known.find(v => v.id === ranked[0])?.value;
         const key = `${arm}-${qi}`; signatures.set(key, ranked);
         const conflict = c.kind === "conflict" && known.length > 1;
-        rows.push({ case: c.id, split: c.split, language: c.language, kind: c.kind, phase, stage, query: qi, arm, ranked, current_ids: current,
+        rows.push({ order, scores: hits.map(h => h.score),
+          old_current_score_tie: conflict ? null : old.some(id => score(id) === currentScore),
+          strict_old_score_advantage: conflict ? null : old.some(id => score(id) > currentScore),
+          obsolete_top1_same_value: conflict ? null : old.includes(ranked[0]) && topValue === currentValue,
+          incorrect_value_top1: conflict ? null : topValue !== undefined && topValue !== currentValue, case: c.id, split: c.split, language: c.language, kind: c.kind, phase, stage, query: qi, arm, ranked, current_ids: current,
           current_hit_at_1: conflict ? null : current.includes(ranked[0]), current_hit_at_5: conflict ? null : ranked.some(id => current.includes(id)),
           obsolete_top1: conflict ? null : old.includes(ranked[0]), obsolete_outranks_current: conflict ? null : old.some(id => rank(id) < bestCurrent),
           conflict_complete: conflict ? current.every(id => ranked.includes(id)) : null,
@@ -85,6 +95,10 @@ try {
  }
 } finally { await rm(work, { recursive: true, force: true }); }
 const summarize = (xs: Row[]): Record<string, number> => ({ trials: xs.length,
+  old_current_score_tie: xs.filter(r => r.old_current_score_tie).length,
+  strict_old_score_advantage: xs.filter(r => r.strict_old_score_advantage).length,
+  obsolete_top1_same_value: xs.filter(r => r.obsolete_top1_same_value).length,
+  incorrect_value_top1: xs.filter(r => r.incorrect_value_top1).length,
   current_evaluable: xs.filter(r => r.current_hit_at_1 !== null).length,
   current_hit_at_1: xs.filter(r => r.current_hit_at_1).length, current_hit_at_5: xs.filter(r => r.current_hit_at_5).length,
   obsolete_top1: xs.filter(r => r.obsolete_top1).length, obsolete_outranks_current: xs.filter(r => r.obsolete_outranks_current).length,
@@ -92,8 +106,9 @@ const summarize = (xs: Row[]): Record<string, number> => ({ trials: xs.length,
   reload_evaluable: xs.filter(r => r.reload_ranks_equal !== null).length, reload_equal: xs.filter(r => r.reload_ranks_equal).length,
   oldest_reachable: xs.filter(r => r.oldest_reachable).length });
 const slices: Record<string, unknown> = {};
-for (const key of ["arm", "split", "language", "kind", "phase"]) slices[key] = Object.fromEntries([...new Set(rows.map(r => r[key as keyof Row]))].map(v => [String(v), summarize(rows.filter(r => r[key as keyof Row] === v))]));
-const result = { schema_version: 1, issue: 600, engine, corpus_sha256: sha(readFileSync(fixture)), code_sha256: sha(readFileSync(new URL(import.meta.url))),
+for (const key of ["order", "arm", "split", "language", "kind", "phase"]) slices[key] = Object.fromEntries([...new Set(rows.map(r => r[key as keyof Row]))].map(v => [String(v), summarize(rows.filter(r => r[key as keyof Row] === v))]));
+const correction_opportunities = Object.fromEntries(["original", "reversed"].map(order => [order, Object.fromEntries(["bm25", "hybrid"].map(arm => [arm, { ingest: summarize(rows.filter(r => r.order === order && r.arm === arm && r.phase === "ingest" && r.stage >= 2 && r.kind !== "conflict")), by_phase: Object.fromEntries(["component-reload", "filesystem-archive-old", "filesystem-restore-old"].map(phase => [phase, summarize(rows.filter(r => r.order === order && r.arm === arm && r.phase === phase && r.stage >= 2 && r.kind !== "conflict"))])) }]))]));
+const result = { schema_version: 2, correction_opportunities, issue: 600, engine, corpus_sha256: sha(readFileSync(fixture)), code_sha256: sha(readFileSync(new URL(import.meta.url))),
   registration_sha256: sha(readFileSync(reg)), embedding_model: "embeddinggemma", embedding_model_digest: digest, rrf_vector_weight: rrfVectorWeight(), k: 5,
   n_entities: cases.length, summary: summarize(rows), slices, rows, verdict_sha256: sha(JSON.stringify(rows)),
   unsupported: ["answer accuracy/fidelity/uncertainty/citations", "historical as-of", "live ingestion", "product archive/restore API and audits", "field longevity", "M1"],
