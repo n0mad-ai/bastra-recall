@@ -36,7 +36,7 @@ forgery/drift, execution stop/adapter disable, actual daemon crashes and readonl
 recovery, plus decision supersession. These use invented signatures and real
 temporary target bytes/mtime, never human approval or an OS-protected key claim.
 
-Current P6 findings prevent confirmation: an identical versioned-claim event
+Historical P6 findings on `f5f8f149` prevented confirmation: an identical versioned-claim event
 retry returns conflict, caused by an order-sensitive claim comparison. The
 unknown-source runtime control fails 3/3 because irrelevant/contested events lack
 persisted verification inside the preregistered 5s contact deadline; the actual
@@ -53,8 +53,8 @@ The independently found cross-domain source/key collision was registered in
 All original failed artifacts/protocol hashes remain unchanged.
 
 Every head, driver revision and selected subset is a separate segment; counts
-are never pooled into an empirical error rate. #402/#410 remain failed on current
-observed functional invariants; #598 and longitudinal/independent combined
+are never pooled into an empirical error rate. #402/#410 retain historical failed segments; current corrected focused
+controls pass, and overall confirmation remains pending; #598 and longitudinal/independent combined
 confirmation remain pending. No human or longitudinal window started.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
@@ -138,8 +138,8 @@ processes in `finally`. Synthetic signing keys later test mechanics, not a real
 human approval or protected owner key boundary.
 
 Earlier observed invariant failures remain failed in their historical segments.
-Corrected tuple/automatic controls pass. Current claim-retry and freshness
-observations are reported independently; combined confirmation remains unavailable. The
+Corrected tuple/automatic controls pass. Claim-retry and freshness
+correction segments are reported independently; combined confirmation remains unavailable. The
 unstarted human study stays pending. Adequate registered human,
 longitudinal and independent-review evidence is still required. Consent and actual
 opportunities are required before starting those windows; elapsed time cannot
@@ -148,3 +148,5 @@ change their verdicts.
 Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 action handlers and measurement-only SIGKILL preload are implemented; source-file hashes are included in each manifest. Protocol #402 v13 and #598/#410 v12 pin the P6 real-file and action procedures. The host also records explicit supported case IDs, so published APIs alone cannot fabricate matrix coverage.
 
 Prospective focused correction replay: #402 v14, #598/#410 v13 pin corrected P8 b93ab169. The builder documents a 5s limit for small synthetic fixtures, excluding universal syscall/contention guarantees. The two previously failed P6 cases now require exact accepted-event verification and (for material change) one durable occurrence within a single shared 5000ms host-clock interval after event acceptance. No stop at the first verification commit, no manual reconcile, no extension of the old limit. Prior red segments remain immutable.
+
+Corrected P8 `b93ab1694cbb7fab0bfd811ca3b468c4e957ae87`: both focused cases pass 3/3, six passed / zero failed / zero missing fields. Exact Claim retry retains the same event ID; actual irrelevant/contested states are persisted; all 27 event-specific subruns complete inside the shared 5000ms bound (maximum 110ms). Owner keep/change/snooze/stop and real disk CAS/restart controls complete. All six child cleanup audits pass, zero blocked network attempts. Other 69 matrix rows are unmeasured on this head; historical failed rows are unchanged and are not pooled with this correction. Human/longitudinal/full integrated confirmation remains pending.

@@ -83,19 +83,33 @@
       "remaining_runs": 3,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Notify/P1-P3 48/48 pass; focused P8 action/crash and decision-supersession controls pass 3/3 each, separate segments. P6 unknown-source runtime 3/3 fails missing automatic verification; identical versioned-claim retry rejected with conflict. Full available corrected P8 segment: 72 observed / 75 required, 66 pass / 6 fail / 3 P10 migration replays pending. Material-premise and unknown-source cases fail all three repetitions; some owner-control evidence is missing because automatic reconsideration never appeared.",
-      "measurement_verdict": "pending human/longitudinal; observed functional failures for #402/#410 prevent confirmation",
-      "known_current_failures": [
-        "identical versioned-claim event retry returns conflict due key-order comparison",
-        "some fresh irrelevant/contested source events lack automatic persisted verification within registered 5s contact deadline; no false occurrence observed"
-      ],
+      "functional_status": "Historical full f5f8f149 segment remains 66 pass / 6 fail / 3 pending. Corrected b93ab169 focused remeasurement: material-premise-change and unknown-source-controls each 3/3 passed, all prior six failed rows addressed. Other 69 matrix rows not remeasured on this head; no pooled overall pass.",
+      "measurement_verdict": "pending; corrected focused functional controls pass, full current-head/human/longitudinal/independent confirmation not established",
       "incomplete_segments_retained": 5,
       "latest_missing_field_rows": 3,
-      "current_failed_cases": [
+      "verifier_diagnostic": "Readonly actual verifier confirms inconclusive irrelevant/contested snapshots; diagnostic is not a registered case pass.",
+      "historical_failed_cases": [
         "material-premise-change",
         "unknown-source-controls"
       ],
-      "verifier_diagnostic": "Readonly actual verifier confirms inconclusive irrelevant/contested snapshots; diagnostic is not a registered case pass."
+      "historical_failures": [
+        "identical versioned-claim event retry returns conflict due key-order comparison",
+        "some fresh irrelevant/contested source events lack automatic persisted verification within registered 5s contact deadline; no false occurrence observed"
+      ],
+      "current_known_failed_cases": [],
+      "latest_corrected_subset": {
+        "feature_commit": "b93ab1694cbb7fab0bfd811ca3b468c4e957ae87",
+        "observed_runs": 6,
+        "passed": 6,
+        "failed": 0,
+        "missing_field_rows": 0,
+        "other_matrix_rows_unmeasured": 69,
+        "deadline_ms": 5000,
+        "event_specific_subruns": 27,
+        "max_elapsed_host_ms": 110,
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      }
     },
     "runtime_segments": [
       {
@@ -812,6 +826,78 @@
           }
         ],
         "private_result_sha256": "8aed0469fdf878721122d25747ad30837c4e299678478a0f307a029902cd0d46",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T14:12:43.637Z",
+        "eval_commit": "885ef3d9e93091725d3fa7eebc19726e04689e23",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "e05d8eff0a08611db20f0a64ea8b266fbac5a78084fa347be37c0c548daf0cf6",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "b93ab1694cbb7fab0bfd811ca3b468c4e957ae87",
+        "selected_case": "material-premise-change",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 14,
+            "sha256": "30b88f34578d5e153a9b783f6d5e479f6ce213a38052ef38a6afb192f84a8cf2"
+          },
+          {
+            "issue": 598,
+            "registration_version": 13,
+            "sha256": "69a5b361e28e5b72e4fdccbaf38ea4b30688465f2ad9fcfd19ca49eb8f621af9"
+          },
+          {
+            "issue": 410,
+            "registration_version": 13,
+            "sha256": "6ea629da29956bb3de71208f16b4b5ce41d8f8fea362bd49440ce82a7aa642ae"
+          }
+        ],
+        "private_result_sha256": "560cbc8518ed4c039ce36cebec22434f7dd337b9f59e378c114a0e5899c9a626",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T14:12:43.637Z",
+        "eval_commit": "885ef3d9e93091725d3fa7eebc19726e04689e23",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "e05d8eff0a08611db20f0a64ea8b266fbac5a78084fa347be37c0c548daf0cf6",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "b93ab1694cbb7fab0bfd811ca3b468c4e957ae87",
+        "selected_case": "unknown-source-controls",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 14,
+            "sha256": "30b88f34578d5e153a9b783f6d5e479f6ce213a38052ef38a6afb192f84a8cf2"
+          },
+          {
+            "issue": 598,
+            "registration_version": 13,
+            "sha256": "69a5b361e28e5b72e4fdccbaf38ea4b30688465f2ad9fcfd19ca49eb8f621af9"
+          },
+          {
+            "issue": 410,
+            "registration_version": 13,
+            "sha256": "6ea629da29956bb3de71208f16b4b5ce41d8f8fea362bd49440ce82a7aa642ae"
+          }
+        ],
+        "private_result_sha256": "08964f3f275bb1519354c539ef640eddb3015ab3022ff84cca89e5a0ee92da0f",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
       }
