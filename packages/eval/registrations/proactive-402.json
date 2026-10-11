@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 3,
+  "registration_version": 4,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -12,7 +12,7 @@
     "package_version": "1.1.0",
     "contract": "C-097; docs/Proactive Tasks Build Plan.md section 5 and product matrix",
     "design_pr": 1159,
-    "feature_commit": null,
+    "feature_commit": "4041932736e24d4c78365fa9f3728376c12ca26f",
     "profile": "synthetic-local-only; production data excluded",
     "config": "fixed UTC instant 2026-10-11T12:00:00Z; Europe/Madrid DST fixtures; own temporary data directory; port allocated by OS, never 6723",
     "dataset": "versioned invented fixtures; hash in each private run manifest",
@@ -20,14 +20,15 @@
     "judge": "deterministic independent assertions; human decisions for #598",
     "top_k": null,
     "context_budget": null,
-    "design_commit": "313621f8a85648603c83c5eb106405fbc0b51d50",
-    "design_sha256": "d657399531373f621545b6f8403facba30df2845642772d4c967aff19e8fd402"
+    "design_commit": "007fbfa1e02c89e62c8c698e8c95dae12e320f15",
+    "design_sha256": "e95d5a4d65dc0af0a6992d53c74f4d12b7105d816cdfe79aad5dab941fa30f9b"
   },
   "dependencies": {
-    "P0": "PR #1159 proposed contract; independent review pending",
-    "P2": "waiting for canonical CRUD contract; PR number unknown",
+    "P0": "PR #1159 amended/reviewed design",
+    "P2": "PR #1170 (P2c), stacked over #1167/#1169",
     "P5": "waiting for delivery contract; PR number unknown",
-    "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown"
+    "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown",
+    "P1": "PR #1164"
   },
   "data_policy": {
     "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
@@ -136,5 +137,112 @@
     "functional": "Zero false/missed fixture triggers, duplicate logical firings, fabricated acknowledgements or lost due items; all required scenarios represented.",
     "longitudinal": "Per supported client/profile: one-sided 95% Wilson upper bound <= 0.05 for false and missed trigger rates; zero duplicate logical firings, permission violations or silent loss. Completion and interruption costs descriptive, no utility-lift claim."
   },
-  "$comment_amendment": "Version 2 pinned P0 #1159 before any feature/study run without changing thresholds. Version 3 clarifies the total repetitions as three per scenario, matching the prepared 48-run matrix; the only prior runner executions were 0-observation pending setup manifests. No feature, human or longitudinal run has started and no threshold changed."
+  "$comment_amendment": "P1 #1164 and P2a/b/c #1167/#1169/#1170 are published. Before any runtime observations, register six additional P1/P2 functional mechanics cases (three repetitions each), preserving all longitudinal/human thresholds. Original 16 matrix cases remain; partial functionality is not complete matrix confirmation. Pin reviewed amended P0 from the P2c tree; previous manifests contained zero feature observations.",
+  "functional_supplement": {
+    "registered_before_runtime": true,
+    "repetitions": 3,
+    "cases": [
+      {
+        "id": "p2-auth-boundaries",
+        "issue": 410,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Run unauthenticated/legacy-token/foreign-Origin, cross-domain, agent owner-operation, spoof-field, rotated/revoked-credential requests against the real isolated daemon.",
+        "expected": {
+          "unauthorised_successes": 0,
+          "cross_domain_visible": false,
+          "spoofed_authority": false,
+          "revocation_immediate": true,
+          "foreign_origin_denied": true
+        }
+      },
+      {
+        "id": "p2-transport-parity",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Create/get/list with the same agent credential and idempotency key through canonical REST, tool HTTP, an actual MCP stdio forwarder and CLI subprocess; compare state/revisions and denial codes.",
+        "expected": {
+          "same_task_all_transports": true,
+          "stored_tasks": 1,
+          "agent_proposal_armed": false,
+          "denial_codes_match": true
+        }
+      },
+      {
+        "id": "p2-owner-lifecycle",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Owner review without signing key, snooze, cosmetic/trigger edits, resolve/cancel, explicit rearm; missing occurrence acknowledgement denied; agent repeated snooze remains bounded to its original 24h deadline.",
+        "expected": {
+          "owner_notify_armed": true,
+          "agent_ack_resolve_rearm_denied": true,
+          "missing_occurrence_ack_denied": true,
+          "snooze_fixed_ceiling": true,
+          "edits_disarm": true,
+          "terminal_not_resurrected": true,
+          "rearm_unarmed_new_generation": true
+        }
+      },
+      {
+        "id": "p2-durable-restart",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Create and owner-review a task through HTTP, stop/restart the actual isolated daemon, retrieve through HTTP/MCP/CLI and verify unchanged task/revision/history/private file modes.",
+        "expected": {
+          "task_equal_after_restart": true,
+          "history_retained": true,
+          "private_modes": true,
+          "fabricated_occurrences": 0
+        }
+      },
+      {
+        "id": "p2-concurrency-cas",
+        "issue": 410,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Race equal expected_revision edits and duplicate idempotent creates over real concurrent HTTP requests; reject a changed payload under the old idempotency key and stale tokens.",
+        "expected": {
+          "cas_winners": 1,
+          "cas_conflicts": 1,
+          "idempotent_ids": 1,
+          "idempotency_drift_denied": true,
+          "history_append_only": true
+        }
+      },
+      {
+        "id": "p1-p2-corruption-recovery",
+        "issue": 410,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Check ENOENT first-run and v1 round-trip; stop daemon, inject truncated/future store, restart and verify 503 preservation. Invoke published P1 explicit backup recovery while stopped; preserve originals, disarm, invalidate old revision and retrieve via daemon.",
+        "expected": {
+          "first_run_empty": true,
+          "corruption_503": true,
+          "future_version_503": true,
+          "original_bytes_preserved": true,
+          "recovery_disarmed": true,
+          "old_revision_denied": true,
+          "private_modes": true
+        }
+      }
+    ],
+    "isolated_profile": "actual daemon + HTTP, MCP stdio forwarder and CLI subprocesses; invented owner/agent tokens only; no human-approval evidence",
+    "recovery_boundary": "P1 published storage primitive while daemon stopped; no invented recovery API",
+    "window_started_at": null
+  }
 }
