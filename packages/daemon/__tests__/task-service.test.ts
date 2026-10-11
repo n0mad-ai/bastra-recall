@@ -140,3 +140,11 @@ test("feature off saves unarmed and provenance is scrubbed", async () => {
     assert.ok(!JSON.stringify(t.origin).includes("synthetic-secret-value"));
   } finally { if (previous === undefined) delete process.env.BASTRA_CONVERSATIONAL_REMINDERS; else process.env.BASTRA_CONVERSATIONAL_REMINDERS = previous; }
 });
+
+test("different reminder goals at the same time/cause stay distinct; exact retries deduplicate", async () => {
+  const f = await fixture(); const first = await f.call(f.agent, "task_create", { ...f.input, arm: true, origin });
+  const second = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: "second-goal", goal: "Send the evaluation", arm: true, origin });
+  assert.notEqual(second.id, first.id); assert.equal(second.armed, true);
+  const retry = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: "retry-second", goal: "Send the evaluation", arm: true, origin });
+  assert.equal(retry.id, second.id); assert.equal(retry.duplicate, true); assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 2);
+});
