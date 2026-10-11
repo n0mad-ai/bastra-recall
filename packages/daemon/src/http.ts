@@ -65,6 +65,8 @@
  *     `Access-Control-Allow-Private-Network: true` beantwortet (nur wenn die
  *     Origin erlaubt ist).
  */
+import { requestTaskReconciliation } from "./task-runtime-signal.js";
+import { tasksPath } from "./task-store.js";
 import { createServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type {
@@ -208,7 +210,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // Activity signal for idle self-shutdown — count real work, not the cheap
     // liveness pings (else a monitor, or bastra.io's admin bridge probing every
     // 60s, would keep us alive forever).
-    if (!ctx.isHealthProbe(url)) onActivity?.();
+    if (!ctx.isHealthProbe(url)) { onActivity?.(); requestTaskReconciliation(tasksPath()); }
 
     // DNS-Rebinding-Gate für alles außer /api/v1/* (dort schützt das Token):
     // die offenen Endpoints sind loopback-only by design — ein nicht-loopback

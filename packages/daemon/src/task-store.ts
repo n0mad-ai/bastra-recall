@@ -1,4 +1,5 @@
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
+import { publishTaskSnapshot } from "./task-runtime-signal.js";
 import { randomUUID } from "node:crypto";
 import { renameSync } from "node:fs";
 import { mkdir, open, readFile, unlink, copyFile, chmod, stat } from "node:fs/promises";
@@ -123,6 +124,7 @@ export async function transactTaskStore(
     mutate(draft);
     const next = cleanStore(draft);
     assertTaskProgress(store, next);
+    if (JSON.stringify(next) === JSON.stringify(store)) return store;
     next.revision = store.revision + 1;
     next.recovery_epoch = store.recovery_epoch;
     if (kind === "normal" && next.tasks.some(t => t.history.length > 9900))
@@ -138,6 +140,7 @@ export async function transactTaskStore(
     try { await stat(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
     if (present) await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
     await atomicWrite(path, payload, assertOwnership);
+    publishTaskSnapshot(path, validated);
     return validated;
   }, { strictLocal: true });
 }
@@ -166,6 +169,7 @@ export async function recoverTaskStore(path: string, actor: string): Promise<{ s
     const payload = JSON.stringify(cleaned);
     if (Buffer.byteLength(payload) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "recovery snapshot exceeds hard limit; original preserved");
     await atomicWrite(path, payload, assertOwnership);
+    publishTaskSnapshot(path, cleaned);
     return { store: cleaned, quarantine };
   }, { strictLocal: true });
 }

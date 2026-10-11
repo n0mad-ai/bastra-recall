@@ -5,6 +5,7 @@
  *
  * Moved verbatim out of `main()` in `index.ts`.
  */
+import { stopTaskRuntimes } from "./task-runtime.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { Vault, SearchIndex, EmbeddingIndex } from "@bastra-recall/core";
 import type { Telemetry } from "./telemetry.js";
@@ -24,6 +25,7 @@ export function registerShutdown(opts: {
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {
     console.error("[bastra-recall] shutting down");
+    stopTaskRuntimes();
     search.stop();
     await vault.stop();
     // #240/B3: drain the background writers before exiting. The embedding

@@ -1,4 +1,5 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
+import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
 import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
 import { resolveTaskCalendar } from "./task-clock.js";
@@ -72,7 +73,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
 }
 export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot> }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
-export async function callTaskCrud(ctx: TaskServiceContext, authorization: string | undefined,
+async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
@@ -179,3 +180,10 @@ export const TASK_INPUT_SCHEMAS = {
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
 };
+
+export async function callTaskCrud(ctx: TaskServiceContext, authorization: string | undefined,
+  operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
+  const result = await callTaskCrudInner(ctx, authorization, operation, raw);
+  requestTaskReconciliation(ctx.path); // queue work; never evaluate sources on a caller's hot path
+  return result;
+}

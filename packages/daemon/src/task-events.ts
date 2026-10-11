@@ -147,10 +147,11 @@ export async function reconcileTaskTime(ctx: TaskServiceContext): Promise<TaskSt
   return transactTaskStore(ctx.path, undefined, s => evaluateTaskSnapshot(s, (ctx.now ?? Date.now)()));
 }
 /** Registered local paths observe snapshots, not every intermediate write. */
-export async function observeTaskSources(ctx: TaskServiceContext): Promise<void> {
+export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = false): Promise<void> {
   const snapshot = await readTaskStore(ctx.path); if (!snapshot.controls.enabled) return;
   let count = 0;
   for (const source of snapshot.sources) {
+    if (activeOnly && !snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
     if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
     const now = (ctx.now ?? Date.now)();
     try {

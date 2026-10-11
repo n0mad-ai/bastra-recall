@@ -155,7 +155,7 @@ export async function assessTaskFreshness(ctx: TaskServiceContext): Promise<void
   await transactTaskStore(ctx.path, undefined, s => {
     for (const update of updates) {
       const task = s.tasks.find(t => t.id === update.id); if (!task || taskBindingHash(task) !== update.verification.binding_hash) continue;
-      if (JSON.stringify(task.verification) === JSON.stringify(update.verification)) continue;
+      if (task.verification && JSON.stringify({ ...task.verification, checked_at: 0 }) === JSON.stringify({ ...update.verification, checked_at: 0 })) continue;
       const before = task.revision++; task.verification = update.verification; task.updated_at = update.verification.checked_at;
       task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "freshness", before_revision: before, after_revision: task.revision, reason: update.verification.reason });
     }
