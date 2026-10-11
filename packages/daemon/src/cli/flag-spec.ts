@@ -1,3 +1,4 @@
+import { TASK_VALUE_FLAGS } from "./task-friendly.js";
 /**
  * Which options each command accepts — checked BEFORE anything runs (#536).
  *
@@ -26,6 +27,7 @@
 
 /** Options that consume the next argv token as their value. */
 export const VALUE_FLAGS: ReadonlySet<string> = new Set([
+  ...TASK_VALUE_FLAGS,
   "--exclude",
   "--since",
   "--source",
@@ -73,7 +75,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   skills: ["--vault"],
   feedback: [],
   rules: ["--dry-run"],
-  tasks: ["--json"],
+  tasks: ["--json", "--arm", "--agent", ...TASK_VALUE_FLAGS],
   drafts: ["--json", "--vault", "--force"],
   patches: [],
   completion: [],

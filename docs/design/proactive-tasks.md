@@ -482,3 +482,16 @@ access remains outside the protection claim; execute remains absent in P7.
 Lease grants are serialized with monotone fences and hashed holder tokens;
 release/revoke stay available even if target/key configuration becomes unavailable.
 P8 construction MUST await independent review of this complete P7 protocol.
+
+P9a user contract: bastra tasks create accepts human options (--goal, --after 7d
+or --when local-time plus --timezone, --domain, explicit --arm); defaults unarmed.
+The shipped CLI is packages/daemon/dist/cli.js (no packages/cli directory). list
+and due print readable what/when/timezone/armed/state with IDs; --json retains the
+machine contract. The short hook card's bastra tasks due command is process-tested.
+Owner tasks setup-hooks issues a separate domain-scoped agent credential into one
+private 0600 config; hooks and MCP use it without shell env changes. An explicit
+BASTRA_TASK_TOKEN overrides it. client-status reports absent/revoked credentials
+and reminds that a running daemon is required. Shared #656 doctor inventory
+reports configuration without claiming authentication or wakeup.
+Status/controls expose open work, receipts, source/adapter/key state and job/backoff.
+Mute/off/stop preserve history, tasks and spent authority; resume renews nothing.

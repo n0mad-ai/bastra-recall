@@ -98,7 +98,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
     case "archive": return cmdArchive(args);
     case "reconcile": return cmdReconcile(args);
     case "rules": return cmdRules(args);
-    case "tasks": return cmdTasks({ sub: args.surface, positional: args.positional });
+    case "tasks": return cmdTasks({ sub: args.surface, positional: args.positional, argv: process.argv.slice(2), json: args.json });
     case "drafts": return cmdDrafts(args);
     case "patches": return cmdPatches(args);
     case "completion": return cmdCompletion(args.surface);

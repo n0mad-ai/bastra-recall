@@ -1,3 +1,5 @@
+import { friendlyTaskCreate, friendlyTaskResult, parseTaskOptions, taskWhen } from "./task-friendly.js";
+import { setupTaskHooks, taskClientCoverage } from "./task-setup.js";
 import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
@@ -30,9 +32,14 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
   if (!resp.ok) throw Object.assign(new Error(body.error), { code: body.code, status: resp.status });
   return body;
 }
-export async function cmdTasks(args: { sub: string | null; positional: string[] }): Promise<number> {
+export async function cmdTasks(args: { sub: string | null; positional: string[]; argv?: string[]; json?: boolean }): Promise<number> {
   try {
-    const words = args.positional.slice(2);
+    const parsed = parseTaskOptions(args.argv ?? args.positional);
+    const words = parsed.words, options = parsed.options;
+    if (args.sub === "setup-hooks") { await setupTaskHooks(); return 0; }
+    if (args.sub === "client-status") {
+      const status = await taskClientCoverage(); process.stdout.write((args.json ? JSON.stringify(status) : `${status.authorized ? "Client-Kennung gültig (Daemon muss laufen)" : "Keine Karten für diesen Client"}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) + "\n"); return 0;
+    }
     if (args.sub === "keys") { await taskOwnerKeys(words); return 0; }
     if (args.sub === "auth") {
       if (!process.stdin.isTTY || !await confirm("Offline owner credential administration. Continue?"))
@@ -49,10 +56,13 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
       } finally { await out.close(); }
       return 0;
     }
-    const agent = words[0] === "agent"; if (agent) words.shift();
+    const agent = words[0] === "agent" || options.agent === true; if (words[0] === "agent") words.shift();
     const signing = args.sub === "approve" || args.sub === "deny";
     if (signing && agent) throw Object.assign(new Error("Owner signing terminal required"), { code: "forbidden" });
-    const input = signing ? {} : words[0] ? await readTaskInputFile(words[0]) : {};
+    let input: any = signing ? {} : options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw new TaskCliInputError(error instanceof Error ? error.message : "Task time/options invalid"); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
+    if (options.id || (words[0] && !words[0].endsWith(".json"))) input.id = String(options.id ?? words[0]);
+    if (options.revision) input.expected_revision = options.revision;
+    if (options.occurrence) input.occurrence_id = options.occurrence;
     const authorization = agent ? await taskClientAuthorization() : `Bearer ${await taskPrivatePrompt("Owner task token (hidden): ").catch(() => { throw new TaskCliInputError("Owner task commands need a controlling terminal. Use agent mode with its assigned credential for automation."); })}`;
     if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
     // Owner commands cannot accidentally inherit an agent mapping from a pasted token.
@@ -61,7 +71,15 @@ export async function cmdTasks(args: { sub: string | null; positional: string[] 
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization); return 0; }
-    process.stdout.write(JSON.stringify(await taskCliCall(args.sub ?? "list", input, authorization, resolveDaemonEndpoint().baseUrl), null, 2) + "\n");
+    const baseUrl = resolveDaemonEndpoint().baseUrl;
+    if (input.id && !["get", "create"].includes(args.sub ?? "list") && !input.expected_revision) {
+      const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision = task.expected_revision;
+      if (options.until) input.until = taskWhen(String(options.until), task.timezone);
+    }
+    if (args.sub === "due") input = { include_acknowledged: true, max_bytes: 16384 };
+    const controls: Record<string, object> = { mute: { muted: true }, unmute: { muted: false }, off: { enabled: false }, on: { enabled: true }, stop: { execution_stopped: true }, resume: { execution_stopped: false } };
+    const result = await taskCliCall(controls[args.sub ?? ""] ? "controls" : args.sub ?? "list", controls[args.sub ?? ""] ?? input, authorization, baseUrl);
+    process.stdout.write((args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result)) + "\n");
     return 0;
   } catch (error) { const failure = taskFailure(error).body;
     if (error instanceof TaskCliInputError) failure.error = error.message;

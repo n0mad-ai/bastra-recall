@@ -240,7 +240,7 @@ async function main(): Promise<void> {
   const reconcileTimer = startVaultReconcile(vault);
   // Dedicated mapping is required even on this trusted legacy transport.
   passiveTaskContext = defaultTaskContext({ vault, vaultPath: VAULT_PATH! });
-  const proactiveJob = process.env.BASTRA_TASK_TOKEN ? startProactiveTaskJob(passiveTaskContext) : undefined;
+  const proactiveJob = (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
   const search = new SearchIndex(vault);
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);

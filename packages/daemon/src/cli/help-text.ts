@@ -205,18 +205,29 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
-  tasks: `bastra tasks — persisted reminders (next-contact delivery)
-Usage: bastra tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm> [agent] [input.json]
-Owner commands prompt for a hidden task token. Agent mode uses BASTRA_TASK_TOKEN.
-Mutations require expected_revision from get; acknowledgement requires occurrence_id.
-Agent snooze is limited to a fixed 24-hour window until owner review.
-Create needs idempotency_key, original_request, goal, resolution_condition, schedule,
-timezone, scope and owner_domains; notify is default. Agent create remains unarmed.
-Offline bootstrap (interactive owner only):
-  bastra tasks auth mint owner|agent actor domain[,domain] new-token-file
-  bastra tasks auth rotate owner|agent actor domain[,domain] new-token-file old-id
+  tasks: `bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
+Usage: bastra tasks <create|list|due|status|setup-hooks|client-status> [options]
+  bastra tasks create --goal "Nach sieben Tagen auswerten" --after 7d --domain personal --timezone Europe/Madrid --arm
+  bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid
+  bastra tasks list | due | status [--json] [--agent]
+  bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
+  bastra tasks get|review|resolve|cancel|rearm <id>
+  bastra tasks acknowledge <id> --occurrence <occurrence-id>
+  bastra tasks snooze <id> --until 2026-10-13T18:00
+  bastra tasks setup-hooks        Owner richtet lokale Hook-Karten mit eigener Agent-Kennung ein
+  bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
+  bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
+Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
+Client-Kennung. Anlegen ist standardmäßig unscharf, --arm braucht Owner-Rolle.
+--after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
+Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
+  bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
   bastra tasks auth revoke credential-id
-Token files are created 0600; tokens never print to the console. No execution here.`,
+  bastra tasks keys enroll domain new-private-file
+  bastra tasks approve|deny proposal-id domain private-key-file
+Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen
+signieren. Notify/prepare funktionieren ohne Signing-Key. Kein Hintergrund-Wakeup;
+BASTRA_TASK_TOKEN überschreibt die private lokale Hook-Konfiguration.`,
   drafts: `bastra drafts — local session drafts
 
 Usage:

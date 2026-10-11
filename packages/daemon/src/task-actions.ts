@@ -52,6 +52,7 @@ export function approvalBinding(proposal: Proposal, challenge: Challenge, decisi
 }
 export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskStore, proposal: Proposal, registry: ApprovalRegistry): Promise<Task> {
   const task = store.tasks.find(t => t.id === proposal.task_id);
+  if (store.controls.adapters["local-artifact-v1"]?.enabled === false) return conflict("Action adapter disabled");
   if (!task || !task.armed || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())) return conflict("Task is inactive");
   if (proposal.status !== "prepared" || task.revision !== proposal.task_revision || task.generation !== proposal.generation
     || proposal.recovery_epoch !== store.recovery_epoch || proposal.task_binding !== taskBindingHash(task) || registryHash(registry) !== proposal.registry_hash

@@ -1,3 +1,4 @@
+import { taskClientToken } from "./task-client-auth.js";
 import { pinnedApprovalRegistry } from "./task-approval-keys.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { taskMemoryChanger, taskMemoryReader } from "./task-freshness.js";
@@ -12,7 +13,7 @@ import { PathLockUnavailableError } from "./path-lock.js";
 export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   description: `${name}: persisted commitment; agent capture stays unarmed. Owner command required for review, acknowledgement, resolution and rearm. Delivery does not resolve.`,
   inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
-  annotations: { readOnlyHint: name === "task_get" || name === "task_list", destructiveHint: false },
+  annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
@@ -37,7 +38,7 @@ export async function callTaskMcp(name: TaskCrudOperation, input: unknown,
 }
 export async function taskClientAuthorization(): Promise<string | undefined> {
   // Client config must hold its explicitly assigned agent credential, not the legacy token.
-  return process.env.BASTRA_TASK_TOKEN ? `Bearer ${process.env.BASTRA_TASK_TOKEN}` : undefined;
+  const token = taskClientToken(); return token ? `Bearer ${token}` : undefined;
 }
 /** Matches both canonical REST and the established /api/v1/<MCP tool> route. */
 export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, method: string, url: string,

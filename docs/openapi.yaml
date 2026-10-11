@@ -776,6 +776,52 @@ paths:
         "404": { $ref: "#/components/responses/TaskError" }
         "409": { $ref: "#/components/responses/TaskError" }
         "503": { $ref: "#/components/responses/TaskError" }
+  /task_status:
+    post:
+      operationId: task_status
+      summary: Task status; controls require owner/all affected domains
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
+  /task_controls:
+    post:
+      operationId: task_controls
+      summary: Task controls; controls require owner/all affected domains
+      description: Mapped task bearer required on every request, including loopback. Agent proposals stay unarmed. Owner review, acknowledgement, resolution and rearm require owner role.
+      security: [{ taskBearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Canonical task input; mutations require expected_revision. See proactive-tasks design for schedule and domain fields. }
+      responses:
+        "200":
+          description: Canonical task result; expected_revision included in task objects
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/TaskError" }
+        "401": { $ref: "#/components/responses/TaskError" }
+        "403": { $ref: "#/components/responses/TaskError" }
+        "404": { $ref: "#/components/responses/TaskError" }
+        "409": { $ref: "#/components/responses/TaskError" }
+        "503": { $ref: "#/components/responses/TaskError" }
   /task_prepare:
     post:
       operationId: task_prepare

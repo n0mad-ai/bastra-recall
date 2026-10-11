@@ -1,3 +1,4 @@
+import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
 import type { ApprovalRegistry } from "./task-approval-keys.js";
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
@@ -35,7 +36,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict", message: string) {
@@ -81,6 +82,8 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (operation === "task_status") return taskStatus(ctx, authorization, raw);
+  if (operation === "task_controls") return taskControls(ctx, authorization, raw);
   if (Object.hasOwn(TASK_ACTION_INPUTS, operation)) return callTaskAction(ctx, authorization, operation as keyof typeof TASK_ACTION_INPUTS, raw);
   if (operation === "task_reconsider") return reconsiderTask(ctx, authorization, raw);
   if (operation === "task_due") {
@@ -192,7 +195,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   return view(store, findTask(store, input.id, principal));
 }
 
-export const TASK_INPUT_SCHEMAS = { ...TASK_ACTION_INPUTS,
+export const TASK_INPUT_SCHEMAS = { task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
