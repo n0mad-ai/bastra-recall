@@ -37,8 +37,9 @@ try {
   let known: Version[] = [];
   const evaluate = async (phase: string, stage: number, expectedRanks?: Map<string, string[]>): Promise<Map<string, string[]>> => {
     const current = c.kind === "conflict" ? known.map(v => v.id) : [known.slice().sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0].id];
-    for (const [i, v] of known.entries()) {
-      const links = c.kind === "conflict" ? "" : `${i ? `replaces: ${known[i - 1].id}\n` : ""}${v.id !== current[0] ? `superseded_by: ${current[0]}\n` : ""}`;
+    for (const v of known) {
+      const previous = known.filter(other => other.valid_from < v.valid_from).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0];
+      const links = c.kind === "conflict" ? "" : `${previous ? `replaces: ${previous.id}\n` : ""}${v.id !== current[0] ? `superseded_by: ${current[0]}\n` : ""}`;
       const body = `${c.title}: ${v.value}. Valid from ${v.valid_from}. Source ${v.source}.`;
       await writeFile(join(memories, `${v.id}.md`), `---\nid: ${v.id}\ntitle: ${JSON.stringify(c.title)}\ntype: reference\nsummary: ${JSON.stringify(body)}\nscope: synthetic-sequence\ntopic_path: [eval]\ntags: []\nrecall_when: []\ncreated: 2026-01-01\nupdated: 2026-01-01\n${links}---\n\n${body}\n`);
     }

@@ -34,7 +34,9 @@
       "field longevity",
       "internal gold set/M1"
     ],
-    "gate": "descriptive synthetic retrieval baseline; unsupported capabilities not passed"
+    "gate": "descriptive synthetic retrieval baseline; unsupported capabilities not passed",
+    "links": "Replacement links follow validity order, not ingestion order; late-old never declares that it replaces the newer current fact."
   },
-  "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>"
+  "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>",
+  "amendment": "Pre-registration robustness review fixed a late-old fixture projection that had linked by ingestion order. The preliminary diagnostic is excluded; rerun before registering numbers."
 }
