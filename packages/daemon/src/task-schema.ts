@@ -1,0 +1,145 @@
+/** Commitment persistence contract (#403); independent of memory/draft schemas. */
+import { z } from "zod";
+
+export const TASK_STORE_VERSION = 1;
+export const TASK_MAX_BYTES = 4 * 1024 * 1024;
+export const TASK_MAX_ROWS = 1000;
+const instant = z.number().int().nonnegative().safe();
+const revision = z.number().int().nonnegative().safe();
+const id = z.string().min(1).max(160);
+const text = z.string().min(1).max(4096);
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const domains = z.array(id).min(1).max(32).refine(v => new Set(v).size === v.length, "duplicate owner domains");
+
+export const taskReferenceSchema = z.strictObject({
+  source_id: id, id, revision: id, hash: hash.optional(),
+  observed_at: instant, state_updated_at: instant.optional(),
+  max_age_ms: instant, provenance: z.enum(["attributable", "unknown", "contested"]),
+});
+
+export const taskScheduleSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("instant"), at: instant }),
+  z.strictObject({ kind: z.literal("duration"), reference_at: instant, duration_ms: instant, at: instant }),
+  z.strictObject({
+    kind: z.literal("calendar"), local_time: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/),
+    timezone: z.string().min(1).max(128), gap: z.literal("reject"),
+    overlap: z.literal("earlier"), at: instant, offset_minutes: z.number().int().min(-840).max(840),
+  }),
+  z.strictObject({
+    kind: z.literal("event"), source_id: id,
+    predicate: z.enum(["equals", "content-version", "git-ref", "premise"]),
+    expected: text, verifier_id: id.optional(),
+  }),
+]);
+
+export const taskSchema = z.strictObject({
+  id, revision, generation: revision,
+  created_at: instant, updated_at: instant,
+  original_request: text, request_source: id, request_reference: id.optional(),
+  creator: id, actor: id, owner_domains: domains,
+  scope: z.strictObject({ kind: z.enum(["personal", "project", "team"]), name: id }),
+  sensitivity: z.enum(["public", "private", "restricted"]),
+  goal: text, resolution_condition: text,
+  state: z.enum(["pending", "due", "snoozed", "resolved", "cancelled", "expired"]),
+  armed: z.boolean(), review_reason: z.string().max(4096).optional(),
+  schedule: taskScheduleSchema,
+  timezone: z.string().min(1).max(128), reference_at: instant,
+  recurrence: z.strictObject({
+    kind: z.enum(["elapsed", "calendar"]), interval: z.number().int().positive().safe(),
+    count: z.number().int().positive().max(10000).optional(), until: instant.optional(),
+    catch_up: z.literal("latest"),
+  }).refine(r => r.count !== undefined || r.until !== undefined, "recurrence must be bounded").optional(),
+  action_level: z.enum(["notify", "prepare", "execute"]),
+  notification_policy: z.strictObject({
+    muted: z.boolean(), retry_interval_ms: z.number().int().positive().safe(),
+    max_attempts: z.number().int().positive().max(100),
+  }),
+  budget: z.strictObject({
+    poll_interval_ms: z.number().int().min(60000).safe(),
+    timeout_ms: z.number().int().positive().max(1000),
+    max_source_bytes: z.number().int().positive().max(1024 * 1024),
+  }),
+  evidence: z.array(taskReferenceSchema).max(100),
+  decision: z.strictObject({
+    id, revision: id, option: text, reason: text, assumption_id: id,
+    assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
+  }).optional(),
+  next_check_at: instant.optional(), snoozed_until: instant.optional(),
+  last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
+  history: z.array(z.strictObject({
+    at: instant, actor: id, operation: id,
+    before_revision: revision, after_revision: revision, reason: text,
+  })).max(10000),
+}).superRefine((task, ctx) => {
+  if (["resolved", "cancelled", "expired"].includes(task.state) && task.armed)
+    ctx.addIssue({ code: "custom", message: "terminal task cannot be armed" });
+  if (task.state === "snoozed" && task.snoozed_until === undefined)
+    ctx.addIssue({ code: "custom", message: "snoozed task requires an instant" });
+  if (task.schedule.kind === "duration" && task.schedule.at !== task.schedule.reference_at + task.schedule.duration_ms)
+    ctx.addIssue({ code: "custom", message: "duration instant disagrees with reference" });
+  if (task.schedule.kind === "event" && task.schedule.predicate === "premise" && !task.schedule.verifier_id)
+    ctx.addIssue({ code: "custom", message: "premise requires a registered verifier" });
+  try { new Intl.DateTimeFormat("en", { timeZone: task.timezone }); }
+  catch { ctx.addIssue({ code: "custom", message: "invalid timezone" }); }
+  if (task.schedule.kind === "calendar" && task.schedule.timezone !== task.timezone)
+    ctx.addIssue({ code: "custom", message: "calendar and task timezone disagree" });
+});
+
+const eventSchema = z.strictObject({
+  sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
+  actor: id, owner_domains: domains, observed_at: instant,
+  state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
+  value: text,
+});
+
+const occurrenceSchema = z.strictObject({
+  id, task_id: id, task_revision: revision, generation: revision,
+  event_key: id, due_at: instant, why: text, missed_count: revision,
+  attempts: z.array(z.strictObject({ at: instant, client: id, outcome: id })).max(100),
+  acknowledgement: z.strictObject({ at: instant, actor: id, proof_id: id }).optional(),
+  resolution: z.strictObject({ at: instant, actor: id, reason: text }).optional(),
+});
+
+// Action records become strict, named schemas in P7 before any action API exists.
+// Empty arrays are the only accepted v1 P1 action state; no unchecked capability.
+const emptyActions = z.array(z.never()).max(0);
+export const taskStoreSchema = z.strictObject({
+  schema_version: z.literal(TASK_STORE_VERSION), revision, recovery_epoch: id, fencing_counter: revision,
+  tasks: z.array(taskSchema).max(TASK_MAX_ROWS), events: z.array(eventSchema).max(10000),
+  checkpoint: revision, occurrences: z.array(occurrenceSchema).max(10000),
+  proposals: emptyActions, challenges: emptyActions, approvals: emptyActions,
+  leases: emptyActions, intents: emptyActions, receipts: emptyActions,
+  consumed_approval_ids: z.array(id).max(10000),
+  recovery_history: z.array(z.strictObject({
+    id, at: instant, from_revision: revision, actor: id, reason: text,
+  })).max(1000),
+  controls: z.strictObject({
+    enabled: z.boolean(), muted: z.boolean(), execution_stopped: z.boolean(),
+    adapters: z.record(id, z.strictObject({ enabled: z.boolean(), coverage: z.string().max(256) })),
+  }),
+}).superRefine((store, ctx) => {
+  for (const rows of [store.tasks, store.events, store.occurrences]) {
+    if (new Set(rows.map(row => row.id)).size !== rows.length)
+      ctx.addIssue({ code: "custom", message: "duplicate record identity" });
+  }
+  const taskIds = new Set(store.tasks.map(t => t.id));
+  if (store.occurrences.some(o => !taskIds.has(o.task_id)))
+    ctx.addIssue({ code: "custom", message: "orphan occurrence" });
+  if (store.checkpoint > (store.events.at(-1)?.sequence ?? 0))
+    ctx.addIssue({ code: "custom", message: "checkpoint beyond journal" });
+  for (let i = 1; i < store.events.length; i++) {
+    if (store.events[i].sequence <= store.events[i - 1].sequence)
+      ctx.addIssue({ code: "custom", message: "non-contiguous journal" });
+  }
+});
+
+export type Task = z.infer<typeof taskSchema>;
+export type TaskStore = z.infer<typeof taskStoreSchema>;
+
+/** ENOENT is the pre-feature migration: memories and drafts remain untouched. */
+export function emptyTaskStore(): TaskStore {
+  return { schema_version: 1, revision: 0, recovery_epoch: "initial", fencing_counter: 0,
+    tasks: [], events: [], checkpoint: 0, occurrences: [], proposals: [],
+    challenges: [], approvals: [], leases: [], intents: [], receipts: [], consumed_approval_ids: [], recovery_history: [],
+    controls: { enabled: true, muted: false, execution_stopped: true, adapters: {} } };
+}

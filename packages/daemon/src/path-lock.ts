@@ -51,7 +51,7 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -67,6 +67,9 @@ const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
 
 export interface PathLockOptions {
+  /** Opt-in local transactions: never displace a live/unknown owner, never
+   * fail open. Callback receives a synchronous ownership check for commits. */
+  strictLocal?: boolean;
   /** Response-path claims skip a busy local chain rather than joining it. */
   noQueue?: boolean;
   /**
@@ -122,7 +125,7 @@ interface LockBody {
  * lock files can carry the same pid+host+ts down to the millisecond, but never
  * the same random token.
  */
-async function acquireFileLock(path: string, giveUp = "writing unserialized"): Promise<string | null> {
+async function acquireFileLock(path: string, giveUp = "writing unserialized", strictLocal = false): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
   const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
@@ -152,7 +155,9 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized"): P
     // of a takeover race lands in the old behaviour, not in something worse.
     try {
       const st = await stat(lockPath);
-      if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+      if (strictLocal) {
+        if (reclaimDeadLocal(lockPath, body)) return token;
+      } else if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
         await unlink(lockPath).catch(() => undefined);
         continue;
       }
@@ -167,6 +172,51 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized"): P
     }
     await delay(5 + Math.floor(Math.random() * 10));
   }
+}
+
+/** Strict local reclaim has no age-only live-owner takeover. The existing
+ * claim remains present until an exclusive reclaimer atomically replaces it.
+ * Unknown owner or an interrupted reclaim marker requires explicit recovery. */
+function deadLocal(raw: string): boolean {
+  try {
+    const body = JSON.parse(raw) as LockBody;
+    if (body.host !== hostnameSafe() || !Number.isSafeInteger(body.pid) || body.pid <= 0 || !body.token) return false;
+    try { process.kill(body.pid, 0); return false; }
+    catch (err) { return (err as NodeJS.ErrnoException).code === "ESRCH"; }
+  } catch { return false; }
+}
+
+function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
+  let stale: string;
+  try { stale = readFileSync(lockPath, "utf8"); } catch { return false; }
+  if (!deadLocal(stale)) return false;
+  const mark = `${lockPath}.reclaim`;
+  let fd: number;
+  try { fd = openSync(mark, "wx", 0o600); } catch { return false; }
+  const tmp = `${mark}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(fd, replacement, "utf8");
+    if (readFileSync(lockPath, "utf8") !== stale || !deadLocal(stale)) return false;
+    writeFileSync(tmp, replacement, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    // No empty-lock interval; all other strict reclaimers see the marker.
+    renameSync(tmp, lockPath);
+    return true;
+  } catch { return false; }
+  finally {
+    closeSync(fd);
+    try { unlinkSync(tmp); } catch { /* not created or already renamed */ }
+    try { unlinkSync(mark); } catch { /* ownership stays in the lock */ }
+  }
+}
+
+function ownershipCheck(path: string, token: string): () => void {
+  return () => {
+    try {
+      const current = JSON.parse(readFileSync(pathLockFilePath(path), "utf8")) as LockBody;
+      if (current.token === token && current.pid === process.pid && current.host === hostnameSafe()) return;
+    } catch { /* unknown is not ours */ }
+    throw new PathLockUnavailableError();
+  };
 }
 
 /**
@@ -199,18 +249,19 @@ async function releaseFileLock(path: string, token: string): Promise<void> {
  * `fn` must do its whole read-modify-write inside; a snapshot taken before the
  * call is exactly the stale read this exists to prevent.
  */
-export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
-  const guarded = opts.crossProcess
+export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
+  const required = opts.requireLock || opts.strictLocal;
+  const guarded = opts.crossProcess || opts.strictLocal
     ? async (): Promise<T> => {
-        const token = await acquireFileLock(path, opts.requireLock ? "not writing" : undefined);
-        if (token === null && opts.requireLock) throw new PathLockUnavailableError();
+        const token = await acquireFileLock(path, required ? "not writing" : undefined, opts.strictLocal);
+        if (token === null && required) throw new PathLockUnavailableError();
         try {
-          return await fn();
+          return await fn(token && opts.strictLocal ? ownershipCheck(path, token) : () => {});
         } finally {
           if (token) await releaseFileLock(path, token);
         }
       }
-    : fn;
+    : () => fn(() => {});
   depths.set(path, (depths.get(path) ?? 0) + 1);
   const prev = chains.get(path) ?? Promise.resolve();
   const next = prev.then(guarded, guarded).finally(() => {
