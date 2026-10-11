@@ -35,9 +35,10 @@ Under the new review registration, unchanged P3 e78ff4f4 produced **21 passing
 and 6 failing replays / 27 observed of 72 required**: every automatic phase had
 0 instead of 1 firing; file and Git each recorded 2 instead of 4 events. Both
 controls failed all three repetitions. #402/#410 have observed functional failures;
-#598 human confirmation remains pending. Corrected 4bc482fb is being rerun; builder
-handover defers automatic integration to P5, so an internal engine alone cannot
-pass that control. Earlier mechanical passes are preserved, not relabelled.
+#598 human confirmation remains pending. Corrected 4bc482fb independently produced 24 passing and 3 failing replays:
+file/Git A,B,A,B now yields four events each in 3/3 repetitions; automatic
+start/contact/polling still fails 3/3. Builder handover defers runtime wiring
+to P5, so an internal engine alone cannot pass that control. Earlier mechanical passes are preserved, not relabelled.
 
 Each revision is a separate segment; repeated observations across revisions are
 not pooled into an empirical error rate. No human or longitudinal window started.
