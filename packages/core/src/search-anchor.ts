@@ -6,6 +6,7 @@
  * sie brauchen (recall_when-DF, Phrasen aus dem Vault), kommt als Argument.
  */
 import { tokenizeWithIdentifiers } from "./query-normalize.js";
+import { foldTerm } from "./fold.js";
 import { PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN } from "./stopwords.js";
 
 /**
@@ -41,7 +42,7 @@ export function matchedRecallWhen(
   const match = r.match;
   if (!match || queryTerms.size === 0) return false;
   for (const [term, fields] of Object.entries(match)) {
-    if (fields.includes("recall_when_flat") && queryTerms.has(term.toLowerCase())) return true;
+    if (fields.includes("recall_when_flat") && queryTerms.has(foldTerm(term))) return true;
   }
   return false;
 }
@@ -111,7 +112,7 @@ export function anchorStrength(
 
   const matchedTriggerTerms = new Set<string>();
   for (const [term, fields] of Object.entries(match)) {
-    const folded = term.toLowerCase();
+    const folded = foldTerm(term);
     if (fields.includes("recall_when_flat") && queryTerms.has(folded)) {
       matchedTriggerTerms.add(folded);
     }
@@ -128,7 +129,7 @@ export function anchorStrength(
     for (const word of phrase.split(/\s+/)) {
       if (!word) continue;
       for (const rawToken of tokenizeWithIdentifiers(word)) {
-        const folded = rawToken.toLowerCase();
+        const folded = foldTerm(rawToken);
         if (!matchedTriggerTerms.has(folded)) continue;
         const df = recallWhenDocFreq(folded);
         if (looksLikeIdentifier(rawToken) && df > 0 && df <= ANCHOR_RARE_DF_MAX) return "strong";
@@ -163,7 +164,7 @@ export function anchorStrength(
     const originTerms = new Map<string, Set<string>>();
     for (const word of phrase.split(/\s+/)) {
       if (!word) continue;
-      const emitted = tokenizeWithIdentifiers(word).map((t) => t.toLowerCase());
+      const emitted = tokenizeWithIdentifiers(word).map(foldTerm);
       if (emitted.length === 0) continue;
       const hits = emitted.filter((t) => matchedTriggerTerms.has(t) && isSignificantTriggerTerm(t));
       if (hits.length === 0) continue;

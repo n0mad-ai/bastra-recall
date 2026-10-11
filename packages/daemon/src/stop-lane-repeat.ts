@@ -14,6 +14,8 @@
  * too, so the caller only counts a restatement that carries emphasis.
  */
 
+import { foldTerm } from "@bastra-recall/core";
+
 const REPEAT_SIMILARITY_MIN = 0.6;
 /** Short acknowledgements ("ok", "weiter", "continue") are never a restatement. */
 const REPEAT_MIN_LETTERS = 12;
@@ -21,7 +23,8 @@ const REPEAT_MIN_LETTERS = 12;
 const REPEAT_COMPARE_CHARS = 1000;
 
 export function bigramSet(content: string): Set<string> | null {
-  const text = (content.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(" ").slice(0, REPEAT_COMPARE_CHARS);
+  // The fold every matcher uses; marks stay with their letter (`\p{M}`).
+  const text = (foldTerm(content).match(/[\p{L}\p{M}\p{N}]+/gu) ?? []).join(" ").slice(0, REPEAT_COMPARE_CHARS);
   if ((text.match(/\p{L}/gu) ?? []).length < REPEAT_MIN_LETTERS) return null;
   const out = new Set<string>();
   for (let i = 0; i < text.length - 1; i++) out.add(text.slice(i, i + 2));

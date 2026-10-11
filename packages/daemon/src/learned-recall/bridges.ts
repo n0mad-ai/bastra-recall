@@ -32,7 +32,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { capAtWordBoundary } from "@bastra-recall/core";
+import { capAtWordBoundary, foldTerm } from "@bastra-recall/core";
 import { bridgeLanguage, isBridgeLanguage } from "./language.js";
 
 export interface Bridge {
@@ -140,9 +140,19 @@ export function isMachineVocabulary(terms: string[]): boolean {
  *  Turkish "şifresi" to "ifresi". */
 const TERM_SPLIT_RE = /[^\p{L}\p{M}\p{N}]+/u;
 
+/**
+ * Spellings of one word that must meet at mint and at query time: the core
+ * fold (`foldTerm`: NFKC, Turkish İ/ı, ß, invisible characters, the in-word
+ * apostrophe of Cyrillic "обʼєкт"/"об'єкт"), plus the backtick and left quote
+ * Cyrillic keyboards also produce for that apostrophe.
+ */
+function foldForTerms(text: string): string {
+  return foldTerm(text.replace(/(?<=\p{Script=Cyrillic})[‘`](?=\p{Script=Cyrillic})/gu, ""));
+}
+
 export function distinctiveTerms(text: string): string[] {
   const seen = new Set<string>();
-  for (const raw of text.toLowerCase().split(TERM_SPLIT_RE)) {
+  for (const raw of foldForTerms(text).split(TERM_SPLIT_RE)) {
     if (raw.length < MIN_TERM_LEN) continue;
     if (GENERIC_TERMS.has(raw)) continue;
     if (isEphemeralTerm(raw)) continue;
@@ -153,7 +163,7 @@ export function distinctiveTerms(text: string): string[] {
 
 /** Stable id so the same bridge from two contributors dedupes to one file. */
 export function bridgeId(lang: string, trigger: string[], expansion: string[]): string {
-  const norm = (xs: string[]): string => [...new Set(xs.map((x) => x.toLowerCase()))].sort().join(" ");
+  const norm = (xs: string[]): string => [...new Set(xs.map(foldTerm))].sort().join(" ");
   return createHash("sha256").update(`${lang}\n${norm(trigger)}\n${norm(expansion)}`).digest("hex").slice(0, 16);
 }
 
@@ -183,7 +193,7 @@ export function mintBridge(
   if (trigger.length === 0) return null;
   const triggerSet = new Set(trigger);
   const expansion = memoryTerms
-    .map((t) => t.toLowerCase())
+    .map(foldTerm)
     .filter((t) => t.length >= MIN_TERM_LEN && !GENERIC_TERMS.has(t) && !triggerSet.has(t))
     .filter((t, i, a) => a.indexOf(t) === i)
     .slice(0, MAX_EXPANSION_TERMS);
@@ -243,7 +253,9 @@ const MIN_TRIGGER_OVERLAP = 2;
 const requiredOverlap = (b: Bridge): number => Math.min(MIN_TRIGGER_OVERLAP, b.trigger_terms.length);
 function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
   let n = 0;
-  for (const t of b.trigger_terms) if (queryTerms.has(t)) n++;
+  // Query terms are folded (distinctiveTerms); a pool file minted before the
+  // fold still holds "schließt" or "i̇stanbul", so the stored side folds too.
+  for (const t of b.trigger_terms) if (queryTerms.has(foldTerm(t))) n++;
   return n;
 }
 
@@ -440,7 +452,7 @@ export class BridgePool {
       let fromThis = 0;
       for (const e of b.expansion_terms) {
         if (fromThis >= cap) break;
-        if (!queryTerms.has(e) && !added.has(e)) {
+        if (!queryTerms.has(foldTerm(e)) && !added.has(e)) {
           added.add(e);
           fromThis++;
         }

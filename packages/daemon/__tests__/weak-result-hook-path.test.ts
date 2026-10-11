@@ -82,8 +82,10 @@ test("#249: no matched_terms at all cannot be a title match", () => {
 test("#249: title matching is diacritic- and case-tolerant", () => {
   const h = hit({ title: "Größe der Lösung", matched_terms: ["größe"] });
   assert.equal(hitTitleMatches(h), true);
-  assert.equal(hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["GRÖSSE"] })), false,
-    "ß and SS are different tokens — the tolerance is about case and stemming, not transliteration");
+  assert.equal(hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["GRÖSSE"] })), true,
+    "GRÖSSE is the upper case of größe — Unicode case folding maps ß to ss, and the title check folds case");
+  assert.equal(hitTitleMatches(hit({ title: "Größe der Lösung", matched_terms: ["grosse"] })), false,
+    "folding is about case, not transliteration: ö is not o");
 });
 
 // ─── #230: no_home — the stricter claim ──────────────────────────────────

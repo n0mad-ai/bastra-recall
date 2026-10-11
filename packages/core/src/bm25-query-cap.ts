@@ -28,6 +28,7 @@
  * dann trotzdem.
  */
 import { capAtWordBoundary, tokenizeWithIdentifiers } from "./query-normalize.js";
+import { foldTerm } from "./fold.js";
 
 /** Zeichen-Budget für den BM25-Arm. 200 aus #362: das 100–200-Zeichen-Band
  *  liegt bei bm25 p50 46 ms / p90 61 ms und passt damit neben den ~140 ms
@@ -141,7 +142,7 @@ function collectCandidates(query: string, docFreq: DocFreqFn): Candidate[] {
   let i = 0;
   for (const word of query.split(/\s+/)) {
     if (!word) continue;
-    const key = word.toLowerCase();
+    const key = foldTerm(word);
     if (seen.has(key)) continue;
     seen.add(key);
     const emitted = tokenizeWithIdentifiers(word);

@@ -19,11 +19,12 @@
  * "Stromrechnung Januar nachschlagen" bleibt unangetastet, "sonstiges" nicht.
  */
 
-/** Wortmenge, kleingeschrieben, ohne Satzzeichen — nur zum Vergleichen. */
+import { foldTerm } from "@bastra-recall/core";
+
+/** Wortmenge, gefaltet (`foldTerm`), ohne Satzzeichen — nur zum Vergleichen. */
 function words(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
+  return foldTerm(text)
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter(Boolean);
 }
 

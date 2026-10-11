@@ -118,7 +118,9 @@ test("#707: distinctiveTerms keeps every letter — Cyrillic, Greek, Turkish, De
   assert.deepEqual(distinctiveTerms("почему сервер падает"), ["почему", "сервер", "падает"]);
   assert.deepEqual(distinctiveTerms("γιατί πέφτει ο διακομιστής"), ["γιατί", "πέφτει", "διακομιστής"]);
   assert.ok(distinctiveTerms("veritabanı şifresi nerede").includes("şifresi"), "Turkish ş is kept, not cut to 'ifresi'");
-  assert.ok(distinctiveTerms("İstanbul sunucusu").includes("i̇stanbul"), "the combining dot of a lowercased İ stays inside the word");
+  // Folded like every other matcher (core foldTerm): a capital İ meets the
+  // "istanbul" a user types on a keyboard without it, and the word stays whole.
+  assert.ok(distinctiveTerms("İstanbul sunucusu").includes("istanbul"), "a capital İ folds to i and the word stays whole");
   assert.ok(distinctiveTerms("सर्वर क्रैश होता है").includes("सर्वर"), "Devanagari vowel signs (\\p{M}) stay inside the word");
 });
 
