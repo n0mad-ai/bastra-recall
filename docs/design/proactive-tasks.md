@@ -708,8 +708,11 @@ is the transient SHA-256 digest, with a distinct `source-content` purpose. Thus
 raw expected text and a supplied lowercase SHA-256 digest agree; only the HMAC is
 stored, and a supplied content digest is replaced with a harmless display label.
 Git-ref OIDs are raw version identifiers, including 64-character Git OIDs;
-content-version baselines retain their version text. Version/CAS byte digests,
-evidence revisions and immutable signing records remain integrity metadata.
+actual registered file/Git/Memory sources retain version text. General event
+sources replace supplied digests with a private baseline for every predicate,
+including content-version and git-ref. Version/CAS byte digests and evidence
+revisions remain integrity metadata; pre-upgrade signing bindings are retired
+as described below.
 The decision-body retry digest is separately keyed with `decision-body`.
 
 Valid live snapshots/backups convert old content comparison digests directly to
@@ -733,3 +736,32 @@ The private key is never exported, archived, sent to browsers or logged. Same-UI
 filesystem access to that key and authorized online equality requests remain
 outside the offline dictionary protection. No confidentiality claim is made for
 public Git/file/Memory version identifiers or approved exact execution bytes.
+
+### R8 remaining content/privacy cases
+
+The display exception is now based on registered file/Git/Memory source kind,
+never merely on the predicate label. Create/edit and migration of already-keyed
+R7 stores replace generic event digest displays; cold export does the same.
+Raw/client-SHA comparisons and actual version-trigger semantics remain intact.
+
+New preparations and fresh rollback preparations carry binding_version=2 inside
+the exact signed proposal body. All older proposals lacking this proof-format
+marker are conservatively stale, even if their baseline was already keyed during
+R7. Migration removes task_binding and dependent challenge/approval binding_hash
+and signature, including valid backups and managed archives. No old digest is
+converted into new signing authority. Old proposal lookup returns a stale
+metadata entry requiring new preparation; new lease/challenge/execute attempts
+cannot reuse the retired proof. Historical cryptographic verification of these
+removed signatures is no longer available; IDs, decisions, permanently consumed
+approval IDs, intents, receipts and exact executed retries stay intact. Fresh
+rollback uses its receipt/backup and requires new approvals under existing rules.
+Cold stale records omit the reconstructible old signing body and retain only
+safe tombstone metadata needed for identity and independently reviewed rollback.
+
+Known boundary: already copied pre-upgrade API responses, signing material and
+exports cannot be recalled or made confidential after the fact. An observer who
+kept a complete original unkeyed proposal can still run the old dictionary probe
+against that historical copy. This change stops supplying those legacy bindings
+from the managed live/backup/archive data; it does not promise retroactive secrecy.
+Same-UID key access, authorized online comparisons, #1198 and the Owner's later
+prepare/execute policy discussion remain as documented, without a new policy here.

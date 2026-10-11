@@ -51,8 +51,8 @@ async function migrateContentComparisons(path: string, store: any): Promise<void
         schedule.expected_hash = await privateContentComparison(path, old, true);
         // The old cache binding contains the former public digest; discard it.
         delete task.verification;
-        if (/^[a-f0-9]{64}$/.test(schedule.expected) && !store.sources?.some((source:any)=>source.id===schedule.source_id && ["git","memory"].includes(source.kind)) && !["content-version", "git-ref"].includes(schedule.predicate)) schedule.expected = "Private content baseline";
       }
+      if (/^[a-f0-9]{64}$/.test(schedule.expected) && privateBaseline(store,schedule)) schedule.expected = "Private content baseline";
     }
     if (/^[a-f0-9]{64}$/.test(task.decision_change?.new_body_hash ?? "")) task.decision_change.new_body_hash = await privateTaskComparison(path,"decision-body",task.decision_change.new_body_hash);
     if (/^[a-f0-9]{64}$/.test(task.last_material_hash ?? "")) task.last_material_hash = await privateContentComparison(path, task.last_material_hash, true);
@@ -62,6 +62,21 @@ async function migrateContentComparisons(path: string, store: any): Promise<void
     if (/^[a-f0-9]{64}$/.test(event.claim?.value_hash ?? "")) event.claim.value_hash = await privateContentComparison(path, event.claim.value_hash, true);
   }
   for (const source of store.sources ?? []) if (/^[a-f0-9]{64}$/.test(source.last_value_hash ?? "")) source.last_value_hash = await privateContentComparison(path, source.last_value_hash, true);
+}
+/** Legacy binding chains cannot become fresh authority. Preserve IDs/spending only. */
+export function retireLegacyTaskProposals(store: any): void {
+  const retired = new Set<string>();
+  for (const proposal of store.proposals ?? []) {
+    if (proposal.binding_version === 2 && proposal.status !== "stale") continue;
+    const old = proposal.task_binding;
+    proposal.status = "stale"; proposal.binding_version = 2; delete proposal.task_binding; retired.add(proposal.id);
+    for (const task of store.tasks ?? []) if (old && task.verification?.binding_hash === old) delete task.verification;
+  }
+  for (const challenge of store.challenges ?? []) if (retired.has(challenge.proposal_id)) delete challenge.binding_hash;
+  for (const approval of store.approvals ?? []) if (retired.has(approval.proposal_id)) { delete approval.binding_hash; delete approval.signature; }
+}
+function privateBaseline(store: any, schedule: any): boolean {
+  return !store.sources?.some((source: any) => source.id === schedule.source_id && ["file", "git", "memory"].includes(source.kind));
 }
 /** Drop unsafe legacy verifiers; raw secrets cannot be recovered for migration. */
 export function dropLegacyTaskComparisons(store: any): void {
@@ -82,8 +97,13 @@ export function exportTaskComparisons(store: any): void {
   }
   // A supplied secret digest is not a display string. Versions remain displayable.
   for (const task of store.tasks ?? []) if (task.schedule?.kind === "event" && /^[a-f0-9]{64}$/.test(task.schedule.expected)
-    && !store.sources?.some((source:any)=>source.id===task.schedule.source_id && ["git","memory"].includes(source.kind))
-    && !["content-version", "git-ref"].includes(task.schedule.predicate)) task.schedule.expected = "Private content baseline";
+    && privateBaseline(store,task.schedule)) task.schedule.expected = "Private content baseline";
+  retireLegacyTaskProposals(store);
+  // Export stale IDs as tombstones, never the old reconstructible signing body.
+  for (const proposal of store.proposals ?? []) if (proposal.status === "stale") {
+    Object.assign(proposal,{task_revision:0,generation:0,recovery_epoch:"retired-private-binding",actor:"retired",created_at:0,
+      target_hash:"0".repeat(64),payload:"",payload_hash:sha(""),registry_hash:"0".repeat(64),source_revisions:[]});
+  }
   for (const task of store.tasks ?? []) delete task.verification;
   strip(store);
 }
@@ -121,6 +141,7 @@ export async function migrateTaskComparisons(path: string): Promise<void> {
       let s:any;try{decodeTaskStore(raw);s=JSON.parse(raw);}catch{continue;}if(!Array.isArray(s.tasks))continue;
       dropLegacyTaskComparisons(s);
       await migrateContentComparisons(path, s);
+      retireLegacyTaskProposals(s);
       for(const a of s.archives??[]) {const p=plan.find(p=>p.id===a.id);if(p){if(a.hash!==p.before&&a.hash!==p.after)throw new TaskStoreError("corrupt","Private archive index drift");a.hash=p.after;const changed=archiveChanges.find(c=>c.id===a.id);if(changed&&Object.keys(changed.bindings).length)a.creation_bindings=changed.bindings;}}
       const payload=JSON.stringify(s);if(payload!==raw)await atomicWrite(candidate,payload,ownership);
     }

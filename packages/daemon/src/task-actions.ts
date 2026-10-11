@@ -68,6 +68,7 @@ export function approvalBinding(proposal: Proposal, challenge: Challenge, decisi
     binding_hash: challenge.binding_hash, expires_at: challenge.expires_at, boot_id: challenge.boot_id, monotonic_deadline: challenge.monotonic_deadline }, decision };
 }
 export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskStore, proposal: Proposal, registry: ApprovalRegistry): Promise<Task> {
+  if (proposal.status === "stale" || !proposal.task_binding) return fail("approval_stale", "Private binding retired; prepare again");
   const task = store.tasks.find(t => t.id === proposal.task_id);
   if (!task || (!proposal.rollback_of && (!task.armed || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())))) return conflict("Task is inactive");
   if (proposal.status === "denied") return fail("approval_denied", "Proposal denied");
@@ -94,13 +95,13 @@ export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskS
 }
 export function taskApprovalStatus(ctx: TaskServiceContext, store: TaskStore, proposal: Proposal, registry: ApprovalRegistry) {
   const approvals = proposal.required_domains.map(domain => store.approvals.filter(a => a.proposal_id === proposal.id && a.domain === domain).slice(-1).find(a => a.decision === "approve"
-    && a.revoked_at === undefined && !store.consumed_approval_ids.includes(a.id) && a.registry_hash === registryHash(registry) && liveActionDeadline(ctx, a) && a.binding_hash === actionHash(proposal)
+    && a.signature !== undefined && a.revoked_at === undefined && !store.consumed_approval_ids.includes(a.id) && a.registry_hash === registryHash(registry) && liveActionDeadline(ctx, a) && a.binding_hash === actionHash(proposal)
     && store.challenges.some(c => c.id === a.challenge_id && c.proposal_id === proposal.id && c.domain === domain && c.consumed_at !== undefined
       && c.expires_at === a.expires_at && c.monotonic_deadline === a.monotonic_deadline && liveActionDeadline(ctx, c)
-      && registry.keys.some(k => k.id === a.key_id && k.domain === domain && verifyTaskApproval(k.public_key, approvalBinding(proposal, c, "approve"), a.signature)))));
+      && registry.keys.some(k => k.id === a.key_id && k.domain === domain && verifyTaskApproval(k.public_key, approvalBinding(proposal, c, "approve"), a.signature!)))));
   const domain_status = proposal.required_domains.map(domain => {
     const rows = store.approvals.filter(a => a.proposal_id === proposal.id && a.domain === domain), latest = rows.at(-1);
-    const reason = proposal.status === "denied" ? "approval_denied" : proposal.status === "revoked" ? "approval_revoked" : !latest ? "approval_missing"
+    const reason = proposal.status === "stale" ? "approval_stale" : proposal.status === "denied" ? "approval_denied" : proposal.status === "revoked" ? "approval_revoked" : !latest ? "approval_missing"
       : latest.revoked_at !== undefined ? "approval_revoked" : store.consumed_approval_ids.includes(latest.id) ? "approval_consumed" : !liveActionDeadline(ctx, latest) ? "approval_expired"
       : !approvals[proposal.required_domains.indexOf(domain)] ? "approval_stale" : "approved";
     return { domain, reason };
@@ -135,7 +136,7 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
       const observed = await readTaskTarget(registry, input.target_id); requireReversiblePayload(observed.payload);
       const body = { revision: 0, task_id: task.id, task_revision: task.revision, generation: task.generation, recovery_epoch: store.recovery_epoch,
         actor: principal.actor_id, target_id: input.target_id, target_hash: observed.hash, operation: "replace-utf8" as const, payload: input.payload, payload_hash: bytesHash(input.payload),
-        task_binding: taskBindingHash(task), registry_hash: registryHash(registry), required_domains: domains,
+        task_binding: taskBindingHash(task), binding_version: 2 as const, registry_hash: registryHash(registry), required_domains: domains,
         source_revisions: sources.map(s => ({ id: s.id, revision: String(s.revision) })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0), scope: task.scope, sensitivity: task.sensitivity, status: "prepared" as const };
       const proposal = { ...body, id: actionHash(["task-proposal-v1", body]), created_at: now };
       await validateTaskProposal(ctx, store, proposal, registry);
@@ -179,6 +180,10 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
     const proposal = findProposal(store, input.proposal_id, principal);
     if (operation === "task_proposal") {
       if (principal.role !== "owner") requireTaskDomains(principal, proposal.required_domains);
+      if (proposal.status === "stale") {
+        result = { proposal: { id: proposal.id, task_id: proposal.task_id, target_id: proposal.target_id, status: "stale" },
+          binding_status: "approval_stale", review_reason: "Private binding retired; prepare again", ...taskApprovalStatus(ctx,store,proposal,registry) }; return;
+      }
       let binding_status = "current";
       try { await validateTaskProposal(ctx, store, proposal, registry); } catch (error) { binding_status = (error as {code?:string}).code ?? "approval_stale"; }
       const target = await readTaskTarget(registry, proposal.target_id);

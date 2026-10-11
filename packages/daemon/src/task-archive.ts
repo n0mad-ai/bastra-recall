@@ -35,8 +35,8 @@ export async function archivedIntent(path:string,s:TaskStore,actor:string,key:st
 const groupRows=["tasks","occurrences","proposals","challenges","approvals","leases","intents","receipts"] as const;
 function selectGroup(s:TaskStore,ids:Set<string>):TaskStore{
   const group=structuredClone(s);group.archives=[];group.tasks=s.tasks.filter(t=>ids.has(t.id)).map(t=>structuredClone(t));
-  group.proposals=s.proposals.filter(p=>ids.has(p.task_id));const proposals=new Set(group.proposals.map(p=>p.id));
-  group.occurrences=s.occurrences.filter(o=>ids.has(o.task_id));group.challenges=s.challenges.filter(c=>proposals.has(c.proposal_id));group.approvals=s.approvals.filter(a=>proposals.has(a.proposal_id));
+  group.proposals=s.proposals.filter(p=>ids.has(p.task_id)).map(row=>structuredClone(row));const proposals=new Set(group.proposals.map(p=>p.id));
+  group.occurrences=s.occurrences.filter(o=>ids.has(o.task_id));group.challenges=s.challenges.filter(c=>proposals.has(c.proposal_id)).map(row=>structuredClone(row));group.approvals=s.approvals.filter(a=>proposals.has(a.proposal_id)).map(row=>structuredClone(row));
   group.leases=s.leases.filter(l=>ids.has(l.task_id));group.intents=s.intents.filter(i=>ids.has(i.task_id));group.receipts=s.receipts.filter(r=>ids.has(r.task_id));
   const sources=new Set(group.tasks.flatMap(t=>[...t.evidence.map(e=>e.source_id),...(t.schedule.kind==="event"?[t.schedule.source_id]:[])]));
   group.events=s.events.filter(e=>sources.has(e.source_id)||group.occurrences.some(o=>o.event_key===`event:${e.id}`)).map(row=>structuredClone(row));group.sources=s.sources.filter(src=>sources.has(src.id)).map(row=>structuredClone(row));group.checkpoint=0;group.evaluation_cursor=0;group.recovery_history=[];
