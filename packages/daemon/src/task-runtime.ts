@@ -20,7 +20,7 @@ export class TaskRuntime {
   private unsubscribe: Array<() => void>; private cleanup: Array<() => void> = [];
   readonly ready: Promise<void>;
   constructor(readonly ctx: TaskServiceContext) {
-    this.unsubscribe = [onTaskSnapshot(ctx.path, store => { this.snapshot = store; this.loaded = true; this.installWatcher(); }),
+    this.unsubscribe = [onTaskSnapshot(ctx.path, store => { this.snapshot = store; this.loaded = true; this.ioStopped = false; this.installWatcher(); }),
       onTaskWake(ctx.path, () => this.contact())];
     if (ctx.memorySubscribe) this.unsubscribe.push(ctx.memorySubscribe(id => {
       this.invalidBindings.add(id); this.contact();
@@ -49,7 +49,7 @@ export class TaskRuntime {
       const snapshot = await readTaskStore(this.ctx.path);
       if (this.loaded && snapshot.recovery_epoch === this.snapshot.recovery_epoch && snapshot.revision < this.snapshot.revision) return false;
       const changed = !this.loaded || snapshot.revision !== this.snapshot.revision || snapshot.recovery_epoch !== this.snapshot.recovery_epoch;
-      this.snapshot = snapshot; this.loaded = true; return changed;
+      this.snapshot = snapshot; this.loaded = true; this.ioStopped = false; return changed;
     } catch { this.lastError = "task_store_unavailable"; this.ioStopped = true; throw new Error("Task store unavailable"); }
   }
   get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state)) || (this.ctx.executionHost === true && this.snapshot.intents.some(i => i.state === "pending"))); }

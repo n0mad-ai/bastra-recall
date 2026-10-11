@@ -126,3 +126,19 @@ test("event arriving DURING an older assessment never inherits its backoff or di
     await f.job.runtime.tick(); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
   } finally { release(); f.job.stop(); await f.job.runtime.settle(); }
 });
+
+test("a healthy committed event after store failure clears global I/O stop and never inherits its hour deadline",async()=>{
+ const f=await fixture();await callTaskCrud(f.ctx,f.auth,"task_source_register",{id:"producer",kind:"event",producer_actor:"owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:1000,enabled:true});await callTaskCrud(f.ctx,f.auth,"task_create",{...f.input,schedule:{kind:"event",source_id:"producer",predicate:"equals",expected:"yes"}});const job=startProactiveTaskJob(f.ctx);await job.runtime.ready;
+ try{const raw=await readFile(f.ctx.path,"utf8");await writeFile(f.ctx.path,"broken");await assert.rejects((job.runtime as any).refresh());assert.equal(job.runtime.ioStopped,true);job.runtime.nextTick=f.ctx.now()+3600000;await writeFile(f.ctx.path,raw);
+  await callTaskCrud(f.ctx,f.auth,"task_event",{source_id:"producer",source_revision:0,dedup_key:"healthy-after-fault",value:"yes",state_updated_at:f.ctx.now()});
+  await waitFor(async()=> (await readTaskStore(f.ctx.path)).occurrences.length===1,5000);assert.equal(job.runtime.ioStopped,false);
+ }finally{job.stop();await job.runtime.settle();}
+});
+
+test("explicit owner due follows authoritative durable get even while the passive cache lags",async()=>{
+ const f=await fixture();await callTaskCrud(f.ctx,f.auth,"task_create",f.input);const job=startProactiveTaskJob(f.ctx);await job.runtime.ready;
+ try{const previous=structuredClone(job.runtime.snapshot);job.runtime.contact=()=>{};f.setNow(3000);const {reconcileTaskTime}=await import("../src/task-events.js");await reconcileTaskTime(f.ctx);
+  const actual=await callTaskCrud(f.ctx,f.auth,"task_get",{id:previous.tasks[0].id}) as any;assert.equal(actual.state,"due");job.runtime.snapshot=previous; // model cross-process/watch/fsync publication lag
+  const due=await callTaskCrud(f.ctx,f.auth,"task_due",{}) as any;assert.equal(due.cards.length,1);assert.equal(due.cards[0].task_id,actual.id);
+ }finally{job.stop();await job.runtime.settle();}
+});

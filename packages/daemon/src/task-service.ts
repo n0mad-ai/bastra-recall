@@ -7,7 +7,7 @@ import type { ApprovalRegistry } from "./task-approval-keys.js";
 import { canonicalTaskValue as canonical } from "./task-canonical.js";
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
 import { reconsiderTask, taskReconsiderInput, taskDecisionStatus, checkTaskDecisions } from "./task-reconsideration.js";
-import { taskDueInput, taskDueProjection, recordTaskDelivery, cachedTaskSnapshot } from "./task-outbox.js";
+import { taskDueInput, taskDueProjection, recordTaskDelivery } from "./task-outbox.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
 import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
@@ -90,7 +90,9 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   if (operation === "task_reconsider") return reconsiderTask(ctx, authorization, raw);
   if (operation === "task_due") {
     const input = taskDueInput.parse(raw);
-    let store = cachedTaskSnapshot(ctx.path) ?? await readTaskStore(ctx.path);
+    // Explicit inspection already records a durable attempt; disk is authority.
+    // Passive hook attachments retain their no-I/O cached projection.
+    let store = await readTaskStore(ctx.path);
     if (store.tasks.some(t => t.armed && t.decision && t.owner_domains.every(d => principal.domains.includes(d))))
       store = await transactTaskStore(ctx.path, undefined, s => checkTaskDecisions(ctx, s));
     const projection = taskDueProjection(store, principal, input, now);

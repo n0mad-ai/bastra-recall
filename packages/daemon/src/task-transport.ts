@@ -11,8 +11,21 @@ import { callTaskCrud, TASK_CRUD_OPERATIONS, TASK_INPUT_SCHEMAS, type TaskCrudOp
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { PathLockUnavailableError } from "./path-lock.js";
 
+const TASK_HELP: Partial<Record<TaskCrudOperation,string>> = {
+ task_create:"Only explicit reminder requests, not a date in a memory. Agent capture unarmed; separate Owner review. Memory expiry is not task due time.",
+ task_due:"Next-contact cards; writes a presentation attempt, never human acknowledgement, resolution or a passed gate. Overflow/mute preserve pending work.",
+ task_prepare:"Exact before/after draft, no write. Only local-artifact-v1 replaces a registered reversible UTF-8 artifact. No provider/email/Slack/GitHub/cloud/shell adapters. Protected control/vault/key paths reject.",
+ task_execute:"Daemon only; ALL affected Owner domains separately sign exact fresh task/target/evidence/payload/expiry. Live actor lease/fence and execution enabled. Never access Owner keys/passphrases in agent context. Unknown effects require read-only reconcile, never blind retry. Synthetic proof is not real human/OS-boundary evidence.",
+ task_intent_reconcile:"Inspect exact target hash, record reconciled or unknown; no target retry. Only own hash-bound temp cleanup, foreign remnants remain visible.",
+ task_rollback_prepare:"Draft only; new exact Owner proof/lease/CAS required, never renew old authority or overwrite intervening edits.",
+ task_reconsider:"Fresh attributable versioned premise change invites Keep/Change/Snooze/Stop, never auto-reverses. Keep disarms until Owner rebinding; unknown/stale is not refutation.",
+ task_status:"Actual controls, source state, next check/error, budgets, receipts and next-contact coverage. Do not hide capacity/unknown/recovery state.",
+ task_recover:"Owner backup repair disarms/stops and changes epoch. Original retained; newer changes may be missing; private cold exports reconciled. Offline lock repair is CLI-only.",
+ task_archive:"Owner exact private export before retiring terminal rows. No unresolved occurrences/unknown intents/active leases. Cold idempotency, history and spent IDs retained.",
+ task_archive_restore:"Owner imports terminal history for inspection/fresh rollback, execution stopped. No old proof or task silently rearmed.",
+};
 export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
-  description: `${name}: persisted commitment; agent capture stays unarmed. Owner command required for review, acknowledgement, resolution and rearm. Delivery does not resolve.`,
+  description: `${name}: persisted commitment; mapped credential required. Owner review/ack/resolve/rearm separate; rearm unarmed. ${TASK_HELP[name]??""}`,
   inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
   annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal", destructiveHint: false },
 }));

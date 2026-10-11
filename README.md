@@ -23,6 +23,9 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
+Proactive tasks (unreleased): explicit reminders persist across sessions; cards arrive at next contact, with owner review and separate acknowledgement/completion. The optional task page and CLI expose source state, budgets and stop/recovery. Exactly one action adapter replaces a registered reversible local UTF-8 file after separate exact owner signatures; email, Slack, GitHub, cloud and provider actions are unsupported. [Instructions](./docs/Proactive%20Tasks.md) · [disposable demo](./docs/design/proactive-tasks-demo.md).
+
+
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
 ### Why not just CLAUDE.md?
@@ -160,6 +163,9 @@ Wir bauen mit dem Anspruch, das beste persönliche Gedächtnis für die täglich
 Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzelne Chats hinweg. Bastra Recall speichert sie als lesbare Markdown-Dateien auf deinem Rechner und macht sie deinen verbundenen KI-Assistenten zugänglich.
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
+
+Proaktive Aufgaben (Unreleased): Ausdrückliche Erinnerungen bleiben über Sitzungen erhalten; Karten erscheinen beim nächsten Kontakt. Owner-Prüfung, Quittieren und Erledigen bleiben getrennt. CLI und optionale Aufgaben-Seite zeigen Quellenzustand, Budgets und Stopp/Recovery. Genau ein Adapter ersetzt eine registrierte rückrollbare lokale UTF-8-Datei nach separaten exakten Owner-Signaturen; E-Mail, Slack, GitHub, Cloud und Anbieter-Aktionen sind nicht unterstützt. [Anleitung](./docs/Proaktive%20Aufgaben.md) · [Wegwerf-Demo](./docs/design/proactive-tasks-demo.md).
+
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 

@@ -155,4 +155,5 @@ Four subsystems fire rarely and carry their own instructions. Each names the mom
 
 ---
 
+Explicit reminder/action request: use task tools; only local-artifact-v1 replaces a registered reversible local UTF-8 file after separate Owner signatures. No email, Slack, GitHub, cloud, provider or shell adapters; absent clients receive work at next contact, never a claimed wakeup.
 **Meta-rule against regrowth:** new *mechanics* go into the tool description, where they are read at the point of use. Only a new *trigger* — a new moment to reach for the vault — earns a line in this file.

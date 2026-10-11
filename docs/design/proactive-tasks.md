@@ -663,3 +663,7 @@ original and validated exports. Active restored terminal history can coexist wit
 its archive; no identity reuse or hidden deletion. Corrupt exports fail closed.
 
 P9c r2: fixed target denial includes all .git state (directory or worktree-control file), .husky, .github/workflows, .envrc and .npmrc, normalized case. package.json remains eligible with an explicit automatic-script warning before consent; it gains no extra capability. Regression asserts consumed approval status from cold archive AND recovered active snapshot, and old proof cannot acquire lease or produce another write.
+
+P10 final recovery probe: a valid committed snapshot or successful healthy refresh clears the global store-I/O stop, permitting an accepted NEW event at queued contact instead of inheriting an old hour retry deadline. Source-specific unchanged-failure backoff remains unchanged. Regression reproduced the missed occurrence before the correction and checks exactly one within5s afterward.
+
+P10 explicit due inspection reads the authoritative store (it already records a durable attempt), so it cannot contradict a just-read durable due state during fsync/watch/cache publication lag. Passive hook attachments remain cached/off-path. Deterministic stale-cache regression plus the final real-process package run cover this boundary.
