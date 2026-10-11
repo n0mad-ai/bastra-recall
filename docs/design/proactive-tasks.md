@@ -713,3 +713,11 @@ Unsafe/corrupt or revoked token files are not silently reactivated: normal task 
 Doctor and the once-per-start warning report unavailable cards with the remedy. If
 an automatic token file disappeared, its formerly managed local-agent credentials
 are revoked in the same registry transaction that issues the replacement.
+
+P11c review boundary: ui.enabled exposes Agent session bootstrap to **every local
+process**, including another OS user who cannot read the credential file. A local
+proxy/tunnel that rewrites/removes Host/Origin to localhost may expose the same
+surface. This is the existing /ui loopback model, not proof of OS-user identity.
+Recommend ui.enabled=false on multi-user hosts, or BASTRA_TASK_UI_SESSION=0 to
+block creation/use of tokenless sessions while retaining explicit token login.
+Owner/signature/execution checks remain unchanged; the status reports the switch.
