@@ -376,19 +376,48 @@ export function readExitCode(result: Record<string, unknown>): number | null {
     }
   }
   // Text fallback reads only where a STATUS is written, never the command's own output: `error` is
-  // PostToolUseFailure's wording, the head line of a plain-text `output` is where Codex puts
+  // PostToolUseFailure's wording, the header of a plain-text `output` is where Codex puts
   // "Process exited with code N". Scanning stdout/stderr/content made every successful `cat`/`sed`
   // of a log or source mentioning "Exit code 1" / "exitCode": 1 a "failed" command — the lane then
   // injected failure-mode recall after rc 0.
   const sources: string[] = [];
   if (typeof result.error === "string") sources.push(result.error);
-  if (typeof result.output === "string") sources.push(result.output.split("\n", 1)[0] ?? "");
+  if (typeof result.output === "string") sources.push(outputHeader(result.output));
   const match = EXIT_STATUS_RX.exec(sources.join("\n"));
   if (match) {
     const parsed = Number.parseInt(match[1] ?? "", 10);
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+}
+
+/** How far down a Codex header may reach before its `Output:` line. */
+const OUTPUT_HEADER_MAX_LINES = 8;
+
+/**
+ * The status part of a Codex plain-text tool output — never the command's own
+ * output. Codex unified exec writes a header and then the output
+ * (codex-rs/core/src/tools/context.rs `response_header`, rust-v0.162.1):
+ *
+ *   [Warning: truncated output (original token count: N)]
+ *   [Total output lines: N + a blank line]
+ *   [Chunk ID: …]
+ *   Wall time: N seconds
+ *   [Process exited with code N]
+ *   [Process running with session ID N]
+ *   [Original token count: N]
+ *   Output:
+ *   <the command's output>
+ *
+ * So the status is not on line 1. Everything above the first `Output:` line
+ * is header; nothing below it is read. Without an `Output:` line close to the
+ * top (the older "Exit code: N / Wall time: …" form, or plain text) only the
+ * first line counts, as before.
+ */
+function outputHeader(output: string): string {
+  const lines = output.split("\n", OUTPUT_HEADER_MAX_LINES + 1);
+  const end = lines.findIndex((line) => line.trim() === "Output:");
+  return end > 0 ? lines.slice(0, end).join("\n") : (lines[0] ?? "");
 }
 
 /** Codex permits any JSON value in tool_response, including plain text. */
