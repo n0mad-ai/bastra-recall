@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 18,
+  "registration_version": 19,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -31,7 +31,8 @@
     "P1": "PR #1164",
     "P3": "PR #1171 head e78ff4f4, three DST/recurrence replays observed",
     "P5a": "PR #1175 head 87b80f3e; automatic startup/contact/periodic poll independently 3/3 passed",
-    "P10": "Draft PR #1186 frozen df3abfca"
+    "P10": "Draft PR #1186 frozen df3abfca",
+    "P11": "PR #1197 frozen375702ff with #1195/#1196"
   },
   "data_policy": {
     "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
@@ -1328,7 +1329,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective final daily complete75-row replay on frozen e8485af7 after documentation/browser text/Memory budget diagnosis delta. Existing driver, dataset, stimuli, expected outcomes, budgets and time boundaries remain unchanged; historical results immutable.",
+  "amendment": "Owner decision11.10.2026 replaces previous notify authority expectations, explicitly preserved below. Prospective375702ff replay of original25 cases\u00d73 plus6 new cases\u00d73=93 rows. Prepare/execute authority and existing budgets unchanged; no historical row reclassified.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1477,5 +1478,242 @@
     "auto_poll_deadline_ms": 65000,
     "mutation_wake_settle_ms": 5500,
     "rule": "One complete run on clean detached own feature build; same driver/runner/dataset as d77cdb42 run. No head switching, pooling, threshold changes or inference of unregistered UI/Memory-budget negative/human outcomes. Finish reporting then stop work for today."
+  },
+  "owner_decision_replacements": [
+    {
+      "case_id": "p2-auth-boundaries",
+      "old_definition": {
+        "id": "p2-auth-boundaries",
+        "issue": 410,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Run unauthenticated/legacy-token/foreign-Origin, cross-domain, agent owner-operation, spoof-field, rotated/revoked-credential requests against the real isolated daemon.",
+        "expected": {
+          "unauthorised_successes": 0,
+          "cross_domain_visible": false,
+          "spoofed_authority": false,
+          "revocation_immediate": true,
+          "foreign_origin_denied": true
+        }
+      },
+      "old_status": "durch Owner-Entscheidung 11.10. ersetzt",
+      "old_contract_last_feature": "e8485af72c386da7d5b284d8b3913ac7bbcef2a9",
+      "old_eval_reference": "56953f60ee61ad137756750aa1a776db285b2368",
+      "replacement": "Active definition in proactive-measurement.ts, Owner decision notify only. Review/rearm and prepare/execute guards unchanged.",
+      "new_definition": {
+        "id": "p2-auth-boundaries",
+        "issue": 410,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Run unauthenticated/legacy-token/foreign-Origin, cross-domain, agent owner-operation, spoof-field, rotated/revoked-credential requests against the real isolated daemon.",
+        "expected": {
+          "unauthorised_successes": 0,
+          "cross_domain_visible": false,
+          "agent_notify_arm_allowed": true,
+          "spoofed_authority": false,
+          "revocation_immediate": true,
+          "foreign_origin_denied": true
+        }
+      }
+    },
+    {
+      "case_id": "p2-transport-parity",
+      "old_definition": {
+        "id": "p2-transport-parity",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Create/get/list with the same agent credential and idempotency key through canonical REST, tool HTTP, an actual MCP stdio forwarder and CLI subprocess; compare state/revisions and denial codes.",
+        "expected": {
+          "same_task_all_transports": true,
+          "stored_tasks": 1,
+          "agent_proposal_armed": false,
+          "denial_codes_match": true
+        }
+      },
+      "old_status": "durch Owner-Entscheidung 11.10. ersetzt",
+      "old_contract_last_feature": "e8485af72c386da7d5b284d8b3913ac7bbcef2a9",
+      "old_eval_reference": "56953f60ee61ad137756750aa1a776db285b2368",
+      "replacement": "Active definition in proactive-measurement.ts, Owner decision notify only. Review/rearm and prepare/execute guards unchanged.",
+      "new_definition": {
+        "id": "p2-transport-parity",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Create/get/list with the same agent credential and idempotency key through canonical REST, tool HTTP, an actual MCP stdio forwarder and CLI subprocess; explicit notify arm+origin now accepted under Owner decision11.10.2026; compare state/revisions and unchanged Owner-review denial codes.",
+        "expected": {
+          "same_task_all_transports": true,
+          "stored_tasks": 1,
+          "agent_notify_armed": true,
+          "denial_codes_match": true
+        }
+      }
+    },
+    {
+      "case_id": "p2-owner-lifecycle",
+      "old_definition": {
+        "id": "p2-owner-lifecycle",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Owner review without signing key, snooze, cosmetic/trigger edits, resolve/cancel, explicit rearm; missing occurrence acknowledgement denied; agent repeated snooze remains bounded to its original 24h deadline.",
+        "expected": {
+          "owner_notify_armed": true,
+          "agent_ack_resolve_rearm_denied": true,
+          "missing_occurrence_ack_denied": true,
+          "snooze_fixed_ceiling": true,
+          "edits_disarm": true,
+          "terminal_not_resurrected": true,
+          "rearm_unarmed_new_generation": true
+        }
+      },
+      "old_status": "durch Owner-Entscheidung 11.10. ersetzt",
+      "old_contract_last_feature": "e8485af72c386da7d5b284d8b3913ac7bbcef2a9",
+      "old_eval_reference": "56953f60ee61ad137756750aa1a776db285b2368",
+      "replacement": "Active definition in proactive-measurement.ts, Owner decision notify only. Review/rearm and prepare/execute guards unchanged.",
+      "new_definition": {
+        "id": "p2-owner-lifecycle",
+        "issue": 402,
+        "dependencies": [
+          "P1",
+          "P2"
+        ],
+        "stimulus": "Owner review without signing key, snooze, cosmetic/trigger edits, resolve/cancel, explicit rearm; missing occurrence acknowledgement denied; Owner decision 11.10.2026 replaces notify authority expectation: agent resolves notify and snoozes30/60days without ceiling; rearm/review remain Owner.",
+        "expected": {
+          "owner_notify_armed": true,
+          "agent_rearm_denied": true,
+          "agent_notify_resolve_allowed": true,
+          "missing_occurrence_ack_denied": true,
+          "notify_snooze_unbounded": true,
+          "edits_disarm": true,
+          "terminal_not_resurrected": true,
+          "rearm_unarmed_new_generation": true
+        }
+      }
+    }
+  ],
+  "p11_procedure": {
+    "feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+    "feature_pr": 1197,
+    "stack": [
+      1195,
+      1196,
+      1197
+    ],
+    "existing_rows": 75,
+    "new_rows": 18,
+    "required_rows": 93,
+    "repetitions": 3,
+    "cases": [
+      {
+        "id": "p11-session-hook-auto",
+        "issue": 402,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Fresh empty task access; real daemon auto creates Agent credential. Agent creates armed user-request notify, cross due by frozen child clock, actual default session-hook.js subprocess receives exactly one data card/one attempt; restart/access/client config retained. No manual mint/setup/env token.",
+        "expected": {
+          "agent_armed_notify": true,
+          "logical_firings": 1,
+          "hook_blocks": 1,
+          "hook_card_received": true,
+          "delivery_attempts": 1,
+          "fabricated_acknowledgements": 0,
+          "automatic_agent_private": true,
+          "restart_access_stable": true,
+          "foreign_client_unchanged": true
+        }
+      },
+      {
+        "id": "p11-prompt-hook-auto",
+        "issue": 402,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Same real automatic access boundary; armed agent-observed notify delivered by actual prompt-hook.js UserPromptSubmit subprocess. One frame/attempt, no acknowledgement by display.",
+        "expected": {
+          "agent_armed_notify": true,
+          "logical_firings": 1,
+          "hook_blocks": 1,
+          "hook_card_received": true,
+          "delivery_attempts": 1,
+          "fabricated_acknowledgements": 0,
+          "automatic_agent_private": true,
+          "restart_access_stable": true,
+          "foreign_client_unchanged": true
+        }
+      },
+      {
+        "id": "p11-no-upgrade",
+        "issue": 410,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Agent tries notify\u2192prepare/execute for armed and unarmed tasks and direct armed prepare/execute; zero upgrades. Owner review/rearm and default execution stop retain old boundary.",
+        "expected": {
+          "unauthorised_upgrades": 0,
+          "notify_levels_preserved": true,
+          "review_rearm_still_owner": true,
+          "execution_default_stopped": true
+        }
+      },
+      {
+        "id": "p11-raw-reminder-dedup",
+        "issue": 402,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Equal content/time with new key/client/session returns one ID; equal invented secrets under redaction returns one ID; distinct actual secrets whose stored redaction text matches remain distinct. Different time/goal separate, no raw secret stored.",
+        "expected": {
+          "same_content_time_single_id": true,
+          "redacted_exact_same_single_id": true,
+          "distinct_raw_secrets_distinct_ids": true,
+          "distinct_time_target_not_merged": true,
+          "raw_secrets_persisted": false,
+          "tasks_stored": 5
+        }
+      },
+      {
+        "id": "p11-conversation-controls",
+        "issue": 402,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Automatically configured Agent acknowledges exact due occurrence, snoozes30 then60days without ceiling, resolves and cancels notify; ack remains separate from resolution; actual restart preserves all commands. This is tool-mediated conversation mechanics, not human understanding.",
+        "expected": {
+          "agent_acknowledgement": true,
+          "ack_not_resolution": true,
+          "unbounded_notify_snooze": true,
+          "agent_resolve_cancel": true,
+          "controls_survive_restart": true
+        }
+      },
+      {
+        "id": "p11-no-reminder-quota",
+        "issue": 402,
+        "dependencies": [
+          "P11"
+        ],
+        "stimulus": "Automatic Agent creates35 distinct open notify reminders then5 on next frozen day; no policy/day/open quota rejection. Finite probe only, not an infinite capacity assertion.",
+        "expected": {
+          "accepted_notify": 40,
+          "distinct_open_tasks": 40,
+          "rejected_by_quota": 0
+        }
+      }
+    ],
+    "auto_access": "New cases start without minting ANY credential and without BASTRA_TASK_TOKEN; actual daemon produces0600Agent config; real session-hook/prompt-hook processes use the file automatically. No setup command/manual token provisioning. Hook budgets stay at published defaults.",
+    "deadline": "Shared existing5s condition/deadline and real timers;5500ms before advancing fixture clock; no manual task_reconcile. Allow async receipt completion within5s, not internal assembly output.",
+    "scope": "No human chat transcripts or actual AskUserQuestion confirmation fabricated. Tool-level yes/no protocol correctness and actual hook output, no human/OS/longitudinal gate pass."
   }
 }

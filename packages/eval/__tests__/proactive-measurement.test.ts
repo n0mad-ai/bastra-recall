@@ -5,8 +5,8 @@ import { PROACTIVE_CASES, evaluateObservation, summarizeObservations } from "../
 test("missing contracts and observations cannot become a passed window", () => {
   const report = summarizeObservations([]);
   assert.equal(report.functional_verdict, "pending");
-  assert.equal(report.expected_runs, 75);
-  assert.equal(report.missing_runs, 75);
+  assert.equal(report.expected_runs, 93);
+  assert.equal(report.missing_runs, 93);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
 });
 test("missing acknowledgement and evidence are not implicit success", () => {
@@ -31,7 +31,7 @@ test("even a complete synthetic response set leaves human and longitudinal gates
   const rows = PROACTIVE_CASES.flatMap(c => [1, 2, 3].map(repetition => ({ case_id: c.id, repetition, values: { ...c.expected }, evidence: ["test-only"] })));
   const report = summarizeObservations(rows);
   assert.equal(report.functional_verdict, "passed");
-  assert.equal(report.observed_runs, 75);
+  assert.equal(report.observed_runs, 93);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
   rows.find(r => r.case_id === "seven-day-evaluation")!.values.logical_firings = 2;
   const failed = summarizeObservations(rows);
@@ -46,4 +46,12 @@ test("unregistered, duplicated and out-of-range observations are rejected", () =
   assert.throws(() => summarizeObservations([row, row]), /duplicate/);
   assert.throws(() => summarizeObservations([{ ...row, case_id: "unregistered" }]), /unregistered/);
   assert.throws(() => summarizeObservations([{ ...row, repetition: 4 }]), /invalid/);
+});
+
+test("Owner notify permission does not hide prepare/execute failures or accept old expectations",()=>{
+  const c=PROACTIVE_CASES.find(c=>c.id==="p2-auth-boundaries")!;
+  const row={case_id:c.id,repetition:1,values:{...c.expected,unauthorised_successes:1},evidence:["test-only"]};
+  assert.equal(evaluateObservation(c,row).verdict,"failed");
+  const old={...c.expected};delete old.agent_notify_arm_allowed;
+  assert.equal(evaluateObservation(c,{...row,values:old}).verdict,"not_evaluable");
 });

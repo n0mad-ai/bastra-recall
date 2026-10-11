@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { CONVERSATION_CASES, runConversation } from "./proactive-conversation-driver.js";
 import { runMigration } from "./proactive-migration-driver.js";
 import { PREMISE_CASES, runPremises } from "./proactive-premise-driver.js";
 import { ACTION_CASES, actionFixture, runActions } from "./proactive-action-driver.js";
@@ -30,10 +31,10 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 
 const legacyRoot=resolve(feature,"../messung-a-p2c-20261011");
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P4:1172,P6:1180,P7:1181,P8:1183,P9:1182} : {}), ...(existsSync(join(daemonDir,"task-maintenance.js")) ? {P10:1186,P9b:1184,P9c:1185} : {}) },
-    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES,...PREMISE_CASES,"migration-corruption"],
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}), ...(existsSync(join(daemonDir,"task-execution.js")) ? {P4:1172,P6:1180,P7:1181,P8:1183,P9:1182} : {}), ...(existsSync(join(daemonDir,"task-maintenance.js")) ? {P10:1186,P9b:1184,P9c:1185} : {}), ...(existsSync(join(daemonDir,"task-conversation.js")) ? {P11:1197,P11a:1195,P11b:1196} : {}) },
+    supported_cases: ["p3-source-key-tuple-boundary","p3-automatic-evaluation","p3-returning-source-transitions","p2-auth-boundaries","p2-transport-parity","p2-owner-lifecycle","p2-durable-restart","p2-concurrency-cas","p1-p2-corruption-recovery","dst-recurrence-rollback","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished",...ACTION_CASES,...PREMISE_CASES,"migration-corruption",...CONVERSATION_CASES],
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "synthetic registered local-artifact-v1 for action cases; none for notify/CRUD", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["legacy-v1-store",createHash("sha256").update(readFileSync(join(legacyRoot,"packages/daemon/dist/task-store.js"))).digest("hex")], ["migration-driver",createHash("sha256").update(readFileSync(new URL("./proactive-migration-driver.ts",import.meta.url))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["premise-driver",createHash("sha256").update(readFileSync(new URL("./proactive-premise-driver.ts",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js","task-execution.js","task-actions.js","task-approval-keys.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["legacy-v1-store",createHash("sha256").update(readFileSync(join(legacyRoot,"packages/daemon/dist/task-store.js"))).digest("hex")], ["conversation-driver",createHash("sha256").update(readFileSync(new URL("./proactive-conversation-driver.ts",import.meta.url))).digest("hex")], ["migration-driver",createHash("sha256").update(readFileSync(new URL("./proactive-migration-driver.ts",import.meta.url))).digest("hex")], ["crash-guard",createHash("sha256").update(readFileSync(new URL("./proactive-crash-guard.mjs",import.meta.url))).digest("hex")], ["premise-driver",createHash("sha256").update(readFileSync(new URL("./proactive-premise-driver.ts",import.meta.url))).digest("hex")], ["action-driver",createHash("sha256").update(readFileSync(new URL("./proactive-action-driver.ts",import.meta.url))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -48,14 +49,15 @@ const driver: FeatureDriver = {
       BASTRA_PENDING_SUGGESTIONS_PATH: join(root,"relay.json"), BASTRA_DRAFTS_PATH: join(root,"drafts.json"), BASTRA_PENDING_RELAY: "1",
       BASTRA_OLLAMA_AUTOSTART: "0", BASTRA_COMMONS_PATH: join(root, "commons"),
       NODE_OPTIONS: `--import ${fileURLToPath(new URL("./proactive-network-guard.mjs", import.meta.url))}` };
-    const owner = await auth.mintTaskCredential(authPath, { actor_id: "fixture-owner", domains: ["personal"], role: "owner" });
-    const agent = await auth.mintTaskCredential(authPath, { actor_id: "fixture-agent", domains: ["personal"], role: "agent" });
-    const other = await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
-    const tokens: Record<string,string | undefined> = { owner: owner.token, agent: agent.token, other: other.token, legacy: "legacy-fixture", absent: undefined };
+    const automaticConversation = CONVERSATION_CASES.includes(c.id);
+    const owner = automaticConversation ? undefined : await auth.mintTaskCredential(authPath, { actor_id: "fixture-owner", domains: ["personal"], role: "owner" });
+    const agent = automaticConversation ? undefined : await auth.mintTaskCredential(authPath, { actor_id: "fixture-agent", domains: ["personal"], role: "agent" });
+    const other = automaticConversation ? undefined : await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
+    const tokens: Record<string,string | undefined> = { owner: owner?.token, agent: agent?.token, other: other?.token, legacy: "legacy-fixture", absent: undefined };
     const crashPath=join(root,"fixture-crash.json");
     if(c.id==="external-success-no-receipt") {env.BASTRA_MEASUREMENT_CRASH_PATH=crashPath;env.NODE_OPTIONS+=` --import ${fileURLToPath(new URL("./proactive-crash-guard.mjs",import.meta.url))}`;}
     const clockPath = join(root,"fixture-clock.json");
-    if (ACTION_CASES.includes(c.id) || PREMISE_CASES.includes(c.id) || ["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
+    if (CONVERSATION_CASES.includes(c.id) || ACTION_CASES.includes(c.id) || PREMISE_CASES.includes(c.id) || ["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
       clock_mode: env.BASTRA_MEASUREMENT_NOW_PATH ? "child-only frozen Date.now; real host timers" : "real wall clock for auth/CRUD; no frozen-clock trigger claim", crud_schedule_at: Date.parse(context.reference_instant) + 86400000 }];
     const processes: ChildProcessWithoutNullStreams[] = [];
@@ -87,7 +89,7 @@ const driver: FeatureDriver = {
     async function op(name: string, task: any, more: object = {}, persona = "owner") { return http("POST", `/api/v1/task_${name}`, { id: task.id, expected_revision: task.expected_revision, ...more }, persona); }
     async function cli(sub: string, body: unknown) {
       const path = join(root, `cli-${evidence.length}.json`); writeFileSync(path, JSON.stringify(body), { mode: 0o600 });
-      const p = child(`cli-${evidence.length}`, "cli.js", ["tasks", sub, "agent", path, "--json"], { BASTRA_TASK_TOKEN: agent.token });
+      const p = child(`cli-${evidence.length}`, "cli.js", ["tasks", sub, "agent", path, "--json"], { BASTRA_TASK_TOKEN: agent!.token });
       let stdout = "", stderr = ""; p.stdout.on("data", d => { stdout += d; }); p.stderr.on("data", d => { stderr += d; });
       const [exit] = await once(p, "exit");
       const data = JSON.parse(exit === 0 ? stdout : stderr.trim().split("\n").at(-1)!);
@@ -106,7 +108,7 @@ const driver: FeatureDriver = {
     }
     async function mcpCall(name: string, args: object) {
       if (!mcp) {
-        mcp = child("mcp", "mcp-forwarder.js", [], { BASTRA_TASK_TOKEN: agent.token });
+        mcp = child("mcp", "mcp-forwarder.js", [], { BASTRA_TASK_TOKEN: agent!.token });
         let pending = "";
         mcp.stdout.on("data", d => {
           pending += d; let n;
@@ -128,7 +130,9 @@ const driver: FeatureDriver = {
     try {
       await start();
       const deliveryCases=["seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"];
-      if(c.id==="migration-corruption") {
+      if(CONVERSATION_CASES.includes(c.id)) {
+        values=await runConversation(c,{root,taskPath,authPath,http,input,child,tokens,auth,start,env,clockPath,evidence,stopDaemon:()=>stop(daemon!)});
+      } else if(c.id==="migration-corruption") {
         values=await runMigration({http,create,taskPath,root,start,storeApi,legacyRoot,evidence,stopDaemon:()=>stop(daemon!)});
       } else if(PREMISE_CASES.includes(c.id)) {
         values=await runPremises(c,{http,input,root,vault,clockPath,taskPath,evidence,start,feature,fixture:action,stopDaemon:()=>stop(daemon!)});
@@ -233,47 +237,48 @@ const driver: FeatureDriver = {
         const checks = await Promise.all([
           http("GET", "/api/v1/tasks", undefined, "absent"), http("GET", "/api/v1/tasks", undefined, "legacy"),
           http("POST", "/api/v1/task_review", { id:t.id,expected_revision:t.expected_revision }, "agent"),
-          http("POST", "/api/v1/tasks", { ...input("forged"), arm:true }, "agent"),
+          http("POST", "/api/v1/tasks", { ...input("allowed-notify"), arm:true,origin:{kind:"user-request",client:"measurement",session:"auth-case",context:"Confirmed invented reminder"} }, "agent"),
           http("POST", "/api/v1/tasks", { ...input("spoof"), source:"user",approved:true,actor:"fixture-owner" }, "agent"),
           http("POST", "/api/v1/tasks", { ...input("cross-domain"), owner_domains:["other"] }, "agent"),
+          ...["prepare","execute"].map(action_level=>http("POST","/api/v1/tasks",{...input("protected-"+action_level),arm:true,action_level},"agent")),
         ]);
         const hidden = await http("GET", `/api/v1/tasks/${t.id}`, undefined, "other");
         const list = await http("GET", "/api/v1/tasks", undefined, "other");
         const origin = await http("GET", "/api/v1/tasks", undefined, "owner", { Origin:"https://foreign.invalid" });
-        const rotated = await auth.mintTaskCredential(authPath,{actor_id:"fixture-agent",domains:["personal"],role:"agent"},agent.credential_id);
+        const rotated = await auth.mintTaskCredential(authPath,{actor_id:"fixture-agent",domains:["personal"],role:"agent"},agent!.credential_id);
         const old = await http("GET", "/api/v1/tasks", undefined, "agent"); tokens.agent=rotated.token;
         const fresh = await http("GET", "/api/v1/tasks", undefined, "agent");
         await auth.revokeTaskCredential(authPath,rotated.credential_id);
         const revoked = await http("GET", "/api/v1/tasks", undefined, "agent");
-        values={unauthorised_successes:checks.filter(r=>r.status===200).length,cross_domain_visible:hidden.status!==404||list.data.tasks.length!==0,spoofed_authority:checks[4].status===200,revocation_immediate:old.status===401&&fresh.status===200&&revoked.status===401,foreign_origin_denied:origin.status===403};
+        values={unauthorised_successes:checks.filter((r,i)=>i!==3&&r.status===200).length,agent_notify_arm_allowed:checks[3].status===200&&checks[3].data.armed===true,cross_domain_visible:hidden.status!==404||list.data.tasks.length!==0,spoofed_authority:checks[4].status===200,revocation_immediate:old.status===401&&fresh.status===200&&revoked.status===401,foreign_origin_denied:origin.status===403};
       } else if(c.id==="p2-transport-parity") {
-        const t = await create("fixture","agent");
-        const tool = await http("POST","/api/v1/task_create",input(),"agent");
-        const viaMcp = await mcpCall("task_create",input()); const viaCli = await cli("create",input());
+        const conversationInput={...input(),arm:true,origin:{kind:"user-request",client:"measurement",session:"transport-case",context:"Confirmed invented reminder"}};
+        const t=(await http("POST","/api/v1/tasks",conversationInput,"agent")).data;
+        const tool = await http("POST","/api/v1/task_create",conversationInput,"agent");
+        const viaMcp = await mcpCall("task_create",conversationInput); const viaCli = await cli("create",conversationInput);
         const readMcp = await mcpCall("task_get",{id:t.id}); const readCli=await cli("get",{id:t.id});
         const lists=[(await http("GET","/api/v1/tasks",undefined,"agent")).data,await mcpCall("task_list",{}),await cli("list",{})];
         const denied={id:t.id,expected_revision:t.expected_revision};
         const a=await http("POST","/api/v1/task_review",denied,"agent"),b=await mcpCall("task_review",denied),d=await cli("review",denied);
-        values={same_task_all_transports:[tool.data,viaMcp,viaCli,readMcp,readCli].every(v=>equal(v,t))&&lists.every(v=>equal(v.tasks,[t])),stored_tasks:JSON.parse(readFileSync(taskPath,"utf8")).tasks.length,agent_proposal_armed:t.armed,denial_codes_match:a.status===403&&a.data.code===b.code&&b.code===d.code};
+        values={same_task_all_transports:[tool.data,viaMcp,viaCli,readMcp,readCli].every(v=>equal(v,t))&&lists.every(v=>equal(v.tasks,[t])),stored_tasks:JSON.parse(readFileSync(taskPath,"utf8")).tasks.length,agent_notify_armed:t.armed,denial_codes_match:a.status===403&&a.data.code===b.code&&b.code===d.code};
       } else if(c.id==="p2-owner-lifecycle") {
         let t=await create(); const reviewed=await op("review",t); t=reviewed.data;
         const armed=t.armed===true&&t.action_level==="notify";
-        const denied=await Promise.all(["acknowledge","resolve","rearm"].map(name=>op(name,t,{},"agent")));
+        const denied=await op("rearm",t,{},"agent");
         const missing=await op("acknowledge",t,{occurrence_id:"nonexistent"});
         const now=Date.now(); t=(await op("snooze",t,{until:now+3600000},"agent")).data;
-        const deadline=t.agent_snooze_deadline;
-        const bound=await op("snooze",t,{until:deadline+1},"agent");
-        const repeated=await op("snooze",t,{until:now+7200000},"agent"); t=repeated.data;
+        const bound=await op("snooze",t,{until:now+30*86400000},"agent"); t=bound.data;
+        const repeated=await op("snooze",t,{until:now+60*86400000},"agent"); t=repeated.data;
         const gen=t.generation; const until=t.snoozed_until;
         const cosmetic=await http("PATCH",`/api/v1/tasks/${t.id}`,{expected_revision:t.expected_revision,patch:{goal:"Cosmetic fixture change"}}); t=cosmetic.data;
         const cosmeticOk=!t.armed&&t.generation===gen&&t.snoozed_until===until;
         const trigger=await http("PATCH",`/api/v1/tasks/${t.id}`,{expected_revision:t.expected_revision,patch:{schedule:{kind:"instant",at:now+9000000}}}); t=trigger.data;
         const editOk=cosmeticOk&&!t.armed&&t.state==="pending"&&t.generation===gen+1&&t.snoozed_until===undefined;
-        t=(await op("resolve",t)).data; const terminal=await op("review",t); const oldGen=t.generation;
+        const resolvedByAgent=await op("resolve",t,{},"agent");t=resolvedByAgent.data; const terminal=await op("review",t); const oldGen=t.generation;
         t=(await op("rearm",t)).data;
         const rearmOk=t.state==="pending"&&!t.armed&&t.generation===oldGen+1;
         t=(await op("cancel",t)).data; const cancelReview=await op("review",t);
-        values={owner_notify_armed:armed,agent_ack_resolve_rearm_denied:denied.every(r=>r.status===403),missing_occurrence_ack_denied:missing.status===404,snooze_fixed_ceiling:bound.status===400&&repeated.status===200&&repeated.data.agent_snooze_deadline===deadline,edits_disarm:editOk,terminal_not_resurrected:terminal.status===409&&cancelReview.status===409,rearm_unarmed_new_generation:rearmOk};
+        values={owner_notify_armed:armed,agent_rearm_denied:denied.status===403,agent_notify_resolve_allowed:resolvedByAgent.status===200,missing_occurrence_ack_denied:missing.status===404,notify_snooze_unbounded:bound.status===200&&repeated.status===200&&repeated.data.agent_snooze_deadline===undefined,edits_disarm:editOk,terminal_not_resurrected:terminal.status===409&&cancelReview.status===409,rearm_unarmed_new_generation:rearmOk};
       } else if(c.id==="p2-durable-restart") {
         let t=await create(); t=(await op("review",t)).data;
         const before=JSON.parse(readFileSync(taskPath,"utf8")); await stop(daemon!); await start();
