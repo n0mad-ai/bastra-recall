@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 7,
+  "registration_version": 8,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -26,8 +26,8 @@
   "dependencies": {
     "P0": "PR #1159 amended/reviewed design",
     "P2": "PR #1170 (P2c), stacked over #1167/#1169",
-    "P5": "Passive delivery integration P5b not yet published; original P5-dependent product cases still pending",
-    "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown",
+    "P5": "PR #1179 corrected d6d99d33, included in pinned P8 stack",
+    "P8": "PR #1183 corrected f5f8f149; execute handlers pending independent runtime implementation",
     "P1": "PR #1164",
     "P3": "PR #1171 head e78ff4f4, three DST/recurrence replays observed",
     "P5a": "PR #1175 head 87b80f3e; automatic startup/contact/periodic poll independently 3/3 passed"
@@ -667,5 +667,25 @@
     "repetitions": 3,
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
+  },
+  "amendment": "Prospective delivery replay procedure pinned before first P5b runtime measurement; existing outcomes and thresholds unchanged. CLI machine transport uses shipped --json.",
+  "delivery_runtime_procedure": {
+    "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+    "repetitions": 3,
+    "clock": "child-only Date.now; future creation settles 5500ms before advance; real timers; no manual reconcile",
+    "cases": [
+      "seven-day-evaluation",
+      "active-session-deadline",
+      "offline-restart",
+      "relay-overflow-disabled-purged",
+      "multi-client-occurrence",
+      "acknowledged-unfinished"
+    ],
+    "passive": "ordinary authenticated /api/v1/health response, empty vault; no semantic retrieval required",
+    "relay": "five durable occurrences, 256-byte projection yields overflow, normal max-three projection; own explicit relay/drafts paths, restart with relay off and actual CLI drafts purge; stable durable IDs and zero acknowledgements",
+    "multi_client": "two independently minted mapped owner actors race HTTP due; own stable occurrence and no resolution",
+    "ack": "explicit owner acknowledgement; restart; include_acknowledged projection must remain open",
+    "coverage": "next-contact-only; synthetic clock advance does not establish seven-day longitudinal window",
+    "expected_runs": 75
   }
 }

@@ -146,3 +146,5 @@ unstarted human study stays pending. Adequate registered human,
 longitudinal and independent-review evidence is still required. Consent and actual
 opportunities are required before starting those windows; elapsed time cannot
 change their verdicts.
+
+Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 APIs are published but their matrix handlers remain pending.

@@ -26,9 +26,9 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 }
 
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}) },
-    design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}), ...(existsSync(join(daemonDir,"task-delivery.js")) ? {P5:1179} : {}) },
+    design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (notify/CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js","task-delivery.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
@@ -40,6 +40,7 @@ const driver: FeatureDriver = {
       BASTRA_HTTP_PORT: String(port), BASTRA_DAEMON_URL: base, BASTRA_FORWARDER_SPAWN: "0",
       BASTRA_EMBEDDING_PROVIDER: "none", BASTRA_UPDATE_CHECK: "off", BASTRA_CODE_AWARENESS: "0", BASTRA_TELEMETRY: "0",
       BASTRA_LOG_PATH: join(root, "logs"), BASTRA_API_TOKEN: "legacy-fixture", BASTRA_RM_ARCHIVES: "0",
+      BASTRA_PENDING_SUGGESTIONS_PATH: join(root,"relay.json"), BASTRA_DRAFTS_PATH: join(root,"drafts.json"), BASTRA_PENDING_RELAY: "1",
       BASTRA_OLLAMA_AUTOSTART: "0", BASTRA_COMMONS_PATH: join(root, "commons"),
       NODE_OPTIONS: `--import ${fileURLToPath(new URL("./proactive-network-guard.mjs", import.meta.url))}` };
     const owner = await auth.mintTaskCredential(authPath, { actor_id: "fixture-owner", domains: ["personal"], role: "owner" });
@@ -47,7 +48,7 @@ const driver: FeatureDriver = {
     const other = await auth.mintTaskCredential(authPath, { actor_id: "other-owner", domains: ["other"], role: "owner" });
     const tokens: Record<string,string | undefined> = { owner: owner.token, agent: agent.token, other: other.token, legacy: "legacy-fixture", absent: undefined };
     const clockPath = join(root,"fixture-clock.json");
-    if (["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
+    if (["dst-recurrence-rollback","p3-automatic-evaluation","p3-returning-source-transitions","seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"].includes(c.id)) { writeFileSync(clockPath,String(Date.parse("2026-10-24T12:00:00Z")),{mode:0o600}); env.BASTRA_MEASUREMENT_NOW_PATH=clockPath; }
     const evidence: any[] = [{ root, port, feature_commit: commit, synthetic_credentials: true, reference_instant: context.reference_instant,
       clock_mode: env.BASTRA_MEASUREMENT_NOW_PATH ? "child-only frozen Date.now; real host timers" : "real wall clock for auth/CRUD; no frozen-clock trigger claim", crud_schedule_at: Date.parse(context.reference_instant) + 86400000 }];
     const processes: ChildProcessWithoutNullStreams[] = [];
@@ -79,7 +80,7 @@ const driver: FeatureDriver = {
     async function op(name: string, task: any, more: object = {}, persona = "owner") { return http("POST", `/api/v1/task_${name}`, { id: task.id, expected_revision: task.expected_revision, ...more }, persona); }
     async function cli(sub: string, body: unknown) {
       const path = join(root, `cli-${evidence.length}.json`); writeFileSync(path, JSON.stringify(body), { mode: 0o600 });
-      const p = child(`cli-${evidence.length}`, "cli.js", ["tasks", sub, "agent", path], { BASTRA_TASK_TOKEN: agent.token });
+      const p = child(`cli-${evidence.length}`, "cli.js", ["tasks", sub, "agent", path, "--json"], { BASTRA_TASK_TOKEN: agent.token });
       let stdout = "", stderr = ""; p.stdout.on("data", d => { stdout += d; }); p.stderr.on("data", d => { stderr += d; });
       const [exit] = await once(p, "exit");
       const data = JSON.parse(exit === 0 ? stdout : stderr.trim().split("\n").at(-1)!);
@@ -118,7 +119,57 @@ const driver: FeatureDriver = {
     let values: Record<string, boolean | number | string> = {};
     try {
       await start();
-      if(c.id === "p3-source-key-tuple-boundary") {
+      const deliveryCases=["seven-day-evaluation","active-session-deadline","offline-restart","relay-overflow-disabled-purged","multi-client-occurrence","acknowledged-unfinished"];
+      if(deliveryCases.includes(c.id)) {
+        const t0=Date.parse("2026-10-24T12:00:00Z");
+        const snapshot=()=>JSON.parse(readFileSync(taskPath,"utf8"));
+        const setClock=(at:number)=>{writeFileSync(clockPath,String(at));evidence.push({frozen_clock:at});};
+        const wait=async(predicate:(s:any)=>boolean)=>{const end=Date.now()+5000;while(!predicate(snapshot())&&Date.now()<end)await delay(50);return snapshot();};
+        const make=async(key:string,at:number)=>{const r=await http("POST","/api/v1/tasks",{...input(key),arm:true,schedule:{kind:"instant",at}});if(r.status!==200)throw new Error("delivery fixture creation failed");return r.data;};
+        const due=async(more:object={},persona="owner")=>(await http("POST","/api/v1/task_due",{session:"delivery-fixture",...more},persona)).data;
+        const countAttempts=(s:any)=>s.occurrences.reduce((n:number,o:any)=>n+o.attempts.reduce((n:number,a:any)=>n+(a.count??1),0)+(o.compacted_attempts??0),0);
+        const counts=(s:any)=>({ack:s.occurrences.filter((o:any)=>o.acknowledgement).length,resolution:s.occurrences.filter((o:any)=>o.resolution).length});
+        const contact=()=>http("GET","/api/v1/health",undefined,"legacy",{"x-bastra-task-authorization":`Bearer ${owner.token}`});
+        if(c.id==="relay-overflow-disabled-purged") {
+          for(let i=0;i<5;i++)await make(`overflow-${i}`,t0+1000);
+          await delay(5500);setClock(t0+1000);await stop(daemon!);await start();await wait(s=>s.occurrences.length===5);
+          const originalIds=snapshot().occurrences.map((o:any)=>o.id).sort();
+          const overflow=await due({max_bytes:256});const normal=await due({max_bytes:16384});
+          const states=[snapshot()];
+          await stop(daemon!);env.BASTRA_PENDING_RELAY="0";await start();const disabled=await due({max_bytes:16384});states.push(snapshot());
+          const purge=child("relay-purge","cli.js",["drafts","purge"]);let output="";purge.stdout.on("data",d=>output+=d);const [exit]=await once(purge,"exit");if(exit!==0)throw new Error("isolated relay purge command failed");evidence.push({relay_purge_exit:exit,output});
+          const purged=await due({max_bytes:16384});states.push(snapshot());
+          values={due_retained_all_subruns:overflow.overflow===5&&overflow.cards.length===0&&[normal,disabled,purged].every(r=>r.pending===5&&r.cards.length===3)&&states.every(s=>s.occurrences.length===5&&s.tasks.every((t:any)=>t.state==="due")),fabricated_acknowledgements:states.reduce((n,s)=>n+counts(s).ack,0),stable_retry_ids_all_subruns:states.every(s=>equal(s.occurrences.map((o:any)=>o.id).sort(),originalIds))};
+          evidence.push({overflow,normal,disabled,purged,states});
+        } else {
+          const after=c.id==="seven-day-evaluation"?7*86400000:1000;
+          const task=await make(c.id,t0+after);await delay(5500);
+          const before=snapshot();if(before.occurrences.length)throw new Error("future delivery task fired early");
+          const offline=c.id!=="active-session-deadline"&&c.id!=="multi-client-occurrence";
+          if(offline)await stop(daemon!);setClock(t0+after);if(offline)await start();
+          await http("GET",`/api/v1/tasks/${task.id}`);await wait(s=>s.occurrences.length===1);
+          if(c.id==="active-session-deadline") {
+            // Ordinary successful contact, empty vault, no recall/reconcile/task_due call.
+            const response=await contact();const s=await wait(s=>countAttempts(s)===1);
+            values={logical_firings:s.occurrences.length,delivery_attempts:countAttempts(s),acknowledgement_receipts:counts(s).ack};
+            evidence.push({passive_attachment_received:response.data.proactive_due?.cards?.length===1,empty_vault:true});
+            if(response.data.proactive_due?.cards?.length!==1)values.delivery_attempts=0;
+          } else if(c.id==="multi-client-occurrence") {
+            const second=await auth.mintTaskCredential(authPath,{actor_id:"second-client",domains:["personal"],role:"owner"});tokens.second=second.token;
+            const replies=await Promise.all([due({},"owner"),due({},"second")]);const retry=await due();const s=snapshot();
+            values={logical_firings:s.occurrences.length,stable_retry_ids:[...replies,retry].every(r=>r.cards.length===1&&r.cards[0].occurrence_id===s.occurrences[0].id),duplicate_resolutions:counts(s).resolution};
+          } else if(c.id==="acknowledged-unfinished") {
+            const shown=await due();const current=(await http("GET",`/api/v1/tasks/${task.id}`)).data;
+            const ack=await op("acknowledge",current,{occurrence_id:shown.cards[0].occurrence_id});if(ack.status!==200)throw new Error("fixture acknowledge failed");
+            await stop(daemon!);await start();const shownAck=await due({include_acknowledged:true});const s=snapshot();
+            values={acknowledgement_receipts:counts(s).ack,remains_open:s.tasks[0].state==="due"&&shownAck.cards.length===1&&shownAck.cards[0].acknowledged===true,resolution_receipts:counts(s).resolution};
+          } else {
+            const shown=await due();const s=snapshot();
+            values=c.id==="seven-day-evaluation"?{durable_before_fire:before.tasks.length===1&&before.tasks[0].armed,logical_firings:s.occurrences.length,gate_claimed_passed:false}:{logical_firings:s.occurrences.length,due_retained:s.tasks[0].state==="due"&&shown.cards.length===1,background_claimed:shown.coverage!=="next-contact-only"};
+            evidence.push({pre_fire_snapshot:before,shown,synthetic_clock_is_not_seven_day_window:true});
+          }
+        }
+      } else if(c.id === "p3-source-key-tuple-boundary") {
         const sources=[{id:"collision:a",kind:"event",producer_actor:"fixture-owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:100000,enabled:true},{id:"collision",kind:"event",producer_actor:"other-owner",owner_domains:["other"],sensitivity:"private",max_age_ms:100000,enabled:true}];
         for(const [i,source] of sources.entries()) {const r=await http("POST","/api/v1/tasks/sources",source,i===0?"owner":"other");if(r.status!==200)throw new Error("valid tuple source registration failed");}
         const results: Array<{status:number;data:any}>=[];
