@@ -112,3 +112,37 @@ test("event dedup cannot retroactively add or change a structured claim", async 
   await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, claim: undefined }), { code: "conflict" });
   await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
 });
+test("twenty identical checks with advancing clocks do not change revisions, audit or snapshot bytes", async () => {
+  for (const missing of [false, true]) {
+    const f = await premiseFixture("cheap");
+    if (missing) { const { unlink } = await import("node:fs/promises"); await unlink(join(f.root, "evidence.json")); }
+    await assessTaskFreshness(f.ctx); const initial = await readFile(f.ctx.path, "utf8");
+    for (let i = 1; i <= 20; i++) { f.ctx.now = () => 1000 + i * 10; await assessTaskFreshness(f.ctx); }
+    assert.equal(await readFile(f.ctx.path, "utf8"), initial);
+  }
+});
+test("future bound state age and persisted future verified cache never cause a time occurrence", async () => {
+  const f = await fixture(); const raw = "evidence"; const revision = taskValueHash(raw); await writeFile(join(f.root, "future.txt"), raw);
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "future", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "future.txt" });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "instant", at: 1000 }, evidence: [{ source_id: "future", id: "evidence", revision, observed_at: 1000, state_updated_at: 999999, max_age_ms: 1000, provenance: "attributable" }] });
+  await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx); let s = await readTaskStore(f.ctx.path);
+  assert.equal(s.tasks[0].verification?.outcome, "inconclusive"); assert.equal(s.occurrences.length, 0);
+  s.tasks[0].verification!.outcome = "verified"; s.tasks[0].verification!.state_updated_at = 999999;
+  await writeFile(f.ctx.path, JSON.stringify(s)); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
+});
+test("a disabled evidence source invalidates a previously verified cached time check", async () => {
+  const f = await fixture(); const raw = "evidence"; const revision = taskValueHash(raw); await writeFile(join(f.root, "enabled.txt"), raw);
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "enabled", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "enabled.txt" });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "instant", at: 1000 }, evidence: [{ source_id: "enabled", id: "evidence", revision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }] });
+  await assessTaskFreshness(f.ctx); const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].verification?.outcome, "verified");
+  s.sources.find(source => source.id === "enabled")!.enabled = false; await writeFile(f.ctx.path, JSON.stringify(s));
+  await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
+});
+test("twenty unchanged clock/evidence checks keep the entire snapshot unchanged", async () => {
+  const f = await fixture(); const raw = "clock evidence"; const revision = taskValueHash(raw); await writeFile(join(f.root, "quiet.txt"), raw);
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "quiet", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "quiet.txt" });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "instant", at: 2000 }, evidence: [{ source_id: "quiet", id: "evidence", revision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }] });
+  await assessTaskFreshness(f.ctx); const initial = await readFile(f.ctx.path, "utf8");
+  for (let i = 1; i <= 20; i++) { f.ctx.now = () => 1000 + i * 10; await assessTaskFreshness(f.ctx); }
+  assert.equal(await readFile(f.ctx.path, "utf8"), initial);
+});
