@@ -495,3 +495,37 @@ and reminds that a running daemon is required. Shared #656 doctor inventory
 reports configuration without claiming authentication or wakeup.
 Status/controls expose open work, receipts, source/adapter/key state and job/backoff.
 Mute/off/stop preserve history, tasks and spent authority; resume renews nothing.
+P7 review correction (binding contract): canonical object keys and source IDs use
+UTF-16 code-unit lexical order (< / >), independent of locale. Missing or disabled
+local-artifact-v1 adapter means NOT enabled: no lease/write; preparation stays
+read-only and available. Each owner domain reports missing/stale/expired/revoked/
+denied separately. Only full-domain actors read proposal payload/target preview;
+explicit partial-domain OWNERS may see exact effects to sign their domain.
+Key enroll refuses an existing domain. Rotate requires a fresh mapped owner
+credential and unlock/proof of the old matching private key; every key change
+resets protected_boundary=false and execution_stopped=true. protected_boundary
+true is the OWNER'S unverified assertion that agents cannot write the data dir,
+private key or runtime; it is not an OS permission check. Registry pin is per
+process start (including bridge/stdio), not a global daemon pin. P8 execution
+will be hosted only by the long-lived daemon; bridge/stdio clients forward to it.
+Owner CLI validates its local registry hash and domain key against daemon binding
+and shows the COMPLETE signature object plus concrete target path and byte diff.
+Challenge reuse is one live unconsumed challenge per domain/binding. Distinct
+HTTP/MCP/CLI codes preserve signed deny/revoke/expiry/staleness/consumption.
+Stop/resume may retain unexpired proofs; it never renews expired proofs/leases.
+P8 must recheck everything under store lock and durably spend exact approval IDs
+before the adapter, then check stop/adapter/lease/proof revocation again. Lease
+alone is never authority. os.uptime on macOS has second resolution and derives
+from wall/boot time; this is a documented platform limit, not a claim of perfect
+monotonic time under arbitrary host clock manipulation.
+
+The latest exact proof per owner domain is authoritative; revocation/expiry of it
+never falls back to an older approval. A changed on-disk registry blocks the
+pinned process until restart. Key rotation stops execution before writing key
+configuration. Hidden terminal input enables raw/no-echo before displaying its
+prompt; unattended stdin is rejected. Execute remains absent until this correction
+is published; P8 then implements intent/spending/adapter under the reviewed guard.
+Canonical API names used by this implementation are task_prepare, task_proposal,
+task_challenge, task_approval, task_revoke_approval, task_lease and task_release,
+with their /api/v1/<name> POST routes (OpenAPI). They supersede draft aliases in
+the initial route table; no partially implemented REST execute alias is advertised.

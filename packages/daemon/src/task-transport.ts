@@ -1,5 +1,5 @@
 import { taskClientToken } from "./task-client-auth.js";
-import { pinnedApprovalRegistry } from "./task-approval-keys.js";
+import { approvalRegistryPath, pinnedApprovalRegistry } from "./task-approval-keys.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { taskMemoryChanger, taskMemoryReader } from "./task-freshness.js";
 import { z } from "zod";
@@ -16,12 +16,12 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
-export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
+export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">): TaskServiceContext { return { path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), approvalRegistryPath: approvalRegistryPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
 export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number } } {
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
   const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
-    validation: 400, conflict: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
+    validation: 400, conflict: 409, approval_stale: 409, approval_expired: 409, approval_revoked: 409, approval_denied: 403, approval_missing: 409, approval_consumed: 409, lease_expired: 409, key_unlock_failed: 403, adapter_disabled: 409, execution_stopped: 409, feature_disabled: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
   // Do not echo raw validation values, paths, authorization or filesystem errors.
   const code = Object.hasOwn(statuses, reported) ? reported : "unavailable";
   const status = statuses[code] ?? 503;

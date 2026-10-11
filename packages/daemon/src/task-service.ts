@@ -59,7 +59,7 @@ function audit(task: Task, principal: TaskPrincipal, operation: string, now: num
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
   return JSON.stringify(value);
 }
 function hash(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
@@ -76,7 +76,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot>; memoryChange?: (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string) => Promise<string>; approvalRegistry?: Promise<ApprovalRegistry | undefined>; approvalRegistryPath?: string; actionClock?: () => { boot_id: string; monotonic: number }; memorySubscribe?: (listener: (id: string) => void) => () => void }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {

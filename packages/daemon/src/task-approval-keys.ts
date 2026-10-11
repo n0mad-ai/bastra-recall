@@ -18,7 +18,7 @@ export const approvalRegistrySchema = z.strictObject({ schema_version: z.literal
 export type ApprovalRegistry = z.infer<typeof approvalRegistrySchema>;
 export function canonicalAction(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalAction).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonicalAction(v)}`).join(",")}}`;
+  if (value && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonicalAction(v)}`).join(",")}}`;
   return JSON.stringify(value);
 }
 export const actionHash = (value: unknown) => createHash("sha256").update(canonicalAction(value)).digest("hex");
