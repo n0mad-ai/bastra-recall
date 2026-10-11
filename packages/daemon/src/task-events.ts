@@ -1,4 +1,5 @@
 import { checkTaskDecisions } from "./task-reconsideration.js";
+import { canonicalTaskValue } from "./task-canonical.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
 import { verifyTaskEvent, taskBindingHash } from "./task-freshness.js";
 import { createHash } from "node:crypto";
@@ -64,7 +65,7 @@ export async function submitTaskEvent(ctx: TaskServiceContext, authorization: st
     const claim = event.claim ? { claim_id: event.claim.claim_id, claim_revision: event.claim.claim_revision,
       evidence_id: event.claim.evidence_id, evidence_revision: event.claim.evidence_revision, value_hash: taskValueHash(event.claim.value) } : undefined;
     const existing = findTaskEvent(s, source, principal.actor_id, event.dedup_key);
-    if (existing && JSON.stringify(existing.claim) !== JSON.stringify(claim)) throw Object.assign(new Error("claim dedup drift"), { code: "conflict" });
+    if (existing && canonicalTaskValue(existing.claim) !== canonicalTaskValue(claim)) throw Object.assign(new Error("claim dedup drift"), { code: "conflict" });
     const appended = appendEvent(s, event.source_id, principal.actor_id, event.source_revision, event.value, event.dedup_key, event.state_updated_at, (ctx.now ?? Date.now)());
     if (claim) appended.claim = claim;
     id = appended.id;
@@ -110,8 +111,7 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
             || cached.state_updated_at === undefined || cached.state_updated_at > now || cached.state_updated_at > cached.observed_at
             || !task.evidence.every(e => store.sources.some(s => s.id === e.source_id && s.enabled) && (e.state_updated_at === undefined || (e.state_updated_at <= now && e.state_updated_at <= e.observed_at)))
             || now - cached.state_updated_at > cached.max_age_ms) {
-            if (store.events.some(e => e.source_id === event.source_id && e.sequence > event.sequence)) { task.last_event_sequence = event.sequence; continue; }
-            break;
+            break; // ordered evidence checks: never skip an unassessed middle event
           }
           verification = cached;
         }

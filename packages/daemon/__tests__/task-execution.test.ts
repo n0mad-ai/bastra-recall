@@ -30,7 +30,7 @@ test("exact signed action writes once, durable spend precedes target, private ba
   const f=await fixture();const result=await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any;assert.equal(result.state,"succeeded");assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"new\n");
   const s=await readTaskStore(f.ctx.path);assert.deepEqual(s.consumed_approval_ids,[f.proof.approval_id]);assert.equal(s.receipts.length,1);assert.equal(s.leases[0].state,"released");
   const backup=JSON.parse(await readFile(taskBackupPath(f.ctx,s.intents[0].backup_id),"utf8"));assert.equal(backup.payload,"old\n");assert.equal((await stat(taskBackupPath(f.ctx,s.intents[0].backup_id))).mode&0o077,0);
-  const before=await stat(join(f.root,"artifact.txt"));assert.deepEqual(await callTaskCrud(f.ctx,f.auth,"task_execute",f.input),result);assert.equal((await stat(join(f.root,"artifact.txt"))).mtimeMs,before.mtimeMs);
+  const before=await stat(join(f.root,"artifact.txt"));assert.deepEqual(await callTaskCrud(f.ctx,f.auth,"task_execute",f.input),result);assert.deepEqual(await callTaskCrud(f.ctx,f.auth,"task_execute",Object.fromEntries(Object.entries(f.input).reverse())),result);assert.equal((await stat(join(f.root,"artifact.txt"))).mtimeMs,before.mtimeMs);
   await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",{...f.input,idempotency_key:"second-action"}));assert.equal((await readTaskStore(f.ctx.path)).receipts.length,1);
 });
 test("stop, adapter, revoked/expired approval, expired lease and target drift are rechecked after lease grant",async()=>{

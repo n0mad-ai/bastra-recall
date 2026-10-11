@@ -268,3 +268,13 @@ test("a reclaim marker with a dead local PID is recovered", async () => {
   await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
   assert.equal((await readTaskStore(path)).tasks.length, 1);
 });
+
+test("reordered task/history objects are a byte-preserving no-op, altered values still need audit", async () => {
+  const path = await fixture();
+  const before = await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
+  const bytes = await readFile(path, "utf8");
+  const reorder = (v: any): any => Array.isArray(v) ? v.map(reorder) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).reverse().map(([k, val]) => [k,reorder(val)])) : v;
+  const after = await transactTaskStore(path, undefined, s => { s.tasks = s.tasks.map(reorder); });
+  assert.equal(after.revision, before.revision); assert.equal(await readFile(path, "utf8"), bytes);
+  await assert.rejects(transactTaskStore(path, undefined, s => { s.tasks[0].goal = "Changed without revision"; }), {code:"conflict"});
+});

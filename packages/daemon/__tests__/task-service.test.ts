@@ -42,6 +42,8 @@ test("domain reads hide existence and mutations never cross ownership", async ()
 test("concurrent idempotent creation yields one task and changed payload conflicts", async () => {
   const f = await fixture(); const rows = await Promise.all(Array.from({ length: 8 }, () => f.call(f.agent, "task_create", f.input)));
   assert.equal(new Set(rows.map(t => t.id)).size, 1); assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 1);
+  const reordered = Object.fromEntries(Object.entries(f.input).reverse().map(([k,v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).reverse()) : v]));
+  assert.equal((await f.call(f.agent, "task_create", reordered)).id, rows[0].id);
   await assert.rejects(f.call(f.agent, "task_create", { ...f.input, goal: "different" }), { code: "conflict" });
 });
 test("concurrent expected revisions allow one mutation; edit disarms and preserves audit", async () => {
