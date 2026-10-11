@@ -30,15 +30,18 @@ export async function registerTaskSource(ctx: TaskServiceContext, authorization:
 export function taskEventKey(source: TaskStore["sources"][number], actor: string, key: string): string {
   return taskValueHash(JSON.stringify(["task-event-v1", source.id, source.revision, source.kind, [...source.owner_domains].sort(), actor, key]));
 }
+export function findTaskEvent(store: TaskStore, source: TaskStore["sources"][number], actor: string, key: string) {
+  const framed = taskEventKey(source, actor, key); const legacy = taskValueHash(`${source.id}:${key}`);
+  return store.events.find(e => e.dedup_key === framed)
+    ?? store.events.find(e => e.dedup_key === legacy && e.source_id === source.id && e.source_revision === String(source.revision)
+      && e.actor === actor && JSON.stringify([...e.owner_domains].sort()) === JSON.stringify([...source.owner_domains].sort()));
+}
 function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number) {
   const source = store.sources.find(s => s.id === sourceId && s.enabled);
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
   const value_hash = source.kind === "file" ? value : taskValueHash(value);
   const dedup_key = taskEventKey(source, actor, key);
-  const legacy = taskValueHash(`${sourceId}:${key}`);
-  const existing = store.events.find(e => e.dedup_key === dedup_key)
-    ?? store.events.find(e => e.dedup_key === legacy && e.source_id === source.id && e.source_revision === String(source.revision)
-      && e.actor === actor && JSON.stringify([...e.owner_domains].sort()) === JSON.stringify([...source.owner_domains].sort()));
+  const existing = findTaskEvent(store, source, actor, key);
   if (existing) {
     if (existing.value_hash !== value_hash || existing.source_revision !== String(sourceRevision)) throw Object.assign(new Error("dedup key drift"), { code: "conflict" });
     return existing;
