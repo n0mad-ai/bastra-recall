@@ -27,11 +27,14 @@ export async function registerTaskSource(ctx: TaskServiceContext, authorization:
   });
   return { source_id: source.id, revision: store.sources.find(s => s.id === source.id)!.revision };
 }
+export function taskEventKey(source: TaskStore["sources"][number], actor: string, key: string): string {
+  return taskValueHash(JSON.stringify(["task-event-v1", source.id, source.revision, source.kind, [...source.owner_domains].sort(), actor, key]));
+}
 function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number) {
   const source = store.sources.find(s => s.id === sourceId && s.enabled);
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
   const value_hash = source.kind === "file" ? value : taskValueHash(value);
-  const dedup_key = taskValueHash(`${sourceId}:${key}`);
+  const dedup_key = taskEventKey(source, actor, key);
   const existing = store.events.find(e => e.dedup_key === dedup_key);
   if (existing) {
     if (existing.value_hash !== value_hash || existing.source_revision !== String(sourceRevision)) throw Object.assign(new Error("dedup key drift"), { code: "conflict" });
@@ -58,7 +61,7 @@ function audit(task: Task, now: number, operation: string): void {
   task.history.push({ at: now, actor: "task-source-reader", operation, before_revision: before, after_revision: task.revision, reason: operation });
 }
 function fire(store: TaskStore, task: Task, key: string, due: number, now: number, missed = 0): void {
-  const id = taskValueHash(`${task.id}:${task.generation}:${key}`);
+  const id = taskValueHash(JSON.stringify(["task-occurrence-v1", task.id, task.generation, [...task.owner_domains].sort(), key]));
   if (store.occurrences.some(o => o.id === id)) return;
   store.occurrences.push({ id, task_id: task.id, task_revision: task.revision, generation: task.generation,
     event_key: key, due_at: due, why: "Registered condition is due; evaluation is not a passed measurement gate", missed_count: missed, attempts: [] });
