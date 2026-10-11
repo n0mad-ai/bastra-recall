@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
-import { Vault, SearchIndex, TriggerExpander, buildInflectPrompt, tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { Vault, SearchIndex, TriggerExpander, buildInflectPrompt, tokenizeWithIdentifiers, foldTerm } from "@bastra-recall/core";
 import { phraseMatchesContext, collectReflexHits } from "../src/reflex.js";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -57,8 +57,8 @@ function memoryMarkdown(
   ].join("\n");
 }
 
-// gleiche Normalisierung wie collectReflexHits: lowercase + Identifier-Tokens
-const ctx = (text: string): Set<string> => new Set(tokenizeWithIdentifiers(text.toLowerCase()));
+// gleiche Normalisierung wie collectReflexHits: Identifier-Tokens, gefaltet (foldTerm)
+const ctx = (text: string): Set<string> => new Set(tokenizeWithIdentifiers(text).map(foldTerm));
 
 test("phraseMatchesContext: token-AND, stopwords dropped, no prefix matching", () => {
   const context = ctx("I'm about to write a tailwind grid component");
@@ -490,6 +490,30 @@ test("#565 inflection: the 2026-09-15 prompt fires the convention once the expan
     const after = collectReflexHits(vault, prompt, 2);
     assert.equal(after.served[0]?.memory.fm.id, "nachrichtenkonvention", "the convention fires");
     assert.equal(after.served[0]?.phrase, "antworten zzalli", "what fired is readable in the memory");
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("fold: an NFD prompt (macOS), a capital Turkish İ and a German ß fire the trigger spelled another way", async () => {
+  // Revert-check: tokenise the context with `context.toLowerCase()` again in
+  // collectReflexHits (reflex.ts) — the NFD and the ß prompt stop firing.
+  const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-fold-"));
+  const mem = join(dir, "memories");
+  await mkdir(mem, { recursive: true });
+  await writeFile(join(mem, "cafe-menu.md"), memoryMarkdown("cafe-menu", { recall_when: ["café menu prices"], recall_mode: "reflex" }));
+  await writeFile(join(mem, "istanbul-host.md"), memoryMarkdown("istanbul-host", { recall_when: ["istanbul sunucusu"], recall_mode: "reflex" }));
+  await writeFile(join(mem, "strasse.md"), memoryMarkdown("strasse", { recall_when: ["STRASSE sperren"], recall_mode: "reflex" }));
+  const vault = new Vault(dir);
+  await vault.init();
+  try {
+    const nfd = collectReflexHits(vault, "update the cafe\u0301 menu prices today", 2);
+    assert.equal(nfd.served[0]?.memory.fm.id, "cafe-menu", "NFD é meets NFC é");
+    const tr = collectReflexHits(vault, "İSTANBUL SUNUCUSU yeniden başlat", 2);
+    assert.equal(tr.served[0]?.memory.fm.id, "istanbul-host", "İ folds to the i of the trigger");
+    const de = collectReflexHits(vault, "die straße morgen sperren", 2);
+    assert.equal(de.served[0]?.memory.fm.id, "strasse", "ß in the prompt meets SS in the trigger");
   } finally {
     await vault.stop?.();
     await rm(dir, { recursive: true, force: true });

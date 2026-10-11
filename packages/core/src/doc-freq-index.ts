@@ -14,6 +14,7 @@
  * Compile, nicht die Relevanz zur Laufzeit.
  */
 import MiniSearch from "minisearch";
+import { foldTerm } from "./fold.js";
 
 export class DocFreqMiniSearch<T = unknown> extends MiniSearch<T> {
   /**
@@ -29,12 +30,12 @@ export class DocFreqMiniSearch<T = unknown> extends MiniSearch<T> {
    * ist monoton in der echten DF und kostet O(#Felder) statt O(#Dokumente)
    * pro Term. Für einen echten IDF-Wert wäre es zu grob.
    *
-   * Lowercasing hier, weil der Index mit MiniSearchs Default-`processTerm`
-   * (`term.toLowerCase()`) gebaut wird — ein ungefalteter Term würde im Trie
-   * schlicht fehlen und wäre fälschlich „selten".
+   * Gefaltet hier (`foldTerm`), weil der Index mit demselben `processTerm`
+   * gebaut wird — ein ungefalteter Term würde im Trie schlicht fehlen und wäre
+   * fälschlich „selten".
    */
   docFreq(term: string): number {
-    const perField = this._index.get(term.toLowerCase());
+    const perField = this._index.get(foldTerm(term));
     if (!perField) return 0;
     let total = 0;
     for (const docs of perField.values()) total += docs.size;

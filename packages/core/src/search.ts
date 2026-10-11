@@ -2,6 +2,7 @@ import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
 import type { EmbeddingIndex } from "./embeddings.js";
 import { normalizeQuery, tokenizeWithIdentifiers } from "./query-normalize.js";
+import { foldTerm } from "./fold.js";
 import { DocFreqMiniSearch } from "./doc-freq-index.js";
 import { rareTermFuzzy } from "./bm25-expansion.js";
 import { groupQueryTerms, groupedTokenize } from "./bm25-grouping.js";
@@ -123,7 +124,7 @@ export class SearchIndex {
   /** Wie viele Memories tragen `term` (gefaltet) in ihrem `recall_when` —
    *  DISTINKTE Memories, nicht die feldübergreifende Summe. */
   private recallWhenDocFreq(term: string): number {
-    return this.recallWhenTermFreq.get(term.toLowerCase()) ?? 0;
+    return this.recallWhenTermFreq.get(foldTerm(term)) ?? 0;
   }
 
   // Query-Cache (#30): MiniSearch tokenisiert die Query bei jedem
@@ -163,6 +164,9 @@ export class SearchIndex {
       // ohne `searchOptions.tokenize` auf diese Funktion zurück; KEIN separates
       // searchOptions.tokenize setzen, sonst bricht die Symmetrie (query-normalize.ts).
       tokenize: tokenizeWithIdentifiers,
+      // One case fold for index AND query (MiniSearch reuses it for search):
+      // locale-independent, Turkish İ/ı and German ß fold with their pairs.
+      processTerm: (term: string) => foldTerm(term),
       fields: [
         "title",
         "summary",
@@ -760,7 +764,7 @@ export class SearchIndex {
     // weil dort kein neuer Stand mehr kommt.
     this.forgetRecallWhenTerms(fm.id);
     const recallWhenTerms = new Set(
-      tokenizeWithIdentifiers(fm.recall_when.join(" ")).map((t) => t.toLowerCase()),
+      tokenizeWithIdentifiers(fm.recall_when.join(" ")).map(foldTerm),
     );
     for (const t of recallWhenTerms) {
       this.recallWhenTermFreq.set(t, (this.recallWhenTermFreq.get(t) ?? 0) + 1);
