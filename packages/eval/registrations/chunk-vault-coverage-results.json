@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "issue": 1082,
+  "measured_at": "2026-10-11T08:47:27.632Z",
+  "engine": {
+    "repo_commit": "d2abf04671c78513f7762dfb5a863568fd82f5a2",
+    "repo_dirty": false
+  },
+  "code_sha256": "d26877950eb21cf46fe64ebc46de5d8b3b549fe9b6211ff37d832e08812e2ca0",
+  "corpus_sha256": "3389a784ff924972ee468432430c9ebfe16d855025d6e681b4d692c8f2dc94b4",
+  "markdown_files_seen": 1412,
+  "unique_memories": 1403,
+  "duplicate_ids": 0,
+  "unreadable": 0,
+  "symlinks_skipped": 0,
+  "skipped_parsing_or_nonmemory": 9,
+  "by_type": {
+    "bookmark": {
+      "n": 10,
+      "multi_chunk": 0,
+      "chunks": 10,
+      "body_chars": 1214
+    },
+    "doc": {
+      "n": 53,
+      "multi_chunk": 22,
+      "chunks": 130,
+      "body_chars": 115117
+    },
+    "reference": {
+      "n": 49,
+      "multi_chunk": 43,
+      "chunks": 322,
+      "body_chars": 311167
+    },
+    "workflow": {
+      "n": 76,
+      "multi_chunk": 45,
+      "chunks": 136,
+      "body_chars": 122462
+    },
+    "meta-working": {
+      "n": 101,
+      "multi_chunk": 58,
+      "chunks": 184,
+      "body_chars": 172685
+    },
+    "preference": {
+      "n": 64,
+      "multi_chunk": 31,
+      "chunks": 98,
+      "body_chars": 85184
+    },
+    "lesson": {
+      "n": 256,
+      "multi_chunk": 206,
+      "chunks": 533,
+      "body_chars": 501521
+    },
+    "project-fact": {
+      "n": 601,
+      "multi_chunk": 539,
+      "chunks": 2020,
+      "body_chars": 1896308
+    },
+    "decision": {
+      "n": 162,
+      "multi_chunk": 124,
+      "chunks": 370,
+      "body_chars": 347151
+    },
+    "user-preference": {
+      "n": 31,
+      "multi_chunk": 10,
+      "chunks": 46,
+      "body_chars": 43166
+    }
+  },
+  "inputs_modified": false,
+  "limitation": "non-doc memories include imports; authored status not independently labelled; census is size coverage, not retrieval benefit"
+}
