@@ -164,3 +164,11 @@ If the original is unreadable and backup predates a recent unarchived effect, it
 Use the [20–30-minute isolated owner demo](design/proactive-tasks-demo.md). It starts its own daemon/port/profile with invented data, neutralizes inherited test/output settings, and includes browser/CLI notify, postponement, prepare/sign/execute/rollback and prepared decision-reconsideration files. Terminal close cleans the own daemon and own disposable root. No real human/OS-boundary or longitudinal evidence is inferred.
 
 See the [final 14-case matrix](design/proactive-tasks-matrix.md) and [German instructions](Proaktive%20Aufgaben.md). Human comprehension, interruption burden and longitudinal utility remain separate pending confirmations.
+
+## Tasks tab and browser access
+
+The existing Recall UI has a **Tasks** tab with active, completed archive, and failed/cancelled archive views. Origin, next check/due time and failure reason are visible. Unknown execution means reconciliation required. Unavailable sources are described as currently unavailable while retries remain scheduled, never as proven permanent failure. Cold archives can be explicitly loaded read-only without reactivating monitoring.
+
+A local single-user installation opens a short-lived **Agent-role** browser session without token entry (15 minutes, private SameSite/HttpOnly cookie plus CSRF validation). Local Host/Origin and enabled UI are required. No Owner credential is exposed; revocation is checked on every call. Separate Owner administration keeps the existing private login under “Separate Owner-Funktionen”. Signing remains outside the browser. The ordinary REST API still requires its mapped credential and cannot use this cookie. Logout ends only the browser session; reopen the page after expiry.
+
+The browser session grants reminders and their conversational controls, not level elevation, Owner arming or execution approval. Prepare/execute retain the existing contract pending Daniel's later discussion.

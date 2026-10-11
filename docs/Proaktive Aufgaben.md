@@ -174,3 +174,11 @@ Recovery-Grenze: Ist das Original unlesbar und das Backup älter als eine jüngs
 Die [20–30-minütige Demo](design/proactive-tasks-demo.md) startet einen eigenen Daemon/Port/Benutzerbereich mit erfundenen Daten. Sie zeigt CLI/Browser-Erinnerung, Zurückstellen, Vorbereiten/Signieren/Ausführen/Rollback und vorbereitete Entscheidungsdateien. Geerbte Test-/Output-Einstellungen werden neutralisiert; Terminal-Schließen beendet nur den eigenen Daemon und räumt die eigene Ablage auf. Keine echte Mensch-/OS-Grenze oder Langzeitwirkung wird daraus abgeleitet.
 
 Siehe [14-Fälle-Matrix](design/proactive-tasks-matrix.md) und [englische Anleitung](Proactive%20Tasks.md). Menschliches Verständnis, Unterbrechungskosten und Langzeitnutzen bleiben gesondert zu prüfen.
+
+## Aufgaben-Tab und Browser-Zugang
+
+Die vorhandene Recall-UI hat den eigenen Tab **Aufgaben**: **Aktiv**, **Archiv – erledigt**, **Archiv – fehlgeschlagen/abgebrochen**. Herkunft, nächste Prüfung/Fälligkeit und Fehlergrund sind sichtbar. Unbekannte Ausführung heißt „Abgleich nötig“. Nicht erreichbare Quellen werden als derzeit nicht erreichbar bezeichnet, solange eine erneute Prüfung vorgesehen ist; dies ist keine Behauptung eines endgültigen Ausfalls. Gesicherte kalte Archive lassen sich ausdrücklich lesend laden, ohne die Überwachung wieder zu starten.
+
+Bei der lokalen Einzelnutzer-Installation öffnet der Tab eine kurzlebige Browser-Session mit **Agent-Rechten** ohne Token-Eingabe (15 Minuten, private SameSite/HttpOnly-Cookie und CSRF-Prüfung). Host, Origin und aktivierte UI bleiben Pflicht. Keine Owner-Kennung wird ausgegeben; Widerruf wird bei jedem Aufruf geprüft. Für getrennte Owner-Verwaltung weiterhin den vorhandenen privaten Owner-Zugang unter „Separate Owner-Funktionen“ verwenden. Signieren bleibt außerhalb des Browsers. Die normale REST-API verlangt weiter ihre gemappte Kennung und akzeptiert diese Cookie nicht. Beim Abmelden verfällt nur die Browser-Session. Nach Ablauf die Seite neu öffnen.
+
+Die Browser-Session erlaubt Erinnerungen und ihre Gesprächsbedienung, keine Hochstufung, Owner-Scharfschaltung oder Ausführungsfreigabe. Vorbereiten/Ausführen behalten den bestehenden Vertragsstand; die spätere Diskussion mit Daniel ist offen.

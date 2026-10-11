@@ -27,6 +27,7 @@
         <button data-view="ring">Ring</button>
         <button data-view="semantic">Semantic</button>
         <button data-view="telemetry">Telemetry</button>
+        <button data-view="tasks">Aufgaben</button>
       </div>
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -47,7 +48,6 @@
     </div>
 
     <div class="topbar-right">
-      <a href="tasks.html">Aufgaben</a>
       <span id="stat-count" class="stat" title="memories in the vault">—</span>
       <!-- weather-slot anchors the picker under its own button -->
       <div id="weather-slot">
@@ -416,6 +416,8 @@
       <div id="live-history-list"></div>
     </div>
   </div>
+
+  <section id="tasks-view" hidden aria-label="Aufgaben"><iframe id="tasks-frame" title="Aufgaben und Erinnerungen" data-src="tasks.html" class="tasks-frame"></iframe></section>
 
   <!-- Telemetry tab (#463): the stats.ts series, rendered. A scroll page over
        the canvas rather than a view of it — nothing here has a position. -->

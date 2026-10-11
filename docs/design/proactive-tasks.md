@@ -690,3 +690,15 @@ never overwrite unsafe files or reactivate revoked credentials. With no Owner us
 personal; with one Owner identity use its mapped domains; multiple Owner identities
 require explicit setup. No client-setting rewrites, no Owner credential in hook/MCP,
 no signing capability. BASTRA_CONVERSATIONAL_REMINDERS=0 disables automatic setup.
+
+### P11 browser tab trust boundary
+
+The main Recall UI includes Tasks. Its same-origin iframe allows only self ancestors;
+the main map still disallows framing. The tasks UI bootstrap is local peer + strict
+loopback Host + enabled UI + same-origin JSON POST. It resolves only a mapped Agent,
+never an Owner env token. A random short-lived HttpOnly/SameSite=Strict cookie and
+per-session CSRF secret proxy calls through the same CRUD/auth/domain checks, with
+fresh revocation/role checks. No raw credential in browser JSON/storage; explicit
+REST auth remains unchanged. Existing Owner login remains optional and separate.
+This is the safest simple tokenless path without silently issuing Owner authority.
+Cold archive browsing is read-only, private/hash-checked and domain-filtered.

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Proactive notify reminders can be added and controlled in conversation, with automatic local Agent access and a Tasks tab in the Recall UI. Existing prepare/execute approval remains unchanged pending further Owner discussion.
+
 ### Added
 
 - Explicit persisted tasks with one MCP/HTTP/CLI/UI contract, owner review,

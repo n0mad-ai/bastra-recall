@@ -13,7 +13,7 @@ async function ui(snapshot:any,due:any={cards:[]},overrides:any={}){
  const nodes=new Map<string,Node>(),get=(id:string)=>{if(!nodes.has(id)){const n=new Node();n.id=id;nodes.set(id,n);}return nodes.get(id)!;};
  const document={getElementById:get,createElement:()=>new Node(),querySelectorAll:()=>[]};
  const source=await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8"),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
- runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get,ctx};
+ runInContext(source,ctx);await runInContext("taskView='all';refresh()",ctx);return{nodes,get,ctx};
 }
 test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
  const task={id:"terminal",goal:"Done </script><img onerror=bad>",original_request:"literal data",state:"resolved",last_failure:{code:"source_budget",message:"Quell-Bytegrenze überschritten"},armed:false,action_level:"notify",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",deliveries:[{last_attempt:1000,acknowledged:true}],budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
@@ -42,4 +42,12 @@ test("browser prevents duplicate execute reservations and releases its exact hol
 
 test("browser header distinguishes presentation attempt from owner acknowledgement",async()=>{
  const html=await readFile(new URL("../webui/tasks.html",import.meta.url),"utf8");assert.match(html,/Zustellung ist ein Anzeigeversuch/);assert.match(html,/Erst Quittieren heißt gesehen/);assert.ok(!html.includes("Zustellung heißt gesehen"));
+});
+
+test("task views separate active, completed and failed work and show scrubbed origin as text",async()=>{
+ const base={role:"agent",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}};
+ const template={original_request:"Synthetic",armed:true,action_level:"notify",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",deliveries:[],origin:{kind:"agent-observed",client:"client",session:"synthetic",context:"literal </script>"}};
+ const tasks=[{...template,id:"active",goal:"Active",state:"due"},{...template,id:"done",goal:"Done",state:"resolved",armed:false},{...template,id:"failed",goal:"Failed",state:"cancelled",armed:false}];const u=await ui({...base,tasks});
+ for(const [view,goal] of [["active","Active"],["done","Done"],["failed","Failed"]]){await runInContext(`taskView='${view}';refresh()`,u.ctx);const nodes=descendants(u.get("tasks"));assert.equal(nodes.filter(n=>n.textContent===goal).length,1);for(const other of tasks.filter(t=>t.goal!==goal))assert.ok(!nodes.some(n=>n.textContent===other.goal));assert.ok(nodes.some(n=>n.textContent.includes("vom Agenten bemerkt")&&n.textContent.includes("literal </script>")));}
+ const html=await readFile(new URL("../webui/index.html",import.meta.url),"utf8");assert.match(html,/data-view="tasks"/);assert.match(html,/id="tasks-view"/);
 });

@@ -1,6 +1,6 @@
 import { reminderDuplicate } from "./task-conversation.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
-import { archiveTasks, restoreTaskArchive, archivedTask, taskArchiveInput } from "./task-archive.js";
+import { archiveTasks, restoreTaskArchive, archivedTask, readTaskArchive, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
 import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
@@ -110,8 +110,14 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     await reconcileTaskTime(ctx); return { reconciled: true };
   }
   if (operation === "task_list") {
-    z.strictObject({}).parse(raw);
+    const input = z.strictObject({ archive_id: z.string().uuid().optional() }).parse(raw);
     const store = await readTaskStore(ctx.path);
+    if (input.archive_id) {
+      const entry = store.archives.find(a => a.id === input.archive_id && a.owner_domains.every(d => principal.domains.includes(d)));
+      if (!entry) throw new TaskServiceError("not_found", "Archive absent in authorized domains");
+      const snapshot = await readTaskArchive(ctx.path, entry);
+      return { tasks: snapshot.tasks.filter(t => t.owner_domains.every(d => principal.domains.includes(d))).map(t => ({ ...view(snapshot,t), archived: true, archive_id: entry.id, archive_failure: snapshot.receipts.some(r => r.task_id === t.id && ["failed", "unknown"].includes(r.outcome)) ? "Ausführung fehlgeschlagen oder Abgleich nötig" : undefined })) };
+    }
     return { tasks: store.tasks.filter(t => t.owner_domains.every(d => principal.domains.includes(d))).map(t => view(store, t)) };
   }
   if (operation === "task_get") {
@@ -217,7 +223,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
 
 export const TASK_INPUT_SCHEMAS = {task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
-  task_create: taskCreateInputSchema, task_list: z.strictObject({}), task_get: getInput,
+  task_create: taskCreateInputSchema, task_list: z.strictObject({ archive_id: z.string().uuid().optional() }), task_get: getInput,
   task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
 };
