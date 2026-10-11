@@ -48,7 +48,7 @@ try {
     const search = new SearchIndex(vault); search.start();
     try {
       for (const [qi, query] of c.queries.entries()) {
-        const hits = search.recall(query, { k: 3, min_score: 0 });
+        const hits = search.recall(query, { k: 3 });
         const rank = (id: string): number | null => {
           const i = hits.findIndex(h => h.id === id); return i < 0 ? null : i + 1;
         };
