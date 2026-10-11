@@ -1,10 +1,10 @@
 import { once } from "node:events";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, chmod, stat, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, unlink, chmod, stat, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureLocalTaskAgent } from "../src/task-auto-setup.js";
+import { ensureLocalTaskAgent, taskAgentAccessStatus } from "../src/task-auto-setup.js";
 import { authenticateTask, mintTaskCredential, revokeTaskCredential } from "../src/task-auth.js";
 import { taskClientToken, taskHookConfigPath } from "../src/task-client-auth.js";
 async function isolated(fn: (root: string) => Promise<void>) {
@@ -57,3 +57,20 @@ test("real upgraded daemon needs no setup command and preserves client configura
     assert.equal(await readFile(config,"utf8"),sentinel);
   } finally { await stop(); }
 });
+
+test("missing managed token retires former automatic access; unsafe file is visible in normal status", async () => isolated(async root => {
+  await ensureLocalTaskAgent(); const token = taskClientToken()!; const principal = await authenticateTask(`Bearer ${token}`,join(root,"task-auth.json"));
+  await unlink(taskHookConfigPath()); await ensureLocalTaskAgent(); assert.notEqual(taskClientToken(),token);
+  await assert.rejects(authenticateTask(`Bearer ${token}`,join(root,"task-auth.json")),{code:"unauthorized"});
+  await chmod(taskHookConfigPath(),0o644); const access=await taskAgentAccessStatus(); assert.equal(access.authorized,false); assert.match(access.hint,/stumm/);
+  const {callTaskCrud}=await import("../src/task-service.js"); const owner=await mintTaskCredential(join(root,"task-auth.json"),{actor_id:"owner",role:"owner",domains:["personal"]});
+  const status=await callTaskCrud({path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")},`Bearer ${owner.token}`,"task_status",{}) as any;assert.equal(status.agent_access.reason,"unsafe-or-corrupt");
+}));
+
+test("hookless forwarder session context authenticates from private token file without env token", async () => isolated(async root => {
+  const {createServer}=await import("node:http"); const {spawn}=await import("node:child_process"); const {fileURLToPath}=await import("node:url");
+  await ensureLocalTaskAgent(); const token=taskClientToken()!; let authorization:string|undefined;
+  const server=createServer((req,res)=>{authorization=req.headers["x-bastra-task-authorization"] as string|undefined;res.setHeader("Content-Type","application/json");res.end(JSON.stringify({context:authorization===`Bearer ${token}`?"<bastra-due>synthetic card</bastra-due>":"no private cards"}));});server.listen(0,"127.0.0.1");await once(server,"listening");
+  try { const modulePath=fileURLToPath(new URL("../dist/mcp-forwarder-calls.js",import.meta.url));const child=spawn(process.execPath,["--input-type=module","-e",`const m=await import(${JSON.stringify(modulePath)});console.log(JSON.stringify(await m.maybeSessionContextItem()));`],{env:{...process.env,BASTRA_DAEMON_URL:`http://127.0.0.1:${(server.address() as any).port}`,BASTRA_MCP_SESSION_CONTEXT:"1"},stdio:["ignore","pipe","pipe"]});let out="",err="";child.stdout.on("data",c=>{out+=c;});child.stderr.on("data",c=>{err+=c;});const [code]=await once(child,"close");assert.equal(code,0,err);assert.match(out,/synthetic card/);assert.equal(authorization,`Bearer ${token}`);
+  } finally { await new Promise<void>(r=>server.close(()=>r())); }
+}));

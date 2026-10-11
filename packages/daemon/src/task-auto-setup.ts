@@ -1,10 +1,10 @@
 /** Local single-user upgrade: shared private Agent credential, no client-config rewrite. */
 import { lstat, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { authenticateTask, mintTaskCredential, taskAuthPath, localTaskDomains } from "./task-auth.js";
 import { taskHookConfigPath, taskClientToken } from "./task-client-auth.js";
-import { atomicWrite } from "./task-store.js";
+import { atomicWrite, tasksPath } from "./task-store.js";
 import { withPathLock } from "./path-lock.js";
 export async function ensureLocalTaskAgent(): Promise<{ configured: boolean; reason: string }> {
   if (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, reason: "disabled" };
@@ -21,8 +21,20 @@ export async function ensureLocalTaskAgent(): Promise<{ configured: boolean; rea
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const domains = await localTaskDomains();
     if (!domains) return { configured: false, reason: "multiple-owner-identities-use-explicit-setup" };
-    const credential = await mintTaskCredential(taskAuthPath(), { actor_id: `local-agent.${randomUUID()}`, role: "agent", domains });
+    const credential = await mintTaskCredential(taskAuthPath(), { actor_id: `local-agent.${randomUUID()}`, role: "agent", domains }, undefined, true);
     await atomicWrite(path, JSON.stringify({ schema_version: 1, token: credential.token, credential_id: credential.credential_id }), ownership);
     return { configured: true, reason: "automatic-local-agent" };
   }, { strictLocal: true });
+}
+
+/** Explicit diagnostics: no repair/reissue and no raw token/path in the result. */
+export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskAuthPath()) {
+  if (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, authorized: false, reason: "disabled", hint: "Gesprächserinnerungen sind ausgeschaltet." };
+  const config = join(dirname(path), "task-hook-token.json"), token = taskClientToken(config);
+  if (!token) {
+    let present = false; try { await lstat(config); present = true; } catch {}
+    return { configured: present, authorized: false, reason: present ? "unsafe-or-corrupt" : "missing", hint: present ? "Erinnerungszugang beschädigt oder zu offen; Karten bleiben stumm. Owner: bastra tasks setup-hooks." : "Erinnerungszugang fehlt. Daemon starten; falls weiterhin fehlend: bastra tasks setup-hooks." };
+  }
+  try { const p = await authenticateTask(`Bearer ${token}`, authPath); return { configured: true, authorized: p.role === "agent", reason: p.role === "agent" ? "ready" : "owner-not-for-agents", hint: p.role === "agent" ? "Bei nächstem Kontakt, solange der Daemon läuft." : "Owner-Zugang nicht für automatische Agent-Karten verwenden." }; }
+  catch { return { configured: true, authorized: false, reason: "revoked-or-invalid", hint: "Erinnerungszugang widerrufen/ungültig; Karten bleiben stumm. Owner: bastra tasks setup-hooks." }; }
 }

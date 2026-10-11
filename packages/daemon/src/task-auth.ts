@@ -62,7 +62,7 @@ export function requireTaskDomains(principal: TaskPrincipal, domains: readonly s
 }
 /** Only called by offline owner bootstrap; raw token goes to a private destination. */
 export async function mintTaskCredential(path: string, input: Pick<TaskPrincipal, "actor_id" | "domains" | "role">,
-  rotate?: string): Promise<{ credential_id: string; token: string }> {
+  rotate?: string, retireAutomatic = false): Promise<{ credential_id: string; token: string }> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   return withPathLock(path, async assertOwnership => {
     const registry = await readRegistry(path);
@@ -76,6 +76,7 @@ export async function mintTaskCredential(path: string, input: Pick<TaskPrincipal
         throw new TaskAuthError("forbidden", "rotation cannot widen identity or domains");
       previous.revoked_at = Date.now();
     }
+    if (retireAutomatic) for (const old of registry.credentials) if (old.role === "agent" && old.actor_id.startsWith("local-agent.") && old.revoked_at === undefined) old.revoked_at = Date.now();
     registry.credentials.push(entry); registry.revision++;
     await atomicWrite(path, JSON.stringify(registrySchema.parse(registry)), assertOwnership);
     return { credential_id: entry.credential_id, token };

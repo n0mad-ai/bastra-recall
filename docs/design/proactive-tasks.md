@@ -690,3 +690,15 @@ never overwrite unsafe files or reactivate revoked credentials. With no Owner us
 personal; with one Owner identity use its mapped domains; multiple Owner identities
 require explicit setup. No client-setting rewrites, no Owner credential in hook/MCP,
 no signing capability. BASTRA_CONVERSATIONAL_REMINDERS=0 disables automatic setup.
+
+P11b review clarifications: the automatically shared local Agent receives the same
+assigned domains as the single local Owner identity, matching existing setup-hooks;
+otherwise reminders in an existing project domain would silently remain invisible.
+Multiple Owner identities still require explicit setup. This conveys Agent operation
+rights in those domains, never Owner review/signatures. Any local process running as
+the same OS user can read/use this private token. Same-UID unrestricted processes
+are not an isolation boundary; protected execute configuration/keys must stay separate.
+Unsafe/corrupt or revoked token files are not silently reactivated: normal task status,
+Doctor and the once-per-start warning report unavailable cards with the remedy. If
+an automatic token file disappeared, its formerly managed local-agent credentials
+are revoked in the same registry transaction that issues the replacement.
