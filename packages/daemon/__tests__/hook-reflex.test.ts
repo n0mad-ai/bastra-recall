@@ -447,7 +447,7 @@ test("#565 near miss: the trace is capped and carries no memory body", async () 
   }
 });
 
-test("#565 inflection: the 2026-09-15 prompt fires the convention once the expansion carries the inflected trigger", async () => {
+test("#565 inflection: the 2026-09-15 prompt fires the convention — by the word-form rule alone, and still with the expansion", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-inflect-"));
   const mem = join(dir, "memories");
   await mkdir(mem, { recursive: true });
@@ -468,12 +468,15 @@ test("#565 inflection: the 2026-09-15 prompt fires the convention once the expan
   await vault.init();
   const prompt = "danach antworten wir zzalli via dm, seine nachrichten kommen hier.";
   try {
+    // Without any generator: 'antworten' is a form of the trigger token
+    // 'antwort' under the core word-form rule, so the incident closes on hosts
+    // that run no local generative model at all.
     const before = collectReflexHits(vault, prompt, 2);
-    assert.equal(before.matched.length, 0, "precondition: the exact token AND misses 'antworten'");
-    assert.deepEqual(before.nearMisses[0]?.missing_tokens, ["antwort"]);
+    assert.equal(before.served[0]?.memory.fm.id, "nachrichtenkonvention", "the word-form rule fires the convention");
+    assert.deepEqual(before.nearMisses, [], "no near miss left on 'antwort'");
 
-    // The generator path, with the model stubbed to what the inflection prompt
-    // asks for. The matcher itself is unchanged (owner decision 2026-09-21).
+    // The generator path still works on top, with the model stubbed to what
+    // the inflection prompt asks for.
     const expander = new TriggerExpander(vault, { onEmbed: () => () => {} } as never, {
       chat: async (p) =>
         p === buildInflectPrompt(vault.get("nachrichtenkonvention")!)
@@ -489,7 +492,10 @@ test("#565 inflection: the 2026-09-15 prompt fires the convention once the expan
 
     const after = collectReflexHits(vault, prompt, 2);
     assert.equal(after.served[0]?.memory.fm.id, "nachrichtenkonvention", "the convention fires");
-    assert.equal(after.served[0]?.phrase, "antworten zzalli", "what fired is readable in the memory");
+    assert.ok(
+      ["antworten zzalli", "Antwort an zzalli oder einen anderen Contributor draften"].includes(after.served[0]?.phrase ?? ""),
+      `what fired is readable in the memory: ${after.served[0]?.phrase}`,
+    );
   } finally {
     await vault.stop?.();
     await rm(dir, { recursive: true, force: true });

@@ -276,7 +276,9 @@ test("acted_on (#701): the tool input is tokenised like the memory — Cyrillic 
     tool_input_excerpt: "// Миграцию хранилища запускаем до релиза",
     session_id: "session-ru",
   });
-  assert.equal(ru.match_strength, 2);
+  // миграцию + хранилища exactly, and релиза as a form of релизом (core
+  // word-form rule): three, not two.
+  assert.equal(ru.match_strength, 3);
   assert.equal(ru.acted_on, true);
 
   telemetry.recordLoadedMemory({ memory_id: "mem-zh", distinctive_tokens: tokens, hook_hint: null, session_id: "session-ru" });
