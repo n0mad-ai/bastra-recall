@@ -1,4 +1,5 @@
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
+import { verifyTaskEvent, taskBindingHash } from "./task-freshness.js";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open, realpath, lstat } from "node:fs/promises";
@@ -14,6 +15,7 @@ import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
 export function taskValueHash(value: string): string { return createHash("sha256").update(value, "utf8").digest("hex"); }
 export const taskEventInput = z.strictObject({ source_id: taskIdentitySchema, source_revision: z.number().int().nonnegative().safe(),
+  claim: z.strictObject({ claim_id: z.string().min(1).max(160), claim_revision: z.string().min(1).max(160), value: z.string().min(1).max(4096), evidence_id: z.string().min(1).max(160), evidence_revision: z.string().min(1).max(160) }).optional(),
   dedup_key: taskIdentitySchema, value: z.string().min(1).max(4096), state_updated_at: z.number().int().nonnegative().safe() });
 export const taskSourceInput = z.strictObject(taskSourceSchema.shape).omit({ revision: true, schema_version: true });
 export async function registerTaskSource(ctx: TaskServiceContext, authorization: string | undefined, input: unknown) {
@@ -27,7 +29,7 @@ export async function registerTaskSource(ctx: TaskServiceContext, authorization:
   });
   return { source_id: source.id, revision: store.sources.find(s => s.id === source.id)!.revision };
 }
-function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number) {
+function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number): TaskStore["events"][number] {
   const source = store.sources.find(s => s.id === sourceId && s.enabled);
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
   const value_hash = source.kind === "file" ? value : taskValueHash(value);
@@ -49,7 +51,13 @@ export async function submitTaskEvent(ctx: TaskServiceContext, authorization: st
     const source = s.sources.find(source => source.id === event.source_id);
     if (!source) throw Object.assign(new Error("unregistered source"), { code: "forbidden" });
     requireTaskDomains(principal, source.owner_domains);
-    id = appendEvent(s, event.source_id, principal.actor_id, event.source_revision, event.value, event.dedup_key, event.state_updated_at, (ctx.now ?? Date.now)()).id;
+    const claim = event.claim ? { claim_id: event.claim.claim_id, claim_revision: event.claim.claim_revision,
+      evidence_id: event.claim.evidence_id, evidence_revision: event.claim.evidence_revision, value_hash: taskValueHash(event.claim.value) } : undefined;
+    const existing = s.events.find(e => e.dedup_key === taskValueHash(`${event.source_id}:${event.dedup_key}`));
+    if (existing && JSON.stringify(existing.claim) !== JSON.stringify(claim)) throw Object.assign(new Error("claim dedup drift"), { code: "conflict" });
+    const appended = appendEvent(s, event.source_id, principal.actor_id, event.source_revision, event.value, event.dedup_key, event.state_updated_at, (ctx.now ?? Date.now)());
+    if (claim) appended.claim = claim;
+    id = appended.id;
   });
   return { event_id: id };
 }
@@ -81,15 +89,28 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
       for (const event of store.events) {
         if (event.sequence <= before) continue;
         if (remaining-- <= 0 || checked++ >= 10) break;
-        task.last_event_sequence = event.sequence;
-        if (task.schedule.source_id !== event.source_id) continue;
+        if (task.schedule.source_id !== event.source_id) { task.last_event_sequence = event.sequence; continue; }
         const source = store.sources.find(s => s.id === event.source_id && s.enabled);
-        if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d)) || task.schedule.predicate === "premise"
-          || !event.value_hash || !task.schedule.expected_hash) continue;
-        if (event.state_updated_at === undefined || event.state_updated_at > now || now - event.state_updated_at > source.max_age_ms) continue;
-        const materialChanged = task.last_material_hash !== event.value_hash;
-        task.last_material_hash = event.value_hash;
-        const matches = task.schedule.predicate === "equals" ? event.value_hash === task.schedule.expected_hash : event.value_hash !== task.schedule.expected_hash;
+        if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d))
+          || !event.value_hash || !task.schedule.expected_hash) { task.last_event_sequence = event.sequence; continue; }
+        let verification = verifyTaskEvent(task, event, store, now);
+        if (verification.reason === "premise_requires_evidence_verifier" || task.evidence.length) {
+          const cached = task.verification;
+          if (!cached || cached.event_id !== event.id || cached.binding_hash !== taskBindingHash(task)
+            || cached.state_updated_at === undefined || now - cached.state_updated_at > cached.max_age_ms) {
+            if (store.events.some(e => e.source_id === event.source_id && e.sequence > event.sequence)) { task.last_event_sequence = event.sequence; continue; }
+            break;
+          }
+          verification = cached;
+        }
+        if (!["verified", "refuted"].includes(verification.outcome)) {
+          if (store.events.some(e => e.source_id === event.source_id && e.sequence > event.sequence)) { task.last_event_sequence = event.sequence; continue; }
+          break; // latest unavailable/inconclusive event stays retryable after recovery
+        }
+        task.last_event_sequence = event.sequence;
+        const materialChanged = task.last_material_hash !== (event.claim?.value_hash ?? event.value_hash);
+        task.last_material_hash = event.claim?.value_hash ?? event.value_hash;
+        const matches = task.schedule.predicate === "equals" ? verification.outcome === "verified" : verification.outcome === "refuted";
         if (matches && materialChanged) fire(store, task, `event:${event.id}`, event.observed_at, now);
       }
       if (task.last_event_sequence !== before && task.revision === beforeRevision) audit(task, now, "journal-check");
@@ -97,6 +118,11 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
       continue;
     }
     try {
+      if (task.evidence.length) {
+        const verification = task.verification;
+        if (!verification || verification.binding_hash !== taskBindingHash(task) || verification.outcome !== "verified"
+          || verification.state_updated_at === undefined || now - verification.state_updated_at > verification.max_age_ms) continue;
+      }
       // The saved next slot is frozen across restarts/tzdata changes.
       if (task.next_slot && task.next_slot.at > now) continue;
       const latest = latestTimeSlot(task, now);
@@ -125,13 +151,18 @@ export async function observeTaskSources(ctx: TaskServiceContext): Promise<void>
   const snapshot = await readTaskStore(ctx.path); if (!snapshot.controls.enabled) return;
   let count = 0;
   for (const source of snapshot.sources) {
-    if (!source.enabled || !["file", "git"].includes(source.kind) || count++ >= 10) continue;
+    if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
     const now = (ctx.now ?? Date.now)();
     try {
-      const root = await realpath(source.root!);
-      if (root !== source.root) throw new Error("registered root changed");
       let value: string;
-      if (source.kind === "file") {
+      const root = source.kind === "memory" ? "" : await realpath(source.root!);
+      if (source.kind !== "memory" && root !== source.root) throw new Error("registered root changed");
+      if (source.kind === "memory") {
+        if (!ctx.memoryRead) throw new Error("memory reader unavailable");
+        const memory = await ctx.memoryRead(source.memory_id!);
+        if (memory.sensitivity !== "public" && source.sensitivity === "public") throw new Error("memory sensitivity drift");
+        value = memory.revision;
+      } else if (source.kind === "file") {
         const target = resolve(root, source.path!); const rel = relative(root, target);
         if (rel.startsWith("..") || isAbsolute(rel) || (await lstat(target)).isSymbolicLink() || await realpath(target) !== target) throw new Error("path containment");
         const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);

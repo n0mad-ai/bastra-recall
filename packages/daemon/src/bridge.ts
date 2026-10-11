@@ -286,7 +286,7 @@ async function main(): Promise<void> {
     try {
       let result: unknown;
       if (isTaskTool(method)) {
-        const result = await callTaskCrud(defaultTaskContext(), await taskClientAuthorization(), method, params ?? {});
+        const result = await callTaskCrud(defaultTaskContext({ vault, vaultPath: VAULT_PATH! }), await taskClientAuthorization(), method, params ?? {});
         process.stdout.write(JSON.stringify({ id, result }) + "\n");
         return;
       }

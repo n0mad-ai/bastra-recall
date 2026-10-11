@@ -68,6 +68,7 @@ export const taskSchema = z.strictObject({
   }).optional(),
   last_material_hash: hash.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
+  verification: z.lazy(() => taskVerificationSchema).optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
   history: z.array(z.strictObject({
     at: instant, actor: taskIdentitySchema, operation: id,
@@ -90,11 +91,20 @@ export const taskSchema = z.strictObject({
     ctx.addIssue({ code: "custom", message: "calendar and task timezone disagree" });
 });
 
+export const taskClaimSchema = z.strictObject({
+  claim_id: id, claim_revision: id, value_hash: hash, evidence_id: id, evidence_revision: id,
+});
+export const taskVerificationSchema = z.strictObject({
+  outcome: z.enum(["verified", "refuted", "stale", "unavailable", "inconclusive"]),
+  reason: id, source_id: id, source_revision: id, event_id: id,
+  binding_hash: hash, observed_at: instant, state_updated_at: instant.optional(),
+  max_age_ms: instant, timeout_ms: instant, checked_at: instant,
+});
 const eventSchema = z.strictObject({
   sequence: revision, id, dedup_key: id, source_id: id, source_revision: id,
   actor: taskIdentitySchema, owner_domains: domains, observed_at: instant,
   state_updated_at: instant.optional(), sensitivity: z.enum(["public", "private", "restricted"]),
-  value: text, value_hash: hash.optional(),
+  value: text, value_hash: hash.optional(), claim: taskClaimSchema.optional(),
 });
 
 const occurrenceSchema = z.strictObject({

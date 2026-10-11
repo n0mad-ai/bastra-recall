@@ -1,5 +1,6 @@
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
-import { taskValueHash, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
+import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
+import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
 import { resolveTaskCalendar } from "./task-clock.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -69,7 +70,7 @@ function normalizeSchedule(schedule: Task["schedule"]): void {
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
   }
 }
-export interface TaskServiceContext { path: string; authPath: string; now?: () => number }
+export interface TaskServiceContext { path: string; authPath: string; now?: () => number; memoryRead?: (id: string) => Promise<TaskMemorySnapshot> }
 /** Resolve fresh credential mapping here for HTTP, MCP and CLI alike. */
 export async function callTaskCrud(ctx: TaskServiceContext, authorization: string | undefined,
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
@@ -81,6 +82,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
     z.strictObject({}).parse(raw); requireTaskOwner(principal);
     const snapshot = await readTaskStore(ctx.path);
     requireTaskDomains(principal, [...new Set(snapshot.tasks.flatMap(t => t.owner_domains))]);
+    await observeTaskSources(ctx); await assessTaskFreshness(ctx);
     await reconcileTaskTime(ctx); return { reconciled: true };
   }
   if (operation === "task_list") {

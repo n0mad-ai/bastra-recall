@@ -305,7 +305,8 @@ test("E — a forwarded call's session links recall and load without being passe
     await callerSessionStore.run("forwarded-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
     await callerSessionStore.run("other-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
     const loads = await loadRows(dir);
-    assert.deepEqual(loads.map((row) => row.from_recall), [served.recall_id, null]);
+    // Telemetry writes are fire-and-forget; arrival order is not call order.
+    assert.deepEqual(loads.map((row) => row.from_recall).sort(), [served.recall_id, null].sort());
   } finally { search.stop(); await vault.stop(); }
 }));
 
