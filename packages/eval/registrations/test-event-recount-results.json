@@ -1,0 +1,486 @@
+{
+  "measured_at": "2026-10-11T08:28:01.971095+00:00",
+  "schema_version": 1,
+  "issue": 686,
+  "harness": "recount-test-events.py",
+  "engine": {
+    "repo_commit": "313f24d715f8f70a167569824fddbf9a1c2011eb",
+    "repo_dirty": false
+  },
+  "code_sha256": "353cbf7be9e9997810aeefe0607be2d9c92aee9561129511b40edb2a105c706c",
+  "input_manifest_sha256": "b5d69d30fc2e9c30c5bdca6811ad3712f358fbeedfc0aebdf6a2bc4c7b1f451a",
+  "files": 93,
+  "lines": 206449,
+  "matching": 0,
+  "invalid_rows": 0,
+  "matching_by_kind": {},
+  "by_date": [
+    {
+      "date": "2026-07-11",
+      "lines": 1096,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-12",
+      "lines": 950,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-13",
+      "lines": 245,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-14",
+      "lines": 26,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-15",
+      "lines": 1793,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-16",
+      "lines": 1443,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-17",
+      "lines": 1858,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-18",
+      "lines": 2130,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-19",
+      "lines": 1424,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-20",
+      "lines": 3949,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-21",
+      "lines": 4398,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-22",
+      "lines": 3239,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-23",
+      "lines": 853,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-24",
+      "lines": 612,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-25",
+      "lines": 776,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-26",
+      "lines": 2489,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-27",
+      "lines": 3860,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-28",
+      "lines": 1842,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-29",
+      "lines": 1594,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-30",
+      "lines": 1608,
+      "matching": 0
+    },
+    {
+      "date": "2026-07-31",
+      "lines": 171,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-01",
+      "lines": 951,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-02",
+      "lines": 3348,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-03",
+      "lines": 1393,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-04",
+      "lines": 5343,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-05",
+      "lines": 5662,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-06",
+      "lines": 4394,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-07",
+      "lines": 4454,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-08",
+      "lines": 1955,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-09",
+      "lines": 3025,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-10",
+      "lines": 1606,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-11",
+      "lines": 1666,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-12",
+      "lines": 2215,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-13",
+      "lines": 2385,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-14",
+      "lines": 1667,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-15",
+      "lines": 1274,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-16",
+      "lines": 495,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-17",
+      "lines": 1193,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-18",
+      "lines": 479,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-19",
+      "lines": 1864,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-20",
+      "lines": 2737,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-21",
+      "lines": 2513,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-22",
+      "lines": 1796,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-23",
+      "lines": 1680,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-24",
+      "lines": 1679,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-25",
+      "lines": 1728,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-26",
+      "lines": 2448,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-27",
+      "lines": 440,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-28",
+      "lines": 3627,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-29",
+      "lines": 2962,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-30",
+      "lines": 34,
+      "matching": 0
+    },
+    {
+      "date": "2026-08-31",
+      "lines": 1275,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-01",
+      "lines": 2948,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-02",
+      "lines": 1065,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-03",
+      "lines": 622,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-04",
+      "lines": 1130,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-05",
+      "lines": 514,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-06",
+      "lines": 2366,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-07",
+      "lines": 2445,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-08",
+      "lines": 3130,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-09",
+      "lines": 9460,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-10",
+      "lines": 1344,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-11",
+      "lines": 1656,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-12",
+      "lines": 5198,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-13",
+      "lines": 2511,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-14",
+      "lines": 646,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-15",
+      "lines": 929,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-16",
+      "lines": 802,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-17",
+      "lines": 2632,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-18",
+      "lines": 1591,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-19",
+      "lines": 5918,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-20",
+      "lines": 3007,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-21",
+      "lines": 1917,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-22",
+      "lines": 1676,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-23",
+      "lines": 1434,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-24",
+      "lines": 1419,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-25",
+      "lines": 2075,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-26",
+      "lines": 514,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-27",
+      "lines": 1833,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-28",
+      "lines": 4665,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-29",
+      "lines": 519,
+      "matching": 0
+    },
+    {
+      "date": "2026-09-30",
+      "lines": 424,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-01",
+      "lines": 3912,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-02",
+      "lines": 2587,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-03",
+      "lines": 423,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-04",
+      "lines": 6143,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-05",
+      "lines": 2807,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-06",
+      "lines": 2945,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-07",
+      "lines": 2336,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-08",
+      "lines": 3095,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-09",
+      "lines": 4217,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-10",
+      "lines": 5948,
+      "matching": 0
+    },
+    {
+      "date": "2026-10-11",
+      "lines": 1002,
+      "matching": 0
+    }
+  ],
+  "verdict": "zero matching rows",
+  "inputs_modified": false
+}
