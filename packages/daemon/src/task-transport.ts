@@ -70,6 +70,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       let input: Record<string, unknown> = method === "GET" ? {} : await readJsonBody(req, MAX_BODY_BYTES).catch(() => {
         throw Object.assign(new Error("Invalid bounded task JSON request"), { code: "validation" });
       });
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new z.ZodError([]);
       if (id) {
         if ("id" in input && input.id !== id) throw new z.ZodError([]);
         input = { ...input, id };

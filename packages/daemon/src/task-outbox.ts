@@ -53,4 +53,5 @@ export async function recordTaskDelivery(path: string, principal: TaskPrincipal,
     }
   }, "control");
 }
-export function cachedTaskSnapshot(path: string): TaskStore | undefined { return taskRuntime(path)?.snapshot; }
+export function cachedTaskSnapshot(path: string): TaskStore | undefined { const runtime = taskRuntime(path);
+  return runtime?.lastError === "task_store_unavailable" || runtime?.lastError === "task_job_unavailable" ? undefined : runtime?.snapshot; }

@@ -74,7 +74,7 @@ export class TaskRuntime {
       try {
         if (selected.size) {
           await observeTaskSources(this.ctx, true, sources);
-          if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected);
+          if (Date.now() - started < 5000) await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) this.snapshot = await reconcileTaskTime(this.ctx);
         this.lastTick = now; this.backoff = 0; this.lastError = null;

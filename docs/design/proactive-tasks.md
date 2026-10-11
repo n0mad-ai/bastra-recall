@@ -298,6 +298,18 @@ cache and queue reconciliation off-path; existing job refreshes every 60 s while
 daemon runs. A contact racing a refresh delivers at next suitable contact.
 No unsupported provider hook or background wakeup guarantee is asserted.
 
+Runtime wiring in P5 uses the daemon-jobs host for startup catch-up and 60 s polling;
+contact/mutations only queue reconciliation after the response turn. Empty/unarmed
+stores perform no periodic task I/O. A directory watcher observes task-file changes,
+including creation after boot, without a second polling queue. Source checks rotate
+under a 10-watched-task/source admission budget; pure evaluation keeps its 100-check
+budget, snapshots share the bounded reader cache, and the tick admits no new source
+work past 5 s. Failed checks back off per task from 60 s to 1 h; unrelated clock tasks
+continue. Identical transactions do not rewrite snapshots. Actual presentation has
+at most 3 cards/2 KiB, attempt receipts per Actor/Session/Channel and persistent retry
+limits. Rendering never acknowledges or resolves; overflow remains pending. Explicit
+`task_due` can read a larger bounded projection; passive integration follows in P5b.
+
 Hookless MCP: shared tool-response finalizer attaches authorized due cards to
 **every existing successful tool response**, under a 2 KiB/3-card budget. HTTP
 JSON API replies add a reserved `proactive_due` projection; hookless clients need

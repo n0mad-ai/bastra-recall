@@ -170,14 +170,17 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
     if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
     const now = (ctx.now ?? Date.now)();
     try {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       let value: string;
+      try {
+        value = await Promise.race([(async () => {
       const root = source.kind === "memory" ? "" : await realpath(source.root!);
       if (source.kind !== "memory" && root !== source.root) throw new Error("registered root changed");
       if (source.kind === "memory") {
         if (!ctx.memoryRead) throw new Error("memory reader unavailable");
         const memory = await ctx.memoryRead(source.memory_id!);
         if (memory.sensitivity !== "public" && source.sensitivity === "public") throw new Error("memory sensitivity drift");
-        value = memory.revision;
+        return memory.revision;
       } else if (source.kind === "file") {
         const target = resolve(root, source.path!); const rel = relative(root, target);
         if (rel.startsWith("..") || isAbsolute(rel) || (await lstat(target)).isSymbolicLink() || await realpath(target) !== target) throw new Error("path containment");
@@ -186,13 +189,17 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
           if ((await handle.stat()).size > 1024 * 1024) throw new Error("source byte budget");
           const bytes = Buffer.alloc(1024 * 1024 + 1); const read = await handle.read(bytes, 0, bytes.length, 0);
           if (read.bytesRead > 1024 * 1024) throw new Error("source byte budget");
-          value = taskValueHash(bytes.subarray(0, read.bytesRead).toString("utf8"));
+          return taskValueHash(bytes.subarray(0, read.bytesRead).toString("utf8"));
         }
         finally { await handle.close(); }
       } else {
-        value = (await exec("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: 1000, maxBuffer: 4096 })).stdout.trim();
+        const value = (await exec("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: 1000, maxBuffer: 4096 })).stdout.trim();
         if (!/^[a-f0-9]{40,64}$/.test(value)) throw new Error("invalid git revision");
+        return value;
       }
+
+        })(), new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error("source timeout")), Math.min(1000, Math.max(1, 5000 - (Date.now() - started)))); })]);
+      } finally { if (timeout) clearTimeout(timeout); }
       await transactTaskStore(ctx.path, undefined, s => {
         const current = s.sources.find(row => row.id === source.id);
         if (!current || !current.enabled || current.revision !== source.revision) return;

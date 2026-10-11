@@ -140,16 +140,16 @@ function verificationChanged(before: Verification | undefined, after: Verificati
   return !before || JSON.stringify(stable(before)) !== JSON.stringify(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */
-export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>): Promise<void> {
+export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>, maxMs = 5000): Promise<void> {
   const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return;
   const sourceCache: ReadContext["sourceCache"] = new Map(); const sourceReads = new Map<string, number>();
   const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
   for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
-    if (Date.now() - started >= 5000) break;
+    if (Date.now() - started >= maxMs) break;
     const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
     if (!event && task.schedule.kind === "event") continue;
     const observed = event ?? { id: "clock", dedup_key: "clock", sequence: 0, source_id: "clock", source_revision: "clock", actor: "task-source-reader", owner_domains: task.owner_domains, sensitivity: task.sensitivity, observed_at: (ctx.now ?? Date.now)(), state_updated_at: (ctx.now ?? Date.now)(), value: "clock" };
-    const boundedCtx: ReadContext = { ...ctx, deadline: Date.now() + task.budget.timeout_ms, sourceCache, sourceReads };
+    const boundedCtx: ReadContext = { ...ctx, deadline: Date.now() + Math.min(task.budget.timeout_ms, maxMs - (Date.now() - started)), sourceCache, sourceReads };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unavailable = { ...verifyTaskEvent(task, observed, store, (ctx.now ?? Date.now)()), outcome: "unavailable" as const, reason: "source_timeout" };
     const verification = await Promise.race([task.schedule.kind === "event" ? verifyTaskSource(boundedCtx, task, observed, store, (ctx.now ?? Date.now)())
