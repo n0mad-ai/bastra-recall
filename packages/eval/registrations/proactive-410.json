@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 7,
+  "registration_version": 8,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -655,7 +655,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective delivery replay procedure pinned before first P5b runtime measurement; existing outcomes and thresholds unchanged. CLI machine transport uses shipped --json.",
+  "amendment": "Prospective P8 HTTP action replay procedure; supported case IDs explicitly separate published APIs from implemented matrix handlers. Prior immutable segments and thresholds retained.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -674,5 +674,36 @@
     "ack": "explicit owner acknowledgement; restart; include_acknowledged projection must remain open",
     "coverage": "next-contact-only; synthetic clock advance does not establish seven-day longitudinal window",
     "expected_runs": 75
+  },
+  "action_runtime_procedure": {
+    "cases": [
+      "reference-containment-revocation",
+      "owners-fencing",
+      "prepare-forgery-drift",
+      "kill-recovery"
+    ],
+    "repetitions": 3,
+    "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+    "keys": "invented Ed25519 key and two synthetic owner-domain signatures; protected_boundary true is fixture configuration, no actual human/protected-OS assertion",
+    "targets": "canonical temp registered root; own adjacent sentinel outside adapter root; symlink and parent path rejected; all within measurement temp root",
+    "approval": "real HTTP prepare/challenge/approval/lease/execute; approve exact actual binding with published signing primitive; explicit rollback gets new proofs and lease",
+    "negative_subruns": [
+      "source=user/approved=true strict rejection",
+      "old task binding after edit",
+      "expired wall lease/proof",
+      "revoked required-domain proof",
+      "caller payload drift",
+      "registered source disabled",
+      "external target edit"
+    ],
+    "effects": "actual target bytes, mtime, durable intent/receipt and approval-ID state; zero unauthorized writes/spending",
+    "fencing": "withheld second domain; wall-clock lease expiry, replacement fence greater, old holder blocked",
+    "kill": "global execution stop and adapter off separately; read/review and independent notify remain available after actual daemon restart",
+    "pending": [
+      "P6 decision/source controls",
+      "decision supersession",
+      "crash/recovery injection",
+      "P10 migrations"
+    ]
   }
 }

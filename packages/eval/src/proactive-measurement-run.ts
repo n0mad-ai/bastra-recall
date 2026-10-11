@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { PROACTIVE_CASES, evaluateObservation, summarizeObservations, type Observation, type ProactiveCase } from "./proactive-measurement.js";
 
 export interface FeatureDriver {
-  metadata: { feature_commit: string; contract_prs: Record<string, number>; design_sha256: string; adapter: string; client: string; profile: string; support_sha256?: Record<string, string> };
+  metadata: { feature_commit: string; contract_prs: Record<string, number>; design_sha256: string; adapter: string; client: string; profile: string; support_sha256?: Record<string, string>; supported_cases?: string[] };
   /** Each run must reset state and derive observables from the real feature; no model verdicts. */
   run(c: ProactiveCase, context: { root: string; port: number; reference_instant: string; repetition: number; feature_root: string }): Promise<Observation>;
 }
@@ -74,7 +74,7 @@ async function main() {
   write("manifest.json", manifest); // Persist identity before any feature call.
   const rows: Observation[] = [];
   try {
-    if (driver && featureRoot) for (const c of PROACTIVE_CASES.filter(c => (!opts["--case"] || c.id === opts["--case"]) && c.dependencies.every(p => Number.isSafeInteger(driver!.metadata.contract_prs[p]) && driver!.metadata.contract_prs[p] > 0))) for (let repetition = 1; repetition <= 3; repetition++) {
+    if (driver && featureRoot) for (const c of PROACTIVE_CASES.filter(c => (!opts["--case"] || c.id === opts["--case"]) && (!driver!.metadata.supported_cases || driver!.metadata.supported_cases.includes(c.id)) && c.dependencies.every(p => Number.isSafeInteger(driver!.metadata.contract_prs[p]) && driver!.metadata.contract_prs[p] > 0))) for (let repetition = 1; repetition <= 3; repetition++) {
       const root = mkdtempSync(join(tmpdir(), "bastra-proactive-measurement-"));
       const context = { root, port: await privatePort(), reference_instant: "2026-10-11T12:00:00Z", repetition, feature_root: featureRoot };
       write(`${c.id}-${repetition}-context.json`, context);
