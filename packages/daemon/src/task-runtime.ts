@@ -65,7 +65,7 @@ export class TaskRuntime {
         const task = this.snapshot.tasks[(this.pollCursor + visited++) % this.snapshot.tasks.length];
         if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
         const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-        const material = `${event?.value_hash ?? ""}:${event?.claim?.value_hash ?? ""}:${event?.state_updated_at ?? ""}`;
+        const material = JSON.stringify(["task-check-v1", event?.value_hash, event?.claim?.value_hash, event?.state_updated_at]);
         const previous = this.checks.get(task.id);
         if (previous && now < previous.next && previous.material === material) continue;
         selected.add(task.id); if (task.schedule.kind === "event") sources.add(task.schedule.source_id);
@@ -83,7 +83,7 @@ export class TaskRuntime {
           const failed = ["unavailable", "inconclusive", "stale"].includes(task.verification?.outcome ?? "") || task.last_failure?.code === "source_unavailable";
           const delay = failed ? Math.min(Math.max((this.checks.get(id)?.backoff ?? 0) * 2, task.budget.poll_interval_ms), 3600000) : task.budget.poll_interval_ms;
           const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-          this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: `${event?.value_hash ?? ""}:${event?.claim?.value_hash ?? ""}:${event?.state_updated_at ?? ""}` });
+          this.checks.set(id, { next: now + delay, backoff: failed ? delay : 0, material: JSON.stringify(["task-check-v1", event?.value_hash, event?.claim?.value_hash, event?.state_updated_at]) });
           this.backoff = Math.max(this.backoff, failed ? delay : 0); if (failed) this.lastError = "source_unavailable";
         }
         this.nextTick = Math.min(now + 60000, ...[...this.checks.values()].map(c => c.next));

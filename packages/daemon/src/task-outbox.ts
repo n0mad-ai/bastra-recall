@@ -1,5 +1,5 @@
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { TaskStore } from "./task-schema.js";
 import { taskIdentitySchema } from "./task-schema.js";
@@ -11,7 +11,7 @@ export const taskDueInput = z.strictObject({ session: taskIdentitySchema.default
   max_bytes: z.number().int().min(256).max(16384).default(2048), include_acknowledged: z.boolean().default(false) });
 export type DueInput = z.infer<typeof taskDueInput>;
 export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, input: DueInput, now: number) {
-  const client = `${principal.actor_id}:${input.session}:${input.channel}`;
+  const client = createHash("sha256").update(JSON.stringify(["task-client-v1", principal.actor_id, input.session, input.channel])).digest("hex");
   const candidates = store.controls.enabled && !store.controls.muted ? store.occurrences.filter(o => {
     const task = store.tasks.find(t => t.id === o.task_id);
     return task?.armed && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
@@ -34,7 +34,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
       controls: ["acknowledge", "snooze", "resolve", "cancel"],
     };
     const size = Buffer.byteLength(JSON.stringify(card));
-    if (cards.length >= 3 || bytes + size > input.max_bytes) { overflow++; continue; }
+    if (cards.length >= 3 || bytes + size > input.max_bytes - 256) { overflow++; continue; }
     cards.push(card); occurrenceIds.push(occurrence.id); bytes += size;
   }
   return { coverage: "next-contact-only", cards, pending: candidates.length, overflow, retry_blocked: retryBlocked, client, occurrenceIds };
