@@ -40,6 +40,13 @@ export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
     return { id, raw, body: memory.body, revision: memoryRevision(raw), sensitivity: memory.fm.sensitivity ?? "public" };
   };
 }
+/** Cache admission key is captured from the snapshot ACTUALLY assessed. */
+export function taskCheckMaterial(task: Task, store: TaskStore): string {
+  const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+  const sources = store.sources.filter(s => (task.schedule.kind === "event" && s.id === task.schedule.source_id) || task.evidence.some(e => e.source_id === s.id))
+    .map(s => [s.id, s.revision, s.enabled]).sort((a,b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
+  return canonicalTaskValue(["task-check-v2", taskBindingHash(task), event?.id ?? null, event?.sequence ?? null, sources]);
+}
 function result(task: Task, event: TaskEvent, source: TaskSource | undefined, now: number, outcome: Verification["outcome"], reason: string): Verification {
   return { outcome, reason, source_id: event.source_id, source_revision: event.source_revision, event_id: event.id,
     binding_hash: taskBindingHash(task), observed_at: event.observed_at, state_updated_at: event.state_updated_at,
@@ -141,14 +148,15 @@ function verificationChanged(before: Verification | undefined, after: Verificati
   return !before || canonicalTaskValue(stable(before)) !== canonicalTaskValue(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */
-export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>, maxMs = 5000): Promise<void> {
-  const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return;
+export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>, maxMs = 5000): Promise<Map<string, string>> {
+  const assessed = new Map<string, string>();
+  const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return assessed;
   const sourceCache: ReadContext["sourceCache"] = new Map(); const sourceReads = new Map<string, number>();
   const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
   for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
     if (Date.now() - started >= maxMs) break;
     const event = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
-    if (!event && task.schedule.kind === "event") continue;
+    if (!event && task.schedule.kind === "event") { assessed.set(task.id, taskCheckMaterial(task, store)); continue; }
     const observed = event ?? { id: "clock", dedup_key: "clock", sequence: 0, source_id: "clock", source_revision: "clock", actor: "task-source-reader", owner_domains: task.owner_domains, sensitivity: task.sensitivity, observed_at: (ctx.now ?? Date.now)(), state_updated_at: (ctx.now ?? Date.now)(), value: "clock" };
     const boundedCtx: ReadContext = { ...ctx, deadline: Date.now() + Math.min(task.budget.timeout_ms, maxMs - (Date.now() - started)), sourceCache, sourceReads };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -157,9 +165,10 @@ export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?
       : verifyBoundEvidence(boundedCtx, task, store, (ctx.now ?? Date.now)()).then(evidence => ({ ...unavailable, ...evidence, source_id: "clock", event_id: "clock", state_updated_at: Math.min(...task.evidence.map(e => e.state_updated_at ?? e.observed_at)), max_age_ms: Math.min(...task.evidence.map(e => e.max_age_ms)) })),
       new Promise<Verification>(resolve => { timer = setTimeout(() => resolve(unavailable), task.budget.timeout_ms); })]);
     if (timer) clearTimeout(timer);
+    assessed.set(task.id, taskCheckMaterial(task, store));
     if (verificationChanged(task.verification, verification)) updates.push({ id: task.id, verification });
   }
-  if (!updates.length) return;
+  if (!updates.length) return assessed;
   await transactTaskStore(ctx.path, undefined, s => {
     for (const update of updates) {
       const task = s.tasks.find(t => t.id === update.id); if (!task || taskBindingHash(task) !== update.verification.binding_hash) continue;
@@ -168,4 +177,5 @@ export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?
       task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "freshness", before_revision: before, after_revision: task.revision, reason: update.verification.reason });
     }
   });
+  return assessed;
 }
