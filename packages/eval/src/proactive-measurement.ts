@@ -79,6 +79,6 @@ export function summarizeObservations(rows: Observation[]) {
     passed: results.filter(r => r.verdict === "passed").length,
     failed: results.filter(r => r.verdict === "failed").length,
     not_evaluable: results.filter(r => r.verdict === "not_evaluable").length,
-    issue_verdicts: { "402": "pending", "598": "pending", "410": "pending" },
+    issue_verdicts: { "402": results.some(r => r.verdict === "failed" && cases.get(r.case_id)!.issue === 402) ? "failed" : "pending", "598": "pending", "410": results.some(r => r.verdict === "failed") ? "failed" : "pending" },
     reason: "Synthetic functional observations cannot pass longitudinal, human or independent-review gates.", results };
 }

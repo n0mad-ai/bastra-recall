@@ -218,6 +218,9 @@ const driver: FeatureDriver = {
       } else throw new Error("unsupported published-stage fixture");
       evidence.push({ task_snapshot: existsSync(taskPath)?JSON.parse(readFileSync(taskPath,"utf8")):null });
       return { case_id:c.id,repetition,values,evidence };
+    } catch(error) {
+      writeFileSync(join(root,"incomplete-evidence.json"),JSON.stringify({case_id:c.id,repetition,error:String(error),values,evidence},null,2),{mode:0o600});
+      throw error;
     } finally {
       for(const p of processes.reverse()) await stop(p);
       writeFileSync(join(root,"process-logs.json"),JSON.stringify(logs,null,2),{mode:0o600});

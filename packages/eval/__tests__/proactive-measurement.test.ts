@@ -34,7 +34,11 @@ test("even a complete synthetic response set leaves human and longitudinal gates
   assert.equal(report.observed_runs, 66);
   assert.deepEqual(Object.values(report.issue_verdicts), ["pending", "pending", "pending"]);
   rows.find(r => r.case_id === "seven-day-evaluation")!.values.logical_firings = 2;
-  assert.equal(summarizeObservations(rows).functional_verdict, "failed");
+  const failed = summarizeObservations(rows);
+  assert.equal(failed.functional_verdict, "failed");
+  assert.equal(failed.issue_verdicts["402"], "failed");
+  assert.equal(failed.issue_verdicts["410"], "failed");
+  assert.equal(failed.issue_verdicts["598"], "pending");
 });
 test("unregistered, duplicated and out-of-range observations are rejected", () => {
   const c = PROACTIVE_CASES[0];
