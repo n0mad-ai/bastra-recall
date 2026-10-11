@@ -15,9 +15,9 @@ export async function normalizedOwnerTarget(input:unknown){
  const home=await canonical(homedir()),vault=await resolveVault({} as any),registry=await readApprovalRegistry();
  const protectedRoots=await Promise.all([dirname(tasksPath()),join(home,".bastra"),join(home,".claude"),join(home,".codex"),join(home,".cursor"),join(home,".config"),join(home,".ssh"),join(home,".gnupg"),join(home,"Library","LaunchAgents"),join(home,"Library","LaunchDaemons"),"/etc","/private/etc","/System","/Library",...(registry?.key_storage_roots??[]),...("path"in vault?[vault.path]:[])].map(canonical));
  if(protectedRoots.some(p=>inside(p,absolute)||inside(p,root)||inside(root,p)))invalid("target_protected");
- const components=absolute.split(sep),dangerousDirs=new Set([".bastra",".claude",".codex",".cursor",".config",".ssh",".gnupg",".gemini",".continue",".vscode",".cmuxterm","LaunchAgents","LaunchDaemons"]);
+ const components=absolute.split(sep).map(p=>p.toLowerCase()),dangerousDirs=new Set([".git",".husky",".bastra",".claude",".codex",".cursor",".config",".ssh",".gnupg",".gemini",".continue",".vscode",".cmuxterm","launchagents","launchdaemons"]);
  const shell=new Set([".zshrc",".zprofile",".zshenv",".zlogin",".zlogout",".bashrc",".bash_profile",".bash_login",".bash_logout",".profile","config.fish","profile","bash.bashrc"]);
- const controls=new Set([".claude.json",".mcp.json","mcp.json","task-approval-keys.json","task-auth.json","task-owner-token.json","task-hook-token.json","owner-key.json","approval-key.json"]);
- if(components.some(p=>dangerousDirs.has(p))||shell.has(basename(absolute))||controls.has(basename(absolute))||basename(absolute).endsWith(".plist"))invalid("target_protected");
- return {...target,root,path,outside_current_workdir:!inside(await canonical(process.cwd()),root)};
+ const controls=new Set([".envrc",".npmrc",".claude.json",".mcp.json","mcp.json","task-approval-keys.json","task-auth.json","task-owner-token.json","task-hook-token.json","owner-key.json","approval-key.json"]);
+ if(components.some(p=>dangerousDirs.has(p))||components.some((p,i)=>p===".github"&&components[i+1]==="workflows")||shell.has(basename(absolute).toLowerCase())||controls.has(basename(absolute).toLowerCase())||basename(absolute).toLowerCase().endsWith(".plist"))invalid("target_protected");
+ return {...target,root,path,execution_warning:basename(absolute).toLowerCase()==="package.json" ? "WARNUNG: package.json kann Install-/Test-/Start-Skripte definieren, die später Code ausführen. Exakte Skriptänderungen vor der Freigabe prüfen." : undefined,outside_current_workdir:!inside(await canonical(process.cwd()),root)};
 }

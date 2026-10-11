@@ -661,3 +661,5 @@ Backup recovery declares potential loss of newer changes, validates private cold
 exports, rebuilds missing indexes and unions spent IDs/fence maxima from readable
 original and validated exports. Active restored terminal history can coexist with
 its archive; no identity reuse or hidden deletion. Corrupt exports fail closed.
+
+P9c r2: fixed target denial includes all .git state (directory or worktree-control file), .husky, .github/workflows, .envrc and .npmrc, normalized case. package.json remains eligible with an explicit automatic-script warning before consent; it gains no extra capability. Regression asserts consumed approval status from cold archive AND recovered active snapshot, and old proof cannot acquire lease or produce another write.

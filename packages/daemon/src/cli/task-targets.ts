@@ -10,7 +10,7 @@ import { ownerTaskAuthorization } from "./task-owner-access.js";
 import { confirm } from "./prompt.js";
 export async function registerOwnerTaskTarget(authorization: string, input: unknown, replace=false) {
   const owner = await authenticateTask(authorization); requireTaskOwner(owner);
-  const normalized=await normalizedOwnerTarget(input),{outside_current_workdir:_warning,...target}=normalized; requireTaskDomains(owner,target.owner_domains);
+  const normalized=await normalizedOwnerTarget(input),{outside_current_workdir:_warning,execution_warning:_execution,...target}=normalized; requireTaskDomains(owner,target.owner_domains);
   // Stop before changing the registry, even if an overlapping edit later fails.
   await transactTaskStore(tasksPath(),undefined,s=>{s.controls.execution_stopped=true;},"control");
   await withPathLock(approvalRegistryPath(),async ownership=>{
@@ -45,6 +45,7 @@ export async function ownerTaskTargets(words:string[], options:Record<string,str
   const input={id:words[1],root:String(options.root),path:String(options.path),owner_domains:String(options.domain).split(","),sensitivity:String(options.sensitivity??"private"),adapter:"local-artifact-v1"};
   const normalized=await normalizedOwnerTarget(input);requireTaskDomains(principal,normalized.owner_domains);
   process.stdout.write(`Lokales Ziel ${words[1]}: ${resolve(normalized.root,normalized.path)}; aufgelöster Arbeitsordner ${normalized.root}; Domänen ${options.domain}. Adapter ersetzt genau diese UTF-8-Datei, kein Anbieter.\n`);
+  if(normalized.execution_warning)process.stdout.write(normalized.execution_warning+"\n");
   if(normalized.outside_current_workdir)process.stdout.write("WARNUNG: Dieser gewählte Arbeitsordner liegt außerhalb des aktuellen Projektordners. Nur ausdrücklich freigegebene Arbeitsdateien verwenden; Konfiguration, Schlüssel und Vault sind gesperrt.\n");
   if(!await confirm(`Dieses lokale Ziel ${words[0]==="update"?"ändern":"registrieren"}? Ausführung wird gestoppt, Grenzerklärung zurückgesetzt.`))throw Object.assign(new Error("Owner declined target"),{code:"forbidden",reason:"owner_declined"});
   const result=await registerOwnerTaskTarget(authorization,input,words[0]==="update");
