@@ -28,7 +28,8 @@ const root = await mkdtemp(join(tmpdir(), "supersession-durability-"));
 const rows: Record<string, unknown>[] = [];
 try {
   for (const c of corpus.cases) {
-    const dir = join(root, c.id);
+   for (const order of ["old-first", "new-first"]) {
+    const dir = join(root, c.id, order);
     await mkdir(join(dir, "memories"), { recursive: true });
     const old = `${c.id}-a-old`, successor = `${c.id}-z-new`;
     for (const [id, body, link] of [
@@ -36,7 +37,7 @@ try {
       [successor, c.after, `replaces: ${old}`],
       [`${c.id}-distractor`, "The telescope maintenance schedule is monthly.", ""],
     ]) {
-      await writeFile(join(dir, "memories", `${id}.md`),
+      await writeFile(join(dir, "memories", `${order === "new-first" ? (id === old ? "z" : "a") : (id === old ? "a" : "z")}-${id}.md`),
         `---\nid: ${id}\ntitle: ${JSON.stringify(id.endsWith("distractor") ? "Telescope maintenance" : c.title)}\n` +
         `type: reference\nsummary: ${JSON.stringify(body)}\n` +
         `scope: synthetic-correction\ntopic_path: [eval]\ntags: []\nrecall_when: []\n` +
@@ -54,7 +55,7 @@ try {
         };
         const a = rank(old), b = rank(successor);
         const sa = hits.find(h => h.id === old)?.score, sb = hits.find(h => h.id === successor)?.score;
-        rows.push({ case: c.id, language: c.language, kind: c.kind, query_class: ["neutral", "old-anchor", "paraphrase"][qi],
+        rows.push({ order, case: c.id, language: c.language, kind: c.kind, query_class: ["neutral", "old-anchor", "paraphrase"][qi],
           predecessor_rank: a, successor_rank: b,
           predecessor_outranks: a !== null && (b === null || a < b),
           strict_score_inversion: sa !== undefined && (sb === undefined || sa > sb),
@@ -62,6 +63,7 @@ try {
           both_missing: a === null && b === null, predecessor_reachable: vault.get(old)?.body.trim() === c.before });
       }
     } finally { search.stop(); }
+   }
   }
 } finally { await rm(root, { recursive: true, force: true }); }
 const summarize = (xs: typeof rows): Record<string, number> => ({
@@ -73,7 +75,7 @@ const summarize = (xs: typeof rows): Record<string, number> => ({
   predecessor_reachable: xs.filter(x => x.predecessor_reachable).length,
 });
 const slices: Record<string, unknown> = {};
-for (const dimension of ["language", "kind", "query_class"]) {
+for (const dimension of ["order", "language", "kind", "query_class"]) {
   slices[dimension] = Object.fromEntries([...new Set(rows.map(r => String(r[dimension])))].map(v =>
     [v, summarize(rows.filter(r => r[dimension] === v))]));
 }
@@ -81,7 +83,8 @@ const verdictHash = hash(JSON.stringify(rows));
 const result = { schema_version: 1, issue: 644, harness: "supersession-durability", engine,
   corpus_sha256: hash(readFileSync(fixture)), registration_sha256: hash(readFileSync(registration)),
   code_sha256: hash(readFileSync(new URL(import.meta.url))), arm: "bm25", k: 3,
-  summary: summarize(rows), slices, verdict_sha256: verdictHash, rows,
+  summary: summarize(rows.filter(r => r.order === "old-first")),
+  reversed_order_control: summarize(rows.filter(r => r.order === "new-first")), slices, verdict_sha256: verdictHash, rows,
   verdict: "baseline measured; hybrid, historical/as-of queries and population durability remain unmeasured" };
 await writeFile(argv[1], JSON.stringify(result, null, 2) + "\n");
 console.log(JSON.stringify({ engine, summary: result.summary, verdict_sha256: verdictHash }, null, 2));

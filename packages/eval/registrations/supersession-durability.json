@@ -11,11 +11,17 @@
     "queries": "three frozen current-state queries per pair: neutral, predecessor-anchored, paraphrased",
     "types": "reference; fixed equal dates; no aging, triggers or model",
     "primary": "predecessor ranks before successor, including predecessor hit with successor missing; both missing is separately reported",
-    "secondary": ["successor hit@1/@3", "strict score inversion", "score ties", "predecessor remains reachable by Vault.get(id)"],
+    "secondary": [
+      "successor hit@1/@3",
+      "strict score inversion",
+      "score ties",
+      "predecessor remains reachable by Vault.get(id)"
+    ],
     "k": 3,
     "sample": "12 invented bilingual pairs; 36 queries; no population inference",
     "baseline": "descriptive, no post-hoc threshold; no passed production gate",
-    "future_gate": "candidate: zero predecessor rank inversions, unchanged id access, and no internal gold-set regression; adoption requires owner decision and measured hybrid coverage"
+    "future_gate": "candidate: zero predecessor rank inversions, unchanged id access, and no internal gold-set regression; adoption requires owner decision and measured hybrid coverage",
+    "order_control": "Repeat all queries with reversed filename order and identical memory ids/content; report score ties separately. Primary summary uses old-first; reversed control is separate."
   },
   "command": "node --import tsx packages/eval/src/supersession-durability.ts --out <artifact>"
 }
