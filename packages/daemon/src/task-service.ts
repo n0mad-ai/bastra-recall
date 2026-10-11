@@ -68,11 +68,11 @@ function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule
   if (!source || !source.owner_domains.every(d => domains.includes(d)) || !schedule.expected_hash)
     throw new TaskServiceError("validation", "Registered source and an exact owner-reviewed baseline are required");
 }
-async function normalizeSchedule(path: string, schedule: Task["schedule"], versionSource = false): Promise<void> {
+async function normalizeSchedule(path: string, schedule: Task["schedule"], sourceKind?: string): Promise<void> {
   if (schedule.kind === "event") {
-    const supplied = !versionSource && schedule.predicate !== "git-ref" && /^[a-f0-9]{64}$/.test(schedule.expected);
+    const supplied = !["git", "memory"].includes(sourceKind ?? "") && /^[a-f0-9]{64}$/.test(schedule.expected);
     schedule.expected_hash = await privateContentComparison(path, schedule.expected, supplied);
-    if (supplied && !["content-version", "git-ref"].includes(schedule.predicate)) schedule.expected = "Private content baseline";
+    if (supplied && sourceKind !== "file") schedule.expected = "Private content baseline";
   }
   if (schedule.kind === "calendar") {
     try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
@@ -134,7 +134,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (principal.role === "agent" && input.arm && input.schedule.kind === "calendar" && ambiguousTaskCalendar(input.schedule.local_time, input.schedule.timezone))
       throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
     const sourceKind = input.schedule.kind === "event" ? (await readTaskStore(ctx.path)).sources.find(s=>input.schedule.kind === "event" && s.id === input.schedule.source_id)?.kind : undefined;
-    await normalizeSchedule(ctx.path, input.schedule, sourceKind === "git" || sourceKind === "memory");
+    await normalizeSchedule(ctx.path, input.schedule, sourceKind);
     if (legacyInput.schedule.kind === "event") legacyInput.schedule.expected_hash = legacyInput.schedule.predicate === "content-version" && /^[a-f0-9]{64}$/.test(legacyInput.schedule.expected)
       ? legacyInput.schedule.expected : createHash("sha256").update(legacyInput.schedule.expected,"utf8").digest("hex");
     else legacyInput.schedule = structuredClone(input.schedule);
@@ -189,7 +189,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (principal.role === "agent" && patch.action_level && patch.action_level !== task.action_level) requireTaskOwner(principal);
       if (patch.schedule) {
         const kind = patch.schedule.kind === "event" ? s.sources.find(src=>patch.schedule!.kind === "event" && src.id === patch.schedule!.source_id)?.kind : undefined;
-        await normalizeSchedule(ctx.path, patch.schedule, kind === "git" || kind === "memory");
+        await normalizeSchedule(ctx.path, patch.schedule, kind);
       }
       if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
         requireTaskOwner(principal);

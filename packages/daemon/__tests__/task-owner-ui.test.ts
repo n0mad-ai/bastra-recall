@@ -51,3 +51,9 @@ test("task views separate active, completed and failed work and show scrubbed or
  for(const [view,goal] of [["active","Active"],["done","Done"],["failed","Failed"]]){await runInContext(`taskView='${view}';refresh()`,u.ctx);const nodes=descendants(u.get("tasks"));assert.equal(nodes.filter(n=>n.textContent===goal).length,1);for(const other of tasks.filter(t=>t.goal!==goal))assert.ok(!nodes.some(n=>n.textContent===other.goal));assert.ok(nodes.some(n=>n.textContent.includes("vom Agenten bemerkt")&&n.textContent.includes("literal </script>")));}
  const html=await readFile(new URL("../webui/index.html",import.meta.url),"utf8");assert.match(html,/data-view="tasks"/);assert.match(html,/id="tasks-view"/);
 });
+
+test("retired legacy proposal shows new preparation without preview, signing or execution",async()=>{
+ const snapshot={role:"owner",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:true}};
+ const u=await ui(snapshot);(u.ctx as any).fixture={proposal:{id:"old",task_id:"task",target_id:"artifact",status:"stale"},binding_status:"approval_stale",approved:false};await runInContext("showProposal(fixture)",u.ctx);
+ const visible=descendants(u.get("preview")).map(n=>n.textContent).join(" ");assert.match(visible,/Vorschlag veraltet/);assert.match(visible,/Neue Vorbereitung und neue Freigaben/);assert.equal(u.get("binding").textContent,"");assert.equal(u.get("sign-command").textContent,"");assert.ok(!descendants(u.get("proposal")).some(n=>n.id==="execute-button"));
+});
