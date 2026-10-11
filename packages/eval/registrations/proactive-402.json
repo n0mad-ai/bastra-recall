@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 17,
+  "registration_version": 18,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1268,7 +1268,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective regression procedure accounts for the published generic availability notice at a tiny budget: it is not a specific task card or receipt. Original durable retention/no fabricated acknowledgement/stable IDs criteria and material default2048 remain unchanged; prior empty-output observations retained.",
+  "amendment": "Prospective complete75-row replay of frozen d77cdb42 after source-budget/demo changes. All stimuli, expected outcomes, budget values and time boundaries unchanged from v17/v16; no selected/excluded cases and no pooling with prior heads.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1384,5 +1384,22 @@
     "freeze_rule": "Detached own clean worktree; do not follow later pushes during these runs.",
     "scope": "Functional only; no human/longitudinal/independent stable gate pass inferred.",
     "tiny_budget_regression": "At256 bytes, allow only generic availability cards without task/occurrence IDs; zero specific card/attempt from the tiny-budget call. Overflow5 and all durable due IDs remain; normal/disabled/purged subruns still require three actual specific cards. Generic visibility is not acknowledgement or resolution."
+  },
+  "final_head_replay": {
+    "feature_commit": "d77cdb425a701f0d7f91e187b2dfdb3ae00b92c4",
+    "feature_pr": 1186,
+    "cases": 25,
+    "repetitions": 3,
+    "required_rows": 75,
+    "filters": null,
+    "budgets_unchanged": true,
+    "default_due_max_bytes": 2048,
+    "overflow_probe_max_bytes": 256,
+    "normal_overflow_inspection_max_bytes": 16384,
+    "shared_premise_deadline_ms": 5000,
+    "auto_poll_deadline_ms": 65000,
+    "mutation_wake_settle_ms": 5500,
+    "rule": "Same driver code/data/assertions as previous correction/regression; fresh per-row synthetic roots/ports, clean detached pinned feature build. Finish on this commit even if later heads are published. Preserve all earlier failed/corrected segments.",
+    "scope": "Registered synthetic functional matrix; human/longitudinal/independent stable confirmation remains separate."
   }
 }
