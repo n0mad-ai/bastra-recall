@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 600,
-  "status": "r3_control_preregistered",
+  "status": "r3_control_numbers_registered",
   "harness": "src/correction-sequences.ts",
   "corpus": "fixtures/correction-sequences.json",
   "protocol": {
@@ -43,5 +43,16 @@
   },
   "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>",
   "amendment": "Pre-registration robustness review fixed a late-old fixture projection that had linked by ingestion order. The preliminary diagnostic is excluded; rerun before registering numbers.",
-  "amendment_r3": "Reviewer-requested paired order control and score/value diagnostics; original artifact preserved. Value return 14\u219230\u219260\u219214 retained and disclosed."
+  "amendment_r3": "Reviewer-requested paired order control and score/value diagnostics; original artifact preserved. Value return 14\u219230\u219260\u219214 retained and disclosed.",
+  "measurement": {
+    "engine": {
+      "repo_commit": "fc40eb797ad025c8d6e6ac8b5f913622f216d99f",
+      "repo_dirty": false,
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+    },
+    "results": "correction-sequences-results.json",
+    "preregistered_protocol_sha256": "144711e2fb47af1725e347b3bc59adb280c782c23510c7dd7b5da8b26aa76ba1",
+    "model_digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+    "gates_passed": []
+  }
 }
