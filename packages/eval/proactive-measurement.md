@@ -19,32 +19,27 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-Frozen #1197 `eaf5da0188b6954ed39d4461492f0bbf7ed23080` complete run:
-**93 passed / 0 failed / 0 pending / 0 missing or not evaluable rows**, all31 cases×3
-with unchanged budgets and notify Owner policy. Protocol #402 v22/#598/#410 v21
-preceded the corrected full run.
+Frozen #1197 `07b03928266a028ca0dfc21cc6197583335b67ef` complete run:
+**93 passed / 0 failed / 0 pending / 0 missing or not evaluable rows**, all31 cases×3.
+Protocol #402 v23/#598/#410 v22 was committed in `ea19adeb` before this run.
+Budgets, Owner policy and runner/driver/dataset hashes remain unchanged from the
+previous eaf5da01 run. This is a single full run, not pooled focused segments.
 
-Identical event and Claim retries retain IDs, changed event content conflicts;
-real file/Git A,B,A,B produces four events each. Premise/owner controls and raw/
-redacted reminder dedup pass3/3. Existing migration case additionally installs valid
-old content-SHA expected/event/material/source comparisons in main+backup while
-stopped; actual daemon keys their equality and preserves event retry identity.
-Focused migration/premise/return/dedup segments each pass3/3 separately, not pooled.
-
-One fixture setup failed before first row because current HMAC creation_hash was
-copied into the original v1 SHA-only optional field. The obsolete full run was
-then stopped through its own active daemon; host archived four completed rows and
-cleaned up. Both incomplete artifacts remain not evaluable, not feature failures.
-The prospective fix omits that optional field and still validates with the original
-v1 decoder. No legacy SHA is fabricated. Day reference advances to12Oct+24h for
-future CRUD controls; budgets and existing behavioural assertions stay unchanged.
+Identical event and Claim retries retain IDs; changed event content conflicts.
+Real file/Git A,B,A,B produces four events each. Premise controls, raw/redacted
+reminder dedup, migration and real session/prompt hook processes all pass3/3.
+All93 cleanup audits pass, zero blocked network attempts,0700/0600 raw evidence.
 
 Owner decision11Oct replacements preserve three exact prior definitions/nine old
 expectations as **durch Owner-Entscheidung 11.10. ersetzt**. Historical raw outcomes
 stay unchanged. Current75 original-case positions plus18 P11 rows all pass; prepare/
-execute boundaries stay unchanged. All93 cleanup audits pass, zero blocked network
-attempts,0700/0600 evidence. No human/OS/longitudinal/stable or dictionary/privacy
-proof is inferred from this functional matrix.
+execute boundaries stay unchanged. Earlier eaf5da01 fixture/own-stopped incomplete
+artifacts remain separately not evaluable, as recorded in the registrations.
+
+No human/OS/longitudinal/stable or dictionary/privacy proof is inferred from this
+functional matrix. No additional unregistered content-version display/archive or
+legacy-proposal binding assurance is claimed. The separately reported Core claim
+reclaim race is outside these31 cases. Work ends for today after this result.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
