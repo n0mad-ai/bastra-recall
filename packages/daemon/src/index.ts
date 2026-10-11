@@ -11,6 +11,7 @@
  *                       (e.g. /Users/n0mad/Daniel/memorys).
  *                       Legacy alias `NEXUS_VAULT_PATH` wird noch gelesen.
  */
+import { ensureLocalTaskAgent } from "./task-auto-setup.js";
 import { mayExitOnBusyPort, probeDaemonPort } from "./http.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
 import { envFirst, envOff, isOnValue } from "./env.js";
@@ -102,6 +103,10 @@ async function main(): Promise<void> {
       process.exit(0);
     }
   }
+
+  await ensureLocalTaskAgent().then(result => {
+    console.error(`[bastra-recall] task agent access: ${result.reason}`);
+  }).catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
 
   // The start-up phases (#1039), in their original order. Each module holds
   // its phase verbatim; the values that cross phases are passed explicitly.

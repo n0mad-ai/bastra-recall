@@ -681,3 +681,12 @@ P10 card budget correction: measure actual escaped DATA JSON bytes, shorten over
 P10 intake-budget correction: file buffers/stat admission, memory reader/locator and Git output/process deadline receive the eligible consumer byte/timeout caps before intake. Shared sources use the largest selected eligible admission; each consumer checks recorded actual bytes/ms and a smaller consumer cannot fire from a larger one. Resource reinspection can amend cost metadata without creating a material event or refreshing state age; unchanged admissibility does not write. Legacy missing cost metadata is unavailable until inspected. Recovery only retains known archived/readable spent IDs; an unreadable current store and older pre-spend backup can omit a recent unarchived receipt/tombstone. New epoch, disarm and stop prevent old-proof replay even then; audit reconstruction is not claimed.
 
 P10 demo correction: actor-owned live reservation contention reports `lease_busy` (409), not generic conflict. A full-domain Owner may release only its own reservation by ID; agents still require exact holder token and fence. Release never renews spent proof or changes target/receipt. The UI admits one click at a time and releases its exact holder after a failed attempt; reopening and reviewing are explicit, not automatic retry.
+
+### P11 local automatic access
+
+On local single-user daemon/bridge startup, ensure a separate 0600 Agent credential
+in the existing hook fallback file. Preserve valid config and explicit env overrides;
+never overwrite unsafe files or reactivate revoked credentials. With no Owner use
+personal; with one Owner identity use its mapped domains; multiple Owner identities
+require explicit setup. No client-setting rewrites, no Owner credential in hook/MCP,
+no signing capability. BASTRA_CONVERSATIONAL_REMINDERS=0 disables automatic setup.

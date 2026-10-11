@@ -91,3 +91,12 @@ export async function revokeTaskCredential(path: string, credentialId: string): 
     await atomicWrite(path, JSON.stringify(registrySchema.parse(registry)), assertOwnership);
   }, { strictLocal: true });
 }
+
+/** Automatic setup is scoped to a local single-owner installation. */
+export async function localTaskDomains(path = taskAuthPath()): Promise<string[] | undefined> {
+  const registry = await readRegistry(path);
+  const owners = registry.credentials.filter(c => c.role === "owner" && c.revoked_at === undefined);
+  if (new Set(owners.map(c => c.actor_id)).size > 1) return;
+  const domains = [...new Set(owners.flatMap(c => c.domains))];
+  return domains.length ? domains : ["personal"];
+}

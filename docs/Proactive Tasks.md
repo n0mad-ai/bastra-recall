@@ -10,6 +10,10 @@ The server cannot prove claimed user intent. This residual boundary is conscious
 
 Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Delivery is at next contact while the daemon runs; an absent client is not automatically awakened.
 
+## Automatic agent access
+
+At local single-user daemon startup, a separate private agent credential is configured for hooks/MCP. Existing users need no command after an update; client settings and valid credentials are preserved. Revoked, unsafe or ambiguous multi-owner access is not silently replaced. `bastra tasks client-status` reports actual access. `BASTRA_CONVERSATIONAL_REMINDERS=0` prevents automatic setup and agent arming. The manual Owner path below remains available for separate administration and signing.
+
 ## 1 From zero to your first card
 
 Use your own terminal and an existing private owner directory outside agent access. Keep tokens out of chat.

@@ -10,6 +10,10 @@ Der Server kann eine behauptete Ansage nicht beweisen. Diese Restgrenze ist bewu
 
 Bastra merkt sich Aufgaben außerhalb einer Chatsitzung. Der Daemon prüft Fälligkeit automatisch; Karten erscheinen bei einem passenden nächsten Kontakt. Ein abwesender Client wird nicht automatisch geweckt. Zustellung ist nur ein Anzeigeversuch. Erst Quittieren bedeutet „gesehen“, Erledigen bedeutet „abgeschlossen“.
 
+## Automatischer Agent-Zugang
+
+Beim Start des lokalen Einzelnutzer-Daemons wird eine eigene private Agent-Kennung für Hooks/MCP angelegt. Bestandsnutzer brauchen nach dem Update keinen Befehl; vorhandene Client-Einstellungen und gültige Zugänge bleiben erhalten. Widerrufene, unsichere oder mehrdeutige Mehrbenutzer-Zugänge werden nicht still ersetzt. `bastra tasks client-status` zeigt den tatsächlichen Zugang. `BASTRA_CONVERSATIONAL_REMINDERS=0` verhindert die automatische Einrichtung und Agent-Scharfschaltung. Der manuelle Owner-Weg bleibt für separate Verwaltung und Signierung verfügbar.
+
 ## Von null zur ersten Karte
 
 Die Befehle gehören zum ausgelieferten `bastra`-CLI. Der Daemon muss laufen. Für einen Test verwende einen eigenen Vault, eigenen Aufgabenpfad und freien Port; die Demo-Anleitung verwendet ausschließlich Wegwerf-Daten.

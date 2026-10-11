@@ -72,6 +72,7 @@ import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { startVaultReconcile } from "./daemon-jobs.js";
+import { ensureLocalTaskAgent } from "./task-auto-setup.js";
 import { startProactiveTaskJob } from "./daemon-jobs.js";
 import readline from "node:readline";
 import * as path from "node:path";
@@ -242,6 +243,7 @@ async function main(): Promise<void> {
   const reconcileTimer = startVaultReconcile(vault);
   // Dedicated mapping is required even on this trusted legacy transport.
   passiveTaskContext = defaultTaskContext({ vault, vaultPath: VAULT_PATH! });
+  await ensureLocalTaskAgent().catch(() => undefined);
   const proactiveJob = (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
   const search = new SearchIndex(vault);
   search.start();
