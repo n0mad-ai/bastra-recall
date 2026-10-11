@@ -35,7 +35,7 @@ export const taskScheduleSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const taskSchema = z.strictObject({
-  id, revision, generation: revision,
+  id, revision, generation: revision, creation_hash: hash.optional(),
   created_at: instant, updated_at: instant,
   original_request: text, request_source: id, request_reference: id.optional(),
   creator: taskIdentitySchema, actor: taskIdentitySchema, owner_domains: domains,
