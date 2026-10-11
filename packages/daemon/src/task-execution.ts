@@ -120,7 +120,7 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       if (typeof backup.payload !== "string" || cleanText(backup.payload) !== backup.payload) fail("validation", "Rollback cannot be safely previewed");
       if (backup.intent_id !== receipt.intent_id || bytesHash(backup.payload) !== receipt.before_hash) fail("approval_stale", "Backup binding changed");
       const task = store.tasks.find(t => t.id === original.task_id)!;
-      const proposal = { ...original, id: actionHash(["task-rollback-v1", receipt.id, principal.actor_id, receipt.after_hash]), actor: principal.actor_id, created_at: now,
+      const proposal = { ...original, id: actionHash(["task-rollback-v2", receipt.id, principal.actor_id, receipt.after_hash]), actor: principal.actor_id, created_at: now,
         rollback_of: receipt.id, task_revision: task.revision, generation: task.generation, task_binding: taskBindingHash(task), binding_version: 2 as const, source_revisions: [], registry_hash: registryHash(registry),
         required_domains: [...new Set([...original.required_domains, ...task.owner_domains, ...target.target.owner_domains])].sort(), scope: task.scope, sensitivity: [original.sensitivity, task.sensitivity, target.target.sensitivity].sort((a,b) => ({public:0,private:1,restricted:2}[a] - {public:0,private:1,restricted:2}[b])).at(-1)!, recovery_epoch: store.recovery_epoch, target_hash: receipt.after_hash, payload: backup.payload, payload_hash: receipt.before_hash, status: "prepared" as const };
       await validateTaskProposal(ctx, store, proposal, registry);
