@@ -89,7 +89,7 @@ export function postSessionContext(
       reject(err);
       return;
     }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
+    const payload = Buffer.from(JSON.stringify({ ...body, assembly_only: true }), "utf8");
     const req = request(
       {
         method: "POST",
@@ -98,7 +98,6 @@ export function postSessionContext(
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          ...taskClientHeaders(),
           "Content-Length": payload.byteLength.toString(),
         },
         timeout: timeoutMs,

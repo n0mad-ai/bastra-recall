@@ -702,3 +702,12 @@ Unsafe/corrupt or revoked token files are not silently reactivated: normal task 
 Doctor and the once-per-start warning report unavailable cards with the remedy. If
 an automatic token file disappeared, its formerly managed local-agent credentials
 are revoked in the same registry transaction that issues the replacement.
+
+R5 integration corrections: conversational duplicate identity is a SHA-256 of
+canonical pre-scrub reminder definition (request/goal/resolution/cause and schedule,
+recurrence/domain/scope/evidence), excluding session/client/idempotency key. Persist
+only the digest, never the raw secret. Rows without a digest and edited definitions
+are conservatively not merged. Internal SessionStart context requests explicitly
+use assembly_only and omit task credentials; the assembler neither projects cards
+nor touches quiet/delivery state. The outer Hook response alone includes/records
+its card; hookless MCP context remains an actual forwarded output.

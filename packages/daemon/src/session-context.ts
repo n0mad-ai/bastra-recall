@@ -96,7 +96,8 @@ export async function handleSessionContextPost(
   const budget = (b.budget ?? {}) as Record<string, unknown>;
   const caps = (b.caps ?? {}) as Record<string, unknown>;
   const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
-  const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
+  // The SessionStart lane consumes raw data and delivers once at its outer exit.
+  const due = b.assembly_only === true ? undefined : await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
   const assembled = await assembleSessionSections(toolDeps, vault, {
     dueText: due?.text,
     project,
