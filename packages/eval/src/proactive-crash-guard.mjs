@@ -1,14 +1,14 @@
 /** Measurement-only deterministic SIGKILL injection in the actual child daemon. */
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { resolve, relative } from 'node:path';
+import { join, basename, dirname, relative } from 'node:path';
 const rename=fs.renameSync;
 fs.renameSync=function(from,to){
   const controlPath=process.env.BASTRA_MEASUREMENT_CRASH_PATH;
   let control;try{if(controlPath)control=JSON.parse(fs.readFileSync(controlPath,'utf8'));}catch{}
   if(!control?.armed)return rename(from,to);
   const root=fs.realpathSync(process.env.BASTRA_MEASUREMENT_ROOT);
-  if(relative(root,resolve(to)).startsWith('..'))throw new Error('crash fixture target escaped temp root');
+  if(relative(root,join(fs.realpathSync(dirname(to)),basename(to))).startsWith('..'))throw new Error('crash fixture target escaped temp root');
   const crash=()=>{fs.writeFileSync(controlPath,JSON.stringify({...control,armed:false}),{mode:0o600});process.kill(process.pid,'SIGKILL');};
   if(to===control.target){
     if(control.stage==='before'||control.stage==='recovery')crash();
