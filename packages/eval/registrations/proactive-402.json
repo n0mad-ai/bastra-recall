@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 22,
+  "registration_version": 23,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1656,7 +1656,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Prospective corrected v1 fixture for eaf5da01 replay: omit optional creation_hash after strict original v1 decoder rejects the newly copied HMAC. No fabricated legacy SHA or authority migration. Earlier uncompleted setup/host-stop artifacts retained as not_evaluable, not feature failure; all behavioural assertions/budgets and keyed-source migration checks unchanged.",
+  "amendment": "Prospective final93-row run on frozen07b03928 after content-version display/archive and legacy proposal-binding fixes. Existing driver/runner/dataset/Owner policy/stimuli/expectations/budgets/time boundaries unchanged from corrected eaf5da01 run; prior complete/incomplete artifacts immutable.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -2062,5 +2062,16 @@
     ],
     "scope": "Private comparison field removal from API is not absence of verification; behavioural assertions stay. No dictionary/privacy/human/OS proof inferred.",
     "legacy_fixture": "Use original public v1 field schema with optional creation_hash absent; do not carry current HMAC into v1 SHA field. Strict original decoder validates fixture before any installation; preserve IDs/history. Earlier focus40/full39 incomplete runs retained, corrected full run newly pinned."
+  },
+  "rest_cases_replay": {
+    "feature_commit": "07b03928266a028ca0dfc21cc6197583335b67ef",
+    "feature_pr": 1197,
+    "cases": 31,
+    "repetitions": 3,
+    "required_rows": 93,
+    "filters": null,
+    "budgets_unchanged": true,
+    "reference_instant": "2026-10-12T12:00:00Z",
+    "rule": "Clean detached own feature build, complete unfiltered run on this head; no switching/pooling/threshold relaxation. Includes existing exact Event/Claim retry guards, A/B returning sources, premise change, raw/reminder dedup and legacy SHA main/backup migration. No independent privacy/UI/Core-claim-race proof inferred."
   }
 }
