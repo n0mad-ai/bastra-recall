@@ -754,14 +754,20 @@ metadata entry requiring new preparation; new lease/challenge/execute attempts
 cannot reuse the retired proof. Historical cryptographic verification of these
 removed signatures is no longer available; IDs, decisions, permanently consumed
 approval IDs, intents, receipts and exact executed retries stay intact. Fresh
-rollback uses its receipt/backup and requires new approvals under existing rules.
+rollback uses its receipt/backup and a v2 identity, so a retired v1 rollback cannot
+block new preparation; new approvals follow existing rules.
 Cold stale records omit the reconstructible old signing body and retain only
 safe tombstone metadata needed for identity and independently reviewed rollback.
 
 Known boundary: already copied pre-upgrade API responses, signing material and
 exports cannot be recalled or made confidential after the fact. An observer who
 kept a complete original unkeyed proposal can still run the old dictionary probe
-against that historical copy. This change stops supplying those legacy bindings
+against that historical copy. Original hash-derived proposal IDs remain as audit
+and retry references; sufficient original signing-body metadata can also make
+such an ID a historical dictionary verifier. Stale API replies and managed cold
+exports no longer supply that reconstructible old body. This is an explicit
+retrospective limit, not a claim that retained historical IDs became keyed.
+This change stops supplying those legacy bindings
 from the managed live/backup/archive data; it does not promise retroactive secrecy.
 Same-UID key access, authorized online comparisons, #1198 and the Owner's later
 prepare/execute policy discussion remain as documented, without a new policy here.
