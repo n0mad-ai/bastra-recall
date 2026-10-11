@@ -76,7 +76,7 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_full_available_segment_feature_commit": "375702ffe81565b2a5ca2122024d53bd52afd98b",
+      "latest_full_available_segment_feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
       "latest_observed_runs": 93,
       "latest_required_runs": 93,
       "latest_passed": 93,
@@ -90,11 +90,11 @@
       "replacement_label": "durch Owner-Entscheidung 11.10. ersetzt",
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Frozen375702ff complete93-row run passes:75 existing-case positions under explicitly versioned notify replacements plus18 new rows. Real session-hook/prompt-hook subprocesses each receive one card/attempt with automatic0600Agent access and no env token/mint/setup command; restart/client config retained. No notify upgrade; raw secret-aware dedup; agent ack/snooze30\u219260days/resolve/cancel; finite40-reminder quota probe all pass. Prepare/execute and budgets unchanged. Earlier raw outcomes and old expectations retained, not silently relabelled.",
+      "functional_status": "Frozen eaf5da01 complete93-row run passes unchanged budgets/Owner policy. Identical event+Claim retry IDs, value drift409, real file/Git A,B,A,B, premise change, raw/redacted reminder dedup and valid legacy content SHA main+backup migration all pass3/3. Original v1 fixture corrected prospectively by omitting unsupported optional HMAC creation_hash; no fabricated legacy SHA. Incomplete old fixture/own-stopped runs preserved, not feature failures or pooled passes.",
       "current_failed_cases": [],
       "all_child_processes_stopped": true,
       "blocked_network_rows": 0,
-      "measurement_verdict": "Synthetic functional93-row matrix passed; human chat-confirmation/understanding, UI-tab visual QA, OS/large-vault/longitudinal/independent stable confirmation remain separate/pending."
+      "measurement_verdict": "Registered synthetic functional93-row matrix passed; human/OS/longitudinal/independent stable and dictionary/privacy proofs remain separate/pending."
     },
     "runtime_segments": [
       {
@@ -1180,6 +1180,191 @@
         "private_result_sha256": "7bbec08ec0c62583fdfcab18bfe1b2d1eb3c3c7739aa0d20193b33f68901f871",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T22:24:21.400Z",
+        "eval_commit": "5f422541db65417aae92ce00a4ae5783a38e74cb",
+        "runner_sha256": "0426e39d601a217cd6260824fdc73f3c536b780d6caa8e194b57dca9f3c8c93c",
+        "driver_sha256": "c7b51053efec02e4e0b47a29423fc03ab36b635aaf73f660bc0ce6d980af9925",
+        "dataset_sha256": "f73c17c759b7f4fa5f1792d3eaba38b30a3f25f8d40fcb3850a58a6ef2a15fe7",
+        "functional_verdict": "passed",
+        "expected_runs": 93,
+        "observed_runs": 93,
+        "missing_runs": 0,
+        "passed": 93,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "selected_case": null,
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 22,
+            "sha256": "fee416fdf28c22e08f876d5edecfebd41e59ef83d8321bd18923d8759e1064bd"
+          },
+          {
+            "issue": 598,
+            "registration_version": 21,
+            "sha256": "afe951585271150816a90d3c10f685746de260f9623b01e931661c9f5e5186cb"
+          },
+          {
+            "issue": 410,
+            "registration_version": 21,
+            "sha256": "0d2d137396bf97a5be16cde5c9cadc5b31cb8465626fa9d7b4e5fa59a70c37c0"
+          }
+        ],
+        "private_result_sha256": "e38c7686d6d713ff857efa92abef50b9d8d80cb90b1e173501d5411e10f26677",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T22:23:55.688Z",
+        "eval_commit": "5f422541db65417aae92ce00a4ae5783a38e74cb",
+        "runner_sha256": "0426e39d601a217cd6260824fdc73f3c536b780d6caa8e194b57dca9f3c8c93c",
+        "driver_sha256": "c7b51053efec02e4e0b47a29423fc03ab36b635aaf73f660bc0ce6d980af9925",
+        "dataset_sha256": "f73c17c759b7f4fa5f1792d3eaba38b30a3f25f8d40fcb3850a58a6ef2a15fe7",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "selected_case": "migration-corruption",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 22,
+            "sha256": "fee416fdf28c22e08f876d5edecfebd41e59ef83d8321bd18923d8759e1064bd"
+          },
+          {
+            "issue": 598,
+            "registration_version": 21,
+            "sha256": "afe951585271150816a90d3c10f685746de260f9623b01e931661c9f5e5186cb"
+          },
+          {
+            "issue": 410,
+            "registration_version": 21,
+            "sha256": "0d2d137396bf97a5be16cde5c9cadc5b31cb8465626fa9d7b4e5fa59a70c37c0"
+          }
+        ],
+        "private_result_sha256": "27ec9e193978a380f5a44c58c90b5974a974ef2623cf2edd8528e5db99d3d534",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T22:25:21.571Z",
+        "eval_commit": "5f422541db65417aae92ce00a4ae5783a38e74cb",
+        "runner_sha256": "0426e39d601a217cd6260824fdc73f3c536b780d6caa8e194b57dca9f3c8c93c",
+        "driver_sha256": "c7b51053efec02e4e0b47a29423fc03ab36b635aaf73f660bc0ce6d980af9925",
+        "dataset_sha256": "f73c17c759b7f4fa5f1792d3eaba38b30a3f25f8d40fcb3850a58a6ef2a15fe7",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "selected_case": "material-premise-change",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 22,
+            "sha256": "fee416fdf28c22e08f876d5edecfebd41e59ef83d8321bd18923d8759e1064bd"
+          },
+          {
+            "issue": 598,
+            "registration_version": 21,
+            "sha256": "afe951585271150816a90d3c10f685746de260f9623b01e931661c9f5e5186cb"
+          },
+          {
+            "issue": 410,
+            "registration_version": 21,
+            "sha256": "0d2d137396bf97a5be16cde5c9cadc5b31cb8465626fa9d7b4e5fa59a70c37c0"
+          }
+        ],
+        "private_result_sha256": "8e10e46d48fcecf75366a25fffb2da0b9450f24e091114e5117cf803f692333c",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T22:25:21.566Z",
+        "eval_commit": "5f422541db65417aae92ce00a4ae5783a38e74cb",
+        "runner_sha256": "0426e39d601a217cd6260824fdc73f3c536b780d6caa8e194b57dca9f3c8c93c",
+        "driver_sha256": "c7b51053efec02e4e0b47a29423fc03ab36b635aaf73f660bc0ce6d980af9925",
+        "dataset_sha256": "f73c17c759b7f4fa5f1792d3eaba38b30a3f25f8d40fcb3850a58a6ef2a15fe7",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "selected_case": "p3-returning-source-transitions",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 22,
+            "sha256": "fee416fdf28c22e08f876d5edecfebd41e59ef83d8321bd18923d8759e1064bd"
+          },
+          {
+            "issue": 598,
+            "registration_version": 21,
+            "sha256": "afe951585271150816a90d3c10f685746de260f9623b01e931661c9f5e5186cb"
+          },
+          {
+            "issue": 410,
+            "registration_version": 21,
+            "sha256": "0d2d137396bf97a5be16cde5c9cadc5b31cb8465626fa9d7b4e5fa59a70c37c0"
+          }
+        ],
+        "private_result_sha256": "26d4af50d61023d87a6b3f86db96a610128910932ca177b9328b9c3f95f54463",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T22:25:21.571Z",
+        "eval_commit": "5f422541db65417aae92ce00a4ae5783a38e74cb",
+        "runner_sha256": "0426e39d601a217cd6260824fdc73f3c536b780d6caa8e194b57dca9f3c8c93c",
+        "driver_sha256": "c7b51053efec02e4e0b47a29423fc03ab36b635aaf73f660bc0ce6d980af9925",
+        "dataset_sha256": "f73c17c759b7f4fa5f1792d3eaba38b30a3f25f8d40fcb3850a58a6ef2a15fe7",
+        "functional_verdict": "pending",
+        "expected_runs": 93,
+        "observed_runs": 3,
+        "missing_runs": 90,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "selected_case": "p11-raw-reminder-dedup",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 22,
+            "sha256": "fee416fdf28c22e08f876d5edecfebd41e59ef83d8321bd18923d8759e1064bd"
+          },
+          {
+            "issue": 598,
+            "registration_version": 21,
+            "sha256": "afe951585271150816a90d3c10f685746de260f9623b01e931661c9f5e5186cb"
+          },
+          {
+            "issue": 410,
+            "registration_version": 21,
+            "sha256": "0d2d137396bf97a5be16cde5c9cadc5b31cb8465626fa9d7b4e5fa59a70c37c0"
+          }
+        ],
+        "private_result_sha256": "e75aaa162c81bc87f05a514889f01bcc2aff01ddf6b64d3d91148dc0f900d8b0",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
       }
     ],
     "incomplete_runtime_segments": [
@@ -1227,6 +1412,24 @@
         "segment_verdict": "not_evaluable",
         "reason_category": "observed missing automatic occurrence after two failed complete rows",
         "private_abort_sha256": "a31c1ddedfbc08a96b853b7c770cf1e7aa86303ecdfe7ce711a72cc1b9469669"
+      },
+      {
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "eval_commit": "7fc4643c06bb3abcaa1e472f2e7f5d1489731238",
+        "selected_case": "migration-corruption",
+        "completed_rows": 0,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "invalid v1 fixture copied new HMAC into old optional SHA field",
+        "private_abort_sha256": "64fbb3788eedd22cdd3ac831fa6b49081cb991339ed8db4f07fcf61c73aa6a73"
+      },
+      {
+        "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+        "eval_commit": "7fc4643c06bb3abcaa1e472f2e7f5d1489731238",
+        "selected_case": null,
+        "completed_rows": 4,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "own obsolete-fixture daemon deliberately stopped; host cleanup preserved partial rows",
+        "private_abort_sha256": "8d31f108fec286aea5a70d1c0c62972369067ec5765367256c08e1d1195df81f"
       }
     ],
     "readonly_diagnostic_sha256": "0fb5468a21c4dd96723e402d8901ee145a4fdbade55c336b500a466b470f644a"

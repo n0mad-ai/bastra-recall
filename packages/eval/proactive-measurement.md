@@ -19,34 +19,32 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-Owner decision **11 October 2026** explicitly changes conversational notify
-arming and control rights. Three prior case definitions (nine row expectations)
-are preserved exactly in each registration and labelled **durch Owner-Entscheidung
-11.10. ersetzt**. The new definitions grant notify arming/resolution/unbounded
-snooze; Owner review/rearm and prepare/execute guards stay unchanged. Historical
-raw pass/fail outcomes are not rewritten.
+Frozen #1197 `eaf5da0188b6954ed39d4461492f0bbf7ed23080` complete run:
+**93 passed / 0 failed / 0 pending / 0 missing or not evaluable rows**, all31 cases×3
+with unchanged budgets and notify Owner policy. Protocol #402 v22/#598/#410 v21
+preceded the corrected full run.
 
-Frozen P11 #1197 `375702ffe81565b2a5ca2122024d53bd52afd98b` complete run:
-**93 passed, 0 failed, 0 pending, 0 missing/not evaluable**. It covers all75 original
-case positions under the explicitly amended expectations plus18 new rows (six
-new cases×3), registered before runtime in #402 v20/#598/#410 v19.
+Identical event and Claim retries retain IDs, changed event content conflicts;
+real file/Git A,B,A,B produces four events each. Premise/owner controls and raw/
+redacted reminder dedup pass3/3. Existing migration case additionally installs valid
+old content-SHA expected/event/material/source comparisons in main+backup while
+stopped; actual daemon keys their equality and preserves event retry identity.
+Focused migration/premise/return/dedup segments each pass3/3 separately, not pooled.
 
-New rows test actual session-hook.js and prompt-hook.js processes with a fresh
-empty-access daemon that provisions its own private Agent file, without env token,
-manual mint or setup command. One frame/attempt, no implicit acknowledgement,
-stable restart access and unchanged synthetic existing client settings are checked.
-Other new rows test no upgrade, same content/time dedup across client/session/key,
-identical redacted secret requests versus distinct raw secrets, conversation
-ack/snooze30→60days/resolve/cancel and a finite40-reminder two-day quota probe.
-Two separate hook-focused validation segments also pass3/3 each; not pooled.
+One fixture setup failed before first row because current HMAC creation_hash was
+copied into the original v1 SHA-only optional field. The obsolete full run was
+then stopped through its own active daemon; host archived four completed rows and
+cleaned up. Both incomplete artifacts remain not evaluable, not feature failures.
+The prospective fix omits that optional field and still validates with the original
+v1 decoder. No legacy SHA is fabricated. Day reference advances to12Oct+24h for
+future CRUD controls; budgets and existing behavioural assertions stay unchanged.
 
-All93 full-run child cleanup audits pass, zero blocked network attempts,0700/0600
-raw archives. Existing budgets/time limits stay unchanged. Human confirmation via
-AskUserQuestion, actual conversational understanding, visual UI-tab/OS/large-vault/
-longitudinal and final independent stable gates are not inferred from tool/hook
-fixtures. No human or longitudinal window started. #1198 access boundaries remain
-outside this measurement request; the intentionally accepted policy is not
-silently tightened by the harness.
+Owner decision11Oct replacements preserve three exact prior definitions/nine old
+expectations as **durch Owner-Entscheidung 11.10. ersetzt**. Historical raw outcomes
+stay unchanged. Current75 original-case positions plus18 P11 rows all pass; prepare/
+execute boundaries stay unchanged. All93 cleanup audits pass, zero blocked network
+attempts,0700/0600 evidence. No human/OS/longitudinal/stable or dictionary/privacy
+proof is inferred from this functional matrix.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
