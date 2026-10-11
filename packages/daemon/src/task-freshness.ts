@@ -1,3 +1,4 @@
+import { canonicalTaskValue } from "./task-canonical.js";
 /** Registered bounded evidence only; verify_cmd is never executable. */
 import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
@@ -14,7 +15,7 @@ export type TaskEvent = TaskStore["events"][number];
 export type Verification = NonNullable<Task["verification"]>;
 export interface TaskMemorySnapshot { id: string; revision: string; raw: string; body: string; sensitivity: string }
 export function taskBindingHash(task: Task): string {
-  return taskValueHash(JSON.stringify({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
+  return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
 }
 export async function boundedTaskRead(path: string, max: number): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -137,7 +138,7 @@ export async function verifyTaskSource(ctx: ReadContext, task: Task, event: Task
 }
 function verificationChanged(before: Verification | undefined, after: Verification): boolean {
   const stable = (v: Verification) => ({ ...v, checked_at: 0, observed_at: v.event_id === "clock" ? 0 : v.observed_at });
-  return !before || JSON.stringify(stable(before)) !== JSON.stringify(stable(after));
+  return !before || canonicalTaskValue(stable(before)) !== canonicalTaskValue(stable(after));
 }
 /** Off-path cache, re-bound on every read; no command strings or model attestations. */
 export async function assessTaskFreshness(ctx: TaskServiceContext): Promise<void> {

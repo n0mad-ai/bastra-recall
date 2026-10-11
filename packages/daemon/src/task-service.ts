@@ -1,3 +1,4 @@
+import { canonicalTaskValue as canonical } from "./task-canonical.js";
 /** Canonical CRUD contract. Transport input never supplies a trusted principal. */
 import { assessTaskFreshness, type TaskMemorySnapshot } from "./task-freshness.js";
 import { taskValueHash, observeTaskSources, registerTaskSource, submitTaskEvent, taskEventInput, taskSourceInput, reconcileTaskTime } from "./task-events.js";
@@ -50,12 +51,7 @@ function audit(task: Task, principal: TaskPrincipal, operation: string, now: num
   const previous = task.revision; task.revision++; task.updated_at = now;
   task.history.push({ at: now, actor: principal.actor_id, operation, before_revision: previous, after_revision: task.revision, reason: operation });
 }
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  return JSON.stringify(value);
-}
+
 function hash(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
 function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule"], {kind: "event"}>, domains: string[]): void {
   const source = store.sources.find(s => s.id === schedule.source_id && s.enabled);
