@@ -26,9 +26,9 @@ async function stop(child: ChildProcessWithoutNullStreams) {
 }
 
 const driver: FeatureDriver = {
-  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}) },
+  metadata: { feature_commit: commit, contract_prs: { P0: 1159, P1: 1164, P2: 1170, P2a: 1167, P2b: 1169, ...(existsSync(join(daemonDir,"task-events.js")) ? {P3:1171} : {}), ...(existsSync(join(daemonDir,"task-runtime.js")) ? {P5a:1175} : {}) },
     design_sha256: createHash("sha256").update(design).digest("hex"), adapter: "none (CRUD only)", client: "HTTP + MCP stdio forwarder + actual CLI", profile: "isolated synthetic-local P2",
-    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
+    support_sha256: Object.fromEntries([...["index.js","task-service.js","task-auth.js","task-store.js","task-transport.js","mcp-forwarder.js","cli.js","task-events.js","task-clock.js","daemon-spawn-env.js","task-runtime.js","task-outbox.js"].filter(name => existsSync(join(daemonDir,name))).map(name => [name,createHash("sha256").update(readFileSync(join(daemonDir,name))).digest("hex")]), ["package-lock",createHash("sha256").update(readFileSync(join(feature,"package-lock.json"))).digest("hex")], ["network-guard",createHash("sha256").update(readFileSync(new URL("./proactive-network-guard.mjs",import.meta.url))).digest("hex")]]) },
   async run(c, context) {
     const { root, port, repetition } = context;
     if (port === 6723 || context.feature_root !== feature) throw new Error("isolated context mismatch");
