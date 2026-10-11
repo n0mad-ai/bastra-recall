@@ -1,256 +1,369 @@
 # Proactive tasks: implementation design
 
-Status: proposed contract for P0 review; no runtime is shipped by this document.
-Owners: #403 storage/delivery, #404 evaluation, #475 freshness, #405 actions,
-#450 approvals, #409 local coordination; integration #250, visibility #656.
-The [build contract](../Proactive%20Tasks%20Build%20Plan.md) governs conflicts.
+Status: P0 design for review, amended after review of PR #1159. No runtime is
+shipped here. Owners: #403 tasks/delivery, #404 evaluation, #475 freshness,
+#405 actions, #450 approvals, #409 local coordination, #250 integration, #656
+visibility. The [build contract](../Proactive%20Tasks%20Build%20Plan.md) governs.
 
-## One object, one service
+## Storage, lifecycle and reuse
 
-Implement in the daemon, using its existing validation, redaction, authentication,
-session assembler, background-job host and file transaction infrastructure.
-All transports call the same task service. Tasks are independent of memory schema,
-drafts, semantic rank and the consumable pending-suggestions relay.
+One daemon task service backs MCP, HTTP, CLI and UI. Reuse `withPathLock` in
+`path-lock.ts` with new opt-in strict local ownership (old callers unchanged),
+atomic temp/rename as in `draft-store.ts`, core `redactSecrets`/injected-block
+scrubbing, `http-auth.ts` bearer validation, `startBackgroundJobs`, and
+`session-assembler.ts`. No general action-proposal or decision-review runtime
+exists today: this build supplies **the one action Proposal type**, in the task
+store. Drafts and learned-recall reviews remain separate and confer no authority.
+No second scheduler, graph, notification queue or feature ladder.
 
-The version-1 store is `<data-dir>/proactive-tasks.json` (explicit
-`BASTRA_TASKS_PATH` override for isolated tests). Never derive it from a memory
-file or use draft purge for its retention. Envelope:
+Store: `<data-dir>/proactive-tasks.json`, override `BASTRA_TASKS_PATH` for tests.
+It is independent of memory schema, expiry, drafts and the consumable relay.
 
 ```ts
 type TaskStore = {
-  schema_version: 1; revision: number;
+  schema_version: 1; revision: number; fencing_counter: number;
   tasks: Task[]; events: Event[]; checkpoint: number;
   occurrences: Occurrence[]; proposals: Proposal[];
-  approvals: Approval[]; intents: Intent[]; receipts: ActionReceipt[];
-  controls: { muted: boolean; execution_stopped: boolean };
+  challenges: Challenge[]; approvals: Approval[]; leases: Lease[];
+  intents: Intent[]; receipts: ActionReceipt[]; consumed_approval_ids: string[];
+  controls: {
+    enabled: boolean; muted: boolean; execution_stopped: boolean;
+    adapters: Record<string, { enabled: boolean; coverage: string }>;
+  };
 };
 ```
 
-These are records in the owning task store, not parallel queues or proposal
-engines. Use the existing reviewed-proposal machinery where it can represent
-an exact action; persist its ID/binding here, never duplicate its authority.
-The journal and checkpoint commit in the same snapshot as resulting occurrences.
-Delivery receipts belong to occurrences and do not consume them on read.
+Task: ID/revision/generation, created/updated instants, original request and
+source/reference, authenticated creator/actor and owner domains, scope
+(personal/project/team), sensitivity, goal/resolution condition, state
+`pending|due|snoozed|resolved|cancelled|expired`, independent `armed` and review
+reason, schedule/predicate, timezone/reference instant, bounded recurrence,
+action level (notify default), delivery policy, evidence/source bindings,
+optional decision/load-bearing assumption binding, next check/last failure,
+audit history. References carry stable ID, revision/content hash and provenance.
+History records actor/operation/time/reason and before/after revisions.
 
-`Task` includes `id`, `revision`, `created_at`, `updated_at`, original request,
-request source/reference, authenticated creator/actor and owner domains,
-personal/project/team scope, sensitivity, goal, resolution condition,
-`state: pending|due|snoozed|resolved|cancelled|expired`, separate `armed` flag
-and `review_reason`, schedule/predicate, timezone, reference instant, recurrence,
-catch-up, action level (default notify), notification policy, evidence bindings,
-optional decision/assumption binding, next check, last failure and audit history.
-References contain stable ID, content revision/hash and source identity; unknown
-provenance is explicit. History records actor, operation, before/after revisions,
-time and reason; original requests are sanitized local data, never telemetry.
+Agent capture is unarmed; a claimed `source=user`, repeated request, draft or
+memory hit cannot arm it. An explicit request through the owner UI/CLI may create
+and arm a fully specified notify task in one readable confirmation, without key
+enrollment. Ambiguous requests stay unarmed with one visible question. Owner
+review/arm and re-arm use the owner credential, not an execute signature.
 
-Read a missing store as first-run only on ENOENT. Malformed JSON, failed schema
-validation, duplicate IDs, unsupported schema versions and I/O failures surface
-typed errors and block mutations; never replace them with empty state. Keep the
-original byte-for-byte. Explicit recovery validates a selected backup into a
-new snapshot, keeps the damaged original and audits recovery. Migration is a
-version dispatch with a fixture for the empty pre-feature state and a v1
-round-trip; future-version input is refused. No memory migration.
+Snooze preserves occurrence identity/receipts and returns to due at the stored
+instant. Acknowledge records an authenticated owner command, not proof that eyes
+saw a card, and does not resolve. Only an owner resolve command or a reviewed
+bounded resolution verifier resolves. Cancel/resolved/expired never re-arm
+silently. Edits increment revision; changes to trigger/decision/authority disarm
+and invalidate dependent bindings. Explicit re-arm creates a new generation.
+Reviewed bounded recurrence can advance automatically until count/end, but never
+from a terminal state. Delivery, acknowledgement, resolution and execution are
+separate records.
 
-Directories/files use 0700/0600. Enforce bounded serialized size and record counts;
-reaching a limit reports backpressure, not deletion of unresolved work. History
-and terminal data are retained locally until explicit owner archival; no automatic
-expiry of a pending receipt. Secret redaction and injected-block scrubbing precede
-persisting request/evidence text. Exact action bytes remain in private proposal
-storage and do not enter memories, context cards or public telemetry unredacted.
+Only ENOENT means an empty pre-feature store. Invalid JSON/schema, duplicate IDs,
+unknown versions and I/O errors block mutation and retain original bytes.
+Version dispatch accepts v1, rejects future versions; migration fixtures cover
+pre-feature absence, v1 identity/state round-trip, rollback and future rejection.
+Explicit recovery validates a chosen private backup and copies damaged originals
+to quarantine before replacement; record provenance without erasing history.
+No memory migration. Directories 0700, files 0600; sanitize requests/evidence with
+existing scrubbing/redaction before persistence. Exact payload bytes stay private
+and are hashed before approval; never redact and then execute different bytes.
 
-## Canonical API and authority
+Initial target: <=1,000 tasks, <=10,000 events/occurrences each, <=4 MiB snapshot.
+These are start limits, not measured capacity claims. Normal work stops at 75%
+byte capacity to reserve space for safety/control receipts. Bound every field
+and reserve worst-case control space at admission. Cancel, snooze, mute, stop,
+acknowledge and recovery remain available at the normal limit; compact terminal
+records first or use the reserved space, never reject stop because ordinary work
+filled the store. If physical disk/I/O fails, execution stops in memory as well
+and reports the failure; durable writes cannot be promised on a full disk.
 
-| Operation | MCP | HTTP under `/api/v1/tasks` | CLI `bastra tasks` |
+Owner archive/compact exports terminal history to validated 0600 snapshots and
+records archive IDs/hashes before shrinking active data. Do not prune unresolved
+occurrences, unprocessed journal entries, active bindings, idempotency receipts
+or consumed approval tombstones. Processed events may compact after checkpoint
+only if all referencing occurrence/evidence records retain the necessary data;
+sequence numbers never reset. Rollover archives retain monotonic counters and
+spent approval IDs. A saturated unresolved backlog reports backpressure.
+
+## Identity and operation authorization
+
+The existing API token has no actor/domain mapping. Add an opt-in registry at
+`<data-dir>/task-auth.json` (0700 parent, 0600 file), versioned entries:
+`{ credential_id, token_hash, actor_id, domains[], role: owner|agent, revoked_at }`.
+Use random 32-byte tokens and SHA-256 hashes; raw tokens are never in this store,
+task data, logs, context or API responses. Mint/rotate/revoke only through owner
+bootstrap CLI outside agent/MCP tools. No runtime registration/mint endpoint.
+Owner onboarding issues a separate owner token for notify controls; no signing
+key is needed. Owner UI keeps it in its authenticated session; an owner CLI
+prompts privately rather than inheriting an agent credential. Agent tokens may
+be stored in each client's private configuration (0600). Token rotation creates
+a new credential ID; revoke is effective on the next request without restart.
+Protect auth-registry updates with existing strict lock/atomic-write paths.
+
+Forwarder, bridge and agent CLI load their **agent** task token from explicit
+private client config or `BASTRA_TASK_TOKEN` and send `Authorization: Bearer` to
+task routes; add this forwarding, rather than relying on loopback skip. HTTP
+always requires bearer on task routes. Direct MCP calls enter the same service
+with server-established client identity. A legacy API token without a task
+mapping can only read already-authorized public/redacted status, never private
+tasks, events or mutations; absent/wrong bearer is 401. Mapped actors/domains
+are looked up server-side; request actor/owner/source fields cannot override them.
+Read/list also enforce domain/sensitivity. Browser owner routes retain existing
+Host/Origin/CORS/CSRF protections, with owner bearer/session authentication.
+
+| Operation | Owner credential (no key) | Agent credential in its domain | Execute binding |
 |---|---|---|---|
-| Create proposal | `task_create` | POST `/` | `create` |
-| Review/arm | `task_review` | POST `/:id/review` | `review` |
-| List/get | `task_list`, `task_get` | GET `/`, GET `/:id` | `list`, `get` |
-| Edit | `task_edit` | PATCH `/:id` | `edit` |
-| Snooze | `task_snooze` | POST `/:id/snooze` | `snooze` |
-| Acknowledge occurrence | `task_acknowledge` | POST `/:id/acknowledge` | `acknowledge` |
-| Resolve/cancel/re-arm | `task_resolve`, `task_cancel`, `task_rearm` | POST `/:id/{resolve,cancel,rearm}` | `resolve`, `cancel`, `rearm` |
-| Observe owner/tool event | `task_event` | POST `/events` | `event` |
-| Delivery projection | `task_due` | GET `/due` | `due` |
-| Prepare/execution request | `task_prepare`, `task_execute` | POST `/:id/{prepare,execute}` | `prepare`, `execute` |
-| Status/controls | `task_status`, `task_control` | GET `/status`, POST `/controls` | `status`, `mute`, `stop`, `resume` |
+| create | explicit notify request may arm; otherwise unarmed | unarmed proposal only | no authority granted |
+| review/arm, rearm | yes for notify/prepare task monitoring | no | cannot approve execute |
+| edit | yes, binding changes disarm | unarmed proposal fields only | drift invalidates approval |
+| snooze, cancel, mute, stop | yes | yes, audited safe direction | invalidate/defer as appropriate |
+| acknowledge, resolve, decision keep/change | yes, explicit owner command | no | cannot attest human observation |
+| resume, enable adapter/feature | yes, no renewal of leases/approvals | no | execute still needs fresh approval |
+| prepare | yes | yes for authorized registered target, draft only | no external write or signature needed |
+| challenge, submit proof | may request/submit | may present/request/submit | cannot mint an owner signature |
+| execute | request with all valid signatures | bound actor may request with all signatures | exact signed proposal mandatory |
+| revoke | yes | may abandon its own proposal, not revoke another owner's authority | cannot restore a revoked receipt |
+| recovery, archive, key/credential administration | owner-only bootstrap/control | no | separate from action approval |
 
-Route literals precede `/:id`. UI `/ui/tasks` uses this service, with authenticated
-browser requests; it has no independent storage or implicit approval endpoint.
-Each mutation takes `expected_revision` (create takes an idempotency key). Replies
-carry object revision and structured error `code`, `message`, `retryable`.
-Conflicts return 409; unauthenticated 401, wrong owner 403, absent 404, invalid
-422, unavailable lock/source or capacity 503. Transport parity tests compare
-normalized results, including denial and conflict paths.
+Owner credentials establish operation authority, not cryptographic human presence.
+The model cannot issue them through task APIs; ordinary agent credentials cannot
+obtain owner tokens. UI/CLI owner actions are recorded as commands rather than
+inferred from prose. If a model is given owner credentials or access to the owner
+browser session, it has that authority: do not claim this proves a human press.
+Execute additionally requires the separate signature channel below. Arbitrary
+same-account filesystem/code/config compromise is outside this API boundary;
+owner secrets/configuration must stay outside agent access. This limitation does
+not force key enrollment for notify or fabricate proof of observation.
 
-Bind actor/domain to server-side configured credentials, never to a JSON
-`actor`, `owner`, `source=user` or `approved=true`. Reuse bearer validation but
-require a bearer for task API even where existing APIs allow loopback skip.
-MCP and CLI obtain their configured transport identity; missing identities may
-inspect only authorized projections and cannot mutate or attribute owner events.
-Read/list enforce ownership/sensitivity too. Per-actor credentials are mapped
-to domains; a shared transport token alone does not prove a human or another owner.
+## Canonical names
 
-Agent capture creates an unarmed pending proposal. Ambiguous time, source or
-authority leaves it unarmed with a readable question. Only a trusted owner
-confirmation can arm/re-arm or attest human acknowledgement/resolution. No
-memory hit, repeated quote or draft confirmation supplies this proof. Owner
-review signs the exact task revision, schedule and requested operation using
-the review channel below; agent transports may submit that proof but cannot
-produce it. Reads and rendering only record attempted delivery. Automatic
-resolution is allowed only by an explicitly registered bounded evidence verifier.
+Mutations require `expected_revision`; creation also uses an idempotency key.
+All transports share schemas/results. HTTP prefix `/api/v1/tasks`, CLI prefix
+`bastra tasks`; UI `/ui/tasks` calls this service. Literal routes precede `/:id`.
 
-Snooze preserves occurrence IDs/receipts, defers presentation until its stored
-instant and returns to due; it does not create another firing. Resolve/cancel
-invalidate outstanding bindings. Edit increments revision, disarms and requires
-review of changed predicates/authority; old occurrence history remains readable.
-Re-arm is explicit, starts a new generation and never resurrects an old capability.
-Recurrence alone advances under its reviewed bounded schedule; terminal states
-do not advance. Acknowledgement leaves an unfinished task open/due.
+| Operation | MCP | HTTP suffix | CLI suffix | Auth |
+|---|---|---|---|---|
+| create/review | task_create / task_review | POST /, POST /:id/review | create / review | matrix |
+| list/get | task_list / task_get | GET /, GET /:id | list / get | mapped domain read |
+| edit | task_edit | PATCH /:id | edit | matrix |
+| snooze/acknowledge | task_snooze / task_acknowledge | POST /:id/snooze, /:id/acknowledge | snooze / acknowledge | matrix |
+| resolve/cancel/rearm | task_resolve / task_cancel / task_rearm | POST /:id/resolve, /:id/cancel, /:id/rearm | resolve / cancel / rearm | matrix |
+| event/due | task_event / task_due | POST /events, GET /due | event / due | mapped source writer/read |
+| prepare/execute | task_prepare / task_execute | POST /:id/prepare, /:id/execute | prepare / execute | matrix |
+| challenge/proof | task_challenge / task_approval_submit | POST /:id/challenge, /:id/approvals | challenge / approval-submit | scoped actor; signature for proof |
+| revoke | task_approval_revoke | POST /:id/approvals/:approval/revoke | approval-revoke | owner |
+| status/controls | task_status / task_control | GET /status, POST /controls | status / mute / stop / resume | read / matrix |
+| adapter toggle | task_adapter_control | POST /adapters/:adapter | adapter enable / disable | owner enable; agent disable |
+| lease acquire/release | task_lease_acquire / task_lease_release | POST /:id/lease, DELETE /:id/lease | lease-acquire / lease-release | bound actor |
+| recovery/archive | task_recover / task_archive | POST /recovery, POST /archive | recover / archive | owner |
+| enrollment status | task_approval_status | GET /approval-status | approval-status | domain redacted read |
+| key/credential bootstrap | none | none | auth mint/rotate/revoke; approval-key init/rotate | owner outside runtime |
 
-## Time, sources and occurrences
+Structured errors: code/message/retryable, resulting revision. Common statuses:
+401 absent credential, 403 wrong role/domain/actor, 404 absent, 409 revision/binding
+conflict or spent challenge, 422 validation/unknown owner, 503 lock/backpressure/
+source unavailable. Expired/revoked/denied/stale signatures have distinct codes
+(403 or 409). Recovery adds invalid_backup (422), corruption (503). Disabled
+adapter/feature or stopped execution is 409. Lease conflicts/expiry are 409.
+Status never exposes tokens, key bytes or private paths. Transport-parity tests
+compare success, denial, drift, conflict and overflow results.
 
-Duration schedules store `reference_at + duration_ms` as an instant; calendar
-schedules store local date/time, IANA timezone and resolved instant. Invalid zones
-or ambiguous policies cannot arm. DST gap policy is reject or shift forward by
-the gap; overlap is earlier or later offset. Show the resolved timestamp/offset
-in review. Calendar recurrence retains wall time; elapsed recurrence retains
-duration. Use the same deterministic timezone resolver on every transport.
+## Time and verified sources
 
-Every recurrence has finite count and/or end instant and explicit catch-up:
-`latest` coalesces missed intervals into one occurrence with a missed count;
-`all` journals each missed slot within the configured budget, retaining backlog.
-An explicit `skip` policy records skipped slots in history. Never silently drop
-because of budget. Slot IDs derive from task ID, generation and scheduled slot,
-not evaluation time. Clock rollback never lowers checkpoint or next slot.
+Duration = stored reference instant + milliseconds. Calendar = local wall time,
+IANA timezone, resolved instant/offset. Fixed initial policies: reject DST gap
+(leaves unarmed; owner edits time), choose earlier overlap, catch up latest with
+missed-slot count. No configurable alternate modes or QR handoff in this build.
+Recurrence requires explicit finite count or end; no implicit endless loop.
+Show timezone, resolved offset, overlap/catch-up policy and end before arm.
+Calendar recurrence advances wall slots, duration recurrence advances instants.
+Calendar slot ID = task/generation/local date-time; ambiguous overlap fires once
+at the earlier offset. Example Europe/Madrid 2026-10-25 02:30 fires at 00:30Z,
+not again at 01:30Z. Persist each resolved future slot before it is eligible;
+tzdata changes never alter that stored instant. Newly generated slots use current
+rules and record resolver/version; changed future offsets require owner review.
+Clock forward may make slots due; rollback never un-fires or repeats a committed
+slot. Checkpoint/slot cursor advance monotonically, not with the wall clock.
 
-`Event` has journal sequence, source ID/version, actor/domain, observed_at,
-state_updated_at where attributable, sensitivity, dedup key and bounded payload.
-Sources: clock; authenticated configured owner/tool event; registered local
-artifact content hash/version; registered repository Git ref. Read files/refs
-under registered path roots, reject symlinks/escape; Git uses an allowlisted
-argument vector, never saved shell text. Declare observations as polling/next
-contact snapshots; unobserved intermediate file changes are not claimed.
+Sources actually implemented: clock; registered authenticated owner/tool exact
+value events; allowlisted local artifact content versions; registered Git refs;
+read-only bound memory ID/content hash/revision via `deps.vault.get(id)`, the
+ID-locator/disk-authority path, and core `memoryRevision` over actual disk bytes
+(the same revision contract as `load-memory-handler.ts`). Do not invoke the
+telemetry-producing public load handler as a polling loop. The last adapter
+checks decision and assumption before evaluation and
+execute; missing/cancelled/superseded/revised binding disarms, preserving old
+history and requiring explicit new review. No similarity or automatic rebinding.
+Tests use an invented temporary vault only.
 
-Predicates are a small validated tagged union: time-due, named event with exact
-value, content-version change, Git-ref change, or registered substantive premise
-verifier. No arbitrary expression, network URL, shell or stored `verify_cmd`.
-Source/version arrival can request review, not attest substantive refutation.
+Event: monotonic sequence, source ID/version, actor/domain, observed_at,
+producer state_updated_at where meaningful, sensitivity, dedup key, bounded
+value/evidence. File/ref sources observe snapshots at polling/contact, not every
+intermediate change. Registered paths reject symlink/escape; Git uses a fixed
+argument vector. No arbitrary shell expression, URL or execution of verify_cmd.
 
-Verification returns `verified|refuted|stale|unavailable|inconclusive` plus source,
-revision, observed_at, producer state_updated_at when meaningful, max_age,
-timeout and reason/evidence. Lack of a trustworthy producer timestamp for a
-live-state claim is inconclusive. Missing/future/contested data never becomes
-false or a confirmed change. Refuted means the registered substantive predicate
-was contradicted by attributable fresh evidence, not merely that bytes changed.
+Concrete premise verifier `versioned-value-v1`: owner registers source ID,
+allowed event producer actor/domain, claim/decision revisions, expected exact
+baseline value and permitted structured evidence source. An authorized event
+carries `{claim_id, claim_revision, value, evidence_id, evidence_revision,
+state_updated_at}`. Read its registered evidence snapshot (read-only artifact or
+memory reference), compare its content revision and exact attributed value.
+Only a fresh, matching, uncontested snapshot that contradicts the registered
+baseline refutes the load-bearing premise. Same value verifies unchanged; byte
+arrival, unrelated claim, missing provenance or model prose cannot refute it.
+Registration is owner-reviewed task data, not dynamically uploaded verifier code.
+Verifier interface takes immutable binding/event and bounded source reader,
+returns outcome/reason/source/revision/observed_at/state_updated_at/max_age/timeout.
+At most 1 MiB and 1 second per check; no recursion or LLM attestation.
 
-Evaluation is outside the hook hot path. Extend the existing background-job
-host and invoke bounded reconciliation at startup/contact. Hooks consume cached
-due projections and arrange off-path evaluation. Next-contact-only is the initial
-declared coverage; optional wakeup capability is explicitly opt-in and shown
-unsupported until its adapter is actually tested. No new scheduler/service file.
-Default limits: 100 evaluations/tick, 10/source, 1 MiB/source, 1 s/source, 5 s/tick;
-poll no faster than 60 s, failures back off to 1 h. Per-task limits and end/stop
-conditions are shown before arming. Overflow remains checkpointed backlog.
+Outcomes verified/refuted/stale/unavailable/inconclusive retain actual state age.
+No attributable producer timestamp for live-state evidence is inconclusive;
+missing or future/contested data is not false. Apply source freshness both before
+firing and immediately before execute. Initial engineering budgets (not measured):
+100 checks/tick, 10/source, 1 MiB/source, 1 s/source, 5 s/tick, 60 s polling with
+failure backoff up to 1 h. Per-task stop/end/backoff shown in owner confirmation.
+Budget overflow remains checkpointed backlog.
 
-Occurrence identity binds task/generation, decision/assumption revision where
-present and material-event key. A transaction persists event, due transition,
-checkpoint and occurrence before presentation. Several clients retry the same
-ID. A receipt stores attempted delivery, supported human acknowledgement and
-resolution separately. Response overflow, disconnect, relay disabled/consumed
-or purge only delays presentation. Retry interval/count budgets and last failure
-are visible; exhaustion requires review and never resolves a task.
+C-096: a verified refutation creates one reconsideration occurrence bound to
+commitment, decision/assumption revision and material event. Show original option/
+reason, old/new premise and versioned/timestamped evidence, alternatives and
+uncertainty. Keep consumes that material event; stop cancels monitoring; snooze
+persists. Change records an owner-confirmed new decision content revision through
+`editMemoryHandler`/core `mutateMemoryFile` with mandatory `expected_revision`,
+keeps the prior decision/evidence snapshot in task history, and disarms the old
+watch. This is revisioned confirmation, not a newly claimed temporal graph.
+An unimplemented global claim/graph system is not claimed. Source-version arrival
+alone may show a distinct unverified source-change notice, never a C-096 refutation
+card. Fixtures: actual exact-value refutation (8); unchanged/irrelevant/missing/
+stale/contested evidence (9); edit/cancel/supersede decision and assumption (10).
 
-C-096 cards show original option/rationale, load-bearing premise, old/new evidence
-versions/timestamps, affected alternatives and uncertainty. Keep consumes that
-material event without repeating it; change creates a reviewed new version through
-existing proposal/version machinery, never mutates the decision automatically.
-Snooze/stop persist. Supersession disarms the old watch; explicit review is required
-to bind a new decision version.
+## Evaluation and delivery
 
-## Trusted interactive review and actions
+Persist journal, due transition, stable occurrence and checkpoint atomically
+before presenting. Occurrence = task/generation/slot or material-event key,
+including bound decision/assumption revisions. Receipts record attempts **per
+client/session/channel** with timestamp/result/attempt ID; stable occurrence IDs
+survive retry and several clients. Owner acknowledgement has actor/credential
+ID and operation time, never a client claim that a human saw it. Resolve remains
+separate. Relay purge/disable/consume, disconnect or overflow never consumes work.
 
-The approval boundary must withstand a model with every ordinary MCP/HTTP/CLI
-credential, ability to set source/actor fields, read review responses and automate
-the browser. A localhost address, CSRF nonce, terminal prompt, click, bearer token
-or client-supplied human flag is insufficient. They prove transport, not a human.
+Extend existing background-job host; startup/contact schedules bounded off-path
+reconciliation. Session assembler adds cached `<bastra-due>` cards at session
+start. Ongoing delivery uses `/hook/prompt` (Claude UserPromptSubmit/Codex prompt
+lane where supported), via daemon prompt-lane output, not semantic recall rank.
+Hook hot paths read the cached projection; changes/events immediately invalidate
+cache and queue reconciliation off-path; existing job refreshes every 60 s while
+daemon runs. A contact racing a refresh delivers at next suitable contact.
+No unsupported provider hook or background wakeup guarantee is asserted.
 
-Use an owner-controlled signing key distinct from transport credentials. The
-reference channel is an interactive owner CLI which shows the daemon-fetched
-exact task/proposal and then unlocks an encrypted signing key with an owner-held
-passphrase read from `/dev/tty` (never args, env, stdin or an agent API). No
-unattended approval fallback. The configured owner public-key fingerprint/domain
-is pinned at daemon startup; key enrollment is explicit owner bootstrap outside
-agent tools, and changing it invalidates approvals/requires restart. An agent
-cannot enroll a new approver through the runtime. UI provides the readable review
-and command/QR handoff; MCP/HTTP/CLI can present and submit signed receipts but
-cannot mint them. Unsupported clients stay notify/prepare-only until owner review.
+Hookless MCP: shared tool-response finalizer attaches authorized due cards to
+**every existing successful tool response**, under a 2 KiB/3-card budget. HTTP
+JSON API replies add a reserved `proactive_due` projection; hookless clients need
+no explicit task_due call. Errors cannot turn failed calls into success; clients
+that discard attachments are declared unsupported for passive presentation and
+can use task_due. Response formatting records attempted transport delivery only.
+Overflow retains pending cards with a count/next-contact continuation; fairness
+rotates unacknowledged IDs and retry budgets are visible. Hooks/HTTP/MCP/CLI carry
+occurrence/client IDs to owner controls. Honest coverage is next-contact-only
+without a tested opted-in wakeup adapter, even when daemon evaluation runs.
 
-Signature covers a domain-separated canonical binding: task/proposal ID and
-revision, operation, actor, owner/domain set, exact target/action/payload SHA-256,
-evidence/source/decision revisions, scope/sensitivity, challenge nonce, expiry.
-Server issues a single-use challenge only after presenting the complete review;
-verify signature against pinned key, bindings, expiry and revocation again at
-execute, including after restart. No signing of caller-supplied opaque hashes:
-the owner client fetches bytes, computes/verifies the binding and displays them.
-Sanitize terminal controls without changing signed bytes; ambiguous/redacted
-mutation previews block approval rather than hide the proposed effect.
+## Preparation, approval and local execution
 
-Threat boundary: owner key/passphrase and daemon configuration must be outside
-the agent's authority. A compromised OS account/root, keylogger, owner sharing
-the passphrase, or agent replacing daemon code/config cannot be repaired by an
-HTTP protocol. Do not claim protection against these. In same-user development
-with unrestricted filesystem tools, no secure owner separation is established:
-execute remains disabled unless the owner establishes a protected configuration
-and key boundary. Tests use synthetic keys and do not claim a real human press.
-P7 independent review must confirm enrollment, key isolation and this limitation
-before P8 begins; if isolation cannot be established, report that required gap
-and keep execute unavailable instead of accepting a model's self-approval.
+prepare is a draft/diff only; notify/prepare needs no signing-key enrollment.
+Proposal is the feature's sole exact-action object: versioned ID, task revision,
+actor, target, operation, exact payload SHA-256, source/evidence/decision revisions,
+scope/sensitivity, required approver domains and ownership-registry revision.
+Determine affected domains from task ownership, registered target ownership,
+read evidence source sensitivity/owner metadata and mutated scope. Missing owner
+mapping blocks execute. Approval never inherits authority from a draft review.
 
-prepare creates only a private draft/diff and exact binding, never touches target.
-Every affected authenticated owner domain signs; unresolved owners, missing
-signatures, denied/expired/revoked/stale bindings block the whole operation.
-No quorum or partial cross-domain action. Editing owners or proposal invalidates
-old receipts. Execute requires the proposal's actor and a current fenced lease;
-an agent cannot spend another actor's signed approval.
+Owner-key registry `<data-dir>/task-approval-keys.json`: versioned map domain to
+Ed25519 public key/fingerprint/key ID, pinned in memory at daemon start; reload or
+rotation requires explicit owner bootstrap/restart and invalidates approvals.
+No API key enrollment. Private key separate from transport credentials, owner-held
+and outside agent tools; encrypted PKCS#8 material in a 0600 envelope using
+AES-256-GCM, random 16-byte salt, 12-byte nonce, 16-byte tag; scrypt N=32768,
+r=8,p=1, 64 MiB max memory, 32-byte key. Unlock only through owner CLI /dev/tty;
+never args/env/stdin/runtime tool. Display daemon-fetched exact binding/diff,
+verify bytes/hash locally, then sign explicit approve/deny. If a safe preview
+cannot show the exact effect, refuse approval. No unattended fallback.
 
-Reuse the cross-process path lock with `requireLock`, extending it for owner-token
-checks and dead-owner recovery rather than introducing a second coordinator.
-Existing age-only takeover is insufficient for these writes: fail closed while
-the same-host PID is alive; check token/expiry immediately before commit. No await
-between the final ownership check and local guarded rename. Remote/shared stores
-are unsupported. Expired action leases cannot commit intent, receipt or target.
+Canonical domain-separated signature covers proposal ID/revision, actor,
+resource/action/payload hash, required domains/registry revision, source/evidence/
+decision revisions, scope/sensitivity, challenge nonce, expiry and approve/deny.
+Challenges: random 32-byte nonce, max 5-minute TTL, persisted before presentation,
+one per domain/binding. Proof submission verifies the pinned domain key and
+consumes its challenge atomically; consumed challenge IDs persist across restart.
+Every required domain signs the exact same versioned binding. Unresolved domains,
+denied/expired/revoked/stale/missing signatures block the whole action; no quorum
+or partial multi-owner execution. Approval IDs become permanently spent when
+intent is committed, before adapter call. Reconciliation of that intent may use
+its reserved receipts, but a reset/new intent cannot reuse them. Revocation is
+owner-controlled and persistent; resume never renews a lease or signature.
 
-Reference adapter: exact UTF-8 replace of an explicitly registered local artifact
-under an isolated allowlisted root, content hash/revision CAS, no symlink/path
-escape, temp+rename, private backup and rollback bound to the resulting revision.
-Hold local coordination across final source/target verification and write.
-Persist intent/idempotency before adapter call. Before-call crash resumes only
-after lease/binding recheck. Success-without-receipt reconciles target to exact
-approved bytes; divergence becomes unknown/review, never blind overwrite/retry.
-Rollback is a separately reviewed exact action, not a bypass of newer edits.
-Email, provider chat, GitHub writes and other external connectors are unsupported.
+Threat model: ordinary agent tokens, arbitrary source/actor/approved fields,
+readable challenges, local network and automated browser clicks cannot sign.
+CSRF/Host/bearer defenses are transport checks, not human proof. Owner-held key
+and passphrase, pinned configuration and runtime integrity must be outside agent
+authority. Same-UID unrestricted filesystem access, keylogging or compromised
+runtime/configuration cannot be secured by this protocol. In that configuration
+execute stays disabled until an owner establishes the protected boundary; notify
+remains usable. Synthetic keys test mechanics, never claim a real human approval.
+P7 independent review resolves this boundary before P8 construction.
 
-## Controls, review evidence and PR boundaries
+Lease in task store: task/proposal ID, authenticated actor, holder token, expires_at,
+monotonic fence allocated from store fencing_counter, state active/released/expired.
+Grant/release under strict cross-process store lock; actor/fence/expiry checked in
+same guarded transaction before intent/receipt. Local adapter holds that same lock
+across final source/target validation, target CAS+rename and receipt. Never release
+it for a network call; remote adapters are unsupported in this slice.
 
-UI/CLI show open/due/snoozed/done, unarmed review reasons, next check, original
-request/why now/evidence age, last delivery/error/backpressure and actual adapter
-coverage. Mute preserves outbox; global stop denies execution and preserves
-read/review/notify. Resume never renews approval. Project status projects into
-#656's existing inventory when available; no second feature ladder.
+Opt-in strict path-lock mode disables **age-only takeover of a live same-host
+PID**, checks holder token on commits, and fails closed on unknown/foreign owner.
+Expired *action lease* can be replaced only after the store lock is acquired;
+a live paused lock holder is not forcibly displaced. This deliberately sacrifices
+availability during a paused process: no successor can write while it still holds
+the lock, so check-to-rename preemption cannot allow a competing commit. A holder
+resuming after action expiry must recheck and is denied. Dead-process lock recovery
+reuses serialized reclaim/token ownership patterns, without live-owner takeover;
+PID reuse/unknown liveness requires explicit owner recovery. Lease expiry denies
+admission to a new commit; the final synchronous commit admitted under an exclusive
+live-owner lock is indivisible relative to other task actors. A wall-clock deadline
+cannot cancel a filesystem syscall already in progress. No successor is admitted
+until that holder releases or is proven dead; this is the explicit fail-closed
+tradeoff, rather than a claim of preemptive deadline cancellation. Same local filesystem
+only. Existing lock callers retain defaults; regression tests cover draft/settings
+callers and strict live-pause/dead-owner/reclaim contenders. This is #409's local
+actor/lease/dedup subset, not federation or a second coordinator.
 
-P1 storage/migration; P2 canonical CRUD; P3 journal/time/source adapters; P4
-freshness; P5 delivery; P6 reconsideration; P7 preparation/approval/leases; P8
-reference execution only after P7 review; P9 UI/status; P10 integration/docs.
-Later PRs stack on the previous branch. Existing CI targets only main: before
-creating stacked code PRs extend its PR trigger in a separate small reviewed
-infrastructure PR, preserving main pushes and every existing check.
+Reference adapter: exact UTF-8 replace of registered local artifact under allowlisted
+root, path/symlink containment, content-revision CAS, temp+rename, private backup.
+Persist intent/idempotency before call. Before-call restart rechecks binding/lease;
+after-success/no-receipt reconciles exact target hash to approved bytes. Divergence
+is unknown/review, never blind overwrite/retry. Rollback is a separately approved
+exact CAS action against resulting revision, preserving intervening edits. Every
+physical mutation has durable intended/observed outcome. Provider chat/email,
+GitHub and all external-write adapters remain unsupported.
 
-Map tests to all 14 rows of the build-contract matrix, plus auth/transport parity,
-schema round-trip/corruption/recovery, cross-process contention, expired lease,
-enrollment/self-approval/drift/revocation and adapter rollback. Run build, typecheck
-and full suites in isolated data dirs, own free ports; no real vault/6723/services.
-Repository currently has no lint script: use existing checks and report this
-explicitly; do not claim a lint run. Register #402/#598/#410 observation metadata
-and reproducible synthetic runs separately from pending longitudinal evidence.
-The final demo covers real notify, prepare and signed execute in a disposable
-root; synthetic approvals demonstrate mechanics, not human approval provenance.
+## Controls and evidence
+
+UI/CLI expose open/due/snoozed/done and unarmed reasons, original request/why now,
+evidence age, next check, last delivery/failure/backpressure and adapter coverage.
+Persist enabled/muted/execution_stopped plus per-adapter enabled/coverage. Global
+feature off stops evaluation/delivery/execute but preserves tasks/history and
+read/owner recovery. Execution stop preserves notify/read/review. Mute defers
+presentation, not resolution. Adapter disabled blocks its observation/action,
+not unrelated tasks. Owner resume/enable never revives expired leases/approvals.
+Project these controls/status into #656 inventory when present; no new ladder.
+
+P1 storage/migration; P2 CRUD; P3 time/journal/adapters; P4 freshness; P5 delivery;
+P6 reconsideration; P7 preparation/signatures/local leases; P8 execute after P7
+review; P9 UI/status; P10 14-case matrix, migration/recovery/parity/demo/docs.
+Later branches stack via merge, never rebase. Main-only PR CI trigger must be
+expanded in a separate small infrastructure PR before stacked code PRs; P0 stays
+docs-only. No lint script exists today: report that, never claim a lint pass.
+Run build/typecheck/full suites with invented data/own port, no real vault/6723/
+service files. Register #402/#598/#410 synthetic observation metadata separately
+from pending longitudinal confirmation. End-to-end notify/prepare/execute demo
+uses disposable artifacts; test approvals are labeled synthetic.
