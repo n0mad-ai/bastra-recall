@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 600,
-  "status": "protocol_registered",
+  "status": "subset_numbers_registered",
   "harness": "src/correction-sequences.ts",
   "corpus": "fixtures/correction-sequences.json",
   "protocol": {
@@ -38,5 +38,16 @@
     "links": "Replacement links follow validity order, not ingestion order; late-old never declares that it replaces the newer current fact."
   },
   "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>",
-  "amendment": "Pre-registration robustness review fixed a late-old fixture projection that had linked by ingestion order. The preliminary diagnostic is excluded; rerun before registering numbers."
+  "amendment": "Pre-registration robustness review fixed a late-old fixture projection that had linked by ingestion order. The preliminary diagnostic is excluded; rerun before registering numbers.",
+  "measurement": {
+    "engine": {
+      "repo_commit": "614126559fc434a6f54d6ba8a98b4ed9c6d3a8fc",
+      "repo_dirty": false,
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+    },
+    "results": "correction-sequences-results.json",
+    "preregistered_protocol_sha256": "aae697b4bcf0510105e3fdc1516c44e1d13fab7ec2efedff2d9c26e52d3f786e",
+    "model_digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+    "gates_passed": []
+  }
 }
