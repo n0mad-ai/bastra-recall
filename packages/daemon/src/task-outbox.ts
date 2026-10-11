@@ -15,9 +15,12 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
   const client = createHash("sha256").update(JSON.stringify(["task-client-v2", principal.actor_id, principal.role])).digest("hex");
   const candidates = store.controls.enabled && !store.controls.muted ? store.occurrences.filter(o => {
     const task = store.tasks.find(t => t.id === o.task_id);
+    const action = store.intents.filter(i => i.task_id === o.task_id).at(-1);
+    const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
+    const critical = action && ["pending", "unknown"].includes(action.state) && o.attempts.find(a => a.client === client)?.last_action_key !== actionKey;
     return task?.armed && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
       && !(task.state === "snoozed" && task.snoozed_until! > now) && !task.notification_policy.muted
-      && !o.resolution && (input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
+      && !o.resolution && (critical || input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
       && task.owner_domains.every(d => principal.domains.includes(d));
   }) : [];
   const attemptCount = (id: string) => store.occurrences.find(o => o.id === id)!.attempts.filter(a => a.client === client);
@@ -26,18 +29,25 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
   let bytes = 0; let retryBlocked = 0; let overflow = 0;
   for (const occurrence of candidates) {
     const task = store.tasks.find(t => t.id === occurrence.task_id)!; const attempts = attemptCount(occurrence.id);
+    const action = store.intents.filter(i => i.task_id === task.id).at(-1);
+    const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
+    const unseenReview = action && ["pending", "unknown"].includes(action.state) && attempts.at(-1)?.last_action_key !== actionKey;
     const latest = Math.max(occurrence.acknowledgement?.at ?? 0, attempts.at(-1)?.at ?? 0);
     const quietMs = occurrence.acknowledgement ? 24 * 60 * 60 * 1000 : Math.max(60000, task.notification_policy.retry_interval_ms);
-    if (passive && latest && now - latest < quietMs) { retryBlocked++; continue; }
-    if (principal.role !== "owner" && (attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= task.notification_policy.max_attempts
+    if (passive && !unseenReview && latest && now - latest < quietMs) { retryBlocked++; continue; }
+    if (principal.role !== "owner" && !unseenReview && (attempts.reduce((total, a) => total + (a.count ?? 1), 0) >= task.notification_policy.max_attempts
       || (attempts.length > 0 && now - attempts.at(-1)!.at < task.notification_policy.retry_interval_ms))) { retryBlocked++; continue; }
-    const card = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`,
+    let card: Record<string, unknown> = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`,
       reconsideration: reconsiderationCard(task, occurrence, store),
+      action_outcome: (() => { const i = store.intents.filter(i => i.task_id === task.id).at(-1); return i ? { intent_id: i.id, state: i.state, receipt_id: i.receipt_id, receipt_outcome: store.receipts.find(r => r.id === i.receipt_id)?.outcome, review_hint: ["pending", "unknown"].includes(i.state) ? "Abgleich nötig" : undefined } : undefined; })(),
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),
       controls: ["acknowledge", "snooze", "resolve", "cancel"],
     };
+    if (unseenReview && Buffer.byteLength(JSON.stringify(card)) > input.max_bytes - 256)
+      card = { occurrence_id: occurrence.id, task_id: task.id, expected_revision: `${store.recovery_epoch}:${task.revision}`, goal: task.goal.slice(0,80), due_at: occurrence.due_at, timezone: task.timezone,
+        why_now: "Abgleich nötig: unklarer Ausführungsausgang", action_outcome: { intent_id: action!.id, state: action!.state, review_hint: "Abgleich nötig" }, controls: ["inspect", "reconcile"] };
     const size = Buffer.byteLength(JSON.stringify(card));
     if (cards.length >= 3 || bytes + size > input.max_bytes - 256) { overflow++; continue; }
     cards.push(card); occurrenceIds.push(occurrence.id); bytes += size;
@@ -55,10 +65,12 @@ export async function recordTaskDelivery(path: string, principal: TaskPrincipal,
       const occurrence = store.occurrences.find(o => o.id === id); const task = occurrence && store.tasks.find(t => t.id === occurrence.task_id);
       if (!occurrence || !task || !task.owner_domains.every(d => principal.domains.includes(d)) || task.generation !== occurrence.generation || !task.armed
         || ["resolved", "cancelled", "expired"].includes(task.state) || occurrence.resolution) continue;
+      const action = store.intents.filter(i => i.task_id === task.id).at(-1);
+      const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
       const existing = occurrence.attempts.find(a => a.client === client);
       if (existing) {
         existing.first_at ??= existing.at; existing.at = now; existing.count = (existing.count ?? 1) + 1;
-        existing.attempt_id = randomUUID(); existing.last_session = session; existing.channel = channel;
+        existing.attempt_id = randomUUID(); existing.last_session = session; existing.channel = channel; existing.last_action_key = actionKey;
       } else {
         if (occurrence.attempts.length >= 100) {
           const oldest = occurrence.attempts.reduce((chosen, a, i, rows) => a.at < rows[chosen].at ? i : chosen, 0);
@@ -66,7 +78,7 @@ export async function recordTaskDelivery(path: string, principal: TaskPrincipal,
           occurrence.compacted_attempts = (occurrence.compacted_attempts ?? 0) + (removed.count ?? 1);
         }
         occurrence.attempts.push({ attempt_id: randomUUID(), count: 1, first_at: now, at: now, client,
-          actor: principal.actor_id, role: principal.role, last_session: session, channel, outcome: "attempted" });
+          actor: principal.actor_id, role: principal.role, last_session: session, last_action_key: actionKey, channel, outcome: "attempted" });
       }
     }
   }, "control");

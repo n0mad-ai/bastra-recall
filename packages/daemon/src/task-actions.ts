@@ -42,12 +42,15 @@ export async function taskActionRegistry(ctx: TaskServiceContext) {
   }
   return registry;
 }
+export function requireReversiblePayload(payload: string) {
+  if (payload.length > 16384 || cleanText(payload) !== payload || /[\p{Cc}\p{Cf}]/u.test(payload.replaceAll("\n", "")))
+    fail("adapter_not_reversible", "Reference adapter requires rollback-safe bounded clean UTF-8 before-state");
+}
 export async function readTaskTarget(registry: ApprovalRegistry, targetId: string) {
   const target = registry.targets.find(t => t.id === targetId); if (!target) return conflict("Target is not registered");
   const root = await realpath(target.root), path = resolve(root, target.path), rel = relative(root, path);
   if (root !== target.root || !rel || rel.startsWith("..") || isAbsolute(rel) || await realpath(path) !== path) return conflict("Target boundary changed");
-  const payload = await boundedTaskRead(path, 1024 * 1024);
-  if (payload.includes("\ufffd")) return conflict("Target must be exact UTF-8");
+  const payload = await boundedTaskRead(path, 1024 * 1024, true).catch(error => { if (error instanceof TypeError) return fail("adapter_not_reversible", "Target must be exact UTF-8"); throw error; });
   const mode = (await lstat(path)).mode & 0o777;
   return { target, path, payload, hash: bytesHash(payload), mode };
 }
@@ -66,7 +69,7 @@ export function approvalBinding(proposal: Proposal, challenge: Challenge, decisi
 }
 export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskStore, proposal: Proposal, registry: ApprovalRegistry): Promise<Task> {
   const task = store.tasks.find(t => t.id === proposal.task_id);
-  if (!task || !task.armed || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())) return conflict("Task is inactive");
+  if (!task || (!proposal.rollback_of && (!task.armed || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())))) return conflict("Task is inactive");
   if (proposal.status === "denied") return fail("approval_denied", "Proposal denied");
   if (proposal.status === "revoked") return fail("approval_revoked", "Proposal revoked");
   if (task.revision !== proposal.task_revision || task.generation !== proposal.generation
@@ -74,6 +77,13 @@ export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskS
     || bytesHash(proposal.payload) !== proposal.payload_hash) return fail("approval_stale", "Proposal binding changed");
   for (const source of proposal.source_revisions) if (!store.sources.some(s => s.id === source.id && s.enabled && String(s.revision) === source.revision)) return conflict("Proposal source changed");
   if ((await readTaskTarget(registry, proposal.target_id)).hash !== proposal.target_hash) return fail("approval_stale", "Target changed; prepare again");
+  if (proposal.rollback_of) {
+    const receipt = store.receipts.find(r => r.id === proposal.rollback_of && ["succeeded", "reconciled"].includes(r.outcome));
+    const original = receipt && store.proposals.find(p => p.id === receipt.proposal_id);
+    if (!receipt || !original || original.target_id !== proposal.target_id || receipt.after_hash !== proposal.target_hash || receipt.before_hash !== proposal.payload_hash)
+      return fail("approval_stale", "Rollback receipt binding changed");
+    return task; // new proof/CAS, independent of old trigger/evidence/lifecycle
+  }
   if (await taskDecisionStatus(ctx, task)) return conflict("Decision binding changed");
   if (task.evidence.length || (task.schedule.kind === "event" && task.schedule.predicate === "premise")) {
     const verification = task.verification, now = (ctx.now ?? Date.now)();
@@ -122,7 +132,7 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
       const sources = store.sources.filter(s => sourceIds.has(s.id)); if (sources.length !== sourceIds.size || sources.some(s => !s.enabled)) return conflict("Source unavailable");
       const domains = [...new Set([...task.owner_domains, ...target.owner_domains, ...sources.flatMap(s => s.owner_domains)])].sort(); requireTaskDomains(principal, domains);
       if ((target.sensitivity === "restricted" && task.sensitivity !== "restricted") || sources.some(s => s.sensitivity === "restricted" && task.sensitivity !== "restricted")) return conflict("Sensitivity boundary incomplete");
-      const observed = await readTaskTarget(registry, input.target_id);
+      const observed = await readTaskTarget(registry, input.target_id); requireReversiblePayload(observed.payload);
       const body = { revision: 0, task_id: task.id, task_revision: task.revision, generation: task.generation, recovery_epoch: store.recovery_epoch,
         actor: principal.actor_id, target_id: input.target_id, target_hash: observed.hash, operation: "replace-utf8" as const, payload: input.payload, payload_hash: bytesHash(input.payload),
         task_binding: taskBindingHash(task), registry_hash: registryHash(registry), required_domains: domains,
@@ -184,7 +194,7 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
     const approvalState = taskApprovalStatus(ctx, store, proposal, registry);
     const missing = approvalState.domain_status.find(d => d.reason !== "approved");
     if (missing) fail(missing.reason, "All exact owner approvals required");
-    if (store.tasks.find(t => t.id === proposal.task_id)?.action_level !== "execute" || proposal.actor !== principal.actor_id || !store.controls.enabled || store.controls.execution_stopped || !taskApprovalStatus(ctx, store, proposal, registry).approved) return conflict("All exact owner approvals and execution enabled are required for a lease");
+    if ((!proposal.rollback_of && store.tasks.find(t => t.id === proposal.task_id)?.action_level !== "execute") || proposal.actor !== principal.actor_id || !store.controls.enabled || store.controls.execution_stopped || !taskApprovalStatus(ctx, store, proposal, registry).approved) return conflict("All exact owner approvals and execution enabled are required for a lease");
     const active = store.leases.find(l => l.proposal_id === proposal.id && l.state === "active");
     if (active && liveActionDeadline(ctx, active)) return conflict("Active lease already held");
     if (active) active.state = "expired";

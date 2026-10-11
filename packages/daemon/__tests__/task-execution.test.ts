@@ -12,18 +12,19 @@ import { reconcileTaskTime } from "../src/task-events.js";
 import { newOwnerKey, unlockOwnerKey, signTaskApproval, bytesHash, type ApprovalRegistry } from "../src/task-approval-keys.js";
 import { approvalBinding } from "../src/task-actions.js";
 import { reconcilePendingTaskIntents, taskBackupPath } from "../src/task-execution.js";
-async function fixture() {
+async function fixture(domains = ["personal"]) {
   const root=await realpath(await mkdtemp(join(tmpdir(),"task-execute-")));await writeFile(join(root,"artifact.txt"),"old\n");
-  const envelope=newOwnerKey("synthetic execute password"),registry:ApprovalRegistry={schema_version:1,revision:1,protected_boundary:true,keys:[{id:"key",domain:"personal",public_key:envelope.public_key,fingerprint:bytesHash(envelope.public_key)}],targets:[{id:"artifact",root,path:"artifact.txt",owner_domains:["personal"],sensitivity:"private",adapter:"local-artifact-v1"}]};
+  const envelope=newOwnerKey("synthetic execute password"),registry:ApprovalRegistry={schema_version:1,revision:1,protected_boundary:true,keys:domains.map((domain,i)=>({id:`key-${i}`,domain,public_key:envelope.public_key,fingerprint:bytesHash(envelope.public_key)})),targets:[{id:"artifact",root,path:"artifact.txt",owner_domains:domains,sensitivity:"private",adapter:"local-artifact-v1"}]};
   const ctx={path:join(root,"tasks.json"),authPath:join(root,"auth.json"),executionHost:true,approvalRegistry:Promise.resolve(registry),now:()=>1000,actionClock:()=>({boot_id:"fixture-boot",monotonic:1000})};
-  const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains:["personal"]});const auth=`Bearer ${agent.token}`,ownerAuth=`Bearer ${owner.token}`;
-  await callTaskCrud(ctx,ownerAuth,"task_create",{idempotency_key:"execute",original_request:"Replace local demo artifact",goal:"Replace demo artifact",resolution_condition:"Owner result",schedule:{kind:"instant",at:500},timezone:"Europe/Madrid",scope:{kind:"personal",name:"fixture"},owner_domains:["personal"],action_level:"execute",arm:true});await reconcileTaskTime(ctx);const task=(await readTaskStore(ctx.path)).tasks[0];
+  const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains});const auth=`Bearer ${agent.token}`,ownerAuth=`Bearer ${owner.token}`;
+  await callTaskCrud(ctx,ownerAuth,"task_create",{idempotency_key:"execute",original_request:"Replace local demo artifact",goal:"Replace demo artifact",resolution_condition:"Owner result",schedule:{kind:"instant",at:500},timezone:"Europe/Madrid",scope:{kind:"personal",name:"fixture"},owner_domains:domains,action_level:"execute",arm:true});await reconcileTaskTime(ctx);const task=(await readTaskStore(ctx.path)).tasks[0];
   const prepared=await callTaskCrud(ctx,auth,"task_prepare",{id:task.id,expected_revision:`initial:${task.revision}`,target_id:"artifact",payload:"new\n"}) as any;
-  const approve=async(proposalId:string)=>{const challenge=await callTaskCrud(ctx,ownerAuth,"task_challenge",{proposal_id:proposalId,domain:"personal"}) as any;return callTaskCrud(ctx,ownerAuth,"task_approval",{challenge_id:challenge.challenge.id,decision:"approve",signature:signTaskApproval(unlockOwnerKey(envelope,"synthetic execute password"),approvalBinding(challenge.proposal,challenge.challenge,"approve"))}) as Promise<any>;};
+  const approveDomain=async(proposalId:string,domain:string)=>{const challenge=await callTaskCrud(ctx,ownerAuth,"task_challenge",{proposal_id:proposalId,domain}) as any;return callTaskCrud(ctx,ownerAuth,"task_approval",{challenge_id:challenge.challenge.id,decision:"approve",signature:signTaskApproval(unlockOwnerKey(envelope,"synthetic execute password"),approvalBinding(challenge.proposal,challenge.challenge,"approve"))}) as Promise<any>;};
+  const approve=async(proposalId:string)=>{let result:any;for(const domain of domains)result=await approveDomain(proposalId,domain);return result;};
   const proof=await approve(prepared.proposal.id);await callTaskCrud(ctx,ownerAuth,"task_controls",{execution_stopped:false,adapter:{id:"local-artifact-v1",enabled:true}});
   const lease=await callTaskCrud(ctx,auth,"task_lease",{proposal_id:prepared.proposal.id}) as any;
   const input={proposal_id:prepared.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"one-action"};
-  return{root,ctx,registry,auth,ownerAuth,prepared,lease,input,proof,approve};
+  return{root,ctx,registry,auth,ownerAuth,prepared,lease,input,proof,approve,approveDomain};
 }
 test("exact signed action writes once, durable spend precedes target, private backup/receipt survive retry",async()=>{
   const f=await fixture();const result=await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any;assert.equal(result.state,"succeeded");assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"new\n");
@@ -91,4 +92,104 @@ test("actual compiled daemon hosts authenticated execute and returns the durable
  try{let ready=false;const until=Date.now()+15000;while(Date.now()<until){try{ready=(await fetch(base+"/health")).ok;if(ready)break;}catch{}await new Promise(r=>setTimeout(r,25));}assert.ok(ready,errors);
   const lease=await call("task_lease",{proposal_id:f.prepared.proposal.id});const result=await call("task_execute",{proposal_id:f.prepared.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"real-http"});assert.equal(result.state,"succeeded");assert.equal(result.receipt.outcome,"succeeded");assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"new\n");
  }finally{child.kill("SIGTERM");await closed;}
+});
+test("reference adapter refuses non-reversible before-state before prepare or spending",async()=>{
+ for(const payload of ["a\tb\n","a\r\nb\r\n","\ufeffhello\n","a\u0007b\n","a\u200bb\n","x".repeat(20000)]){
+  const f=await fixture();await writeFile(join(f.root,"artifact.txt"),payload);const task=(await readTaskStore(f.ctx.path)).tasks[0];
+  await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_prepare",{id:task.id,expected_revision:`initial:${task.revision}`,target_id:"artifact",payload:"new\n"}),(e:any)=>e.code==="adapter_not_reversible");
+  assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),payload);
+ }
+});
+test("receipt rollback remains independently approvable after resolve/cancel/snooze without rearming task",async()=>{
+ for(const op of ["resolve","cancel","snooze"]){const f=await fixture(),executed=await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any;const task=(await readTaskStore(f.ctx.path)).tasks[0];await callTaskCrud(f.ctx,f.ownerAuth,`task_${op}` as "task_resolve"|"task_cancel"|"task_snooze",{id:task.id,expected_revision:`initial:${task.revision}`,...(op==="snooze"?{until:10000}:{})});
+  const rollback=await callTaskCrud(f.ctx,f.auth,"task_rollback_prepare",{receipt_id:executed.receipt.id}) as any;await f.approve(rollback.proposal.id);const lease=await callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:rollback.proposal.id}) as any;await callTaskCrud(f.ctx,f.auth,"task_execute",{proposal_id:rollback.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"after-terminal"});assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");assert.equal((await readTaskStore(f.ctx.path)).tasks[0].state,op==="resolve"?"resolved":op==="cancel"?"cancelled":"snoozed");
+ }
+});
+test("unknown action is visible in bounded owner status and card; explicit reconcile cleans owned temp",async()=>{
+ const f=await fixture();const script=`import fs from'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;fs.renameSync=(a,b)=>{if(b.endsWith('/artifact.txt'))process.kill(process.pid,'SIGKILL');return rename(a,b);};syncBuiltinESMExports();const{callTaskCrud}=await import(${JSON.stringify(new URL("../dist/task-service.js",import.meta.url).href)});const c=JSON.parse(process.env.CTX);c.approvalRegistry=Promise.resolve(JSON.parse(process.env.REG));c.now=()=>1000;c.actionClock=()=>({boot_id:'fixture-boot',monotonic:1000});await callTaskCrud(c,process.env.AUTH,'task_execute',JSON.parse(process.env.INPUT));`;
+ const child=spawn(process.execPath,["--input-type=module","-e",script],{env:{...process.env,CTX:JSON.stringify({path:f.ctx.path,authPath:f.ctx.authPath,executionHost:true}),REG:JSON.stringify(f.registry),AUTH:f.auth,INPUT:JSON.stringify(f.input)},stdio:"ignore"});await once(child,"exit");const pending=(await readTaskStore(f.ctx.path)).intents[0],tmp=join(f.root,`.bastra-task-${pending.id}.tmp`);assert.equal(await readFile(tmp,"utf8"),"new\n");
+ const result=await callTaskCrud(f.ctx,f.ownerAuth,"task_intent_reconcile",{intent_id:pending.id}) as any;assert.equal(result.state,"unknown");await assert.rejects(readFile(tmp));
+ const status=await callTaskCrud(f.ctx,f.ownerAuth,"task_status",{}) as any;assert.equal(status.intents[0].review_hint,"Abgleich nötig");assert.equal(status.receipts[0].outcome,"unknown");assert.equal(status.receipts[0].rollback_available,false);assert.match(status.tasks[0].review_reason,/Abgleich nötig/);assert.ok(!JSON.stringify(status.intents).includes(f.root));
+ const due=await callTaskCrud(f.ctx,f.ownerAuth,"task_due",{}) as any;assert.equal(due.cards[0].action_outcome.review_hint,"Abgleich nötig");assert.equal((await callTaskCrud(f.ctx,f.ownerAuth,"task_intent_reconcile",{intent_id:pending.id}) as any).state,"unknown");
+});
+test("default adapter status is disabled and action capacity reports its actual bounded limits",async()=>{
+ const f=await fixture();await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{adapter:{id:"local-artifact-v1",enabled:false}});const status=await callTaskCrud(f.ctx,f.ownerAuth,"task_status",{}) as any;assert.equal(status.adapters[0].enabled,false);assert.equal(status.capacity.intent_limit,1000);
+ const {transactTaskStore}=await import("../src/task-store.js");await assert.rejects(transactTaskStore(f.ctx.path,undefined,s=>{s.intents=Array.from({length:1001},(_,i)=>({id:`intent-${i}`})) as any;}),(e:any)=>e.code==="capacity");assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);
+});
+test("execute rechecks edited/cancelled/snoozed/resolved task, feature/registry and revoked caller",async()=>{
+ for(const mode of ["edit","cancel","snooze","resolve","off","registry","credential"]){const f=await fixture(),task=(await readTaskStore(f.ctx.path)).tasks[0];
+  if(mode==="edit")await callTaskCrud(f.ctx,f.ownerAuth,"task_edit",{id:task.id,expected_revision:`initial:${task.revision}`,patch:{goal:"Changed"}});
+  if(["cancel","snooze","resolve"].includes(mode))await callTaskCrud(f.ctx,f.ownerAuth,`task_${mode}` as "task_cancel"|"task_snooze"|"task_resolve",{id:task.id,expected_revision:`initial:${task.revision}`,...(mode==="snooze"?{until:10000}:{})});
+  if(mode==="off")await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{enabled:false});if(mode==="registry")f.registry.revision++;
+  if(mode==="credential"){const {authenticateTask,revokeTaskCredential}=await import("../src/task-auth.js");const actor=await authenticateTask(f.auth,f.ctx.authPath);await revokeTaskCredential(f.ctx.authPath,actor.credential_id);}
+  await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",f.input),mode);assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);
+ }
+});
+test("two-domain execute requires both fresh unrevoked proofs; one-domain proof cannot borrow other proposal",async()=>{
+ for(const mode of ["success","revoked","expired","missing"]){const f=await fixture(["personal","team"]);
+  if(mode==="revoked")await callTaskCrud(f.ctx,f.ownerAuth,"task_revoke_approval",{approval_id:f.proof.approval_id});
+  if(mode==="expired")f.ctx.actionClock=()=>({boot_id:"fixture-boot",monotonic:301001});
+  if(mode==="missing"){const task=(await readTaskStore(f.ctx.path)).tasks[0],proposal=await callTaskCrud(f.ctx,f.auth,"task_prepare",{id:task.id,expected_revision:`initial:${task.revision}`,target_id:"artifact",payload:"another\n"}) as any;await f.approveDomain(proposal.proposal.id,"personal");await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:proposal.proposal.id}),(e:any)=>e.code==="approval_missing");continue;}
+  if(mode==="success")assert.equal((await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any).state,"succeeded");else await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",f.input));assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),mode==="success"?"new\n":"old\n");
+ }
+});
+test("second validation after durable intent rejects late content/symlink change and spends only one intent",async()=>{
+ for(const mode of ["content","symlink"]){const f=await fixture(),outside=join(await mkdtemp(join(tmpdir(),"task-outside-")),"other.txt");await writeFile(outside,"old\n");
+ const script=`import fs from'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;let changed=false;fs.renameSync=(a,b)=>{const result=rename(a,b);if(b===process.env.STORE&&!changed&&JSON.parse(fs.readFileSync(b,'utf8')).intents.length){changed=true;if(process.env.MODE==='content')fs.writeFileSync(process.env.TARGET,'external\\n');else{fs.unlinkSync(process.env.TARGET);fs.symlinkSync(process.env.OUTSIDE,process.env.TARGET);}}return result;};syncBuiltinESMExports();const{callTaskCrud}=await import(${JSON.stringify(new URL("../dist/task-service.js",import.meta.url).href)});const c=JSON.parse(process.env.CTX);c.approvalRegistry=Promise.resolve(JSON.parse(process.env.REG));c.now=()=>1000;c.actionClock=()=>({boot_id:'fixture-boot',monotonic:1000});try{await callTaskCrud(c,process.env.AUTH,'task_execute',JSON.parse(process.env.INPUT));console.log('wrong');}catch(e){console.log(e.code);}`;
+ const child=spawn(process.execPath,["--input-type=module","-e",script],{env:{...process.env,CTX:JSON.stringify({path:f.ctx.path,authPath:f.ctx.authPath,executionHost:true}),REG:JSON.stringify(f.registry),AUTH:f.auth,INPUT:JSON.stringify(f.input),STORE:f.ctx.path,TARGET:join(f.root,"artifact.txt"),OUTSIDE:outside,MODE:mode},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");assert.ok(!output.includes("wrong"));const s=await readTaskStore(f.ctx.path);assert.equal(s.intents.length,1);assert.equal(s.intents[0].state,"pending");assert.equal(s.consumed_approval_ids.length,1);assert.equal(await readFile(outside,"utf8"),"old\n");
+ }
+});
+test("resume uses readable owner confirmation; Enter leaves stop and adapter unchanged",async()=>{
+ const f=await fixture();await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{execution_stopped:true,adapter:{id:"local-artifact-v1",enabled:false}});await writeFile(join(f.root,"task-auth.json"),await readFile(f.ctx.authPath),{mode:0o600});
+ const py=`import os,pty,subprocess,select,time,sys
+master,slave=pty.openpty()
+p=subprocess.Popen(sys.argv[1:],stdin=slave,stdout=slave,stderr=slave,start_new_session=True,preexec_fn=lambda: __import__('fcntl').ioctl(0,__import__('termios').TIOCSCTTY,0))
+os.close(slave);out=b'';sent=set();deadline=time.time()+15
+pairs=[(b'Owner task token (hidden): ',os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Lokalen Referenzadapter aktivieren',b'\\n')]
+while p.poll() is None and time.time()<deadline:
+ if select.select([master],[],[],0.1)[0]:
+  try:
+   chunk=os.read(master,65536)
+   if not chunk:break
+   out+=chunk
+  except OSError:break
+ for label,reply in pairs:
+  if label in out and label not in sent:os.write(master,reply);sent.add(label)
+if p.poll() is None:p.kill()
+p.wait()
+try:
+ drain=time.time()+1
+ while time.time()<drain and select.select([master],[],[],0.05)[0]:
+  chunk=os.read(master,65536)
+  if not chunk:break
+  out+=chunk
+except OSError:pass
+os.close(master);sys.stdout.buffer.write(out)
+`;
+ const {fileURLToPath}=await import("node:url");const child=spawn("python3",["-c",py,process.execPath,fileURLToPath(new URL("../dist/cli.js",import.meta.url)),"tasks","resume","--json"],{env:{...process.env,BASTRA_TASKS_PATH:f.ctx.path,SYNTHETIC_OWNER:f.ownerAuth.slice(7)},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");assert.match(output,/Lokalen Referenzadapter aktivieren/);assert.match(output,/forbidden/);const store=await readTaskStore(f.ctx.path);assert.equal(store.controls.execution_stopped,true);assert.equal(store.controls.adapters["local-artifact-v1"].enabled,false);assert.ok(!output.includes(f.ownerAuth.slice(7)));
+});
+test("execute handles UTF-8/size/mode/hardlink boundaries explicitly and no pre-state is lost",async()=>{
+ const {chmod,link}=await import("node:fs/promises");
+ for(const mode of ["invalid-utf8","oversize","read-only","hardlink"]){const f=await fixture(),path=join(f.root,"artifact.txt");
+  if(mode==="invalid-utf8")await writeFile(path,Buffer.from([0xff,0xfe]));if(mode==="oversize")await writeFile(path,"x".repeat(1024*1024+1));if(mode==="read-only")await chmod(path,0o444);if(mode==="hardlink")await link(path,join(f.root,"other-name.txt"));
+  if(["invalid-utf8","oversize"].includes(mode)){await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",f.input));assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);}else{await callTaskCrud(f.ctx,f.auth,"task_execute",f.input);if(mode==="read-only")assert.equal((await stat(path)).mode&0o777,0o444);if(mode==="hardlink")assert.equal(await readFile(join(f.root,"other-name.txt"),"utf8"),"old\n");}
+ }
+});
+test("live evidence/source version and evidence age are re-read at execute admission",async()=>{
+ for(const mode of ["evidence","source","age"]){const f=await fixture();await writeFile(join(f.root,"evidence.json"),"evidence");await callTaskCrud(f.ctx,f.ownerAuth,"task_source_register",{id:"evidence",kind:"file",producer_actor:"task-source-reader",root:f.root,path:"evidence.json",owner_domains:["personal"],sensitivity:"private",max_age_ms:1000,enabled:true});
+  const task=(await readTaskStore(f.ctx.path)).tasks[0],edited=await callTaskCrud(f.ctx,f.ownerAuth,"task_edit",{id:task.id,expected_revision:`initial:${task.revision}`,patch:{evidence:[{source_id:"evidence",id:"evidence",revision:bytesHash("evidence"),hash:bytesHash("evidence"),observed_at:1000,state_updated_at:1000,max_age_ms:1000,provenance:"attributable"}]}}) as any;
+  await callTaskCrud(f.ctx,f.ownerAuth,"task_review",{id:task.id,expected_revision:edited.expected_revision});const {assessTaskFreshness}=await import("../src/task-freshness.js");await assessTaskFreshness(f.ctx);await reconcileTaskTime(f.ctx);const current=(await readTaskStore(f.ctx.path)).tasks[0],prepared=await callTaskCrud(f.ctx,f.auth,"task_prepare",{id:task.id,expected_revision:`initial:${current.revision}`,target_id:"artifact",payload:"new\n"}) as any;await f.approve(prepared.proposal.id);const lease=await callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:prepared.proposal.id}) as any;
+  if(mode==="evidence")await writeFile(join(f.root,"evidence.json"),"changed");if(mode==="source")await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{source:{id:"evidence",enabled:false}});if(mode==="age")f.ctx.now=()=>3000;
+  await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_execute",{proposal_id:prepared.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"evidence-action"}),mode);assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");assert.equal((await readTaskStore(f.ctx.path)).intents.length,0);
+ }
+});
+test("crash before backup and during explicit reconciliation never retries a write; foreign edit stays unknown",async()=>{
+ const f=await fixture();const service=new URL("../dist/task-service.js",import.meta.url).href;
+ const env={...process.env,CTX:JSON.stringify({path:f.ctx.path,authPath:f.ctx.authPath,executionHost:true}),REG:JSON.stringify(f.registry),AUTH:f.auth,INPUT:JSON.stringify(f.input),STORE:f.ctx.path};
+ const boot=`const{callTaskCrud}=await import(${JSON.stringify(service)});const c=JSON.parse(process.env.CTX);c.approvalRegistry=Promise.resolve(JSON.parse(process.env.REG));c.now=()=>1000;c.actionClock=()=>({boot_id:'fixture-boot',monotonic:1000});`;
+ const crashIntent=`import fs from'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;fs.renameSync=(a,b)=>{const r=rename(a,b);if(b===process.env.STORE&&JSON.parse(fs.readFileSync(b,'utf8')).intents.length)process.kill(process.pid,'SIGKILL');return r;};syncBuiltinESMExports();${boot}await callTaskCrud(c,process.env.AUTH,'task_execute',JSON.parse(process.env.INPUT));`;
+ const run=async(script:string,extra={})=>{const child=spawn(process.execPath,["--input-type=module","-e",script],{env:{...env,...extra},stdio:"ignore"});await once(child,"exit");};await run(crashIntent);const intent=(await readTaskStore(f.ctx.path)).intents[0];await assert.rejects(readFile(taskBackupPath(f.ctx,intent.backup_id)));assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");
+ await writeFile(join(f.root,"artifact.txt"),"foreign edit\n");const stamp=(await stat(join(f.root,"artifact.txt"))).mtimeMs;
+ const crashReceipt=`import fs from'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;fs.renameSync=(a,b)=>{if(b===process.env.STORE&&JSON.parse(fs.readFileSync(a,'utf8')).receipts.length)process.kill(process.pid,'SIGKILL');return rename(a,b);};syncBuiltinESMExports();${boot}await callTaskCrud(c,process.env.AUTH,'task_intent_reconcile',{intent_id:process.env.INTENT});`;
+ await run(crashReceipt,{INTENT:intent.id});assert.equal((await readTaskStore(f.ctx.path)).intents[0].state,"pending");const result=await callTaskCrud(f.ctx,f.ownerAuth,"task_intent_reconcile",{intent_id:intent.id}) as any;assert.equal(result.state,"unknown");assert.equal((await stat(join(f.root,"artifact.txt"))).mtimeMs,stamp);assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"foreign edit\n");
 });

@@ -556,3 +556,24 @@ transaction or preemptive cancellation of an admitted filesystem syscall claimed
 Owner boundary declaration is explicit/unverified, stops execution and requires
 process restart; execution-enable confirms activating only the local adapter and
 lifting the stop. execution_stopped defaults true and only owner changes it.
+
+P8 review correction: the reference adapter admits only before-state that can
+be re-proposed exactly (<=16384 characters, cleanText-stable UTF-8, no Tab/CRLF/
+BOM/control/format/injected/secret-like text). Prepare AND execute reject other
+before-state with adapter_not_reversible before spending/writing. This is an
+explicit reversible plain-artifact subset, not a general file editor. Receipt-
+bound rollback ignores the old task's trigger/lifecycle/evidence; it binds the
+CURRENT task metadata, target, registry and original receipt, requires new exact
+proofs/lease, preserves terminal/snoozed state, and never rearms the task.
+Owner status lists bounded intents/receipts without paths/payloads, hashes/target
+IDs/outcomes/rollback candidate and capacity. Unknown appends a task audit/review
+hint "Abgleich nötig" and appears in the due card; a new pending/unknown outcome
+gets one quiet-window/budget exception per actor, then normal quiet rules resume.
+Reconciliation removes only its own non-symlink bounded temp with matching hash
+in the registered target directory. Capacity checks occur before schema/commit;
+intent limit is exactly1000, with archive controls following P9c. resume uses the
+same readable owner confirmation as execution-enable (No default). Adapter status
+uses enabled===true, identical to lease/write admission. Hardlinked names retain
+old bytes when the registered name is replaced; special mode bits are not copied,
+ordinary permissions are preserved; directory authority permits replacing a
+read-only (0444) file. These filesystem effects must be understood at approval.

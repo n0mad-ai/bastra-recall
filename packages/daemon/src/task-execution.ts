@@ -2,14 +2,14 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { constants, openSync, fstatSync, closeSync, lstatSync, realpathSync, readFileSync, renameSync } from "node:fs";
-import { mkdir, open, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, unlink } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
 import { cleanText, withTaskStoreGuard, TaskStoreError } from "./task-store.js";
-import { taskActionRegistry, requireTaskActionEnabled, validateTaskProposal, taskApprovalStatus, liveActionDeadline, readTaskTarget, TaskApprovalError } from "./task-actions.js";
-import { bytesHash, actionHash } from "./task-approval-keys.js";
-import { boundedTaskRead, verifyTaskSource, verifyBoundEvidence } from "./task-freshness.js";
+import { taskActionRegistry, requireReversiblePayload, requireTaskActionEnabled, validateTaskProposal, taskApprovalStatus, liveActionDeadline, readTaskTarget, TaskApprovalError } from "./task-actions.js";
+import { bytesHash, registryHash, actionHash } from "./task-approval-keys.js";
+import { taskBindingHash, boundedTaskRead, verifyTaskSource, verifyBoundEvidence } from "./task-freshness.js";
 import type { TaskServiceContext } from "./task-service.js";
 export const TASK_EXECUTION_INPUTS = {
   task_execute: z.strictObject({ proposal_id: id, lease_id: id, holder_token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), fence: z.number().int().positive().safe(), idempotency_key: id }),
@@ -54,6 +54,17 @@ async function freshSources(ctx: TaskServiceContext, task: Task, store: TaskStor
     if (task.evidence.length && (await verifyBoundEvidence(ctx, task, store, now)).outcome !== "verified") fail("approval_stale", "Evidence changed");
   }
 }
+function markUnknown(store: TaskStore, taskId: string, now: number) {
+  const task = store.tasks.find(t => t.id === taskId); if (!task) return;
+  const before = task.revision++; task.updated_at = now; task.review_reason = "Abgleich nötig: Ausgang der Dateiänderung unklar";
+  task.history.push({ at: now, actor: "task-action-recovery", operation: "action-unknown", before_revision: before, after_revision: task.revision, reason: "Abgleich nötig" });
+}
+async function cleanupIntentTemp(registry: Awaited<ReturnType<typeof taskActionRegistry>>, intent: Intent, proposal: TaskStore["proposals"][number]) {
+  const target = await readTaskTarget(registry, proposal.target_id);
+  const tmp = join(dirname(target.path), `.bastra-task-${intent.id}.tmp`);
+  try { const info = await lstat(tmp); if (!info.isSymbolicLink() && info.isFile() && info.size <= 16384 * 4 && bytesHash(await boundedTaskRead(tmp, 16384 * 4)) === intent.after_hash) await unlink(tmp); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+}
 /** No awaits between final CAS/ownership/expiry admission and the rename. */
 function finalTargetCommit(ctx: TaskServiceContext, store: TaskStore, intent: Intent, holder: { token: string; fence: number }, path: string, tmp: string, assertOwnership: () => void) {
   requireTaskActionEnabled(store); const lease = store.leases.find(l => l.id === intent.lease_id);
@@ -83,9 +94,10 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       const target = await readTaskTarget(registry, proposal.target_id);
       // Read-only recovery never retries a target write, regardless of lease expiry.
       const outcome = target.hash === intent.after_hash && intent.recovery_epoch === store.recovery_epoch ? "reconciled" as const : "unknown" as const;
+      await cleanupIntentTemp(registry, intent, proposal);
       const receipt = { id: randomUUID(), intent_id: intent.id, proposal_id: proposal.id, task_id: intent.task_id, actor: intent.actor, fence: intent.fence, at: now, outcome,
         target_hash: target.hash, before_hash: intent.before_hash, after_hash: intent.after_hash, backup_id: intent.backup_id };
-      store = await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); }, "control");
+      store = await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
       return present(store.intents.find(i => i.id === intent.id)!);
     }
     if (operation === "task_rollback_prepare") {
@@ -98,7 +110,8 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       if (backup.intent_id !== receipt.intent_id || bytesHash(backup.payload) !== receipt.before_hash) fail("approval_stale", "Backup binding changed");
       const task = store.tasks.find(t => t.id === original.task_id)!;
       const proposal = { ...original, id: actionHash(["task-rollback-v1", receipt.id, principal.actor_id, receipt.after_hash]), actor: principal.actor_id, created_at: now,
-        rollback_of: receipt.id, task_revision: task.revision, recovery_epoch: store.recovery_epoch, target_hash: receipt.after_hash, payload: backup.payload, payload_hash: receipt.before_hash, status: "prepared" as const };
+        rollback_of: receipt.id, task_revision: task.revision, generation: task.generation, task_binding: taskBindingHash(task), source_revisions: [], registry_hash: registryHash(registry),
+        required_domains: [...new Set([...original.required_domains, ...task.owner_domains, ...target.target.owner_domains])].sort(), scope: task.scope, sensitivity: [original.sensitivity, task.sensitivity, target.target.sensitivity].sort((a,b) => ({public:0,private:1,restricted:2}[a] - {public:0,private:1,restricted:2}[b])).at(-1)!, recovery_epoch: store.recovery_epoch, target_hash: receipt.after_hash, payload: backup.payload, payload_hash: receipt.before_hash, status: "prepared" as const };
       await validateTaskProposal(ctx, store, proposal, registry);
       store = await guard.commit(s => { if (!s.proposals.some(p => p.id === proposal.id)) s.proposals.push(proposal); });
       return { proposal, rollback_of: receipt.id, preview: { before: target.payload, after: backup.payload }, executes: false, new_owner_approvals_required: true };
@@ -113,15 +126,16 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
     }
     requireTaskActionEnabled(store);
     const task = await validateTaskProposal(ctx, store, proposal, registry);
-    if (proposal.actor !== principal.actor_id || task.action_level !== "execute" || task.state !== "due") fail("forbidden", "Actor/execute-level/due task required");
-    await freshSources(ctx, task, store);
+    if (proposal.actor !== principal.actor_id || (!proposal.rollback_of && (task.action_level !== "execute" || task.state !== "due"))) fail("forbidden", "Actor/execute-level/due task required");
+    if (!proposal.rollback_of) await freshSources(ctx, task, store);
     const approvals = taskApprovalStatus(ctx, store, proposal, registry); if (!approvals.approved) fail(approvals.domain_status.find(d => d.reason !== "approved")?.reason ?? "approval_missing", "Every live owner approval required");
     const lease = store.leases.find(l => l.id === input.lease_id);
     if (!lease || lease.proposal_id !== proposal.id || lease.actor !== principal.actor_id || lease.fence !== input.fence || lease.holder_token_hash !== bytesHash(input.holder_token) || lease.state !== "active" || !liveActionDeadline(ctx, lease)) fail("lease_expired", "Current actor/holder/fence lease required");
-    const target = await readTaskTarget(registry, proposal.target_id);
+    const target = await readTaskTarget(registry, proposal.target_id); requireReversiblePayload(target.payload);
     const intent: Intent = { id: randomUUID(), proposal_id: proposal.id, task_id: task.id, actor: principal.actor_id, lease_id: lease.id, fence: lease.fence,
       approval_ids: approvals.approval_ids, idempotency_key: input.idempotency_key, created_at: now, recovery_epoch: store.recovery_epoch,
       before_hash: target.hash, after_hash: proposal.payload_hash, backup_id: randomUUID(), state: "pending" };
+    if (store.intents.length >= 1000) throw new TaskStoreError("capacity", "Intent capacity reached; owner archive required");
     if (store.receipts.length + store.intents.filter(i => i.state === "pending").length >= 9990) throw new TaskStoreError("capacity", "Receipt reserve reached");
     store = await guard.commit(s => { s.intents.push(intent); s.consumed_approval_ids.push(...intent.approval_ids); });
     // Spending + intent are durable BEFORE every adapter/backup/target effect.
@@ -129,7 +143,8 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
     const tmp = join(dirname(target.path), `.bastra-task-${intent.id}.tmp`);
     await writePrivateNew(tmp, proposal.payload, target.mode);
     try {
-      const currentRegistry = await taskActionRegistry(ctx); const currentTask = await validateTaskProposal(ctx, store, proposal, currentRegistry); await freshSources(ctx, currentTask, store);
+      const currentRegistry = await taskActionRegistry(ctx); const currentTask = await validateTaskProposal(ctx, store, proposal, currentRegistry); if (!proposal.rollback_of) await freshSources(ctx, currentTask, store);
+      requireReversiblePayload((await readTaskTarget(currentRegistry, proposal.target_id)).payload);
       const current = await authenticateTask(authorization, ctx.authPath); if (current.actor_id !== intent.actor) fail("forbidden", "Credential revoked");
       const reserved = { ...store, consumed_approval_ids: store.consumed_approval_ids.filter(id => !intent.approval_ids.includes(id)) };
       const reservedState = taskApprovalStatus(ctx, reserved, proposal, currentRegistry);
@@ -153,11 +168,12 @@ export async function reconcilePendingTaskIntents(ctx: TaskServiceContext): Prom
       if (intent.state !== "pending" || count++ >= 10) continue;
       const proposal = store.proposals.find(p => p.id === intent.proposal_id)!;
       let hash: string | undefined;
-      try { if (proposal.registry_hash !== (await import("./task-approval-keys.js")).registryHash(registry)) throw new Error("Registry drift"); hash = (await readTaskTarget(registry, proposal.target_id)).hash; } catch { /* unknown retains an explicit review outcome */ }
+      try { if (proposal.registry_hash !== registryHash(registry)) throw new Error("Registry drift"); hash = (await readTaskTarget(registry, proposal.target_id)).hash; } catch { /* unknown retains an explicit review outcome */ }
+      try { await cleanupIntentTemp(registry, intent, proposal); } catch { /* unavailable temp/target is visible as unknown */ }
       const outcome = hash === intent.after_hash && intent.recovery_epoch === store.recovery_epoch ? "reconciled" as const : "unknown" as const;
       const receipt = { id: randomUUID(), intent_id: intent.id, proposal_id: proposal.id, task_id: intent.task_id, actor: intent.actor, fence: intent.fence, at: (ctx.now ?? Date.now)(), outcome,
         ...(hash ? { target_hash: hash } : { error_code: "target_unavailable" }), before_hash: intent.before_hash, after_hash: intent.after_hash, backup_id: intent.backup_id };
-      await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); }, "control");
+      await guard.commit(s => { const row = s.intents.find(i => i.id === intent.id)!; row.state = outcome === "reconciled" ? "succeeded" : "unknown"; row.receipt_id = receipt.id; s.receipts.push(receipt); if (outcome === "unknown") markUnknown(s, intent.task_id, receipt.at); }, "control");
     }
   });
 }

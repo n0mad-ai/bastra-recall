@@ -16,13 +16,13 @@ export interface TaskMemorySnapshot { id: string; revision: string; raw: string;
 export function taskBindingHash(task: Task): string {
   return taskValueHash(JSON.stringify({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
 }
-export async function boundedTaskRead(path: string, max: number): Promise<string> {
+export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = await handle.stat(); if (!info.isFile() || info.size > max) throw new Error("source byte budget");
     const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
     if (result.bytesRead > max) throw new Error("source byte budget");
-    return bytes.subarray(0, result.bytesRead).toString("utf8");
+    return strictUtf8 ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, result.bytesRead)) : bytes.subarray(0, result.bytesRead).toString("utf8");
   } finally { await handle.close(); }
 }
 export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {

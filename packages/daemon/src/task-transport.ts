@@ -21,7 +21,7 @@ export function taskFailure(error: unknown): { status: number; body: { error: st
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
   const statuses: Record<string, number> = { unauthorized: 401, forbidden: 403, not_found: 404,
-    validation: 400, conflict: 409, approval_stale: 409, approval_expired: 409, approval_revoked: 409, approval_denied: 403, approval_missing: 409, approval_consumed: 409, lease_expired: 409, key_unlock_failed: 403, adapter_disabled: 409, execution_stopped: 409, feature_disabled: 409, execution_host_required: 409, protected_boundary_required: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
+    validation: 400, conflict: 409, approval_stale: 409, approval_expired: 409, approval_revoked: 409, approval_denied: 403, approval_missing: 409, approval_consumed: 409, lease_expired: 409, key_unlock_failed: 403, adapter_disabled: 409, adapter_not_reversible: 409, execution_stopped: 409, feature_disabled: 409, execution_host_required: 409, protected_boundary_required: 409, corrupt: 503, auth_corrupt: 503, unsupported_version: 503, capacity: 503, lock_unavailable: 503 };
   // Do not echo raw validation values, paths, authorization or filesystem errors.
   const code = Object.hasOwn(statuses, reported) ? reported : "unavailable";
   const status = statuses[code] ?? 503;

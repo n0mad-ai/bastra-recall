@@ -168,6 +168,8 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
     const commit = async (mutate: (store: TaskStore) => void | Promise<void>, kind: TaskMutationKind = "normal"): Promise<TaskStore> => {
       const draft = structuredClone(store);
       await mutate(draft);
+      for (const [name, limit] of Object.entries({ tasks: 1000, sources: 1000, proposals: 1000, intents: 1000, events: 10000, occurrences: 10000, challenges: 10000, approvals: 10000, receipts: 10000 }))
+        if ((draft[name as keyof TaskStore] as unknown[]).length > limit) throw new TaskStoreError("capacity", `${name} capacity reached; owner archive required`);
       const next = cleanStore(draft);
       assertTaskProgress(store, next);
       if (JSON.stringify(next) === JSON.stringify(store)) return structuredClone(store);
