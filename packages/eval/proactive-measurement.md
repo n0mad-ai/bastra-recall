@@ -19,43 +19,29 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix has 25 cases, three repetitions each (75 required runs).
-On corrected P8 stack `f5f8f14924e72d446c65c8771c087c72f3d144ac`, the complete
-P1/P2/P3/notify segment passed **48/48**, including ordinary passive contact,
-seven-day synthetic clock advance, offline restart, relay overflow/off/purge,
-multi-client identity and acknowledged unfinished work. The final full available
-segment completed **72/75 observed: 66 passed, 6 failed, 3 pending**. The P10
-migration case remains unavailable. All 72 child-process audits confirm cleanup;
-zero blocked network attempts. Three failed material-premise rows also lack
-owner-control ground truth because an automatic occurrence never appeared.
-Those missing fields cannot count as successful owner controls.
+The registered matrix has 25 cases, three repetitions each (75 required rows).
+The complete frozen draft P10 #1186 head
+`df3abfca2e495768cc5a2d29042d7ca08903f218` completed **75/75 observed:
+72 passed, 3 failed, 0 pending, 0 not evaluable**. Protocol #402 v15 and #598/#410
+v14 were registered before the run. Later builder pushes do not change this head.
+P10 clean install, supported v1/v2 migration, downgrade rejection, corruption and
+actual authenticated backup recovery pass all three repetitions.
 
-Separate focused action segments each pass **3/3**: exact reversible write with
-newly approved rollback, containment/revocation, two-domain approval/fencing,
-forgery/drift, execution stop/adapter disable, actual daemon crashes and readonly
-recovery, plus decision supersession. These use invented signatures and real
-temporary target bytes/mtime, never human approval or an OS-protected key claim.
+Material-premise-change fails 3/3 because the default 2048-byte task_due projection
+omits ordinary change/snooze reconsideration cards: cards empty, pending1,
+overflow1. Logical occurrence, exact Claim retry, shared 5s deadline and all
+owner keep/change/snooze/stop/disk CAS/restart controls pass. Readonly reconstruction
+from archived state gives 1803-byte cards against the 1792-byte available budget.
+The new presentation field adds24 bytes; earlier b93ab169 cards were1779 bytes.
+The run keeps its original standard budget and failed verdict, with no enlarged
+budget or threshold substitution.
 
-Historical P6 findings on `f5f8f149` prevented confirmation: an identical versioned-claim event
-retry returns conflict, caused by an order-sensitive claim comparison. The
-unknown-source runtime control fails 3/3 because irrelevant/contested events lack
-persisted verification inside the preregistered 5s contact deadline; the actual
-published verifier on those same files returns inconclusive. No false occurrence
-or automatic decision reversal was observed. Setup/incomplete segments retain
-their private artifacts and cannot count as passes.
-
-The user-requested P3 review controls were registered in `cf2b64e4` before their
-runs: original `e78ff4f4` fails automatic evaluation and file/Git A,B,A,B in 3/3
-each. Returning transitions pass on corrected `4bc482fb`; automatic startup,
-next-contact and periodic polling pass on P5a `87b80f3e` and corrected P8.
-The independently found cross-domain source/key collision was registered in
-`71143079`, fails on P4 `465a6800` and `84a241ed`, and passes on `b5a994ed` onward.
-All original failed artifacts/protocol hashes remain unchanged.
-
-Every head, driver revision and selected subset is a separate segment; counts
-are never pooled into an empirical error rate. #402/#410 retain historical failed segments; current corrected focused
-controls pass, and overall confirmation remains pending; #598 and longitudinal/independent combined
-confirmation remain pending. No human or longitudinal window started.
+All75 child cleanup audits pass, zero blocked network attempts. Every earlier
+failed/partial/green segment and protocol hash remains unchanged; heads and scopes
+are never pooled into an overall error rate. Earlier P3 review controls and Claim/
+automatic verification fixes remain independently confirmed. Current #402/#410
+functional failures prevent confirmation; #598 and human/longitudinal/independent
+stable gates remain pending. No human or longitudinal window started.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
