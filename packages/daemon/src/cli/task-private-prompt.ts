@@ -2,9 +2,10 @@
 import { openSync } from "node:fs";
 import { ReadStream, WriteStream } from "node:tty";
 export async function taskPrivatePrompt(label: string, passphrase = false): Promise<string> {
+  if (!process.stdin.isTTY) throw new Error("Owner input requires an interactive terminal");
   const fd = openSync("/dev/tty", "r+");
   const input = new ReadStream(fd); const output = new WriteStream(openSync("/dev/tty", "w"));
-  output.write(label); input.setRawMode(true); input.resume();
+  input.setRawMode(true); output.write(label); input.resume();
   return new Promise((resolve, reject) => {
     let value = "";
     const finish = (error?: Error) => {
