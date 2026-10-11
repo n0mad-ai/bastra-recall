@@ -66,7 +66,7 @@ export const taskSchema = z.strictObject({
     id, revision: id, option: text, reason: text, assumption_id: id,
     assumption_revision: id, premise: text, alternatives: z.array(text).max(20),
   }).optional(),
-  last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
+  last_material_hash: hash.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),
   last_failure: z.strictObject({ at: instant, code: id, message: text }).optional(),
   history: z.array(z.strictObject({
@@ -112,6 +112,7 @@ export const taskSourceSchema = z.strictObject({
   root: z.string().min(1).max(4096).optional(), path: z.string().min(1).max(4096).optional(),
   ref: z.string().regex(/^refs\/(heads|tags)\/[a-zA-Z0-9._/-]+$/).max(256).optional(),
   memory_id: id.optional(), max_age_ms: instant, enabled: z.boolean(),
+  observation_number: revision.default(0), last_value_hash: hash.optional(),
 }).superRefine((s, ctx) => {
   if ((s.kind === "file" && (!s.root || !s.path)) || (s.kind === "git" && (!s.root || !s.ref)) || (s.kind === "memory" && !s.memory_id))
     ctx.addIssue({ code: "custom", message: "source registration incomplete" });

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { once } from "node:events";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -110,4 +111,66 @@ test("legacy v1 missing source registry migrates additively and missing secret h
   delete original.tasks[0].schedule.expected_hash; await writeFile(f.ctx.path, JSON.stringify(original));
   assert.deepEqual((await readTaskStore(f.ctx.path)).sources, []);
   await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
+});
+test("file A B A B records four observations and two changes; raw baseline needs no hashing", async () => {
+  const f = await fixture(); const path = join(f.root, "sequence.txt"); await writeFile(path, "A");
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, kind: "file", producer_actor: "task-source-reader", root: f.root, path: "sequence.txt" });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "content-version", expected: "A" } });
+  for (const value of ["A", "B", "A", "B"]) { await writeFile(path, value); await observeTaskSources(f.ctx); await reconcileTaskTime(f.ctx); }
+  await observeTaskSources(f.ctx); await reconcileTaskTime(f.ctx);
+  const s = await readTaskStore(f.ctx.path); assert.equal(s.events.length, 4); assert.equal(s.occurrences.length, 2); assert.equal(s.sources[0].observation_number, 4);
+});
+test("events before owner arming never fire; reconcile rejects agents and owners outside task domains", async () => {
+  const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_source_register", f.source);
+  await callTaskCrud(f.ctx, f.agentAuth, "task_event", { source_id: "source", source_revision: 0, dedup_key: "old", value: "yes", state_updated_at: 1000 });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "yes" } });
+  await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
+  await assert.rejects(callTaskCrud(f.ctx, f.agentAuth, "task_reconcile", {}), { code: "forbidden" });
+  const other = await mintTaskCredential(f.ctx.authPath, { actor_id: "other", domains: ["other"], role: "owner" });
+  await assert.rejects(callTaskCrud(f.ctx, `Bearer ${other.token}`, "task_reconcile", {}), { code: "forbidden" });
+});
+test("calendar recurrence rejects its later gap slot and clock rollback cannot duplicate a saved slot", async () => {
+  const f = await fixture(); const at = resolveTaskCalendar("2026-03-28T02:30:00", "Europe/Madrid").at;
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "calendar", local_time: "2026-03-28T02:30:00", timezone: "Europe/Madrid", gap: "reject", overlap: "earlier", at, offset_minutes: 60 }, recurrence: { kind: "calendar", interval: 1, count: 3, catch_up: "latest" } });
+  f.setNow(at); const s = await reconcileTaskTime(f.ctx);
+  assert.equal(s.tasks[0].armed, false); assert.equal(s.tasks[0].last_failure?.code, "calendar_gap"); assert.equal(s.occurrences.length, 1);
+  f.setNow(at - 86400000); await reconcileTaskTime(f.ctx); f.setNow(at); await reconcileTaskTime(f.ctx);
+  assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
+});
+test("two real processes reconcile the same time slot exactly once", async () => {
+  const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
+  const { spawn } = await import("node:child_process");
+  const program = 'import {reconcileTaskTime} from "./packages/daemon/src/task-events.ts"; const ctx=JSON.parse(process.env.BASTRA_TEST_TASK_CTX); await reconcileTaskTime({...ctx,now:()=>5000});';
+  const workers = [0, 1].map(() => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx) }, stdio: ["ignore", "ignore", "pipe"] }));
+  for (const child of workers) child.stderr!.resume();
+  const outcomes = await Promise.all(workers.map(child => once(child, "close")));
+  for (const [code] of outcomes) assert.equal(code, 0);
+  assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
+});
+test("process dies after journal commit before checkpoint; restart evaluates the preserved event once", async () => {
+  const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_source_register", f.source);
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "yes" } });
+  const { spawn } = await import("node:child_process");
+  const program = 'import {submitTaskEvent} from "./packages/daemon/src/task-events.ts"; const ctx=JSON.parse(process.env.BASTRA_TEST_TASK_CTX); await submitTaskEvent({...ctx,now:()=>1000},process.env.BASTRA_TEST_EVENT_AUTH,{source_id:"source",source_revision:0,dedup_key:"crash",value:"yes",state_updated_at:1000}); process.kill(process.pid,"SIGKILL");';
+  const worker = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx), BASTRA_TEST_EVENT_AUTH: f.agentAuth }, stdio: ["ignore", "ignore", "pipe"] });
+  worker.stderr!.resume(); const [, signal] = await once(worker, "close"); assert.equal(signal, "SIGKILL");
+  assert.equal((await readTaskStore(f.ctx.path)).checkpoint, 0);
+  await reconcileTaskTime(f.ctx); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);
+});
+test("Git A B A B produces four journal events, unchanged polls stay quiet", async () => {
+  const f = await fixture(); const repo = join(f.root, "git-cycle"); await mkdir(repo);
+  execFileSync("git", ["init", "-b", "fixture", repo]);
+  const commit = (name: string) => {
+    execFileSync("git", ["-C", repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", name]);
+    return execFileSync("git", ["-C", repo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  };
+  const a = commit("A"); const b = commit("B");
+  await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, kind: "git", producer_actor: "task-source-reader", root: repo, ref: "refs/heads/fixture" });
+  await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "git-ref", expected: a } });
+  for (const value of [a, b, a, b]) {
+    execFileSync("git", ["-C", repo, "update-ref", "refs/heads/fixture", value]);
+    await observeTaskSources(f.ctx); await reconcileTaskTime(f.ctx);
+  }
+  await observeTaskSources(f.ctx);
+  const s = await readTaskStore(f.ctx.path); assert.equal(s.events.length, 4); assert.equal(s.occurrences.length, 2);
 });

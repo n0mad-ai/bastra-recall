@@ -62,7 +62,8 @@ function validateEventBinding(store: TaskStore, schedule: Extract<Task["schedule
     throw new TaskServiceError("validation", "Registered source and an exact owner-reviewed baseline are required");
 }
 function normalizeSchedule(schedule: Task["schedule"]): void {
-  if (schedule.kind === "event") schedule.expected_hash = taskValueHash(schedule.expected);
+  if (schedule.kind === "event") schedule.expected_hash = schedule.predicate === "content-version" && /^[a-f0-9]{64}$/.test(schedule.expected)
+    ? schedule.expected : taskValueHash(schedule.expected);
   if (schedule.kind === "calendar") {
     try { Object.assign(schedule, resolveTaskCalendar(schedule.local_time, schedule.timezone)); }
     catch { throw new TaskServiceError("validation", "Calendar wall time is invalid or in a DST gap"); }
@@ -77,7 +78,10 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
   if (operation === "task_source_register") return registerTaskSource(ctx, authorization, raw);
   if (operation === "task_event") return submitTaskEvent(ctx, authorization, raw);
   if (operation === "task_reconcile") {
-    z.strictObject({}).parse(raw); await reconcileTaskTime(ctx); return { reconciled: true };
+    z.strictObject({}).parse(raw); requireTaskOwner(principal);
+    const snapshot = await readTaskStore(ctx.path);
+    requireTaskDomains(principal, [...new Set(snapshot.tasks.flatMap(t => t.owner_domains))]);
+    await reconcileTaskTime(ctx); return { reconciled: true };
   }
   if (operation === "task_list") {
     z.strictObject({}).parse(raw);
@@ -106,7 +110,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
       const { idempotency_key: _key, arm, ...values } = input;
       if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
       s.tasks.push(taskSchema.parse({ ...values, id, creation_hash: creationHash, revision: 0, generation: 0,
-        created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
+        last_event_sequence: s.events.at(-1)?.sequence ?? 0, created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
         request_source: principal.role === "owner" ? "owner-command" : "agent-proposal", reference_at: now,
         state: "pending", armed: arm, review_reason: arm ? undefined : "Explicit owner review required",
         history: [{ at: now, actor: principal.actor_id, operation: "create", before_revision: 0, after_revision: 0, reason: "create" }],
@@ -129,7 +133,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
       Object.assign(task, patch);
       if (triggerChanged) {
-        task.generation++; delete task.snoozed_until; delete task.last_event_sequence; delete task.slots_checked; delete task.next_slot;
+        task.generation++; delete task.snoozed_until; task.last_event_sequence = s.events.at(-1)?.sequence ?? 0; delete task.last_material_hash; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
       } task.armed = false; task.review_reason = "Edited binding requires explicit owner review";
       audit(task, principal, "edit", now);
@@ -141,6 +145,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
       if (task.action_level === "execute") throw new TaskServiceError("conflict", "execute monitoring requires action review");
       if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
+      task.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
       task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
     const op = operation.slice(5) as TaskLifecycleOperation;
@@ -160,6 +165,7 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
     }
     if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: "Explicit owner resolution" };
     const next = transitionTask(task, op, principal.actor_id, now, args.until);
+    if (op === "rearm") next.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
     s.tasks[s.tasks.indexOf(task)] = next;
   }, operation === "task_edit" || operation === "task_review" || operation === "task_rearm" ? "normal" : "control");
   return view(store, findTask(store, input.id, principal));

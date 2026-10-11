@@ -202,6 +202,13 @@ execute; missing/cancelled/superseded/revised binding disarms, preserving old
 history and requiring explicit new review. No similarity or automatic rebinding.
 Tests use an invented temporary vault only.
 
+Manual `task_reconcile` is owner-only and requires every stored task ownership
+domain; daemon-owned reconciliation is internal. Registration counters distinguish
+A→B→A→B from unchanged polling. Watch cursors start at explicit owner arming,
+so earlier journal events do not trigger a newly accepted task. File baselines
+accept raw UTF-8 content or its SHA-256; Git baselines accept the full object ID.
+Neither requires hashing the hash again.
+
 Event: monotonic sequence, source ID/version, actor/domain, observed_at,
 producer state_updated_at where meaningful, sensitivity, dedup key, bounded
 value/evidence. File/ref sources observe snapshots at polling/contact, not every

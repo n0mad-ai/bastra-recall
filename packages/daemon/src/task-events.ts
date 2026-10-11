@@ -30,7 +30,7 @@ export async function registerTaskSource(ctx: TaskServiceContext, authorization:
 function appendEvent(store: TaskStore, sourceId: string, actor: string, sourceRevision: number, value: string, key: string, updated: number, now: number) {
   const source = store.sources.find(s => s.id === sourceId && s.enabled);
   if (!source || source.producer_actor !== actor || source.revision !== sourceRevision) throw Object.assign(new Error("registered source writer denied"), { code: "forbidden" });
-  const value_hash = taskValueHash(value);
+  const value_hash = source.kind === "file" ? value : taskValueHash(value);
   const dedup_key = taskValueHash(`${sourceId}:${key}`);
   const existing = store.events.find(e => e.dedup_key === dedup_key);
   if (existing) {
@@ -87,8 +87,10 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
         if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d)) || task.schedule.predicate === "premise"
           || !event.value_hash || !task.schedule.expected_hash) continue;
         if (event.state_updated_at === undefined || event.state_updated_at > now || now - event.state_updated_at > source.max_age_ms) continue;
+        const materialChanged = task.last_material_hash !== event.value_hash;
+        task.last_material_hash = event.value_hash;
         const matches = task.schedule.predicate === "equals" ? event.value_hash === task.schedule.expected_hash : event.value_hash !== task.schedule.expected_hash;
-        if (matches) fire(store, task, `event:${taskValueHash(`${event.source_id}:${event.source_revision}:${event.value_hash}`)}`, event.observed_at, now);
+        if (matches && materialChanged) fire(store, task, `event:${event.id}`, event.observed_at, now);
       }
       if (task.last_event_sequence !== before && task.revision === beforeRevision) audit(task, now, "journal-check");
       if (task.state === "snoozed") { task.state = "due"; delete task.snoozed_until; audit(task, now, "unsnooze"); }
@@ -144,7 +146,15 @@ export async function observeTaskSources(ctx: TaskServiceContext): Promise<void>
         value = (await exec("git", ["-C", root, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: 1000, maxBuffer: 4096 })).stdout.trim();
         if (!/^[a-f0-9]{40,64}$/.test(value)) throw new Error("invalid git revision");
       }
-      await transactTaskStore(ctx.path, undefined, s => { appendEvent(s, source.id, "task-source-reader", source.revision, value, taskValueHash(value), now, now); });
+      await transactTaskStore(ctx.path, undefined, s => {
+        const current = s.sources.find(row => row.id === source.id);
+        if (!current || !current.enabled || current.revision !== source.revision) return;
+        const observed = taskValueHash(value);
+        if (current.last_value_hash === observed) return;
+        current.observation_number++;
+        appendEvent(s, source.id, "task-source-reader", source.revision, value, String(current.observation_number), now, now);
+        current.last_value_hash = observed;
+      });
     } catch {
       await transactTaskStore(ctx.path, undefined, s => {
         for (const task of s.tasks) if (task.schedule.kind === "event" && task.schedule.source_id === source.id && task.last_failure?.code !== "source_unavailable") {

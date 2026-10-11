@@ -184,7 +184,7 @@ export function transitionTask(task: Task, operation: TaskLifecycleOperation, ac
       next.state = "snoozed"; next.snoozed_until = snoozedUntil; break;
     case "resolve": next.state = "resolved"; next.armed = false; break;
     case "cancel": next.state = "cancelled"; next.armed = false; break;
-    case "rearm": delete next.agent_snooze_deadline; delete next.last_event_sequence; delete next.slots_checked; delete next.next_slot; next.state = "pending"; next.armed = false; next.generation++; next.review_reason = "Owner review required before arming"; break;
+    case "rearm": delete next.agent_snooze_deadline; delete next.last_material_hash; delete next.last_event_sequence; delete next.slots_checked; delete next.next_slot; next.state = "pending"; next.armed = false; next.generation++; next.review_reason = "Owner review required before arming"; break;
   }
   if (["resolve", "cancel", "rearm"].includes(operation)) delete next.snoozed_until;
   next.revision++; next.updated_at = now;
