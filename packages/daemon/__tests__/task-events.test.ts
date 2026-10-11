@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+const TASK_TEST_REPO = fileURLToPath(new URL("../../../", import.meta.url));
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -141,7 +143,7 @@ test("two real processes reconcile the same time slot exactly once", async () =>
   const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_create", f.input);
   const { spawn } = await import("node:child_process");
   const program = 'import {reconcileTaskTime} from "./packages/daemon/src/task-events.ts"; const ctx=JSON.parse(process.env.BASTRA_TEST_TASK_CTX); await reconcileTaskTime({...ctx,now:()=>5000});';
-  const workers = [0, 1].map(() => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx) }, stdio: ["ignore", "ignore", "pipe"] }));
+  const workers = [0, 1].map(() => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { cwd: TASK_TEST_REPO, env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx) }, stdio: ["ignore", "ignore", "pipe"] }));
   for (const child of workers) child.stderr!.resume();
   const outcomes = await Promise.all(workers.map(child => once(child, "close")));
   for (const [code] of outcomes) assert.equal(code, 0);
@@ -152,7 +154,7 @@ test("process dies after journal commit before checkpoint; restart evaluates the
   await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "yes" } });
   const { spawn } = await import("node:child_process");
   const program = 'import {submitTaskEvent} from "./packages/daemon/src/task-events.ts"; const ctx=JSON.parse(process.env.BASTRA_TEST_TASK_CTX); await submitTaskEvent({...ctx,now:()=>1000},process.env.BASTRA_TEST_EVENT_AUTH,{source_id:"source",source_revision:0,dedup_key:"crash",value:"yes",state_updated_at:1000}); process.kill(process.pid,"SIGKILL");';
-  const worker = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx), BASTRA_TEST_EVENT_AUTH: f.agentAuth }, stdio: ["ignore", "ignore", "pipe"] });
+  const worker = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", program], { cwd: TASK_TEST_REPO, env: { ...process.env, BASTRA_TEST_TASK_CTX: JSON.stringify(f.ctx), BASTRA_TEST_EVENT_AUTH: f.agentAuth }, stdio: ["ignore", "ignore", "pipe"] });
   worker.stderr!.resume(); const [, signal] = await once(worker, "close"); assert.equal(signal, "SIGKILL");
   assert.equal((await readTaskStore(f.ctx.path)).checkpoint, 0);
   await reconcileTaskTime(f.ctx); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 1);

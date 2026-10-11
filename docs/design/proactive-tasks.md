@@ -261,6 +261,17 @@ survive retry and several clients. Owner acknowledgement has actor/credential
 ID and operation time, never a client claim that a human saw it. Resolve remains
 separate. Relay purge/disable/consume, disconnect or overflow never consumes work.
 
+P5 integration is mandatory: automatic firing without `task_reconcile`, one
+startup catch-up after daemon boot, reconciliation at the next contact and 60 s
+polling through the existing `daemon-jobs` host. `observeTaskSources` must be
+reachable from that same job and manual owner reconciliation. Apply a 5 s/tick
+budget and bounded failure backoff (up to 1 h), outside the hook hot path.
+With no tasks, skip repeated store/source reads; a task mutation explicitly wakes
+the existing job. Automatic and manual runs share the transaction/dedup path and
+must produce exactly one logical occurrence, including process races. Tests must
+start a daemon with an already due persisted task and observe one occurrence
+without calling `task_reconcile`; missing automatic delivery is a failure.
+
 Extend existing background-job host; startup/contact schedules bounded off-path
 reconciliation. Session assembler adds cached `<bastra-due>` cards at session
 start. Ongoing delivery uses `/hook/prompt` (Claude UserPromptSubmit/Codex prompt
