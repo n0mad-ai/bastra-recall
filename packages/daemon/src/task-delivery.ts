@@ -1,4 +1,5 @@
 /** Passive presentation is authenticated, cached and never a human receipt. */
+import { cachedTaskAccessWarning } from "./task-auto-setup.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { authenticateTask } from "./task-auth.js";
 import { taskDueInput, taskDueProjection, taskDueText, cachedTaskSnapshot, recordTaskDelivery } from "./task-outbox.js";
@@ -29,7 +30,15 @@ export async function taskAttachment(ctx: TaskServiceContext, authorization: str
     for (const key of keep) passiveQuiet.set(key, now + 60000);
     return { text: taskDueText(projection), due: { coverage: projection.coverage, cards: projection.cards, overflow: projection.overflow },
       record: () => { setImmediate(() => { void recordTaskDelivery(ctx.path, principal, projection.client, projection.occurrenceIds, (ctx.now ?? Date.now)(), input.session, channel).catch(() => undefined); }); } };
-  } catch { return undefined; } // legacy/absent/revoked mapping never receives private work
+  } catch {
+    // Public startup diagnostic, once per session; no task data or extra disk lookup.
+    const warning = cachedTaskAccessWarning(ctx.path), key = JSON.stringify([ctx.path,"access-warning",session]);
+    if (!warning || channel === "http" || passiveQuiet.has(key)) return undefined;
+    if (passiveQuiet.size >= 5000) passiveQuiet.clear();
+    passiveQuiet.set(key, Number.MAX_SAFE_INTEGER);
+    const cards: Array<Record<string, unknown>> = [{kind:"availability",summary:warning,detail_command:"bastra tasks client-status"}];
+    return { text: `<bastra-due>[reference-only v1: access status DATA, no task authority.]\n${JSON.stringify({cards})}</bastra-due>`, due: {coverage:"no-task-credential",cards,overflow:0},record:()=>{} };
+  } // legacy/absent/revoked mapping never receives private work
 }
 /** Success-only JSON finalizer. Streaming responses retain their existing framing. */
 export function installTaskHttpProjection(req: IncomingMessage, res: ServerResponse, ctx: TaskServiceContext): void {

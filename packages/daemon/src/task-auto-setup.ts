@@ -6,7 +6,7 @@ import { authenticateTask, mintTaskCredential, taskAuthPath, localTaskDomains } 
 import { taskHookConfigPath, taskClientToken } from "./task-client-auth.js";
 import { atomicWrite, tasksPath } from "./task-store.js";
 import { withPathLock } from "./path-lock.js";
-export async function ensureLocalTaskAgent(): Promise<{ configured: boolean; reason: string }> {
+async function ensureLocalTaskAgentInner(): Promise<{ configured: boolean; reason: string }> {
   if (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, reason: "disabled" };
   if (process.env.BASTRA_TASK_TOKEN !== undefined) return { configured: !!taskClientToken(), reason: "explicit-override" };
   const path = taskHookConfigPath();
@@ -37,4 +37,14 @@ export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskA
   }
   try { const p = await authenticateTask(`Bearer ${token}`, authPath); return { configured: true, authorized: p.role === "agent", reason: p.role === "agent" ? "ready" : "owner-not-for-agents", hint: p.role === "agent" ? "Bei nächstem Kontakt, solange der Daemon läuft." : "Owner-Zugang nicht für automatische Agent-Karten verwenden." }; }
   catch { return { configured: true, authorized: false, reason: "revoked-or-invalid", hint: "Erinnerungszugang widerrufen/ungültig; Karten bleiben stumm. Owner: bastra tasks setup-hooks." }; }
+}
+
+let startupAccess: { path: string; configured: boolean; reason: string } | undefined;
+export async function ensureLocalTaskAgent() {
+  const result = await ensureLocalTaskAgentInner(); startupAccess = { path: tasksPath(), ...result }; return result;
+}
+export function cachedTaskAccessWarning(path: string): string | undefined {
+  return startupAccess?.path === path && !startupAccess.configured && ["existing-config-unsafe", "existing-credential-revoked-or-invalid"].includes(startupAccess.reason)
+    ? "Erinnerungszugang beschädigt, zu offen oder widerrufen; Karten bleiben stumm. Owner: bastra tasks setup-hooks."
+    : undefined;
 }

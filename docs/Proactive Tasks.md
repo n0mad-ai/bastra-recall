@@ -166,3 +166,5 @@ Use the [20–30-minute isolated owner demo](design/proactive-tasks-demo.md). It
 See the [final 14-case matrix](design/proactive-tasks-matrix.md) and [German instructions](Proaktive%20Aufgaben.md). Human comprehension, interruption burden and longitudinal utility remain separate pending confirmations.
 
 Local-access boundary: any process running as the same OS user can read/use the private Agent token. A single Owner identity supplies its assigned domains, matching existing setup-hooks so project reminders remain reachable; this grants no Owner signatures. Multiple Owners require explicit setup. Corrupt, overly permissive or revoked files are reported by normal task status, Doctor and once at daemon start; cards remain unavailable until Owner repair. Replacement of a missing automatically generated file revokes the previously managed automatic credentials.
+
+Unsafe/corrupt or revoked reminder access detected at startup also produces one public Hook/MCP status hint per session. The hint contains no private task data and acknowledges nothing.
