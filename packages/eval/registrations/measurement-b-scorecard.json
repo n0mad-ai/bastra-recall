@@ -56,7 +56,7 @@
     },
     {
       "issue": 644,
-      "status": "measured_synthetic_bm25_baseline",
+      "status": "measured_synthetic_bm25_and_shipped_hybrid_baselines",
       "pr": 1160,
       "registration": "supersession-durability.json",
       "results": "supersession-durability-results.json",
@@ -64,11 +64,19 @@
       "control_trials": 36,
       "primary": "strict score inversions and order-sensitive ties separately",
       "remaining": [
-        "hybrid",
         "as-of answers",
         "internal gold-set gate"
       ],
-      "gates_passed": []
+      "gates_passed": [],
+      "hybrid": {
+        "pr": 1174,
+        "registration": "supersession-hybrid.json",
+        "results": "supersession-hybrid-results.json",
+        "n": 36,
+        "order_control_trials": 36,
+        "strict_predecessor_score_inversions": 24,
+        "gates_passed": []
+      }
     },
     {
       "issue": 1082,
@@ -125,6 +133,67 @@
         "owner enforce decision"
       ],
       "gates_passed": []
+    },
+    {
+      "issue": 600,
+      "status": "synthetic_retrieval_sequence_subset_measured",
+      "pr": 1176,
+      "registration": "correction-sequences.json",
+      "results": "correction-sequences-results.json",
+      "entities": 16,
+      "trials_per_arm": 176,
+      "correction_opportunities_per_arm": 128,
+      "obsolete_top1": {
+        "bm25": 110,
+        "hybrid": 96
+      },
+      "remaining": [
+        "answer/evidence/uncertainty/citation quality",
+        "historical as-of semantics",
+        "live ingestion",
+        "product archive API/audit contract",
+        "field longevity",
+        "M1"
+      ],
+      "gates_passed": []
+    },
+    {
+      "issue": 1058,
+      "status": "supported_exact_flat_scaling_subset_measured",
+      "pr": 1177,
+      "registration": "flat-scale-subset.json",
+      "results": "flat-scale-subset-results.json",
+      "sizes": [
+        1403,
+        1000,
+        3000,
+        10000,
+        50000
+      ],
+      "dimension": 768,
+      "provider": "deterministic synthetic fixture; no neural model",
+      "remaining": [
+        "HNSW comparison/98-percent criterion",
+        "semantic and temporal/conflict quality",
+        "production switch/recovery",
+        "peak/isolated resource bounds",
+        "M1"
+      ],
+      "gates_passed": []
+    },
+    {
+      "issue": 480,
+      "status": "not_evaluable_under_local_model_only_constraint",
+      "pr": 1178,
+      "results": "model2vec-local-check-results.json",
+      "complete_local_candidates_in_bounded_search": 0,
+      "downloads": 0,
+      "inference_calls": 0,
+      "remaining": [
+        "known existing local model/runtime or separately authorized setup",
+        "model quality/latency/multilingual/fallback evidence"
+      ],
+      "gates_passed": []
     }
   ],
   "unmeasured_campaign_gates": [
@@ -141,5 +210,6 @@
     410
   ],
   "production_changes": false,
-  "privacy": "aggregate registrations and input hashes only; private raw records stay local"
+  "privacy": "aggregate registrations and input hashes only; private raw records stay local",
+  "continuation": "Owner-authorized ordered subsets: #644 hybrid, #600 sequences, #1058 Flat scale, #480 local-only; no new production behavior or passed gate"
 }
