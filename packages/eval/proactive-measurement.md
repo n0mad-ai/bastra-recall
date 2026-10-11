@@ -53,7 +53,9 @@ not pooled into an empirical error rate. No human or longitudinal window started
 P5a #1175 (87b80f3e) is published: independent automatic startup/contact/
 periodic-poll control passes 3/3, one occurrence per phase and no manual
 reconcile. Create-wake quiescence is enforced before advancing the child clock.
-The broader available-regression run is in progress. Passive P5b delivery and
+The broader available-regression run completed **30/30 passed, zero failures**,
+45 other matrix replays pending on that head. All created children stopped;
+zero denied network attempts. This is a functional slice, not a full-window pass. Passive P5b delivery and
 P8 execution remain pending. Coverage also requires their P4/P6/
 P7/P9/P10 dependencies where named by each case.
 
