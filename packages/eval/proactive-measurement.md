@@ -19,29 +19,28 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix has 25 cases, three repetitions each (75 required rows).
-The complete frozen draft P10 #1186 head
-`df3abfca2e495768cc5a2d29042d7ca08903f218` completed **75/75 observed:
-72 passed, 3 failed, 0 pending, 0 not evaluable**. Protocol #402 v15 and #598/#410
-v14 were registered before the run. Later builder pushes do not change this head.
-P10 clean install, supported v1/v2 migration, downgrade rejection, corruption and
-actual authenticated backup recovery pass all three repetitions.
+The registered matrix has25 cases, three repetitions each (75 required rows).
+On frozen corrected P10 #1186 `2f9e030082ed1d9b2e8f8c24cae00077a77b6d61`,
+material-premise passes **3/3** with unchanged standard task_due budget2048 bytes.
+The separate regression passes **72/72**, excluding only that already measured
+case. Both runs share exact head/protocol/eval/driver/dataset identity. A private
+derived coverage check rejects duplicate case/repetition pairs and confirms
+**75 passed, 0 failed, 0 pending, 0 missing fields** across these disjoint rows.
+This is registered functional coverage, not a new empirical rate/window.
 
-Material-premise-change fails 3/3 because the default 2048-byte task_due projection
-omits ordinary change/snooze reconsideration cards: cards empty, pending1,
-overflow1. Logical occurrence, exact Claim retry, shared 5s deadline and all
-owner keep/change/snooze/stop/disk CAS/restart controls pass. Readonly reconstruction
-from archived state gives 1803-byte cards against the 1792-byte available budget.
-The new presentation field adds24 bytes; earlier b93ab169 cards were1779 bytes.
-The run keeps its original standard budget and failed verdict, with no enlarged
-budget or threshold substitution.
+Twelve reconsideration cards remain visible, six compact, largest1791 bytes,
+zero overflow. Original A/reason, costly→cheap, stable event/occurrence semantics,
+shared5s deadline and owner keep/change/snooze/stop/CAS/restart remain checked.
+At256-byte overflow budget the published generic availability notice has no
+specific task/occurrence ID or receipt; the prospective protocol permits this
+notice while retaining durable overflow/stable IDs/no fabricated acknowledgement.
+Actual attempt audit confirms only the three normal specific deliveries.
 
-All75 child cleanup audits pass, zero blocked network attempts. Every earlier
-failed/partial/green segment and protocol hash remains unchanged; heads and scopes
-are never pooled into an overall error rate. Earlier P3 review controls and Claim/
-automatic verification fixes remain independently confirmed. Current #402/#410
-functional failures prevent confirmation; #598 and human/longitudinal/independent
-stable gates remain pending. No human or longitudinal window started.
+All75 child cleanup audits pass, zero blocked network attempts. All historical
+failed/partial/corrected segments remain unchanged, including df3abfca's
+72 passed/3 failed card-overflow result. No cross-head/protocol pooling. #402/#598/
+#410 human, longitudinal and final independent stable gates remain pending.
+No human or longitudinal window started.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks

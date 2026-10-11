@@ -75,26 +75,26 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_full_available_segment_feature_commit": "df3abfca2e495768cc5a2d29042d7ca08903f218",
+      "latest_same_head_disjoint_coverage_feature_commit": "2f9e030082ed1d9b2e8f8c24cae00077a77b6d61",
       "latest_observed_runs": 75,
       "latest_required_runs": 75,
-      "latest_passed": 72,
-      "latest_failed": 3,
+      "latest_passed": 75,
+      "latest_failed": 0,
       "latest_not_evaluable": 0,
       "remaining_runs": 0,
+      "focused_rows": 3,
+      "regression_rows": 72,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "Complete frozen P10 df3abfca matrix: 72 pass / 3 fail / 0 pending. P10 migration/downgrade/corruption/recovery 3/3 passes. Material-premise-change 3/3 fails because default 2048-byte due projection drops change/snooze reconsideration cards as overflow; exact occurrence, claim retry, 5s deadline and all owner controls pass. No threshold relaxation or larger-budget replacement run.",
-      "current_failed_cases": [
-        "material-premise-change"
-      ],
-      "known_current_failures": [
-        "Small ordinary reconsideration card is 1803 bytes while default available card budget is 1792; cards=[]/pending=1/overflow=1. Added presentation field is 24 bytes; previous b93ab169 equivalent card 1779 bytes fit. No compact/default fallback returned."
-      ],
-      "measurement_verdict": "#402/#410 have observed functional failure; #598 and human/longitudinal/independent stable confirmation remain pending",
+      "functional_status": "Material-premise correction3/3 passes unchanged default2048-byte budget; separate other72-row regression72/72 passes on same frozen head/protocol/eval/driver/dataset. Exact disjoint coverage75/75 verified; no cross-revision pooling. Generic availability notice at tiny budget has no specific receipt; actual audit confirms only3 regular-delivery attempts.",
+      "current_failed_cases": [],
+      "max_material_card_bytes": 1791,
+      "material_card_samples": 12,
+      "compact_material_cards": 6,
       "all_child_processes_stopped": true,
       "blocked_network_rows": 0,
-      "readonly_card_diagnostic_sha256": "2c0e83a851129645f2653da45ef4b1fc37cb32bbf82b0e20dab3ebc31db2f794"
+      "derived_coverage_sha256": "88f47b1e3a8ad885717070b27262859298e4db10448808e61c26b183342d2ed6",
+      "measurement_verdict": "functional registered coverage passed; human/longitudinal/independent stable confirmation remains pending; historical failed segments unchanged"
     },
     "runtime_segments": [
       {
@@ -919,6 +919,80 @@
           }
         ],
         "private_result_sha256": "b86cb369bcf25ac79cb2f5a41fcb292d1ce5233e962a79368f8121cec798724e",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T16:22:06.810Z",
+        "eval_commit": "cdb94c59b7c382208a01ca5a0cf1e8f810e36506",
+        "runner_sha256": "717c20831bbfed201d1c81c7901ed9de0dc7a4fa8ac10fd3d8d15aa2763a47ce",
+        "driver_sha256": "1eef59e2e2aa680f6f51996e4a0e18bd614549dccbaeca3f6b1f1f894e40e776",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "2f9e030082ed1d9b2e8f8c24cae00077a77b6d61",
+        "selected_case": "material-premise-change",
+        "excluded_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 17,
+            "sha256": "e68019a614e660d9ac86cb9eb8ff518a0e322891dfd44a38f530a304eb702498"
+          },
+          {
+            "issue": 598,
+            "registration_version": 16,
+            "sha256": "1ea57fc1b8dbcd88357e4e2d38f2007d9110d4bebf9a6d8fba382d11365f48f2"
+          },
+          {
+            "issue": 410,
+            "registration_version": 16,
+            "sha256": "c88680b239890df4960ad07b1b13827d4efb9e345dfc65dae1b5ef4ab7354181"
+          }
+        ],
+        "private_result_sha256": "3135fed81cf2abe5ffd0c03cd38ad621652de4152c780615c7361754b432a32b",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T16:22:06.810Z",
+        "eval_commit": "cdb94c59b7c382208a01ca5a0cf1e8f810e36506",
+        "runner_sha256": "717c20831bbfed201d1c81c7901ed9de0dc7a4fa8ac10fd3d8d15aa2763a47ce",
+        "driver_sha256": "1eef59e2e2aa680f6f51996e4a0e18bd614549dccbaeca3f6b1f1f894e40e776",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 72,
+        "missing_runs": 3,
+        "passed": 72,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "2f9e030082ed1d9b2e8f8c24cae00077a77b6d61",
+        "selected_case": null,
+        "excluded_case": "material-premise-change",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 17,
+            "sha256": "e68019a614e660d9ac86cb9eb8ff518a0e322891dfd44a38f530a304eb702498"
+          },
+          {
+            "issue": 598,
+            "registration_version": 16,
+            "sha256": "1ea57fc1b8dbcd88357e4e2d38f2007d9110d4bebf9a6d8fba382d11365f48f2"
+          },
+          {
+            "issue": 410,
+            "registration_version": 16,
+            "sha256": "c88680b239890df4960ad07b1b13827d4efb9e345dfc65dae1b5ef4ab7354181"
+          }
+        ],
+        "private_result_sha256": "c37dcbfc7830525175975c08eeecb252b8ce8ff021dc119d92a80e2b7ab81f2d",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
       }
