@@ -1,7 +1,7 @@
 /** Versioned, fail-closed commitment snapshots; no transport or action authority. */
 import { randomUUID } from "node:crypto";
 import { renameSync } from "node:fs";
-import { mkdir, open, readFile, unlink, copyFile, chmod } from "node:fs/promises";
+import { mkdir, open, readFile, unlink, copyFile, chmod, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
@@ -50,12 +50,45 @@ function cleanTask(task: Task): Task {
   for (const key of ["original_request", "goal", "resolution_condition"] as const) out[key] = cleanText(out[key]);
   if (out.review_reason) out.review_reason = cleanText(out.review_reason);
   if (out.last_failure) out.last_failure.message = cleanText(out.last_failure.message);
+  if (out.schedule.kind === "event") out.schedule.expected = cleanText(out.schedule.expected);
   for (const row of out.history) row.reason = cleanText(row.reason);
   if (out.decision) {
     out.decision.option = cleanText(out.decision.option); out.decision.reason = cleanText(out.decision.reason);
     out.decision.premise = cleanText(out.decision.premise); out.decision.alternatives = out.decision.alternatives.map(cleanText);
   }
   return taskSchema.parse(out);
+}
+
+function cleanStore(store: TaskStore): TaskStore {
+  const next = structuredClone(store);
+  next.tasks = next.tasks.map(cleanTask);
+  for (const event of next.events) event.value = cleanText(event.value);
+  for (const occurrence of next.occurrences) {
+    occurrence.why = cleanText(occurrence.why);
+    if (occurrence.resolution) occurrence.resolution.reason = cleanText(occurrence.resolution.reason);
+  }
+  for (const recovery of next.recovery_history) recovery.reason = cleanText(recovery.reason);
+  return taskStoreSchema.parse(next);
+}
+
+/** Enforce audit/lifecycle even for internal callers without a snapshot token. */
+function assertTaskProgress(before: TaskStore, after: TaskStore): void {
+  for (const old of before.tasks) {
+    const next = after.tasks.find(t => t.id === old.id);
+    if (!next) throw new TaskStoreError("conflict", "task deletion requires an explicit archive path");
+    if (next.revision < old.revision || next.generation < old.generation)
+      throw new TaskStoreError("conflict", "task revision/generation cannot go backwards");
+    if (JSON.stringify(next.history.slice(0, old.history.length)) !== JSON.stringify(old.history))
+      throw new TaskStoreError("conflict", "task audit history is append-only");
+    if (JSON.stringify(next) === JSON.stringify(old)) continue;
+    if (next.revision <= old.revision || next.history.length <= old.history.length)
+      throw new TaskStoreError("conflict", "task changes require a newer revision and appended audit");
+    const rearm = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "rearm";
+    if (next.generation !== old.generation && !rearm)
+      throw new TaskStoreError("conflict", "generation changes require explicit unarmed re-arm");
+    if (["resolved", "cancelled", "expired"].includes(old.state) && (next.state !== old.state || next.armed) && !rearm)
+      throw new TaskStoreError("conflict", "terminal task cannot silently re-arm");
+  }
 }
 
 async function atomicWrite(path: string, payload: string, assertOwnership: () => void): Promise<void> {
@@ -85,9 +118,10 @@ export async function transactTaskStore(
     const store = await readTaskStore(path);
     if (expectedRevision !== undefined && (store.revision !== expectedRevision.revision || store.recovery_epoch !== expectedRevision.recovery_epoch))
       throw new TaskStoreError("conflict", "task store revision changed");
-    const next = structuredClone(store);
-    mutate(next);
-    next.tasks = next.tasks.map(cleanTask);
+    const draft = structuredClone(store);
+    mutate(draft);
+    const next = cleanStore(draft);
+    assertTaskProgress(store, next);
     next.revision = store.revision + 1;
     next.recovery_epoch = store.recovery_epoch;
     if (kind === "normal" && next.tasks.some(t => t.history.length > 9900))
@@ -98,7 +132,10 @@ export async function transactTaskStore(
     if (Buffer.byteLength(payload) > limit)
       throw new TaskStoreError("capacity", "task capacity reached; pending work preserved");
     // Preserve last valid snapshot before replacing it; never back up corruption.
-    await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
+    // Absence has no recoverable predecessor; do not advertise an empty backup.
+    let present = true;
+    try { await stat(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
+    if (present) await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
     await atomicWrite(path, payload, assertOwnership);
     return validated;
   }, { strictLocal: true });
@@ -124,10 +161,11 @@ export async function recoverTaskStore(path: string, actor: string): Promise<{ s
       task.armed = false;
       task.review_reason = "Recovered snapshot requires owner review";
     }
-    const payload = JSON.stringify(taskStoreSchema.parse(backup));
+    const cleaned = cleanStore(backup);
+    const payload = JSON.stringify(cleaned);
     if (Buffer.byteLength(payload) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "recovery snapshot exceeds hard limit; original preserved");
     await atomicWrite(path, payload, assertOwnership);
-    return { store: backup, quarantine };
+    return { store: cleaned, quarantine };
   }, { strictLocal: true });
 }
 

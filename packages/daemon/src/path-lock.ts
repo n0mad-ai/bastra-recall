@@ -192,7 +192,22 @@ function reclaimDeadLocal(lockPath: string, replacement: string): boolean {
   if (!deadLocal(stale)) return false;
   const mark = `${lockPath}.reclaim`;
   let fd: number;
-  try { fd = openSync(mark, "wx", 0o600); } catch { return false; }
+  try { fd = openSync(mark, "wx", 0o600); }
+  catch {
+    const cleanup = `${mark}.cleanup`;
+    let cleanupFd: number;
+    try { cleanupFd = openSync(cleanup, "wx", 0o600); } catch { return false; }
+    // Recover the *same* marker inode only when its local owner provably died.
+    // Once removed, this contender backs off; the next acquisition retries.
+    try {
+      const original = statSync(mark);
+      const raw = readFileSync(mark, "utf8");
+      if (deadLocal(raw) && statSync(mark).ino === original.ino && readFileSync(mark, "utf8") === raw)
+        unlinkSync(mark);
+    } catch { /* unknown marker stays blocked for explicit operator recovery */ }
+    finally { closeSync(cleanupFd); try { unlinkSync(cleanup); } catch { /* fail closed */ } }
+    return false;
+  }
   const tmp = `${mark}.${randomUUID()}.tmp`;
   try {
     writeFileSync(fd, replacement, "utf8");

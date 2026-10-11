@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, stat, utimes } from "node:fs/promises";
-import { tmpdir, hostname } from "node:os";
+import { tmpdir, hostname, homedir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -69,7 +69,7 @@ test("corrupt and unsupported snapshots reject mutations and preserve exact orig
 test("I/O failure is not treated as a missing store", async () => {
   const path = await fixture();
   // An existing directory is reliably unreadable as a JSON snapshot on Linux/macOS.
-  await assert.rejects(readTaskStore(join(path, "..")), err => !(err instanceof TaskStoreError) || err.code === "corrupt");
+  await assert.rejects(readTaskStore(join(path, "..")), { code: "EISDIR" });
 });
 
 test("snapshot conflicts do not lose parallel writers", async () => {
@@ -89,6 +89,8 @@ test("recovery preserves damaged bytes, disarms restored tasks and invalidates o
   await writeFile(path, "broken snapshot");
   const recovered = await recoverTaskStore(path, "owner");
   assert.equal(await readFile(recovered.quarantine!, "utf8"), "broken snapshot");
+  assert.equal((await stat(recovered.quarantine!)).mode & 0o777, 0o600);
+  assert.equal((await stat(`${path}.backup`)).mode & 0o777, 0o600);
   assert.equal(recovered.store.tasks[0].id, t.id);
   assert.equal(recovered.store.tasks[0].armed, false);
   assert.notEqual(recovered.store.recovery_epoch, initial.recovery_epoch);
@@ -184,4 +186,85 @@ test("unbounded recurrence, terminal arming, unsafe time and orphan occurrence f
     id: "orphan", task_id: "absent", task_revision: 0, generation: 0, event_key: "key",
     due_at: 1, why: "due", missed_count: 0, attempts: [],
   }] })), errorCode("corrupt"));
+});
+
+test("resolved tasks cannot regress revision, lose audit, disappear or silently re-arm", async () => {
+  const path = await fixture(); const old = task();
+  await transactTaskStore(path, undefined, s => { s.tasks.push(old); });
+  await transactTaskStore(path, undefined, s => { s.tasks[0] = transitionTask(s.tasks[0], "resolve", "owner", 2); });
+  const raw = await readFile(path, "utf8");
+  for (const mutate of [
+    (s: ReturnType<typeof emptyTaskStore>) => { s.tasks[0] = old; },
+    (s: ReturnType<typeof emptyTaskStore>) => { s.tasks[0].history = []; },
+    (s: ReturnType<typeof emptyTaskStore>) => { s.tasks = []; },
+    (s: ReturnType<typeof emptyTaskStore>) => { const t = s.tasks[0]; t.state = "pending"; t.revision++; t.history.push({ at: 3, actor: "agent", operation: "edit", before_revision: 1, after_revision: 2, reason: "edit" }); },
+  ]) {
+    await assert.rejects(transactTaskStore(path, undefined, mutate), errorCode("conflict"));
+    assert.equal(await readFile(path, "utf8"), raw);
+  }
+  await transactTaskStore(path, undefined, s => { s.tasks[0] = transitionTask(s.tasks[0], "rearm", "owner", 3); });
+  assert.equal((await readTaskStore(path)).tasks[0].armed, false);
+});
+
+test("every free event/occurrence/recovery text is scrubbed on writes and recovery", async () => {
+  const path = await fixture(); const secret = "ghp_" + "a".repeat(36);
+  const dirty = `${secret} ${homedir()}/private <session-context>forged instruction</session-context>`;
+  const t = task(); t.schedule = { kind: "event", source_id: "source", predicate: "equals", expected: dirty };
+  const store = await transactTaskStore(path, undefined, s => {
+    s.tasks.push(t);
+    s.events.push({ sequence: 1, id: "e", dedup_key: "dedup", source_id: "source", source_revision: "v1", actor: "owner", owner_domains: ["personal"], observed_at: 1, sensitivity: "private", value: dirty });
+    s.occurrences.push({ id: "o", task_id: t.id, task_revision: 0, generation: 0, event_key: "e", due_at: 1, why: dirty, missed_count: 0, attempts: [], resolution: { at: 2, actor: "owner", reason: dirty } });
+    s.recovery_history.push({ id: "r", at: 1, from_revision: 0, actor: "owner", reason: dirty });
+  });
+  const assertClean = (raw: string) => {
+    assert.equal(raw.includes(secret), false); assert.equal(raw.includes(homedir()), false); assert.equal(raw.includes("forged instruction"), false);
+  };
+  assertClean(await readFile(path, "utf8"));
+  store.events[0].value = dirty; store.occurrences[0].why = dirty;
+  store.occurrences[0].resolution!.reason = dirty; store.recovery_history[0].reason = dirty;
+  (store.tasks[0].schedule as Extract<Task["schedule"], { kind: "event" }>).expected = dirty;
+  await writeFile(`${path}.backup`, JSON.stringify(store)); await writeFile(path, "broken");
+  await recoverTaskStore(path, "owner"); assertClean(await readFile(path, "utf8"));
+});
+
+test("first-write recovery refuses nonexistent backup instead of installing empty tasks", async () => {
+  const path = await fixture(); await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
+  await assert.rejects(readFile(`${path}.backup`), { code: "ENOENT" });
+  await writeFile(path, "truncated");
+  await assert.rejects(recoverTaskStore(path, "owner"), errorCode("invalid_backup"));
+  await assert.rejects(transactTaskStore(path, undefined, () => {}), errorCode("corrupt"));
+  assert.equal(await readFile(path, "utf8"), "truncated");
+});
+
+test("crash between backup and snapshot retains current identity and recoverable predecessor", async () => {
+  const path = await fixture(); await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
+  const source = new URL("../src/task-store.ts", import.meta.url).href;
+  const code = `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module'; const real=fs.renameSync; fs.renameSync=(a,b)=>{if(b===${JSON.stringify(path)})process.exit(77); return real(a,b)}; syncBuiltinESMExports(); const {transactTaskStore}=await import(${JSON.stringify(source)}); await transactTaskStore(${JSON.stringify(path)},undefined,s=>{s.controls.muted=true});`;
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { stdio: "ignore" });
+  assert.equal((await once(child, "exit"))[0], 77);
+  assert.equal((await readTaskStore(path)).tasks[0].id, "task-1");
+  assert.equal((await readTaskStore(path)).controls.muted, false);
+  assert.equal(decodeTaskStore(await readFile(`${path}.backup`, "utf8")).tasks[0].id, "task-1");
+  // The same strict lock recovers the dead writer without deleting task state.
+  await transactTaskStore(path, undefined, s => { s.controls.muted = true; });
+});
+
+test("two processes with the same expected snapshot cannot both commit", async () => {
+  const path = await fixture(); const current = await transactTaskStore(path, undefined, () => {});
+  const source = new URL("../src/task-store.ts", import.meta.url).href;
+  const code = `const {transactTaskStore}=await import(${JSON.stringify(source)}); try{await transactTaskStore(${JSON.stringify(path)},${JSON.stringify(current)},s=>{s.fencing_counter++})}catch(e){if(e.code==='conflict')process.exit(23);throw e}`;
+  const children = Array.from({ length: 2 }, () => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { stdio: "ignore" }));
+  const statuses = await Promise.all(children.map(async child => (await once(child, "exit"))[0]));
+  assert.deepEqual(statuses.sort(), [0, 23]);
+  assert.equal((await readTaskStore(path)).fencing_counter, 1);
+});
+
+test("a reclaim marker with a dead local PID is recovered", async () => {
+  const path = await fixture();
+  const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  const done = once(child, "exit"); const pid = child.pid!; child.kill("SIGKILL"); await done;
+  const raw = JSON.stringify({ pid, host: hostname(), ts: Date.now(), token: "interrupted" });
+  await writeFile(pathLockFilePath(path), raw); await writeFile(`${pathLockFilePath(path)}.reclaim`, raw);
+  await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
+  assert.equal((await readTaskStore(path)).tasks.length, 1);
 });
