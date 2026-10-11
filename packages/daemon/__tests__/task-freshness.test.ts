@@ -146,3 +146,12 @@ test("twenty unchanged clock/evidence checks keep the entire snapshot unchanged"
   for (let i = 1; i <= 20; i++) { f.ctx.now = () => 1000 + i * 10; await assessTaskFreshness(f.ctx); }
   assert.equal(await readFile(f.ctx.path, "utf8"), initial);
 });
+test("versioned claim retry ignores input/persisted key order and preserves its original journal identity", async () => {
+  const f = await premiseFixture("cheap"); const first = (await readTaskStore(f.ctx.path)).events[0];
+  const again = await callTaskCrud(f.ctx, f.auth, "task_event", f.event) as { event_id: string };
+  assert.equal(again.event_id, first.id); assert.equal((await readTaskStore(f.ctx.path)).events.length, 1);
+  const reordered = { ...f.event, claim: Object.fromEntries(Object.entries(f.event.claim).reverse()) };
+  assert.equal((await callTaskCrud(f.ctx, f.auth, "task_event", reordered) as {event_id:string}).event_id, first.id);
+  await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, claim: { ...f.event.claim, value: "different" } }), { code: "conflict" });
+  await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_event", { ...f.event, claim: { ...f.event.claim, evidence_revision: "different" } }), { code: "conflict" });
+});
