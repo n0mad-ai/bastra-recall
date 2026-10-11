@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "issue": 644,
+  "status": "protocol_registered",
+  "harness": "src/supersession-hybrid.ts",
+  "corpus": "fixtures/supersession-durability.json",
+  "baseline": "#1160 frozen BM25 fixture, same 12 bilingual pairs and 36 queries plus reversed-filename control",
+  "protocol": {
+    "arm": "production SearchIndex.recallHybrid",
+    "model": "local embeddinggemma, capture digest, no paid API",
+    "rrf_vector_weight": 1.5,
+    "k": 3,
+    "index_scope": "fresh three-memory temporary vault per pair and order",
+    "links": "successor.replaces + predecessor.superseded_by",
+    "types": "reference, equal fixed dates, no aging or triggers",
+    "primary": "strict predecessor score advantage for current-state query; rank inversion and score ties separate",
+    "secondary": [
+      "successor hit@1/@3",
+      "predecessor remains reachable by id"
+    ],
+    "slices": [
+      "language",
+      "value/polarity",
+      "query class",
+      "filename order"
+    ],
+    "gate": "descriptive baseline only; no passed production/M1 gate"
+  },
+  "command": "node --import tsx packages/eval/src/supersession-hybrid.ts --out <artifact>"
+}
