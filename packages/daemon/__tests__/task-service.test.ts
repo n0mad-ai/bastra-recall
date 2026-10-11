@@ -158,7 +158,8 @@ test("pre-scrub fingerprint deduplicates secrets without merging different raw c
   assert.notEqual(different.id, first.id); assert.equal(different.original_request, first.original_request);
   const store = await readTaskStore(f.ctx.path); assert.equal(store.tasks.length, 2); const raw = JSON.stringify(store);
   assert.ok(!raw.includes("synthetic-dedup-secret")); assert.ok(!raw.includes("synthetic-other-secret"));
-  assert.match(first.reminder_fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(first.reminder_fingerprint, undefined);
+  assert.match(store.tasks[0].reminder_fingerprint!, /^hmac-v1:[a-f0-9]{64}$/);
   const edited = await f.call(f.owner, "task_edit", { id: first.id, expected_revision: first.expected_revision, patch: { goal: "Different edited goal" } });
   assert.equal(edited.reminder_fingerprint, undefined);
   assert.notEqual((await f.call(f.agent, "task_create", { ...request, idempotency_key: "after-edit" })).id, first.id);

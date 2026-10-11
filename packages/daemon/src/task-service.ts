@@ -1,4 +1,5 @@
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
+import { privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
 import { archiveTasks, restoreTaskArchive, archivedTask, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
@@ -128,7 +129,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
     if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
-    const creationHash = hash(input);
+    const creationHash = await privateTaskComparison(ctx.path,"create",input);
     let archived: Awaited<ReturnType<typeof archivedTask>>;
     let duplicateId: string | undefined;
     const store = await transactTaskStore(ctx.path, undefined, async s => {
@@ -140,14 +141,14 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
         return;
       }
       if (principal.role === "agent" && input.action_level === "notify") {
-        const duplicate = reminderDuplicate(s, input);
+        const duplicate = await reminderDuplicate(ctx.path, s, input);
         if (duplicate) { duplicateId = duplicate.id; return; }
       }
       const { idempotency_key: _key, arm: requestedArm, ...values } = input;
       const limit = principal.role === "agent" && requestedArm && (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0" || !s.controls.enabled) ? "Conversational reminders disabled; saved unarmed" : undefined;
       const arm = requestedArm && !limit;
       if (arm && values.schedule.kind === "event") validateEventBinding(s, values.schedule, values.owner_domains);
-      const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, reminder_fingerprint: reminderFingerprint(values), revision: 0, generation: 0,
+      const task = taskSchema.parse({ ...values, id, creation_hash: creationHash, reminder_fingerprint: await reminderFingerprint(ctx.path, values), revision: 0, generation: 0,
         last_event_sequence: s.events.at(-1)?.sequence ?? 0, created_at: now, updated_at: now, creator: principal.actor_id, actor: principal.actor_id,
         request_source: principal.role === "owner" ? "owner-command" : values.origin?.kind ?? "agent-proposal", reference_at: now,
         state: "pending", armed: arm, review_reason: limit ?? (arm ? undefined : "Explicit owner review required"),
@@ -226,5 +227,5 @@ export async function callTaskCrud(ctx: TaskServiceContext, authorization: strin
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const result = await callTaskCrudInner(ctx, authorization, operation, raw);
   requestTaskReconciliation(ctx.path); // queue work; never evaluate sources on a caller's hot path
-  return result;
+  return publicTaskResult(result);
 }

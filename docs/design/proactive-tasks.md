@@ -711,3 +711,27 @@ are conservatively not merged. Internal SessionStart context requests explicitly
 use assembly_only and omit task credentials; the assembler neither projects cards
 nor touches quiet/delivery state. The outer Hook response alone includes/records
 its card; hookless MCP context remains an actual forwarded output.
+### R6 private comparison correction
+
+Reminder and create-request identity now use purpose-separated HMAC-SHA-256 with
+a random 256-bit key belonging only to this task-store path. The private 0600
+no-follow key is neither a token nor Owner/signing authority. It never enters
+Task JSON, backups, exports, cards, status, browser responses or logs. Comparison
+fields are removed from all canonical tool/HTTP results. Cold exports omit both
+reminder and create comparison values; private create bindings stay in the existing
+live archive index so exact retries still return the original archived identity.
+
+Valid legacy live snapshots/backups lose unkeyed reminder/create values. Managed
+cold exports are cleaned with a resumable private archive/index migration under
+the existing store lock. Old raw text is not reconstructed. A legacy retry whose
+comparison is no longer recoverable fails closed; use the existing task ID rather
+than treating matching redaction placeholders as proof. Losing or weakening an
+already-used key fails closed, never silently issues a replacement. Full filesystem
+access as the same OS user remains outside this boundary.
+
+Audit of earlier P3/P4 remains separate: task-events.ts taskValueHash(value),
+claim.value_hash and task-service.ts expected_hash are still unkeyed pre-scrub
+comparisons. For low-entropy masked input they have the same dictionary-oracle
+property. This correction does not change their producer/verifier/version-binding
+contract; it does NOT claim those older fields are confidential. File/Git/Memory
+version digests and exact adapter byte hashes likewise remain integrity metadata.
