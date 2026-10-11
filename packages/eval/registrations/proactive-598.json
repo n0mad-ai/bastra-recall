@@ -74,17 +74,22 @@
     "window_started_at": null,
     "window_version": null,
     "public_aggregate": {
-      "latest_full_available_segment_feature_commit": "87b80f3e792c9f86d88f9e30647cf41059768b79",
-      "latest_observed_runs": 30,
+      "latest_full_available_segment_feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+      "latest_observed_runs": 48,
       "latest_required_runs": 75,
-      "latest_passed": 30,
+      "latest_passed": 48,
       "latest_failed": 0,
       "latest_not_evaluable": 0,
-      "remaining_runs": 45,
+      "remaining_runs": 27,
       "humans_enrolled": 0,
       "longitudinal_days_observed": 0,
-      "functional_status": "All available P1/P2/P3/P5a controls pass: automatic startup/contact/poll, returning sources, tuple/domain binding, CRUD/auth/restart/CAS/recovery and DST. Other product-matrix cases await passive P5b/P6/P7/P8/P9/P10.",
-      "measurement_verdict": "pending; functional slices are not longitudinal or human/combined stable confirmation"
+      "functional_status": "Notify/P1-P3 48/48 pass; focused P8 action/crash and decision-supersession controls pass 3/3 each, separate segments. P6 unknown-source runtime 3/3 fails missing automatic verification; identical versioned-claim retry rejected with conflict. Full available P8 matrix remeasurement in progress. P10 migration not published.",
+      "measurement_verdict": "pending human/longitudinal; observed functional failures for #402/#410 prevent confirmation",
+      "known_current_failures": [
+        "identical versioned-claim event retry returns conflict due key-order comparison",
+        "some fresh irrelevant/contested source events lack automatic persisted verification within registered 5s contact deadline; no false occurrence observed"
+      ],
+      "incomplete_segments_retained": 5
     },
     "runtime_segments": [
       {
@@ -443,6 +448,377 @@
         "private_result_sha256": "da5b2dfa544ce6349f91bfb0c1cb417b6b572a02de5492bc6d3af08daf5c1149",
         "all_child_processes_stopped": true,
         "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:23:57.576Z",
+        "eval_commit": "627e9761a6cd3c71f129f652e01cc76e57c32456",
+        "runner_sha256": "cd0da72b78fdd7038114c5f095e33e6a5d6a469ece8faf3793e816aee54276cf",
+        "driver_sha256": "665632c0efe2d13846a2fc87807b51f6bdd86a59e641637d2a4f3d24ba9e68f0",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 48,
+        "missing_runs": 27,
+        "passed": 48,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": null,
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 8,
+            "sha256": "bf9f192a7522caf2034d3e8db55a3237f6922da163a67dc6e7ffe49fc9de6a6c"
+          },
+          {
+            "issue": 598,
+            "registration_version": 7,
+            "sha256": "b576ce0ff95701bb493e09fd37ef8ad9c60cc952526e74ba2229b50283ad920c"
+          },
+          {
+            "issue": 410,
+            "registration_version": 7,
+            "sha256": "b9166e4531b4a3df306c054ebd8763c86af4f908bfb1c27f8b7c9f821dc0cdaa"
+          }
+        ],
+        "private_result_sha256": "73b76b6cd32086a6ea5e5a817e941f184888fc7827b089b4ad9f604c8d64a1b9",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:24:07.788Z",
+        "eval_commit": "627e9761a6cd3c71f129f652e01cc76e57c32456",
+        "runner_sha256": "cd0da72b78fdd7038114c5f095e33e6a5d6a469ece8faf3793e816aee54276cf",
+        "driver_sha256": "665632c0efe2d13846a2fc87807b51f6bdd86a59e641637d2a4f3d24ba9e68f0",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "active-session-deadline",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 8,
+            "sha256": "bf9f192a7522caf2034d3e8db55a3237f6922da163a67dc6e7ffe49fc9de6a6c"
+          },
+          {
+            "issue": 598,
+            "registration_version": 7,
+            "sha256": "b576ce0ff95701bb493e09fd37ef8ad9c60cc952526e74ba2229b50283ad920c"
+          },
+          {
+            "issue": 410,
+            "registration_version": 7,
+            "sha256": "b9166e4531b4a3df306c054ebd8763c86af4f908bfb1c27f8b7c9f821dc0cdaa"
+          }
+        ],
+        "private_result_sha256": "a3c6a84a1ee0f831483a68e7b4c87c9ed2d769769123d7bb5596e07211c17a67",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:28:07.791Z",
+        "eval_commit": "0da529ad03051bcd2c2a6cca7f76dc03c410a818",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "c44e5acae2b338c8f0d4bc9ad71762db2c7f360e67075c371783dfd3489d1e17",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "reference-containment-revocation",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 10,
+            "sha256": "01b05b9e3054c9dffd279628ad6c990b5e94710b614b8385d59fca0fbb85338c"
+          },
+          {
+            "issue": 598,
+            "registration_version": 9,
+            "sha256": "aa065ea3a9001eebe5d0a2a67b11569a3b1b1cd11b16b3d875790f3b075fc018"
+          },
+          {
+            "issue": 410,
+            "registration_version": 9,
+            "sha256": "34cb158e919fef2fc0875c1925f1e74a62d57cab19965caa334686aa1a588621"
+          }
+        ],
+        "private_result_sha256": "7ad046658fa5a4eb30307719a59b039a48888b36fbafe369406abf0dc513bb17",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:28:23.148Z",
+        "eval_commit": "0da529ad03051bcd2c2a6cca7f76dc03c410a818",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "c44e5acae2b338c8f0d4bc9ad71762db2c7f360e67075c371783dfd3489d1e17",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "owners-fencing",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 10,
+            "sha256": "01b05b9e3054c9dffd279628ad6c990b5e94710b614b8385d59fca0fbb85338c"
+          },
+          {
+            "issue": 598,
+            "registration_version": 9,
+            "sha256": "aa065ea3a9001eebe5d0a2a67b11569a3b1b1cd11b16b3d875790f3b075fc018"
+          },
+          {
+            "issue": 410,
+            "registration_version": 9,
+            "sha256": "34cb158e919fef2fc0875c1925f1e74a62d57cab19965caa334686aa1a588621"
+          }
+        ],
+        "private_result_sha256": "46fb3e0802e45cb191701aa1319bf28fc821fc2addaa10a82a084d1ac400fe26",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:28:25.555Z",
+        "eval_commit": "0da529ad03051bcd2c2a6cca7f76dc03c410a818",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "c44e5acae2b338c8f0d4bc9ad71762db2c7f360e67075c371783dfd3489d1e17",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "kill-recovery",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 10,
+            "sha256": "01b05b9e3054c9dffd279628ad6c990b5e94710b614b8385d59fca0fbb85338c"
+          },
+          {
+            "issue": 598,
+            "registration_version": 9,
+            "sha256": "aa065ea3a9001eebe5d0a2a67b11569a3b1b1cd11b16b3d875790f3b075fc018"
+          },
+          {
+            "issue": 410,
+            "registration_version": 9,
+            "sha256": "34cb158e919fef2fc0875c1925f1e74a62d57cab19965caa334686aa1a588621"
+          }
+        ],
+        "private_result_sha256": "07af427911d491476d1cc4707ecdb431cad80078803d9d4c04d4b4b379098b67",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:29:24.247Z",
+        "eval_commit": "29c0e28da1a7a6c873f20ce6a10ea169d3999be4",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "c44e5acae2b338c8f0d4bc9ad71762db2c7f360e67075c371783dfd3489d1e17",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "prepare-forgery-drift",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 11,
+            "sha256": "0c7607ea2c67945b98c8afab69659b192f5f0263cf3de7c99f1073eeab11afcc"
+          },
+          {
+            "issue": 598,
+            "registration_version": 10,
+            "sha256": "4ff4d59f67ba84431089288de10703d2a6d7e4c5cd609d26e9bc59cf145d7c51"
+          },
+          {
+            "issue": 410,
+            "registration_version": 10,
+            "sha256": "90a175eb68003363ed7de0f86e6857660500216a36cfb4da734fd73e79dd7ec0"
+          }
+        ],
+        "private_result_sha256": "ca2f531aac993584fa03dbbbe661e8230ebfe806753837d1d73f1aa3158c8776",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:30:52.413Z",
+        "eval_commit": "8960aefa4b87e1bdd2c987b522cf9682c2fa8a2f",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "6ee62f98b0761d2c865f619736fd87a61027af73d68dc3b9f5d0ff9513ccae88",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "external-success-no-receipt",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 12,
+            "sha256": "1fc085e0e5d84c348e45c6ef1e891c55e77dbd11209e2abe2fc83aa1e0dc8920"
+          },
+          {
+            "issue": 598,
+            "registration_version": 11,
+            "sha256": "b42425131b7cd785e4966aea10b3e741fe61219307ca49380985e5c854faa7a6"
+          },
+          {
+            "issue": 410,
+            "registration_version": 11,
+            "sha256": "b5a5d568a5be7b919b4a07ad6cf6ce1425759a0852504c5d7258e2f35ef340da"
+          }
+        ],
+        "private_result_sha256": "1d452f5121793d3fb651bd3e98f2329ca8433b147a6f114873758b655926d61a",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:33:17.069Z",
+        "eval_commit": "b8d6faf049294f55d02d53aa5c885a1cb9924cfe",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "e05d8eff0a08611db20f0a64ea8b266fbac5a78084fa347be37c0c548daf0cf6",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "failed",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 0,
+        "failed": 3,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "unknown-source-controls",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 13,
+            "sha256": "7810b39e4c4a090a6a543c677a41be0974c8972874460ca3ed8295d532eee7b5"
+          },
+          {
+            "issue": 598,
+            "registration_version": 12,
+            "sha256": "0d717b78cee30ab3534a698994274d1b5b467f6c8c42e42b540109d4a60c6405"
+          },
+          {
+            "issue": 410,
+            "registration_version": 12,
+            "sha256": "aab0bbb336f4f51f7452f3c099ff76b7f46fd2afb67aa80860060f2e493bd7d3"
+          }
+        ],
+        "private_result_sha256": "75961c4680235dfef123fc224dc7f4b1eb7d46ac6188ba20ad93fc5d3c6e8e8f",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      },
+      {
+        "started_at": "2026-10-11T13:33:18.286Z",
+        "eval_commit": "b8d6faf049294f55d02d53aa5c885a1cb9924cfe",
+        "runner_sha256": "f562b4a569705ba89bd7b07693c82a9b0dd1407bec9e07ed5bc54f411ec4ed08",
+        "driver_sha256": "e05d8eff0a08611db20f0a64ea8b266fbac5a78084fa347be37c0c548daf0cf6",
+        "dataset_sha256": "aa6895d67e8bd1d4aa235e9e7267a80c32c0f70bb826df2c39e09e5283f009cd",
+        "functional_verdict": "pending",
+        "expected_runs": 75,
+        "observed_runs": 3,
+        "missing_runs": 72,
+        "passed": 3,
+        "failed": 0,
+        "not_evaluable": 0,
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "supersession",
+        "registered_protocols": [
+          {
+            "issue": 402,
+            "registration_version": 13,
+            "sha256": "7810b39e4c4a090a6a543c677a41be0974c8972874460ca3ed8295d532eee7b5"
+          },
+          {
+            "issue": 598,
+            "registration_version": 12,
+            "sha256": "0d717b78cee30ab3534a698994274d1b5b467f6c8c42e42b540109d4a60c6405"
+          },
+          {
+            "issue": 410,
+            "registration_version": 12,
+            "sha256": "aab0bbb336f4f51f7452f3c099ff76b7f46fd2afb67aa80860060f2e493bd7d3"
+          }
+        ],
+        "private_result_sha256": "9c6f14a9e70f92bb872732dc8955200e19121d86557f9d19e0016adc91e25ed5",
+        "all_child_processes_stopped": true,
+        "blocked_network_rows": 0
+      }
+    ],
+    "incomplete_runtime_segments": [
+      {
+        "eval_commit": "4a81f9fe9478e66bfd9428ee79d7eec05fc0757b",
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "reference-containment-revocation",
+        "completed_rows": 0,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "fixture not due",
+        "private_abort_sha256": "df6f55543d01c63790b5cedb2120223ac135b58d51099cfada08a55c2a162857"
+      },
+      {
+        "eval_commit": "0da529ad03051bcd2c2a6cca7f76dc03c410a818",
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "prepare-forgery-drift",
+        "completed_rows": 0,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "initial freshness revision boundary",
+        "private_abort_sha256": "5fa7c8100c51df9c9845e9a625b346c1f49e43ac35ad8e6c543c3677351df8ee"
+      },
+      {
+        "eval_commit": "5e3cf579c9d3c2c8ef3d7eee53fbdc440aee4b05",
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "external-success-no-receipt",
+        "completed_rows": 0,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "macOS canonical-parent guard",
+        "private_abort_sha256": "5f23b56fa095659ef7e1ce9db6c795f3a795bd2522d84a4e3256c6b39c80f5bb"
+      },
+      {
+        "eval_commit": "b8d6faf049294f55d02d53aa5c885a1cb9924cfe",
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "material-premise-change",
+        "completed_rows": 0,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "observed rejected identical claim retry",
+        "private_abort_sha256": "eb8a63d75f66e0e526bccee115fd7d584e26e897123a23ef0418765e774d7b44"
+      },
+      {
+        "eval_commit": "ff156831c60fcdd8db8c452c247ef43877171dbd",
+        "feature_commit": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
+        "selected_case": "material-premise-change",
+        "completed_rows": 2,
+        "segment_verdict": "not_evaluable",
+        "reason_category": "observed missing automatic occurrence after two failed complete rows",
+        "private_abort_sha256": "a31c1ddedfbc08a96b853b7c770cf1e7aa86303ecdfe7ce711a72cc1b9469669"
       }
     ]
   },

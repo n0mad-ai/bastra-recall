@@ -19,45 +19,39 @@ Longitudinal/human thresholds remain unchanged.
 
 ## Current functional evidence
 
-The registered matrix now has 25 cases, three repetitions each (75 required runs):
-14 original build-plan rows, migration/containment rows, six P1/P2 cases and two
-P3 review controls plus the preregistered source-key tuple/domain boundary.
-The latter was registered in `71143079` before observation (#402 v7, #598/#410 v6).
-Two accepted different-domain submissions collapsed into one event and a reused
-foreign receipt on P4 465a6800, in 3/3 replays; complete run: 24 pass, 6 fail,
-45 pending. Focused replay on corrected P4 84a241ed also failed 3/3: two accepted
-submissions, one journal event and the same foreign event receipt. Focused corrected b5a994ed independently passes 3/3: two events/IDs with
-correct source/actor/domain bindings and no foreign receipt. Other cases
-were not retested in these focused segments; the last full 465a6800 segment remains
-24 pass / 6 fail / 45 pending. No pooling across heads or selected subsets.
-The observation interface is not a competing task/API/storage schema.
+The registered matrix has 25 cases, three repetitions each (75 required runs).
+On corrected P8 stack `f5f8f14924e72d446c65c8771c087c72f3d144ac`, the complete
+P1/P2/P3/notify segment passed **48/48**, including ordinary passive contact,
+seven-day synthetic clock advance, offline restart, relay overflow/off/purge,
+multi-client identity and acknowledged unfinished work. A later full available
+72-replay segment is running; the P10 migration case remains unavailable.
 
-| Pinned clean feature head | Available cases | Replays passed | Full coverage |
-|---|---:|---:|---|
-| P2c #1170 `4041932736e24d4c78365fa9f3728376c12ca26f` | 6 | 18/18 | 18/66, pending |
-| P3 #1171 `e78ff4f4808bafcc942759c69f584cf72d58f0b2` | 7 | 21/21 | 21/66, pending |
+Separate focused action segments each pass **3/3**: exact reversible write with
+newly approved rollback, containment/revocation, two-domain approval/fencing,
+forgery/drift, execution stop/adapter disable, actual daemon crashes and readonly
+recovery, plus decision supersession. These use invented signatures and real
+temporary target bytes/mtime, never human approval or an OS-protected key claim.
 
-The first two rows above are the original mechanics-only registrations. They did
-not test automatic start/contact/poll evaluation or returning A,B,A,B sources.
-Under the new review registration, unchanged P3 e78ff4f4 produced **21 passing
-and 6 failing replays / 27 observed of 72 required**: every automatic phase had
-0 instead of 1 firing; file and Git each recorded 2 instead of 4 events. Both
-controls failed all three repetitions. #402/#410 have observed functional failures;
-#598 human confirmation remains pending. Corrected 4bc482fb independently produced 24 passing and 3 failing replays:
-file/Git A,B,A,B now yields four events each in 3/3 repetitions; automatic
-start/contact/polling still fails 3/3. Builder handover defers runtime wiring
-to P5, so an internal engine alone cannot pass that control. Earlier mechanical passes are preserved, not relabelled.
+Current P6 findings prevent confirmation: an identical versioned-claim event
+retry returns conflict, caused by an order-sensitive claim comparison. The
+unknown-source runtime control fails 3/3 because irrelevant/contested events lack
+persisted verification inside the preregistered 5s contact deadline; the actual
+published verifier on those same files returns inconclusive. No false occurrence
+or automatic decision reversal was observed. Setup/incomplete segments retain
+their private artifacts and cannot count as passes.
 
-Each revision is a separate segment; repeated observations across revisions are
-not pooled into an empirical error rate. No human or longitudinal window started.
-P5a #1175 (87b80f3e) is published: independent automatic startup/contact/
-periodic-poll control passes 3/3, one occurrence per phase and no manual
-reconcile. Create-wake quiescence is enforced before advancing the child clock.
-The broader available-regression run completed **30/30 passed, zero failures**,
-45 other matrix replays pending on that head. All created children stopped;
-zero denied network attempts. This is a functional slice, not a full-window pass. Passive P5b delivery and
-P8 execution remain pending. Coverage also requires their P4/P6/
-P7/P9/P10 dependencies where named by each case.
+The user-requested P3 review controls were registered in `cf2b64e4` before their
+runs: original `e78ff4f4` fails automatic evaluation and file/Git A,B,A,B in 3/3
+each. Returning transitions pass on corrected `4bc482fb`; automatic startup,
+next-contact and periodic polling pass on P5a `87b80f3e` and corrected P8.
+The independently found cross-domain source/key collision was registered in
+`71143079`, fails on P4 `465a6800` and `84a241ed`, and passes on `b5a994ed` onward.
+All original failed artifacts/protocol hashes remain unchanged.
+
+Every head, driver revision and selected subset is a separate segment; counts
+are never pooled into an empirical error rate. #402/#410 remain failed on current
+observed functional invariants; #598 and longitudinal/independent combined
+confirmation remain pending. No human or longitudinal window started.
 
 The actual driver `src/proactive-p2-driver.ts` launches the built feature daemon,
 uses real HTTP, an MCP stdio forwarder process and CLI subprocesses. It checks
@@ -132,19 +126,19 @@ verification passed 37 tests. CI is tracked separately for each pushed eval head
 
 ## Later stages
 
-Check the builder handover for published P5/P8 heads, fetch clean measurement
-worktrees, extend the eval driver against their published APIs and rerun affected
-cases. Declare only implemented driver stages; a file or interface alone is not
+P5/P8 published heads have been pulled into clean measurement worktrees and
+the real-runtime driver has been extended. Continue checking the builder handover
+for corrected heads and rerun affected cases. Declare only implemented driver stages; a file or interface alone is not
 coverage. Preserve earlier raw artifacts and code segments. Stop all created
 processes in `finally`. Synthetic signing keys later test mechanics, not a real
 human approval or protected owner key boundary.
 
 Earlier observed invariant failures remain failed in their historical segments.
-Corrected independent tuple/runtime controls now pass; combined issue
-confirmation is pending. The
+Corrected tuple/automatic controls pass. Current claim-retry and freshness
+observations are reported independently; combined confirmation remains unavailable. The
 unstarted human study stays pending. Adequate registered human,
 longitudinal and independent-review evidence is still required. Consent and actual
 opportunities are required before starting those windows; elapsed time cannot
 change their verdicts.
 
-Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 APIs are published but their matrix handlers remain pending.
+Prospective delivery procedure (protocol #402 v8, #598/#410 v7): six existing P5 matrix cases now have real isolated daemon handlers. Frozen clock advance is synthetic only; no manual reconcile. Ordinary health API contact tests passive delivery with an empty vault. Five occurrences test bounded projection, relay-off restart and actual isolated drafts purge; actor-distinct contacts test stable occurrence IDs; acknowledgement is checked separately from resolution after restart. CLI uses shipped --json. P8 action handlers and measurement-only SIGKILL preload are now implemented; source-file hashes are included in each manifest. Protocol #402 v13 and #598/#410 v12 pin the P6 real-file and action procedures. The host also records explicit supported case IDs, so published APIs alone cannot fabricate matrix coverage.
