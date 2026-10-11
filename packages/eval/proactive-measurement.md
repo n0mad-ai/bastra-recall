@@ -27,15 +27,15 @@ rows or combining of earlier runs. Protocol #402 v18 and #598/#410 v17 were
 registered before the first feature call.
 
 Driver, runner and dataset hashes match the previous replay. Budgets/time limits
-are unchanged: default task_due2048 bytes, tiny overflow256, explicit normal
-inspection16384, shared premise5000ms, polling65000ms, creation quiescence5500ms.
-All75 child cleanup audits pass, zero blocked network attempts; private archives
-retain0700/0600 modes. This confirms the registered functional matrix on this
+are unchanged: default task_due 2048 bytes, tiny overflow 256, explicit normal
+inspection 16384, shared premise 5000ms, polling 65000ms, creation quiescence 5500ms.
+All 75 child cleanup audits pass, zero blocked network attempts; private archives
+retain 0700/0600 modes. This confirms the registered functional matrix on this
 head; no extra source-budget negative cases or human usability outcomes are
 silently inferred from the new feature changes.
 
 All earlier failed/partial/corrected segments remain unchanged, including the
-card overflow on df3abfca and separate3+72 coverage on2f9e0300. No cross-head/
+card overflow on df3abfca and separate 3+72 coverage on 2f9e0300. No cross-head/
 protocol pooling or retrospective relabelling. #402/#598/#410 human, longitudinal
 and final independent stable gates remain pending. No human/longitudinal window
 started.
