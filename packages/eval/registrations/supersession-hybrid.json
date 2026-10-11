@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 644,
-  "status": "protocol_registered",
+  "status": "numbers_registered",
   "harness": "src/supersession-hybrid.ts",
   "corpus": "fixtures/supersession-durability.json",
   "baseline": "#1160 frozen BM25 fixture, same 12 bilingual pairs and 36 queries plus reversed-filename control",
@@ -26,5 +26,17 @@
     ],
     "gate": "descriptive baseline only; no passed production/M1 gate"
   },
-  "command": "node --import tsx packages/eval/src/supersession-hybrid.ts --out <artifact>"
+  "command": "node --import tsx packages/eval/src/supersession-hybrid.ts --out <artifact>",
+  "measurement": {
+    "engine": {
+      "repo_commit": "c0a4b7f0e0930acf125da43e6e9d9e90f0245d0c",
+      "repo_dirty": false,
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+    },
+    "results": "supersession-hybrid-results.json",
+    "preregistered_protocol_sha256": "f49d38e43796c0e2b31e86d567114d1fcbeca4ff71c64aae1673e20f022a8800",
+    "model_digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+    "corpus_sha256": "d4f9e8db364abe7ef6ac00f7e689761211f8265d0a57bd8314c7b08b70ca6b22",
+    "gates_passed": []
+  }
 }
