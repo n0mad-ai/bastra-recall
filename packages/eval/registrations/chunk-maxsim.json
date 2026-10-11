@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "issue": 1082,
-  "status": "protocol_registered",
+  "status": "numbers_registered",
   "harness": "src/chunk-maxsim-run.ts",
   "corpus": "LongMemEval-S cleaned; all 500 questions; abstention ids retained",
   "protocol": {
@@ -41,5 +41,17 @@
     "node --import tsx packages/eval/src/chunk-maxsim-run.ts --corpus <cleaned-S> --mode lexical --out <artifact>",
     "node --import tsx packages/eval/src/chunk-maxsim-run.ts --corpus <cleaned-S> --mode dense --out <artifact>"
   ],
-  "amendment": "Pre-dense-run robustness repair: initial lexical attempt stopped at question 352 on a literal special-token spelling. No complete result or gate was reported. Corrected tokenizer mode and restart the full lexical run; preserve the incomplete attempt privately."
+  "amendment": "Pre-dense-run robustness repair: initial lexical attempt stopped at question 352 on a literal special-token spelling. No complete result or gate was reported. Corrected tokenizer mode and restart the full lexical run; preserve the incomplete attempt privately.",
+  "measurement": {
+    "repo_commit": "d2abf04671c78513f7762dfb5a863568fd82f5a2",
+    "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+    "preregistered_protocol_sha256": "d23777948fec5d2a7b2b41a1cea3d45512b3dd58bf94b189f9fed50cd97802e9",
+    "lexical": "chunk-maxsim-lexical-results.json",
+    "dense": "chunk-maxsim-dense-results.json",
+    "paired": "chunk-maxsim-paired-results.json",
+    "vault_size_census": "chunk-vault-coverage-results.json",
+    "complete_questions_per_run": 500,
+    "internal_gold_set_and_M1": "not measured",
+    "production_changes": false
+  }
 }

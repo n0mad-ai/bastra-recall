@@ -182,5 +182,6 @@
     "file": "chunk-lexical500.json",
     "sha256": "475ef1a8ce3f4ad47b55063839ae8fdb90d637dd2b7fdf7e39228267ba5fd166",
     "locator": "durable local measurement B archive; private handover"
-  }
+  },
+  "cost_note": "vectors_per_session in the lexical artifact is the chunk-count ratio / potential vector ratio, not actual embeddings; zero vectors were computed in the lexical run."
 }
