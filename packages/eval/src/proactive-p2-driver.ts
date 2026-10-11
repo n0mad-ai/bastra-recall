@@ -134,7 +134,7 @@ const driver: FeatureDriver = {
       if(CONVERSATION_CASES.includes(c.id)) {
         values=await runConversation(c,{root,taskPath,authPath,http,input,child,tokens,auth,start,env,clockPath,evidence,stopDaemon:()=>stop(daemon!)});
       } else if(c.id==="migration-corruption") {
-        values=await runMigration({http,create,taskPath,root,start,storeApi,legacyRoot,evidence,stopDaemon:()=>stop(daemon!)});
+        values=await runMigration({http,input,sourceApi,create,taskPath,root,start,storeApi,legacyRoot,evidence,stopDaemon:()=>stop(daemon!)});
       } else if(PREMISE_CASES.includes(c.id)) {
         values=await runPremises(c,{http,input,root,vault,clockPath,taskPath,evidence,start,feature,fixture:action,stopDaemon:()=>stop(daemon!)});
       } else if(ACTION_CASES.includes(c.id)) {
@@ -191,10 +191,12 @@ const driver: FeatureDriver = {
       } else if(c.id === "p3-source-key-tuple-boundary") {
         const sources=[{id:"collision:a",kind:"event",producer_actor:"fixture-owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:100000,enabled:true},{id:"collision",kind:"event",producer_actor:"other-owner",owner_domains:["other"],sensitivity:"private",max_age_ms:100000,enabled:true}];
         for(const [i,source] of sources.entries()) {const r=await http("POST","/api/v1/tasks/sources",source,i===0?"owner":"other");if(r.status!==200)throw new Error("valid tuple source registration failed");}
-        const results: Array<{status:number;data:any}>=[];
-        for(const [i,source] of sources.entries()) results.push(await http("POST","/api/v1/tasks/events",{source_id:source.id,source_revision:0,dedup_key:i===0?"b":"a:b",value:"same-invented-value",state_updated_at:Date.now()},i===0?"owner":"other"));
+        const results: Array<{status:number;data:any}>=[], submitted:any[]=[];
+        for(const [i,source] of sources.entries()){const body={source_id:source.id,source_revision:0,dedup_key:i===0?"b":"a:b",value:"same-invented-value",state_updated_at:Date.now()};submitted.push(body);results.push(await http("POST","/api/v1/tasks/events",body,i===0?"owner":"other"));}
+        const retries=await Promise.all(submitted.map((body,i)=>http("POST","/api/v1/tasks/events",body,i===0?"owner":"other")));
+        const drift=await http("POST","/api/v1/tasks/events",{...submitted[0],value:"different-invented-value"});
         const snapshot=JSON.parse(readFileSync(taskPath,"utf8"));const eventB=snapshot.events.find((e:any)=>e.id===results[1].data.event_id);
-        values={accepted_submissions:results.filter(r=>r.status===200).length,journal_events:snapshot.events.length,distinct_event_ids:new Set(results.map(r=>r.data.event_id)).size,source_actor_bindings_exact:sources.every(s=>snapshot.events.some((e:any)=>e.source_id===s.id&&e.actor===s.producer_actor&&equal(e.owner_domains,s.owner_domains))),foreign_domain_receipt_reused:Boolean(eventB&&eventB.source_id!==sources[1].id)};
+        values={exact_event_retry_ids_stable:retries.every((r,i)=>r.status===200&&r.data.event_id===results[i].data.event_id),event_drift_denied:drift.status===409,accepted_submissions:results.filter(r=>r.status===200).length,journal_events:snapshot.events.length,distinct_event_ids:new Set(results.map(r=>r.data.event_id)).size,source_actor_bindings_exact:sources.every(s=>snapshot.events.some((e:any)=>e.source_id===s.id&&e.actor===s.producer_actor&&equal(e.owner_domains,s.owner_domains))),foreign_domain_receipt_reused:Boolean(eventB&&eventB.source_id!==sources[1].id)};
         evidence.push({registered_sources:sources,submission_results:results,journal:snapshot.events});
       } else if (c.id === "p3-automatic-evaluation") {
         const t0=Date.parse("2026-10-24T12:00:00Z");

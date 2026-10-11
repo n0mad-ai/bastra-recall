@@ -32,6 +32,16 @@ export async function runMigration(x:any):Promise<Record<string,boolean|number|s
   migrations&&=recovered.status===200&&recovered.data.changes_may_be_missing===true&&after.controls.execution_stopped&&after.tasks.every((task:any)=>!task.armed)&&after.recovery_epoch!==backup.recovery_epoch;
   evidence.push({mode,read,denied,recovered,backup,after});await stopDaemon();
  }
- await start();originals&&=readFileSync(memory,'utf8')==='invented neighbour'&&readFileSync(drafts,'utf8')===draftSentinel;
+ await start();
+ const source={id:'legacy-comparison-source',kind:'event',producer_actor:'fixture-owner',owner_domains:['personal'],sensitivity:'private',max_age_ms:600000,enabled:true};
+ const registered=await http('POST','/api/v1/tasks/sources',source);
+ const baseline=await http('POST','/api/v1/tasks',{...x.input('legacy-comparison'),schedule:{kind:'event',source_id:source.id,predicate:'equals',expected:'invented legacy baseline'},arm:false});
+ const event={source_id:source.id,source_revision:0,dedup_key:'legacy-event',value:'invented legacy baseline',state_updated_at:Date.now()};const accepted=await http('POST','/api/v1/tasks/events',event);
+ await stopDaemon();const legacyComparison=JSON.parse(readFileSync(taskPath,'utf8'));const sha=x.sourceApi.taskValueHash(event.value);const legacyTask=legacyComparison.tasks.find((t:any)=>t.id===baseline.data.id),legacyEvent=legacyComparison.events.find((e:any)=>e.id===accepted.data.event_id),legacySource=legacyComparison.sources.find((s:any)=>s.id===source.id);
+ if(!legacyTask||!legacyEvent||!legacySource)throw new Error('legacy comparison fixture absent');legacyTask.schedule.expected_hash=sha;legacyTask.last_material_hash=sha;legacyEvent.value_hash=sha;legacySource.last_value_hash=sha;writeFileSync(taskPath,JSON.stringify(legacyComparison),{mode:0o600});writeFileSync(taskPath+'.backup',JSON.stringify(legacyComparison),{mode:0o600});await start();
+ const migratedComparison=JSON.parse(readFileSync(taskPath,'utf8')),migratedBackup=JSON.parse(readFileSync(taskPath+'.backup','utf8'));const keyed=(s:any)=>{const t=s.tasks.find((v:any)=>v.id===baseline.data.id),e=s.events.find((v:any)=>v.id===accepted.data.event_id),sourceRow=s.sources.find((v:any)=>v.id===source.id);return t&&e&&sourceRow&&/^hmac-v1:[a-f0-9]{64}$/.test(t.schedule.expected_hash)&&t.schedule.expected_hash===e.value_hash&&e.value_hash===t.last_material_hash&&e.value_hash===sourceRow.last_value_hash;};
+ const retry=await http('POST','/api/v1/tasks/events',event);const comparisonDrift=await http('POST','/api/v1/tasks/events',{...event,value:'different legacy value'});const comparisonPass=registered.status===200&&baseline.status===200&&accepted.status===200&&keyed(migratedComparison)&&keyed(migratedBackup)&&retry.status===200&&retry.data.event_id===accepted.data.event_id&&comparisonDrift.status===409;
+ migrations&&=comparisonPass;evidence.push({legacy_comparison_migration:true,registered,baseline,accepted,legacyComparison,migratedComparison,migratedBackup,retry,comparisonDrift});
+ originals&&=readFileSync(memory,'utf8')==='invented neighbour'&&readFileSync(drafts,'utf8')===draftSentinel;
  return {silent_loss:loss,corruption_visible:visible,originals_preserved:originals,supported_migrations_pass:migrations};
 }

@@ -1,7 +1,7 @@
 {
   "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
   "schema_version": 1,
-  "registration_version": 20,
+  "registration_version": 21,
   "registered_at": "2026-10-11T08:21:00.715286+00:00",
   "registered_by": "codex-messung-a (Daniel delegated measurement)",
   "status": "numbers_registered",
@@ -1453,7 +1453,7 @@
     "ground_truth": "Both sources/keys are accepted by the published identity schema; source/actor/owner-domain tuples differ. Equality of value and revision does not identify the event tuple.",
     "abort_rule": "Stop any access outside synthetic roots; two domains here contain invented data only."
   },
-  "amendment": "Owner decision11.10.2026 replaces previous notify authority expectations, explicitly preserved below. Prospective375702ff replay of original25 cases\u00d73 plus6 new cases\u00d73=93 rows. Prepare/execute authority and existing budgets unchanged; no historical row reclassified.",
+  "amendment": "Prospective93-row replay on frozen eaf5da01, unchanged budgets/Owner policy/expected behavioural outcomes. Exact event retry+drift guards strengthened in existing tuple-boundary case; migration adds valid legacy content SHA equality in main+backup, same event ID retry and drift rejection. Day reference advanced prospectively to2026-10-12T12:00Z so CRUD-only +24h stays future; all prior results immutable.",
   "delivery_runtime_procedure": {
     "feature_head": "f5f8f14924e72d446c65c8771c087c72f3d144ac",
     "repetitions": 3,
@@ -1839,5 +1839,24 @@
     "auto_access": "New cases start without minting ANY credential and without BASTRA_TASK_TOKEN; actual daemon produces0600Agent config; real session-hook/prompt-hook processes use the file automatically. No setup command/manual token provisioning. Hook budgets stay at published defaults.",
     "deadline": "Shared existing5s condition/deadline and real timers;5500ms before advancing fixture clock; no manual task_reconcile. Allow async receipt completion within5s, not internal assembly output.",
     "scope": "No human chat transcripts or actual AskUserQuestion confirmation fabricated. Tool-level yes/no protocol correctness and actual hook output, no human/OS/longitudinal gate pass."
+  },
+  "keyed_comparison_replay": {
+    "feature_commit": "eaf5da0188b6954ed39d4461492f0bbf7ed23080",
+    "feature_pr": 1197,
+    "required_rows": 93,
+    "cases": 31,
+    "repetitions": 3,
+    "budgets_unchanged": true,
+    "owner_policy_unchanged": true,
+    "reference_instant": "2026-10-12T12:00:00Z",
+    "retry": "Existing tuple-boundary now repeats exact event submissions and requires same IDs/journal length; changed value under same key conflicts. Existing material scenario already repeats exact Claim event with same ID.",
+    "migration": "Within existing migration-corruption case, accepted actual source/task/event fixture is stopped and valid old SHA expected/event/last-material/last-source comparisons installed in main and backup; actual pinned daemon keys them without identity loss. API same event retry returns original ID, drift409. Private-state equality/prefix guards; no calculated expected HMAC or key exposure.",
+    "focus": [
+      "exact Event/Claim retries",
+      "file/Git A,B,A,B",
+      "material premise change",
+      "raw/redacted dedup"
+    ],
+    "scope": "Private comparison field removal from API is not absence of verification; behavioural assertions stay. No dictionary/privacy/human/OS proof inferred."
   }
 }

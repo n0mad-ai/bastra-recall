@@ -77,7 +77,7 @@ async function main() {
   try {
     if (driver && featureRoot) for (const c of PROACTIVE_CASES.filter(c => (!opts["--case"] || c.id === opts["--case"]) && c.id !== opts["--exclude-case"] && (!driver!.metadata.supported_cases || driver!.metadata.supported_cases.includes(c.id)) && c.dependencies.every(p => Number.isSafeInteger(driver!.metadata.contract_prs[p]) && driver!.metadata.contract_prs[p] > 0))) for (let repetition = 1; repetition <= 3; repetition++) {
       const root = mkdtempSync(join(tmpdir(), "bastra-proactive-measurement-"));
-      const context = { root, port: await privatePort(), reference_instant: "2026-10-11T12:00:00Z", repetition, feature_root: featureRoot };
+      const context = { root, port: await privatePort(), reference_instant: "2026-10-12T12:00:00Z", repetition, feature_root: featureRoot };
       write(`${c.id}-${repetition}-context.json`, context);
       const row = await driver.run(c, context);
       if (row.case_id !== c.id || row.repetition !== repetition) throw new Error("driver returned the wrong case/repetition");
