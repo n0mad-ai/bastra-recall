@@ -118,7 +118,15 @@ const driver: FeatureDriver = {
     let values: Record<string, boolean | number | string> = {};
     try {
       await start();
-      if (c.id === "p3-automatic-evaluation") {
+      if(c.id === "p3-source-key-tuple-boundary") {
+        const sources=[{id:"collision:a",kind:"event",producer_actor:"fixture-owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:100000,enabled:true},{id:"collision",kind:"event",producer_actor:"other-owner",owner_domains:["other"],sensitivity:"private",max_age_ms:100000,enabled:true}];
+        for(const [i,source] of sources.entries()) {const r=await http("POST","/api/v1/tasks/sources",source,i===0?"owner":"other");if(r.status!==200)throw new Error("valid tuple source registration failed");}
+        const results=[];
+        for(const [i,source] of sources.entries()) results.push(await http("POST","/api/v1/tasks/events",{source_id:source.id,source_revision:0,dedup_key:i===0?"b":"a:b",value:"same-invented-value",state_updated_at:Date.now()},i===0?"owner":"other"));
+        const snapshot=JSON.parse(readFileSync(taskPath,"utf8"));const eventB=snapshot.events.find((e:any)=>e.id===results[1].data.event_id);
+        values={accepted_submissions:results.filter(r=>r.status===200).length,journal_events:snapshot.events.length,distinct_event_ids:new Set(results.map(r=>r.data.event_id)).size,source_actor_bindings_exact:sources.every(s=>snapshot.events.some((e:any)=>e.source_id===s.id&&e.actor===s.producer_actor&&equal(e.owner_domains,s.owner_domains))),foreign_domain_receipt_reused:Boolean(eventB&&eventB.source_id!==sources[1].id)};
+        evidence.push({registered_sources:sources,submission_results:results,journal:snapshot.events});
+      } else if (c.id === "p3-automatic-evaluation") {
         const t0=Date.parse("2026-10-24T12:00:00Z");
         const setClock=(at:number)=>{writeFileSync(clockPath,String(at));evidence.push({frozen_clock:at});};
         const count=(id:string)=>JSON.parse(readFileSync(taskPath,"utf8")).occurrences.filter((o:any)=>o.task_id===id).length;
