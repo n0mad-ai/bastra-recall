@@ -4,7 +4,7 @@ import { basename, dirname, relative, sep } from "node:path";
 import { emptyTaskStore, type TaskStore } from "./task-schema.js";
 import { readTaskStore } from "./task-store.js";
 import { observeTaskSources, reconcileTaskTime } from "./task-events.js";
-import { taskCheckMaterial, assessTaskFreshness } from "./task-freshness.js";
+import { taskEventToAssess, taskCheckMaterial, assessTaskFreshness } from "./task-freshness.js";
 import { onTaskSnapshot, onTaskWake } from "./task-runtime-signal.js";
 import type { TaskServiceContext } from "./task-service.js";
 
@@ -64,7 +64,7 @@ export class TaskRuntime {
       while (visited < this.snapshot.tasks.length && selected.size < 10) {
         const task = this.snapshot.tasks[(this.pollCursor + visited++) % this.snapshot.tasks.length];
         if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
-        const event = [...this.snapshot.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+        const event = taskEventToAssess(task, this.snapshot);
         const material = taskCheckMaterial(task, this.snapshot);
         const previous = this.checks.get(task.id);
         if (previous && now < previous.next && previous.material === material) continue;
