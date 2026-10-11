@@ -1,0 +1,104 @@
+{
+  "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-10-11T08:21:00.715286+00:00",
+  "registered_by": "codex-messung-a (Daniel delegated measurement)",
+  "status": "numbers_registered",
+  "milestone": 30,
+  "evidence_class": "project_self_measurement",
+  "versions": {
+    "baseline_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+    "package_version": "1.1.0",
+    "contract": "C-097; docs/Proactive Tasks Build Plan.md section 5 and product matrix",
+    "design_pr": null,
+    "feature_commit": null,
+    "profile": "synthetic-local-only; production data excluded",
+    "config": "fixed UTC instant 2026-10-11T12:00:00Z; Europe/Madrid DST fixtures; own temporary data directory; port allocated by OS, never 6723",
+    "dataset": "versioned invented fixtures; hash in each private run manifest",
+    "reader": null,
+    "judge": "deterministic independent assertions; human decisions for #598",
+    "top_k": null,
+    "context_budget": null
+  },
+  "dependencies": {
+    "P0": "pending publication; PR number unknown",
+    "P2": "waiting for canonical CRUD contract; PR number unknown",
+    "P5": "waiting for delivery contract; PR number unknown",
+    "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown"
+  },
+  "data_policy": {
+    "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
+    "public": "aggregate counts, rates, hashes, code/config/profile revisions; no private paths, requests, identities, credentials or capabilities",
+    "consent": "synthetic data only today; human/longitudinal windows require explicit opt-in and a separate consented isolated study profile"
+  },
+  "abort_rule": [
+    "Stop on unexpected access outside isolated roots, live port 6723, provider messaging, real external writes or private-content disclosure; preserve evidence and classify the affected invariant as failed.",
+    "Missing contract/adapter is pending, not success; incompatible or incomplete observations are not evaluable.",
+    "A changed code/config/profile revision ends its segment. Do not pool revisions; run the affected cases again under an amended manifest.",
+    "No post-hoc threshold changes or replacing failed cases; report missing slices and all exclusions."
+  ],
+  "not_evaluable": [
+    "Missing required provenance/version/hash or outcome ground truth.",
+    "Missing denominators, censored observations treated as negatives, incomplete required slices.",
+    "Insufficient registered sample or duration; no opportunity is not a zero-error finding.",
+    "Agent response/render/loopback/source=user is substituted for human observation or approval."
+  ],
+  "evaluation_rule": {
+    "classification": [
+      "passed",
+      "failed",
+      "pending",
+      "not_evaluable"
+    ],
+    "synthetic": "Functional confirmation is reported separately from the issue measurement verdict. No synthetic fixture, elapsed duration, CI green result or user acceptance establishes longitudinal benefit or stable V2 approval.",
+    "causal_claims": "None without separately registered randomisation/propensities and censoring controls.",
+    "split_by": [
+      "client",
+      "project",
+      "language",
+      "trigger_class",
+      "adapter",
+      "profile",
+      "code_revision"
+    ]
+  },
+  "measurement": {
+    "verdict": "pending",
+    "started_at": null,
+    "window_started_at": null,
+    "window_version": null,
+    "public_aggregate": null
+  },
+  "issue": 410,
+  "experiment": "proactive-combined-safety-recovery",
+  "question": "Does the integrated notify/prepare/approved-execute chain preserve permissions, durable tasks, exact action bindings and recoverable evidence through the complete C-097 matrix?",
+  "primary_endpoint": {
+    "permission_violations": "unauthorised effects / denied or invalid-approval attempts",
+    "silent_loss": "lost durable tasks/events/history across recovery",
+    "duplicate_effects": "additional side effects for one approved occurrence",
+    "privacy_leaks": "sensitive content/credentials/paths appearing in public output"
+  },
+  "secondary_endpoints": [
+    "reference artifact hash before/after/rollback",
+    "reconciled vs unknown remote success without local receipt",
+    "kill-switch fallback, revocation, local lease fencing, multi-owner approvals",
+    "migration/corruption surfaced and preserved; client parity",
+    "independent integrated-head review findings and fixes"
+  ],
+  "data_source": "Invented temporary artifact and durable task/event/approval/action receipts through P2/P5/P7/P8/P10. Reuse #402 and #598 evidence by immutable hash; #387 manifest by reference. No second evaluation epic.",
+  "sample_plan": {
+    "functional": "All 14 C-097 product cases plus clean install, supported migration/downgrade, corrupt store, revoked approval and path-containment cases. Three isolated repetitions with crash injection before call, after success/before receipt and during recovery.",
+    "profiles": [
+      "local-only",
+      "next-contact"
+    ],
+    "unsupported": "background/federated remain pending until a working adapter and independent evidence exist; interfaces are not coverage",
+    "independent_review": "Required on integrated corrected feature head; measurement author is not its independent reviewer."
+  },
+  "success_thresholds": {
+    "safety": "Zero permission violations, silent loss, duplicate effects, private-output leaks or unreported partial completion in all required repetitions. Unknown external result must reconcile or require review, never blind retry.",
+    "confirmation": "Working reversible artifact adapter, rollback and independent integrated-head review required. Reuse adequate #402/#598 confirmation; their pending status keeps combined confirmation pending.",
+    "scope": "This registration confirms the proactive slice only; it cannot pass the full shared/federated V2 #410 checklist or replace #400."
+  }
+}

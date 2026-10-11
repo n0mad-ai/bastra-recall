@@ -1,0 +1,117 @@
+{
+  "$comment": "Registered before any feature or study run. Synthetic fixtures confirm mechanics only. Amendments increment registration_version, preserve the original and segment affected runs; they do not freeze development.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-10-11T08:21:00.715286+00:00",
+  "registered_by": "codex-messung-a (Daniel delegated measurement)",
+  "status": "numbers_registered",
+  "milestone": 30,
+  "evidence_class": "project_self_measurement",
+  "versions": {
+    "baseline_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+    "package_version": "1.1.0",
+    "contract": "C-097; docs/Proactive Tasks Build Plan.md section 5 and product matrix",
+    "design_pr": null,
+    "feature_commit": null,
+    "profile": "synthetic-local-only; production data excluded",
+    "config": "fixed UTC instant 2026-10-11T12:00:00Z; Europe/Madrid DST fixtures; own temporary data directory; port allocated by OS, never 6723",
+    "dataset": "versioned invented fixtures; hash in each private run manifest",
+    "reader": null,
+    "judge": "deterministic independent assertions; human decisions for #598",
+    "top_k": null,
+    "context_budget": null
+  },
+  "dependencies": {
+    "P0": "pending publication; PR number unknown",
+    "P2": "waiting for canonical CRUD contract; PR number unknown",
+    "P5": "waiting for delivery contract; PR number unknown",
+    "P8": "waiting for approved execute contract and reversible reference adapter; PR number unknown"
+  },
+  "data_policy": {
+    "raw": "private existing eval-run archive; mode 0600 files / 0700 run directory; never committed",
+    "public": "aggregate counts, rates, hashes, code/config/profile revisions; no private paths, requests, identities, credentials or capabilities",
+    "consent": "synthetic data only today; human/longitudinal windows require explicit opt-in and a separate consented isolated study profile"
+  },
+  "abort_rule": [
+    "Stop on unexpected access outside isolated roots, live port 6723, provider messaging, real external writes or private-content disclosure; preserve evidence and classify the affected invariant as failed.",
+    "Missing contract/adapter is pending, not success; incompatible or incomplete observations are not evaluable.",
+    "A changed code/config/profile revision ends its segment. Do not pool revisions; run the affected cases again under an amended manifest.",
+    "No post-hoc threshold changes or replacing failed cases; report missing slices and all exclusions."
+  ],
+  "not_evaluable": [
+    "Missing required provenance/version/hash or outcome ground truth.",
+    "Missing denominators, censored observations treated as negatives, incomplete required slices.",
+    "Insufficient registered sample or duration; no opportunity is not a zero-error finding.",
+    "Agent response/render/loopback/source=user is substituted for human observation or approval."
+  ],
+  "evaluation_rule": {
+    "classification": [
+      "passed",
+      "failed",
+      "pending",
+      "not_evaluable"
+    ],
+    "synthetic": "Functional confirmation is reported separately from the issue measurement verdict. No synthetic fixture, elapsed duration, CI green result or user acceptance establishes longitudinal benefit or stable V2 approval.",
+    "causal_claims": "None without separately registered randomisation/propensities and censoring controls.",
+    "split_by": [
+      "client",
+      "project",
+      "language",
+      "trigger_class",
+      "adapter",
+      "profile",
+      "code_revision"
+    ]
+  },
+  "measurement": {
+    "verdict": "pending",
+    "started_at": null,
+    "window_started_at": null,
+    "window_version": null,
+    "public_aggregate": null
+  },
+  "issue": 402,
+  "experiment": "proactive-trigger-delivery",
+  "question": "Does an explicit persisted commitment fire only on its registered due/material condition, survive interrupted delivery and reach the supported client without false acknowledgement or duplicate logical firing?",
+  "primary_endpoint": {
+    "false_trigger_rate": "false logical firings / independently labelled non-trigger opportunities",
+    "missed_trigger_rate": "due opportunities without a durable occurrence by the next eligible contact / independently labelled due opportunities",
+    "duplicate_logical_firings": "additional logical firings for the same task revision and occurrence"
+  },
+  "secondary_endpoints": [
+    "delivery attempts, supported acknowledgements and resolutions separately",
+    "delivery latency from eligible contact, serialized context bytes, interruption and correction time",
+    "completion with registered evidence; denied permissions; retry/backpressure/quiet notices"
+  ],
+  "data_source": "Invented labelled scenarios and canonical commitment/event/outbox receipts from P2/P3/P4/P5/P6; later consented participant/contact diaries for interruption and completion. No semantic retrieval score is human observation.",
+  "sample_plan": {
+    "functional": "All registered trigger/delivery scenarios, each once plus three restart/retry replays; every required case must execute.",
+    "longitudinal": {
+      "minimum_days": 14,
+      "minimum_due_opportunities_per_supported_client_profile": 100,
+      "minimum_non_trigger_opportunities_per_supported_client_profile": 100,
+      "minimum_per_required_trigger_slice": 20,
+      "languages": [
+        "de",
+        "en"
+      ],
+      "projects": 2,
+      "client_profiles": [
+        "active-session",
+        "hookless-next-contact"
+      ],
+      "required_trigger_slices": [
+        "timer",
+        "calendar/DST/recurrence",
+        "material-premise",
+        "unchanged/irrelevant",
+        "stale/failed/contested"
+      ],
+      "fallback": "Unsupported background/federated adapters are pending with explicit coverage; never pooled with local evidence."
+    }
+  },
+  "success_thresholds": {
+    "functional": "Zero false/missed fixture triggers, duplicate logical firings, fabricated acknowledgements or lost due items; all required scenarios represented.",
+    "longitudinal": "Per supported client/profile: one-sided 95% Wilson upper bound <= 0.05 for false and missed trigger rates; zero duplicate logical firings, permission violations or silent loss. Completion and interruption costs descriptive, no utility-lift claim."
+  }
+}
