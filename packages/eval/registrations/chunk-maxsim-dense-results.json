@@ -349,7 +349,7 @@
   "artifact": {
     "file": "chunk-dense500.json",
     "sha256": "2015d1cdccd24f55de4002331fb93a7177ade91dabe7d42be211018a16767e14",
-    "locator": "durable local measurement B archive; private handover"
+    "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/chunk-dense500.json"
   },
   "model_digest_rechecked_after_run": true
 }

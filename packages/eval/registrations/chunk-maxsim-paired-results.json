@@ -54,5 +54,6 @@
       }
     }
   },
-  "interpretation": "descriptive benchmark comparison; no population/causal claim or shipping gate passed"
+  "interpretation": "descriptive benchmark comparison; no population/causal claim or shipping gate passed",
+  "p_value_adjustment": "none; three max-sim arms were examined; no confirmatory endpoint improvement claim"
 }
