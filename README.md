@@ -23,6 +23,9 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
+Proactive tasks (unreleased): notify reminders can be added and controlled in conversation; local hooks/MCP receive Agent access automatically. Due cards arrive at next contact, with acknowledgement and completion kept separate. The Recall UI Tasks tab lists active, completed and failed/cancelled work. The existing action path uses exact Owner signatures for one registered reversible local UTF-8 adapter; that approval policy remains open for later discussion. Email, Slack, GitHub, cloud and provider actions are unsupported. [Instructions](./docs/Proactive%20Tasks.md) · [disposable demo](./docs/design/proactive-tasks-demo.md).
+
+
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
 ### Why not just CLAUDE.md?
@@ -160,6 +163,9 @@ Wir bauen mit dem Anspruch, das beste persönliche Gedächtnis für die täglich
 Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzelne Chats hinweg. Bastra Recall speichert sie als lesbare Markdown-Dateien auf deinem Rechner und macht sie deinen verbundenen KI-Assistenten zugänglich.
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
+
+Proaktive Aufgaben (Unreleased): notify-Erinnerungen entstehen und werden im Gespräch bedient; lokale Hooks/MCP erhalten ihren Agent-Zugang automatisch. Fällige Karten erscheinen beim nächsten Kontakt, Quittieren und Erledigen bleiben getrennt. Der Aufgaben-Tab der Recall-UI zeigt aktive, erledigte und fehlgeschlagene/abgebrochene Arbeit. Der bestehende Aktionsweg verlangt exakte Owner-Signaturen für eine registrierte rückrollbare lokale UTF-8-Datei; die Freigabepolitik bleibt für spätere Diskussion offen. E-Mail, Slack, GitHub, Cloud und Anbieter-Aktionen sind nicht unterstützt. [Anleitung](./docs/Proaktive%20Aufgaben.md) · [Wegwerf-Demo](./docs/design/proactive-tasks-demo.md).
+
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 

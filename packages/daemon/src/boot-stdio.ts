@@ -1,9 +1,13 @@
+import { isTaskExecution } from "./task-execution.js";
+import { forwardTaskExecutionMcp } from "./task-execution-client.js";
 /**
  * Start-up phase 7 (#1039): the standalone MCP stdio surface — tool list, the
  * call dispatcher (with #38 progress notifications) and the stdio transport.
  *
  * Moved verbatim out of `main()` in `index.ts`, with its `errorResult` helper.
  */
+import { finalizeTaskMcp } from "./task-delivery.js";
+import { taskTools, isTaskTool, callTaskMcp, taskClientAuthorization, defaultTaskContext } from "./task-transport.js";
 import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -78,6 +82,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
+      ...taskTools,
       ...draftReviewTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
@@ -99,8 +104,12 @@ export async function startStdioServer(opts: {
   const banterLang = (process.env.BASTRA_BANTER_LANG ?? "en").toLowerCase() === "de" ? "de" : "en";
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    const result = await (async () => {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
+
+    if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
+    if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
 
     // #482: same check as the REST boundary — the standalone stdio surface is
     // the other place tool arguments arrive, and the client bug does not care
@@ -332,6 +341,9 @@ export async function startStdioServer(opts: {
     }
 
     return errorResult(`unknown tool: ${name}`);
+    })();
+    if (req.params.name === "task_due") return result;
+    return finalizeTaskMcp(result, defaultTaskContext(toolDeps), await taskClientAuthorization());
   });
 
   const transport = new StdioServerTransport();

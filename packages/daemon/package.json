@@ -1,7 +1,7 @@
 {
   "name": "@bastra-recall/daemon",
   "version": "1.1.0",
-  "description": "MCP server over a markdown vault: recall, load_memory, save_memory, edit_memory, archive_memory and document tools — plus the REST gateway, the quiet hook lanes and the bastra CLI.",
+  "description": "MCP server over a markdown vault: recall, load_memory, save_memory, edit_memory, archive_memory and document tools \u2014 plus the REST gateway, the quiet hook lanes and the bastra CLI.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -45,7 +45,7 @@
     "prepack": "npm run prepare:package-assets",
     "start": "node dist/index.js",
     "check:types": "tsc --noEmit && tsc -p tsconfig.scripts.json && tsc -p tsconfig.tests.json",
-    "test": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/*.test.ts",
+    "test": "node scripts/run-tests.mjs",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
     "stress:save62": "node --import tsx scripts/stress-save-62.mjs",
@@ -57,7 +57,8 @@
     "test:stub": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/binary/*.test.ts",
     "build:mcpb": "node scripts/build-mcpb.mjs",
     "build:mcpb:local": "node scripts/build-mcpb.mjs --local",
-    "build:stub": "node scripts/build-stub.mjs"
+    "build:stub": "node scripts/build-stub.mjs",
+    "pretest": "npm run build --workspace=@bastra-recall/core && npm run build"
   },
   "dependencies": {
     "@bastra-recall/core": "1.1.0",

@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Proactive notify reminders can be added and controlled in conversation, with automatic local Agent access and a Tasks tab in the Recall UI. Existing prepare/execute approval remains unchanged pending further Owner discussion.
+
+### Added
+
+- Explicit persisted tasks with one MCP/HTTP/CLI/UI contract, owner review,
+  calendar/duration/recurrence, authenticated versioned source events, startup/contact
+  catch-up and bounded daemon polling. Due cards are independent of recall ranking;
+  attempted delivery, acknowledgement and completion stay separate. Versioned premise
+  changes invite owner reconsideration without automatically reversing a decision.
+- Optional task UI, readable German CLI with explicit `--json`, owner hook setup,
+  source/budget/unknown-outcome status, mute/off/execute-stop, guarded target management,
+  private cold archives and explicit fail-closed backup/lock recovery. Ordinary memory
+  schema and release version remain unchanged.
+- One reversible local-artifact UTF-8 replacement adapter: separate exact Ed25519
+  owner signatures for every required domain, revision/expiry/revocation checks,
+  local leases/fencing, durable approval spending and intent before effects,
+  exact-hash crash reconciliation and newly approved CAS rollback. No provider,
+  messaging, email, Slack, GitHub, cloud or arbitrary shell adapters. Production
+  execution requires actual owner/agent OS isolation; synthetic tests do not prove it.
+- Disposable owner demo, final fourteen-case functional matrix and EN/DE instructions.
+  Functional results are separate from pending longitudinal confirmation.
+
+
 ## [1.1.0] — 2026-10-11
 
 ### Security

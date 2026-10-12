@@ -183,6 +183,13 @@ async function main() {
 
   let viewLoading = false; // semantic layout fetch in flight — don't re-enter
   async function switchView(v) {
+    const tasksView = $("#tasks-view");
+    tasksView.hidden = v !== "tasks";
+    if (v === "tasks") {
+      telemetryView.close();
+      const frame = $("#tasks-frame"); if (!frame.src) frame.src = frame.dataset.src;
+      markViewButton(v); return;
+    }
     if (v === "telemetry") {
       telemetryView.open();
       markViewButton(v);

@@ -22,8 +22,8 @@
  * Dateinamen, und beides muss hier genauso gelten, sonst weichen Index und
  * Save-Pfad in ihrer Vorstellung davon ab, was existiert.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { constants, readdirSync, readFileSync } from "node:fs";
+import { readdir, readFile, open } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import matter from "gray-matter";
 import { parseMemoryWith } from "./schema.js";
@@ -208,6 +208,7 @@ export async function scanVaultForIdAsync(
   vaultRoot: string,
   id: string,
   stats?: IdScanStats,
+  budget?: { maxBytes: number; maxFiles: number; deadline: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
 ): Promise<Located> {
   const found: string[] = [];
   const unreadable: string[] = [];
@@ -215,7 +216,7 @@ export async function scanVaultForIdAsync(
   counters.dirs = 0;
   counters.files = 0;
   counters.bytes = 0;
-  await walkAsync(vaultRoot, id, found, unreadable, counters);
+  await walkAsync(vaultRoot, id, found, unreadable, counters, budget ? { ...budget, reserved: 0, entries: 0 } : undefined);
   counters.blindSpots = unreadable.length;
   if (unreadable.length > 0) return { kind: "incomplete", unreadable };
   if (found.length === 0) return { kind: "none" };
@@ -248,7 +249,9 @@ async function walkAsync(
   out: string[],
   unreadable: string[],
   stats: IdScanStats,
+  budget?: { maxBytes: number; maxFiles: number; deadline: number; reserved: number; entries: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
 ): Promise<void> {
+  if (budget && Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); unreadable.push(dir); return; }
   stats.dirs++;
   let entries;
   try {
@@ -260,10 +263,11 @@ async function walkAsync(
   }
   const files: string[] = [];
   for (const e of entries) {
+    if (budget && (++budget.entries > budget.maxFiles || Date.now() >= budget.deadline)) { budget.onLimit?.(Date.now() >= budget.deadline ? "timeout" : "files"); unreadable.push(dir); return; }
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      await walkAsync(full, id, out, unreadable, stats);
+      await walkAsync(full, id, out, unreadable, stats, budget);
       continue;
     }
     if (!e.isFile() || !isMarkdown(e.name)) continue;
@@ -276,7 +280,20 @@ async function walkAsync(
       chunk.map(async (full) => {
         let raw: string;
         try {
-          raw = await readFile(full, "utf8");
+          if (!budget) raw = await readFile(full, "utf8");
+          else {
+            if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan budget"); }
+            const handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW);
+            try {
+              const size = (await handle.stat()).size;
+              if (budget.reserved + size > budget.maxBytes) { budget.onLimit?.("bytes"); throw new Error("scan byte budget"); }
+              budget.reserved += size;
+              const bytes = Buffer.alloc(size + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
+              if (Date.now() >= budget.deadline) { budget.onLimit?.("timeout"); throw new Error("scan timed out"); }
+              if (result.bytesRead > size) throw new Error("scan changed");
+              raw = bytes.subarray(0, result.bytesRead).toString("utf8");
+            } finally { await handle.close(); }
+          }
         } catch (err) {
           const code = (err as NodeJS.ErrnoException)?.code;
           // Verschwunden ist kein blinder Fleck; alles andere schon.

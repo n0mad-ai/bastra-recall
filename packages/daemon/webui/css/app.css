@@ -20,3 +20,5 @@
 @import url("live.css");
 @import url("weather.css");
 @import url("telemetry.css");
+
+#tasks-view{position:fixed;inset:86px 0 0;z-index:20;background:var(--bg,#10151b)}.tasks-frame{border:0;width:100%;height:100%;display:block}

@@ -4,6 +4,8 @@
  * against `/hook/recall` (SSE), and the one-shot session-context inject for
  * hookless clients.
  */
+import { taskClientHeaders } from "./task-client-auth.js";
+import { isTaskTool, taskClientAuthorization } from "./task-transport.js";
 import { type RecallStage } from "@bastra-recall/core";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
 import { withDraftBudget } from "./draft-search.js";
@@ -35,6 +37,13 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
     ...ccTurnHeaders(),
   };
   if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
+  const taskAuth = await taskClientAuthorization();
+  if (taskAuth) headers["x-bastra-task-authorization"] = taskAuth;
+  if (isTaskTool(tool)) {
+    delete headers.Authorization;
+    const auth = await taskClientAuthorization();
+    if (auth) headers.Authorization = auth;
+  }
 
   const doFetch = async (): Promise<Response> => {
     return await fetchWithTimeout(
@@ -74,6 +83,7 @@ export async function callDaemon(tool: string, args: unknown): Promise<unknown> 
   if (!resp.ok) {
     const errMsg =
       (body as { error?: string })?.error ?? `HTTP ${resp.status}`;
+    if (isTaskTool(tool)) throw Object.assign(new Error(errMsg), { code: (body as { code?: string }).code, status: resp.status });
     throw new Error(errMsg);
   }
   return body;
@@ -99,7 +109,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     return null;
   }
   try {
-    const resp = await fetchWithTimeout(`${DAEMON_URL}/hook/session-context`, {}, 1200);
+    const resp = await fetchWithTimeout(`${DAEMON_URL}/hook/session-context`, { headers: taskClientHeaders() }, 1200);
     if (resp.status === 404) {
       sessionContextPending = false;
       return null;
@@ -258,6 +268,9 @@ export async function callRecallStreaming(
     ...ccTurnHeaders(),
   };
   if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
+  const taskAuth = await taskClientAuthorization();
+  if (taskAuth) headers["x-bastra-task-authorization"] = taskAuth;
+
 
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
@@ -343,4 +356,18 @@ function parseSseFrame(frame: string): { type: string; data: unknown } | null {
   } catch {
     return null;
   }
+}
+
+/** Streaming/hookless fallback: explicit authenticated cached due projection. */
+export async function maybeTaskDueItem(): Promise<{ type: "text"; text: string } | null> {
+  const authorization = await taskClientAuthorization(); if (!authorization) return null;
+  try {
+    const response = await fetchWithTimeout(`${DAEMON_URL}/api/v1/task_due`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization },
+      body: JSON.stringify({ channel: "mcp", session: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : "unknown" }),
+    }, 500);
+    if (!response.ok) return null;
+    const body = await response.json() as { cards?: unknown[]; overflow?: number };
+    return body.cards?.length ? { type: "text", text: `<bastra-due coverage="next-contact-only">${JSON.stringify(body)}</bastra-due>` } : null;
+  } catch { return null; }
 }

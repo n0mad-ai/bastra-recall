@@ -1,3 +1,4 @@
+import { taskAgentAccessStatus } from "../task-auto-setup.js";
 /**
  * The doctor's "features" block: which Recall features are switched on for
  * this user, which are off, and the command that turns each one on.
@@ -32,6 +33,7 @@ import { isOffValue } from "../env.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
+  proactive?: { clientConfigured: boolean; accessHint?: string };
   clients: Array<{ surface: string; features: ClientFeatures }>;
   primaryLanguage: string | undefined;
   /** null = no vault configured, so the question does not apply. */
@@ -134,6 +136,8 @@ export function featureLines(s: FeatureState): string[] {
     : "bastra config set reflex.enabled true"));
 
   lines.push("  optional, off by default on purpose:");
+  if (s.proactive) lines.push(row(s.proactive.clientConfigured ? ON : INFO, "proactive task cards",
+    s.proactive.clientConfigured ? "client credential configured; next-contact only while daemon runs; validate: bastra tasks client-status" : s.proactive.accessHint ?? "no client credential; hooks cannot show task cards", "bastra tasks setup-hooks"));
   if (s.codeAwareness.offByEnv) {
     lines.push(row(INFO, "code awareness (experimental)", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS"));
   } else {
@@ -235,6 +239,7 @@ export async function collectFeatureState(
   const live = await probeDaemon().catch(() => null);
   const semanticRecall = await semanticState(live);
   return {
+    proactive: await taskAgentAccessStatus().then(s => ({ clientConfigured: s.authorized, accessHint: s.hint })),
     clients,
     primaryLanguage: settings.language?.primary,
     onboardingDone: "error" in vault ? null : await isOnboardingDone(vault.path),

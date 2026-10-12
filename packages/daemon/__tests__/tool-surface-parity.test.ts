@@ -1,3 +1,4 @@
+import { TASK_CRUD_OPERATIONS } from "../src/task-service.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -105,7 +106,9 @@ test("every tool in ALL_TOOL_DEFS has a CallTool branch in the stdio server", as
   const source = await readFile(STDIO_TS, "utf8");
   const undispatched = (ALL_TOOL_DEFS as Array<{ name: string }>)
     .map((def) => def.name)
-    .filter((name) => !source.includes(`name === "${name}"`));
+    .filter((name) => !source.includes(`name === "${name}"`)
+      && !((TASK_CRUD_OPERATIONS as readonly string[]).includes(name)
+        && source.includes("if (isTaskTool(name)) return callTaskMcp(name, rawArgs")));
 
   assert.deepEqual(
     undispatched,
