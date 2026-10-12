@@ -12,6 +12,7 @@
  * only past a ceiling (COMMIT_CLAIM_LIVE_OWNER_MAX_MS), because a reused pid
  * looks alive too. Details on each rule are at the function that implements it.
  */
+import type { BigIntStats } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, access, open, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -97,21 +98,40 @@ interface CommitClaim {
  * ist nur auf ihrer Maschine aussagekräftig, und der Vault liegt erwartbar auf
  * geteilten Cloud-Mounts) oder ein unparsebarer Claim.
  */
-async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | null; abandoned: boolean }> {
+interface ClaimSnapshot {
+  raw: string;
+  generation: string;
+  ageMs: number;
+}
+
+function fileGeneration(info: BigIntStats): string {
+  return [info.dev, info.ino, info.birthtimeNs, info.ctimeNs, info.mtimeNs].join(":");
+}
+
+async function readClaimSnapshot(lockPath: string): Promise<ClaimSnapshot> {
+  const handle = await open(lockPath, "r");
+  try {
+    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat({ bigint: true })]);
+    return { raw, generation: fileGeneration(info), ageMs: Date.now() - Number(info.mtimeNs) / 1e6 };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function inspectCommitClaim(lockPath: string): Promise<{
+  raw: string | null;
+  generation: string | null;
+  abandoned: boolean;
+}> {
   let raw: string;
+  let generation: string;
   let ageMs: number;
   try {
-    // Read bytes and age from one inode, even if the path is replaced meanwhile.
-    const handle = await open(lockPath, "r");
-    try {
-      const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
-      raw = content;
-      ageMs = Date.now() - info.mtimeMs;
-    } finally { await handle.close(); }
+    ({ raw, generation, ageMs } = await readClaimSnapshot(lockPath));
   } catch (err) {
-    // Gone between EEXIST and here — another writer already cleared it, so this
-    // one is free to retry. Anything else stays a conflict: unknown is not free.
-    return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
+    // Missing is free for read-only callers; a contending acquirer does not retry.
+    // Other inspection failures do not establish that a claim is abandoned.
+    return { raw: null, generation: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
   }
 
   // Erst der Besitzer, dann das Alter. Codex-Gegenreview (P1): Die Reihenfolge
@@ -132,16 +152,16 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
       process.kill(claim.pid, 0);
       // owner is alive and working — age says nothing here, up to the ceiling
       // a reused pid cannot plausibly still be the original owner past.
-      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return { raw, abandoned: false };
+      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return { raw, generation, abandoned: false };
     } catch (err) {
       // ESRCH: der Besitzer ist weg, der Claim ist sofort frei. Alles andere
       // (EPERM — fremder Nutzer, gleiche PID) bleibt eine Altersfrage.
-      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return { raw, abandoned: true };
+      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return { raw, generation, abandoned: true };
     }
   }
   // Fremder Host, unparsebarer oder nicht zuordenbarer Claim: nur das Alter
   // kann ihn noch freigeben.
-  return { raw, abandoned: ageMs > COMMIT_CLAIM_STALE_MS };
+  return { raw, generation, abandoned: ageMs > COMMIT_CLAIM_STALE_MS };
 }
 
 export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
@@ -150,7 +170,7 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
 
 /**
  * Take the commit claim, reclaiming it once if the previous owner provably
- * died. A single retry is deliberate: two writers racing to reclaim the same
+ * died. One acquire/reclaim attempt is deliberate: two writers racing for the same
  * dead claim means one wins and the other reports a conflict, which is the
  * documented outcome for contention and costs no data — the compare-and-swap
  * below still has to agree before anything is published.
@@ -167,53 +187,49 @@ export async function acquireCommitClaim(
     ts: Date.now(),
     token,
   } satisfies CommitClaim);
-  for (let attempt = 0; attempt < 2; attempt++) {
+  try {
+    const handle = await open(lockPath, "wx", 0o600);
     try {
-      const handle = await open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(body, "utf8");
-      } finally {
-        await handle.close();
-      }
-      return token;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-      const checked = attempt === 0 ? await inspectCommitClaim(lockPath) : null;
-      if (checked?.abandoned && checked.raw !== null) {
-        if (await reclaimStaleClaim(lockPath, body, checked.raw)) {
-          // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
-          // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
-          // weiter; der tote Vorgänger ist der Befund: Einzeln ein
-          // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
-          // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
-          // der Reclaim geräuschlos gelingt.
-          //
-          // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
-          // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
-          //
-          // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
-          // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
-          // Operations-id). `memory_id` ist die Verbindung, an der man im
-          // Audit-Log weitersucht.
-          reportMutationIncident({
-            operation_id: newOperationId(),
-            op: "claim_reclaim",
-            status: "reclaimed",
-            phase: "claim-reclaim",
-            memory_id: id,
-            detail: "abandoned claim taken over",
-          });
-          return token;
-        }
-        // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
-        // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
-        throw writeConflict(id, filePath, "another save is reclaiming this claim");
-      }
-      throw writeConflict(id, filePath, "another save is committing this target");
+      await handle.writeFile(body, "utf8");
+    } finally {
+      await handle.close();
     }
+    return token;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
+    const checked = await inspectCommitClaim(lockPath);
+    if (checked.abandoned && checked.raw !== null && checked.generation !== null) {
+      if (await reclaimStaleClaim(lockPath, body, { raw: checked.raw, generation: checked.generation })) {
+        // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
+        // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
+        // weiter; der tote Vorgänger ist der Befund: Einzeln ein
+        // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
+        // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
+        // der Reclaim geräuschlos gelingt.
+        //
+        // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
+        // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
+        //
+        // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
+        // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
+        // Operations-id). `memory_id` ist die Verbindung, an der man im
+        // Audit-Log weitersucht.
+        reportMutationIncident({
+          operation_id: newOperationId(),
+          op: "claim_reclaim",
+          status: "reclaimed",
+          phase: "claim-reclaim",
+          memory_id: id,
+          detail: "abandoned claim taken over",
+        });
+        return token;
+      }
+      // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
+      // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
+      throw writeConflict(id, filePath, "another save is reclaiming this claim");
+    }
+    throw writeConflict(id, filePath, "another save is committing this target");
   }
-  /* c8 ignore next */
-  throw writeConflict(id, filePath, "another save is committing this target");
 }
 
 /**
@@ -253,28 +269,28 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  *
  * @returns `true`, wenn dieser Aufrufer den Claim jetzt hält.
  */
-async function reclaimStaleClaim(lockPath: string, body: string, checkedGeneration: string): Promise<boolean> {
-  let stale: string;
+async function reclaimStaleClaim(lockPath: string, body: string, checked: Pick<ClaimSnapshot, "raw" | "generation">): Promise<boolean> {
+  let stale: ClaimSnapshot;
   try {
-    stale = await readFile(lockPath, "utf8");
+    stale = await readClaimSnapshot(lockPath);
   } catch {
     // Weg oder unlesbar: nichts zu übernehmen, was wir belegen könnten.
     return false;
   }
-  // #1199: bind takeover to the bytes whose abandonment was actually checked.
+  // #1199: bind takeover to the content AND file generation actually checked.
   // A late reread may already see another writer's fresh/live generation.
-  if (stale !== checkedGeneration) return false;
+  if (stale.raw !== checked.raw || stale.generation !== checked.generation) return false;
   // Der Name der Markierung IST die Identität des verwaisten Claims. Ein
   // Reclaim für eine andere Generation kollidiert damit nicht, und zwei
   // Reclaims für dieselbe können es nicht vermeiden.
-  const markPath = `${lockPath}.reclaim-${createHash("sha256").update(stale).digest("hex").slice(0, 16)}`;
+  const markPath = `${lockPath}.reclaim-${createHash("sha256").update(stale.raw).digest("hex").slice(0, 16)}`;
   if (!(await takeReclaimMark(markPath))) return false;
   try {
     // Zwischen dem Lesen oben und der Markierung kann jemand schneller
     // gewesen sein. Dann steht dort ein anderer Claim, und dieser Reclaim ist
     // gegenstandslos.
-    const current = await readFile(lockPath, "utf8").catch(() => null);
-    if (current !== stale) return false;
+    const current = await readClaimSnapshot(lockPath).catch(() => null);
+    if (!current || current.raw !== stale.raw || current.generation !== stale.generation) return false;
     // Per rename statt unlink+create: der Lockpfad trägt durchgehend einen
     // gültigen Claim, erst den alten, dann unseren.
     const tmp = `${lockPath}.${process.pid}.${randomUUID().slice(0, 8)}.take`;
@@ -303,14 +319,25 @@ async function takeReclaimMark(markPath: string): Promise<boolean> {
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") return false;
       if (attempt === 1) return false;
-      let ageMs: number;
+      let seen: BigIntStats;
       try {
-        ageMs = Date.now() - (await stat(markPath)).mtimeMs;
+        seen = await stat(markPath, { bigint: true });
       } catch {
-        continue; // gerade verschwunden — noch ein Versuch
+        continue; // Gone since EEXIST: one plain acquisition attempt.
       }
-      if (ageMs <= RECLAIM_MARK_STALE_MS) return false;
-      await unlink(markPath).catch(() => {});
+      if (Date.now() - Number(seen.mtimeNs) / 1e6 <= RECLAIM_MARK_STALE_MS) return false;
+      // Only one contender may retire this inspected marker generation.
+      // Keep the sibling as a witness: delayed readers cannot win it again.
+      const recovery = `${markPath}.abandoned-${createHash("sha256").update(fileGeneration(seen)).digest("hex").slice(0, 16)}`;
+      try {
+        const handle = await open(recovery, "wx", 0o600);
+        await handle.close();
+        const current = await stat(markPath, { bigint: true });
+        if (fileGeneration(current) !== fileGeneration(seen)) return false;
+        await unlink(markPath);
+      } catch {
+        return false;
+      }
     }
   }
   /* c8 ignore next */

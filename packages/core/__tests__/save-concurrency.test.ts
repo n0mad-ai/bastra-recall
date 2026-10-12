@@ -10,6 +10,7 @@ import test from "node:test";
 import fsPromises from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
@@ -29,7 +30,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
 import { saveMemory } from "../src/save.js";
-import { acquireCommitClaim, commitLockPathFor } from "../src/save-commit.js";
+import { acquireCommitClaim, releaseCommitClaim, commitLockPathFor } from "../src/save-commit.js";
 import { scanVaultForId } from "../src/memory-locator.js";
 import { MEMORY_WRITE_CONFLICT, MemoryWriteConflictError } from "../src/save-schema.js";
 import type { SaveMemoryInput } from "../src/save-schema.js";
@@ -528,28 +529,187 @@ test("ein .bastra, das in ein aktives Regal zeigt, trägt keine Locks", async (t
 });
 
 
-test("late reclaimer cannot displace a live successor of the generation it checked", { timeout: 5000 }, async (t) => {
-  const vault=await harness(t),lock=commitLockPathFor(vault,ID);await mkdir(path.dirname(lock),{recursive:true});
-  await writeFile(lock,JSON.stringify({pid:999999,host:"foreign-fixture",ts:0,token:"abandoned-generation"}),"utf8");const old=new Date(Date.now()-60000);await utimes(lock,old,old);
-  const actors=new AsyncLocalStorage<"A"|"B">(),reads={A:0,B:0};let reachedB!:()=>void,finishedA!:()=>void;
-  const bChecked=new Promise<void>(resolve=>{reachedB=resolve;}),aAcquired=new Promise<void>(resolve=>{finishedA=resolve;});
-  const original=fsPromises.readFile,originalOpen=fsPromises.open;
-  const beforeRead=async(file:unknown)=>{const actor=actors.getStore();if(file===lock&&actor){const n=++reads[actor];if(actor==="A"&&n===2)await bChecked;if(actor==="B"&&n===2){reachedB();await aAcquired;}}};
-  fsPromises.readFile=(async (file:unknown,...args:unknown[])=>{await beforeRead(file);return Reflect.apply(original,fsPromises,[file,...args]);}) as typeof fsPromises.readFile;
-  fsPromises.open=(async (file:unknown,...args:unknown[])=>{
-    const handle=await Reflect.apply(originalOpen,fsPromises,[file,...args]);
-    if(file===lock&&args[0]==="r"){const read=handle.readFile;handle.readFile=async(...readArgs:unknown[])=>{await beforeRead(file);return Reflect.apply(read,handle,readArgs);};}
+interface ClaimIoHooks {
+  beforeRead?: (actor: string, file: unknown, count: number) => Promise<void>;
+  afterRead?: (actor: string, file: unknown, count: number) => Promise<void>;
+  afterOpen?: (actor: string, file: unknown, flags: unknown) => Promise<void>;
+  afterStat?: (actor: string, file: unknown) => Promise<void>;
+  beforeWrite?: (actor: string, file: unknown) => Promise<void>;
+  beforeRename?: (actor: string, target: unknown) => Promise<void>;
+}
+
+function gate() {
+  let open!: () => void;
+  const waiting = new Promise<void>(resolve => { open = resolve; });
+  return { waiting, open };
+}
+
+/** Real files, with gates only around the syscall boundaries under review. */
+async function withClaimIo<T>(hooks: ClaimIoHooks, work: (actors: AsyncLocalStorage<string>) => Promise<T>): Promise<T> {
+  const actors = new AsyncLocalStorage<string>();
+  const reads = new Map<string, number>();
+  const original = {
+    readFile: fsPromises.readFile,
+    open: fsPromises.open,
+    stat: fsPromises.stat,
+    rename: fsPromises.rename,
+  };
+  const read = async (file: unknown, run: () => Promise<unknown>) => {
+    const actor = actors.getStore();
+    if (!actor) return run();
+    const key = `${actor}:${String(file)}`;
+    const count = (reads.get(key) ?? 0) + 1;
+    reads.set(key, count);
+    await hooks.beforeRead?.(actor, file, count);
+    const result = await run();
+    await hooks.afterRead?.(actor, file, count);
+    return result;
+  };
+  fsPromises.readFile = (async (file: unknown, ...args: unknown[]) =>
+    read(file, () => Reflect.apply(original.readFile, fsPromises, [file, ...args]))) as typeof fsPromises.readFile;
+  fsPromises.open = (async (file: unknown, ...args: unknown[]) => {
+    const handle = await Reflect.apply(original.open, fsPromises, [file, ...args]);
+    const actor = actors.getStore();
+    if (actor) {
+      await hooks.afterOpen?.(actor, file, args[0]);
+      const realRead = handle.readFile;
+      handle.readFile = (...readArgs: unknown[]) => read(file, () => Reflect.apply(realRead, handle, readArgs));
+      const realWrite = handle.writeFile;
+      handle.writeFile = async (...writeArgs: unknown[]) => {
+        await hooks.beforeWrite?.(actor, file);
+        return Reflect.apply(realWrite, handle, writeArgs);
+      };
+    }
     return handle;
-  }) as typeof fsPromises.open;syncBuiltinESMExports();
-  let results:PromiseSettledResult<string>[];
-  try{
-    const a=actors.run("A",()=>acquireCommitClaim(lock,ID,path.join(vault,"a.md"))).finally(finishedA);
-    const b=actors.run("B",()=>acquireCommitClaim(lock,ID,path.join(vault,"b.md")));
-    results=await Promise.allSettled([a,b]);
-  }finally{fsPromises.readFile=original;fsPromises.open=originalOpen;syncBuiltinESMExports();}
-  assert.equal(results.filter(r=>r.status==="fulfilled").length,1,"B must not take A's fresh generation after its old abandonment check");
-  assert.equal(results[0].status,"fulfilled");assert.equal(results[1].status,"rejected");
-  if(results[0].status!=="fulfilled"||results[1].status!=="rejected")throw new Error("unexpected claim results");
-  assert.equal((results[1].reason as MemoryWriteConflictError).code,MEMORY_WRITE_CONFLICT);
-  assert.equal((JSON.parse(await readFile(lock,"utf8")) as {token:string}).token,results[0].value);
+  }) as typeof fsPromises.open;
+  fsPromises.stat = (async (file: unknown, ...args: unknown[]) => {
+    const result = await Reflect.apply(original.stat, fsPromises, [file, ...args]);
+    const actor = actors.getStore();
+    if (actor) await hooks.afterStat?.(actor, file);
+    return result;
+  }) as typeof fsPromises.stat;
+  fsPromises.rename = (async (from: unknown, target: unknown) => {
+    const actor = actors.getStore();
+    if (actor) await hooks.beforeRename?.(actor, target);
+    return Reflect.apply(original.rename, fsPromises, [from, target]);
+  }) as typeof fsPromises.rename;
+  syncBuiltinESMExports();
+  try {
+    return await work(actors);
+  } finally {
+    Object.assign(fsPromises, original);
+    syncBuiltinESMExports();
+  }
+}
+
+async function oldClaim(t: Parameters<typeof harness>[0], raw: string) {
+  const vault = await harness(t);
+  const lock = commitLockPathFor(vault, ID);
+  await mkdir(path.dirname(lock), { recursive: true });
+  await writeFile(lock, raw, "utf8");
+  const old = new Date(Date.now() - 120_000);
+  await utimes(lock, old, old);
+  return { vault, lock, old };
+}
+
+const foreignClaim = JSON.stringify({ pid: 999999, host: "foreign-fixture", ts: 0, token: "abandoned-generation" });
+
+test("late reclaimer cannot displace a live successor of the generation it checked", { timeout: 5000 }, async (t) => {
+  const { vault, lock } = await oldClaim(t, foreignClaim);
+  const bChecked = gate();
+  const aAcquired = gate();
+  const results = await withClaimIo({
+    beforeRead: async (actor, file, count) => {
+      if (file !== lock || count !== 2) return;
+      if (actor === "A") await bChecked.waiting;
+      if (actor === "B") {
+        bChecked.open();
+        await aAcquired.waiting;
+      }
+    },
+  }, async actors => {
+    const a = actors.run("A", () => acquireCommitClaim(lock, ID, path.join(vault, "a.md"))).finally(aAcquired.open);
+    const b = actors.run("B", () => acquireCommitClaim(lock, ID, path.join(vault, "b.md")));
+    return Promise.allSettled([a, b]);
+  });
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(results[0].status, "fulfilled");
+  assert.equal(results[1].status, "rejected");
+  if (results[0].status !== "fulfilled" || results[1].status !== "rejected") throw new Error("unexpected claim results");
+  assert.equal((results[1].reason as MemoryWriteConflictError).code, MEMORY_WRITE_CONFLICT);
+  assert.equal(JSON.parse(await readFile(lock, "utf8")).token, results[0].value);
+});
+
+test("contenders for an abandoned reclaim marker cannot delete each other's fresh marker", { timeout: 5000 }, async (t) => {
+  const { vault, lock, old } = await oldClaim(t, foreignClaim);
+  const mark = `${lock}.reclaim-${createHash("sha256").update(foreignClaim).digest("hex").slice(0, 16)}`;
+  await writeFile(mark, "", "utf8");
+  await utimes(mark, old, old);
+  const eInspected = gate();
+  const dClaimed = gate();
+  const eFinishedCheck = gate();
+  const seen = new Set<string>();
+  const results = await withClaimIo({
+    afterStat: async (actor, file) => {
+      if (file !== mark || seen.has(actor)) return;
+      seen.add(actor);
+      if (actor === "D") await eInspected.waiting;
+      if (actor === "E") {
+        eInspected.open();
+        await dClaimed.waiting;
+      }
+    },
+    afterOpen: async (actor, file, flags) => {
+      if (actor === "D" && file === mark && flags === "wx") dClaimed.open();
+    },
+    afterRead: async (actor, file, count) => {
+      if (actor === "E" && file === lock && count === 3) eFinishedCheck.open();
+    },
+    beforeRename: async (actor, target) => {
+      if (actor === "D" && target === lock) await eFinishedCheck.waiting;
+    },
+  }, async actors => {
+    const d = actors.run("D", () => acquireCommitClaim(lock, ID, path.join(vault, "d.md")));
+    const e = actors.run("E", () => acquireCommitClaim(lock, ID, path.join(vault, "e.md"))).finally(eFinishedCheck.open);
+    return Promise.allSettled([d, e]);
+  });
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(results[0].status, "fulfilled");
+  assert.equal(results[1].status, "rejected");
+  if (results[0].status !== "fulfilled") throw new Error("expected D to retain the claim");
+  assert.equal(JSON.parse(await readFile(lock, "utf8")).token, results[0].value);
+});
+
+test("an abandoned empty claim cannot match a newly opened unwritten generation", { timeout: 5000 }, async (t) => {
+  const { vault, lock } = await oldClaim(t, "");
+  const bChecked = gate();
+  const cOpened = gate();
+  const bFinished = gate();
+  const results = await withClaimIo({
+    beforeRead: async (actor, file, count) => {
+      if (file !== lock || count !== 2) return;
+      if (actor === "A") await bChecked.waiting;
+      if (actor === "B") {
+        bChecked.open();
+        await cOpened.waiting;
+      }
+    },
+    afterOpen: async (actor, file, flags) => {
+      if (actor === "C" && file === lock && flags === "wx") cOpened.open();
+    },
+    beforeWrite: async (actor, file) => {
+      if (actor === "C" && file === lock) await bFinished.waiting;
+    },
+  }, async actors => {
+    const b = actors.run("B", () => acquireCommitClaim(lock, ID, path.join(vault, "b.md"))).finally(bFinished.open);
+    const a = await actors.run("A", () => acquireCommitClaim(lock, ID, path.join(vault, "a.md")));
+    await releaseCommitClaim(lock, a);
+    const c = actors.run("C", () => acquireCommitClaim(lock, ID, path.join(vault, "c.md")));
+    return Promise.allSettled([b, c]);
+  });
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(results[0].status, "rejected");
+  assert.equal(results[1].status, "fulfilled");
+  if (results[1].status !== "fulfilled") throw new Error("expected C to retain its new claim");
+  assert.equal(JSON.parse(await readFile(lock, "utf8")).token, results[1].value);
 });
