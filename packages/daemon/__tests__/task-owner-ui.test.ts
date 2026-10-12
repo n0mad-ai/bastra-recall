@@ -187,3 +187,32 @@ test('background redraw preserves archive-button focus and falls back safely whe
  const card=u.get('tasks').children[0].children[1].children[0];doc.activeElement=descendants(card).find(n=>n.textContent==='Erledigt');u.change({...base,tasks:[{...liveTask,state:'resolved'}]});await u.tick();
  const done=u.get('tasks').children.find(c=>c.dataset.taskColumn==='done')!.children[1].children[0];assert.equal(doc.activeElement,done.children[0]);
 });
+
+test('moving runtime check timestamps do not rebuild the board; a visible change rebuilds once',async()=>{
+ const u=await liveUI();u.change({...liveBase,tasks:[liveTask]});await runInContext('refresh()',u.ctx);
+ const board=u.get('tasks'),replace=board.replaceChildren.bind(board);let rebuilds=0;board.replaceChildren=(...nodes:Node[])=>{rebuilds++;replace(...nodes);};
+ for(let i=1;i<=5;i++){u.change({...liveBase,runtime:{running:true,next_tick:i*60000},tasks:[{...liveTask,next_check_at:i*60000}]});await u.tick();}
+ assert.equal(rebuilds,0);assert.ok(descendants(u.get('status')).some(n=>n.textContent.includes('nächste Prüfung')));
+ await board.children[0].children[1].children[0].children[0].handlers.click();assert.ok(descendants(u.get('detail-body')).some(n=>n.textContent===runInContext('time(300000,snapshot.tasks[0].timezone)',u.ctx)));u.get('detail').close();
+ u.change({...liveBase,tasks:[{...liveTask,goal:'Visible change'}]});await u.tick();assert.equal(rebuilds,1);assert.ok(descendants(board).some(n=>n.textContent==='Visible change'));
+ // next_check_at is not ignored when it is the actual visible due-time fallback.
+ const event={...liveTask,schedule:{kind:'event'},next_check_at:60000};u.change({...liveBase,tasks:[event]});await u.tick();const before=board.children;
+ u.change({...liveBase,tasks:[{...event,next_check_at:120000}]});await u.tick();assert.notEqual(board.children,before);
+});
+
+test('own inspector action immediately shows the new task state and valid actions',async()=>{
+ let status:any={...liveBase,tasks:[{...liveTask,state:'due'}]};
+ const u=await ui(status,undefined,{fetch:async(url:string)=>{if(url.endsWith('task_get'))return{ok:true,json:async()=>({expected_revision:'0:0'})};if(url.endsWith('task_resolve'))status={...liveBase,tasks:[{...liveTask,state:'resolved'}]};return{ok:true,json:async()=>status};}});
+ await runInContext('selectTask(snapshot.tasks[0])',u.ctx);await descendants(u.get('detail-body')).find(n=>n.textContent==='Erledigt')!.handlers.click();
+ const details=descendants(u.get('detail-body'));assert.equal(u.get('detail').open,true);assert.ok(details.some(n=>n.textContent==='erledigt'));
+ for(const label of ['Erledigt','Zurückstellen','Abbrechen'])assert.ok(!details.some(n=>n.textContent===label),label);
+ assert.ok(descendants(u.get('tasks').children.find(n=>n.dataset.taskColumn==='done')!).some(n=>n.textContent===liveTask.goal));assert.equal(u.get('message').textContent,'Aufgabe aktualisiert.');
+});
+
+test('reconnect paints the board when a timer response supersedes the foreground refresh',async()=>{
+ const status={...liveBase,tasks:[liveTask]};let tick:Function|undefined,defer=false;const gates:Array<()=>void>=[];
+ const u=await ui(status,undefined,{setInterval:(fn:Function)=>{tick=fn;return 1;},clearInterval:()=>{},fetch:async()=>{if(defer)await new Promise<void>(resolve=>gates.push(resolve));return{ok:true,json:async()=>status};}});
+ await runInContext("token='fixture';open()",u.ctx);await new Promise(r=>setTimeout(r,0));u.get('disconnect').onclick();assert.equal(u.get('tasks').children.length,0);
+ defer=true;u.get('token').value='fixture';u.get('connect').handlers.submit({preventDefault(){}});const background=tick!();assert.equal(gates.length,2);
+ gates[1]();await background;gates[0]();await new Promise(r=>setTimeout(r,0));assert.equal(u.get('workspace').hidden,false);assert.equal(u.get('tasks').children.length,5);assert.ok(descendants(u.get('tasks')).some(n=>n.textContent===liveTask.goal));
+});
