@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Functional results are separate from pending longitudinal confirmation.
 
 
+### Fixed
+
+- Bash-fail reads status only from structured fields or the official error/Codex header, caps repeated memory hints per session and skips leading `cd`/`pushd` in the recall query; thanks @zzallirog (#1152).
+- Without fusion, wired prompt-recall hits outside recognized lookups require a strong trigger anchor; fused recall and literal reflex remain unchanged; thanks @zzallirog (#1188).
+
+
 ## [1.1.0] — 2026-10-11
 
 ### Security
