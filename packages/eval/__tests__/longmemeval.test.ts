@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * The external LongMemEval arm: its loader, its mapping and its registration (#500).
  *
@@ -231,7 +232,7 @@ test("a registration that hides the variant or the archive rule is rejected", ()
 
 test("each configuration is comparable to the figure it was built for", () => {
   const verdicts = longMemEvalComparability();
-  assert.equal(verdicts.length, 2);
+  assert.equal(verdicts.length, 3);
 
   const byConfig = new Map(verdicts.map((v) => [v.configuration, v]));
 
@@ -271,8 +272,10 @@ test("every registered number names the engine that produced it (#500 follow-up)
     (reg.robustness_check as Record<string, unknown>).engine,
   ] as (Record<string, unknown> | undefined)[];
 
-  assert.equal(blocks.length, 3);
-  for (const e of blocks) {
+  assert.equal(blocks.length, 4);
+  const legacy = blocks.filter(e => e?.backfilled === true);
+  assert.equal(legacy.length, 3);
+  for (const e of legacy) {
     assert.ok(e, "every measured result carries an engine identity");
     assert.match(String(e!.core_src_sha256), /^[0-9a-f]{64}$/);
     // A hand-entered provenance field must never be indistinguishable from one
@@ -284,8 +287,19 @@ test("every registered number names the engine that produced it (#500 follow-up)
   }
 
   // All three ran on one engine, so one hash covers them.
-  const hashes = new Set(blocks.map((e) => String(e!.core_src_sha256)));
-  assert.equal(hashes.size, 1, "the three runs share one engine revision");
+  const hashes = new Set(legacy.map((e) => String(e!.core_src_sha256)));
+  assert.equal(hashes.size, 1, "the three legacy runs share one engine revision");
+  const current = (reg.configurations as { id: string; measurement: Record<string, unknown> }[])
+    .find(c => c.id === reg.shipped_default_configuration)!.measurement;
+  const engine = current.engine as Record<string, unknown>;
+  assert.match(String(engine.repo_commit), /^[0-9a-f]{40}$/);
+  assert.match(String(engine.core_src_sha256), /^[0-9a-f]{64}$/);
+  assert.equal(engine.repo_dirty, false);
+  assert.notEqual(engine.backfilled, true, "new identity is machine-recorded");
+  assert.equal(current.rrf_vector_weight, 1.5);
+  assert.equal(current.repo_tag, "v1.1.0");
+  assert.equal(current.retrieval_only, true);
+  assert.equal(current.no_reader_or_judge, true);
 });
 
 test("a protocol match is not a retriever match (#500 follow-up)", () => {
@@ -379,4 +393,19 @@ test("the arm writes nothing into the private eval-run archive (#446)", () => {
       `${f} must not resolve the archive directory`,
     );
   }
+});
+
+test("shipped baseline per-type rank-1 counts recover the aggregate and pin their derivation", () => {
+  const excerpt = JSON.parse(readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8"));
+  const row = excerpt.runs.find((r: { id: string }) => r.id === "shipped-default-v1.1.0");
+  assert.equal(row.by_type_derivation.source_artifact_sha256, row.file_sha256);
+  const script = readFileSync(join(import.meta.dirname, "..", "scripts", "extract-longmemeval-types.py"));
+  assert.equal(createHash("sha256").update(script).digest("hex"), row.by_type_derivation.derivation_code_sha256);
+  let n = 0, hits = 0;
+  for (const type of Object.values(row.by_type_r_at_1) as { n: number; arms: Record<string, { hits: number; value: number }> }[]) {
+    n += type.n; hits += type.arms.hybrid.hits;
+    for (const arm of Object.values(type.arms)) assert.equal(arm.value, arm.hits / type.n);
+  }
+  assert.equal(n, row.n_questions);
+  assert.equal(hits / n, row.summary.hybrid["r@1"]);
 });
