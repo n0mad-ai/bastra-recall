@@ -82,6 +82,8 @@ wordings are frozen per version in `packages/core/src/scrub.ts`
 (`FROZEN_FRAME_NOTES`), which is also what the ingest scrub (#149) uses to drop
 quoted note lines from transcripts before capture heuristics run.
 
+There are ten Claude Code hook registrations by default: eight core entries plus Stop and SessionEnd. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves eight. The PostToolUse write-tool entry supplies save notices.
+
 ### Installed binaries
 
 After `npm run build` the daemon package exposes these bin entries:
@@ -1648,6 +1650,8 @@ pro Version in `packages/core/src/scrub.ts` (`FROZEN_FRAME_NOTES`)
 eingefroren. Darauf greift auch der Ingest-Scrub (#149) zurück, um zitierte
 Notizzeilen aus Transkripten zu entfernen, bevor die Capture-Heuristiken
 laufen.
+
+Standardmäßig gibt es zehn Claude-Code-Hook-Registrierungen: acht Kerneinträge plus Stop und SessionEnd. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt acht. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
 
 ### Installierte Programme
 

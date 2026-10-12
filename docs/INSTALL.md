@@ -53,6 +53,12 @@ it completely alone: it is never upgraded, downgraded or removed, and Recall
 uses its own pinned copy. See [USAGE.md](./USAGE.md) for turning the feature on
 and off.
 
+### Local models and post-update checks (1.1.0)
+
+New installs offer `tev1:4b` from 16 GB RAM (4.5 GB download), `gemma4:12b` as an alternative from 24 GB (8.1 GB) and as the suggestion from 32 GB. Existing installs without a saved choice retain the `gemma3:4b` fallback until you choose to switch. Text models and embedding models are separate. See [model recommendations](./USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model) for consent, overrides and measured limits.
+
+After an update, re-run `bastra install claude-code` / `bastra install codex` if doctor reports the new save-notice matcher missing. Codex requires reviewing/trusting it in `/hooks`. A missing notice alone does not disable healthy recall hooks. `BASTRA_SAVE_NOTICE=0` disables the notice. [Codex notice compatibility](./codex-save-notice.md) explains the unverified interactive appearance.
+
 ### Manual client configuration
 
 Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex uses a separate [TOML-based setup](./CODEX.md). Restart the client after changing registrations, then run `bastra doctor` to check them. Its features section also shows what is switched off, for example no memory language set or no onboarding yet, with the command for each.
@@ -110,6 +116,12 @@ Hast du Graphify bereits selbst installiert, meldet Recall das und lässt es
 vollständig in Ruhe: Es wird nie aktualisiert, herabgestuft oder entfernt, und
 Recall benutzt seine eigene festgelegte Kopie. Wie man die Funktion ein- und
 ausschaltet, steht in [USAGE.md](./USAGE.md).
+
+### Lokale Modelle und Prüfung nach Updates (1.1.0)
+
+Neue Installationen bieten `tev1:4b` ab 16 GB RAM (4,5 GB Download), `gemma4:12b` als Alternative ab 24 GB (8,1 GB) und als Vorschlag ab 32 GB. Bestehende Installationen ohne gespeicherte Wahl behalten den Fallback `gemma3:4b`, bis du die Umstellung wählst. Text- und Embedding-Modelle sind getrennt. [Modell-Empfehlungen](./USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt) erklären Zustimmung, Overrides und gemessene Grenzen.
+
+Führe nach einem Update `bastra install claude-code` / `bastra install codex` erneut aus, wenn Doctor den neuen Speicherhinweis-Matcher vermisst. In Codex muss er in `/hooks` geprüft und bestätigt werden. Ein allein fehlender Hinweis deaktiviert gesunde Recall-Hooks nicht. `BASTRA_SAVE_NOTICE=0` schaltet den Hinweis aus. [Codex-Hinweis-Kompatibilität](./codex-save-notice.md#deutsch) erklärt die ungeprüfte interaktive Darstellung.
 
 ### Client manuell konfigurieren
 

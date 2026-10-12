@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Release documentation guard: version bumps update both README release lines; tests and publishing verify README/package/changelog agreement. Real publishing requires an explicit EN/DE Wiki-update confirmation. README, user guides and the separate Wiki are refreshed for 1.1.0.
+
 - Proactive notify reminders can be added and controlled in conversation, with automatic local Agent access and a Tasks tab in the Recall UI. Existing prepare/execute approval remains unchanged pending further Owner discussion.
 
 ### Added

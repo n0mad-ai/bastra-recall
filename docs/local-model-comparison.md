@@ -4,8 +4,7 @@ Which local models make bastra-recall better? This page compares the models
 bastra-recall uses today with the local models that were newly available on
 9 October 2026. Everything ran on one Apple M4 Pro with 24 GB RAM, on invented
 data; the one exception is the public LongMemEval benchmark in section 2.
-**No default was changed by this comparison**; it is the basis for that
-decision.
+**Measurement baseline:** “default” in the tables means `gemma3:4b` at the time of the 9 October comparison. Since 1.1.0, new installs are offered `tev1:4b` from 16 GB and `gemma4:12b` from 32 GB (alternative from 24 GB); existing installs are never switched automatically. See [model recommendations](./USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model). The measurements below are unchanged.
 
 [English](#what-the-models-do) · [Deutsch](#deutsch)
 
@@ -60,7 +59,7 @@ The injection column counts the 86 probes that fit the production length limits
 (59 new, 27 earlier; see [section 1](#resistance-to-injected-instructions)), the
 dot refers to the 59 new ones.
 
-- **A small new model is reliably better than today's default at two of the
+- **A small new model is reliably better than measurement baseline at two of the
   three jobs.** `tev1:4b` answers 96 % of the draft-check questions correctly
   (default `gemma3:4b`: 88 %), let 1 of 86 injected instructions through
   (default: 19), and as a reranker picks the right note almost twice as often
@@ -102,7 +101,7 @@ dot refers to the 59 new ones.
 
 | Model | Download | Runs on | Tested as | Tested through |
 | --- | ---: | --- | --- | --- |
-| `gemma3:4b` | 3.3 GB | 16 GB | generation model, **default today** | chat |
+| `gemma3:4b` | 3.3 GB | 16 GB | generation model, **baseline at measurement time** | chat |
 | `gemma4:12b` | 7.6 GB | 24 GB+ | generation model, **option today** | chat |
 | `qwen3-recall` (local build of `qwen3:4b-instruct-2507-q4_K_M`) | 2.5 GB | 16 GB | generation model, earlier candidate | chat |
 | `gemma4:12b-it-q4_K_M` | 8.0 GB | 24 GB+ | refreshed weights of the option | chat |
@@ -113,7 +112,7 @@ dot refers to the 59 new ones.
 | `granite4.2:8b` | 5.3 GB | 24 GB+ | new, large | chat |
 | `nimble:9b` | 9.5 GB | 24 GB+ | new, large, decision model | decision endpoint only |
 | `laya:322m` | 0.7 GB | 16 GB | new, tiny decision model | decision endpoint only, Ollama 0.40 |
-| `embeddinggemma` | 0.6 GB | 16 GB | embedding model, **default today** | embed |
+| `embeddinggemma` | 0.6 GB | 16 GB | embedding model, **baseline at measurement time** | embed |
 | `embeddinggemma-2:270m` / `:570m` | 0.4 / 1.0 GB | 16 GB | new embedding model | embed, Ollama 0.40 |
 
 "Runs on" follows the installer's existing rule (a model of about 4 GB next to
@@ -525,8 +524,7 @@ Welche lokalen Modelle machen bastra-recall besser? Diese Seite vergleicht die
 Modelle, die bastra-recall heute nutzt, mit den lokalen Modellen, die am
 9. Oktober 2026 neu verfügbar waren. Alles lief auf einem Apple M4 Pro mit
 24 GB RAM, mit erfundenen Daten; die eine Ausnahme ist der öffentliche Benchmark
-LongMemEval in Abschnitt 2. **Durch diesen Vergleich wurde kein Standard
-geändert**; er ist die Grundlage für diese Entscheidung.
+LongMemEval in Abschnitt 2. **Messbaseline:** „Standard“ in den Tabellen meint `gemma3:4b` zum Vergleichszeitpunkt am 9. Oktober. Seit 1.1.0 wird neuen Installationen `tev1:4b` ab 16 GB und `gemma4:12b` ab 32 GB angeboten (Alternative ab 24 GB); bestehende Installationen werden nie automatisch umgestellt. Siehe [Modell-Empfehlungen](./USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt). Die Messwerte unten bleiben unverändert.
 
 ### Was die Modelle tun
 
@@ -585,7 +583,7 @@ siehe [Abschnitt 1](#widerstand-gegen-eingeschleuste-anweisungen)), der Punkt
 bezieht sich auf die 59 neuen.
 
 - **Ein kleines neues Modell ist bei zwei der drei Aufgaben verlässlich besser
-  als der heutige Standard.** `tev1:4b` beantwortet 96 % der Fragen der
+  als der damalige Standard.** `tev1:4b` beantwortet 96 % der Fragen der
   Entwurfs-Prüfung richtig (Standard `gemma3:4b`: 88 %), lässt 1 von 86
   eingeschleusten Anweisungen durch (Standard: 19) und wählt beim Nachsortieren
   fast doppelt so oft die richtige Notiz (62 % gegen 33 %), bei ähnlicher
@@ -631,7 +629,7 @@ bezieht sich auf die 59 neuen.
 
 | Modell | Download | Läuft auf | Getestet als | Getestet über |
 | --- | ---: | --- | --- | --- |
-| `gemma3:4b` | 3,3 GB | 16 GB | Textmodell, **heutiger Standard** | Chat |
+| `gemma3:4b` | 3,3 GB | 16 GB | Textmodell, **Standard zum Messzeitpunkt** | Chat |
 | `gemma4:12b` | 7,6 GB | 24 GB+ | Textmodell, **heutige Option** | Chat |
 | `qwen3-recall` (lokaler Build von `qwen3:4b-instruct-2507-q4_K_M`) | 2,5 GB | 16 GB | Textmodell, früherer Kandidat | Chat |
 | `gemma4:12b-it-q4_K_M` | 8,0 GB | 24 GB+ | aufgefrischte Gewichte der Option | Chat |
@@ -642,7 +640,7 @@ bezieht sich auf die 59 neuen.
 | `granite4.2:8b` | 5,3 GB | 24 GB+ | neu, groß | Chat |
 | `nimble:9b` | 9,5 GB | 24 GB+ | neu, groß, Entscheidungsmodell | nur Entscheidungs-Schnittstelle |
 | `laya:322m` | 0,7 GB | 16 GB | neu, winziges Entscheidungsmodell | nur Entscheidungs-Schnittstelle, Ollama 0.40 |
-| `embeddinggemma` | 0,6 GB | 16 GB | Einbettungsmodell, **heutiger Standard** | Embed |
+| `embeddinggemma` | 0,6 GB | 16 GB | Einbettungsmodell, **Standard zum Messzeitpunkt** | Embed |
 | `embeddinggemma-2:270m` / `:570m` | 0,4 / 1,0 GB | 16 GB | neues Einbettungsmodell | Embed, Ollama 0.40 |
 
 „Läuft auf“ folgt der bestehenden Regel des Installers (ein Modell von etwa
