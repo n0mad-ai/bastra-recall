@@ -822,8 +822,18 @@ prepare/execute policy discussion remain as documented, without a new policy her
 ### Local source read containment (CodeQL #109)
 
 File-source observation and bounded evidence/Memory/adapter reads open nonblocking
-and require a regular file before reading. macOS uses `O_NOFOLLOW_ANY` on the
-canonical checked path; Linux compares `/proc/self/fd/<fd>` with that checked
-path before reading (unavailable procfs fails closed). A second path lookup alone
-is not a descriptor binding. Windows retains the existing path/final-component
-checks; containment against concurrent parent replacement is not guaranteed there.
+and require a regular file before reading. For registered sources/targets the
+caller checks canonical containment; rollback backup reads canonicalize only the
+own data directory, so a symlinked data-directory alias remains supported without
+resolving a foreign writable source path or a backup's final component.
+macOS uses `O_NOFOLLOW_ANY`; Linux compares `readlink(/proc/self/fd/<fd>)` with the
+checked canonical path before reading (unavailable procfs fails closed). A second
+lookup of the pathname alone is not a descriptor binding. Windows and other POSIX
+platforms (including FreeBSD and Android/Termux) retain the existing path checks
+and available nonblocking/regular-file protection, without the macOS/Linux
+containment guarantee against concurrent parent replacement.
+
+File-source observation deliberately rejects files with more than one hardlink
+(`source_unavailable`, with an explanatory status), because an alias can refer to
+content outside the registered root. Use a single-link file for observation.
+This restriction does not apply to backups in the own data directory.

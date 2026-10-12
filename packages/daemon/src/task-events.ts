@@ -196,7 +196,9 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
         if (rel.startsWith("..") || isAbsolute(rel) || (await lstat(target)).isSymbolicLink() || await realpath(target) !== target) throw new Error("path containment");
         const handle = await openTaskSourceFile(target);
         try {
-          if ((await handle.stat()).size > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
+          const info = await handle.stat();
+          if (info.nlink > 1) throw Object.assign(new Error("source has multiple hard links"), { code: "source_hardlink" });
+          if (info.size > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
           const bytes = Buffer.alloc(maxBytes + 1); const read = await handle.read(bytes, 0, bytes.length, 0);
           observedBytes=read.bytesRead;if (read.bytesRead > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
           return taskValueHash(bytes.subarray(0, read.bytesRead).toString("utf8"));
@@ -233,9 +235,10 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
       });
     } catch(error) {
       const code=(error as any)?.code==="source_timeout"||(error as any)?.killed?"source_timeout":(error as any)?.code==="source_budget"||(error as any)?.code==="ERR_CHILD_PROCESS_STDIO_MAXBUFFER"?"source_budget":"source_unavailable";
+      const message = code==="source_budget"?((error as any)?.reason==="memory_scan_budget"?"Memory-Suchgrenze überschritten":"Quell-Bytegrenze überschritten"):code==="source_timeout"?"Zeitbudget der Quelle überschritten":(error as any)?.code==="source_hardlink"?"Dateiquelle hat mehrere Hardlinks; nur Dateien mit einem Link werden beobachtet":"Registered source cannot be observed";
       await transactTaskStore(ctx.path, undefined, s => {
-        for (const task of s.tasks) if ((charged.length?charged.some(t=>t.id===task.id):task.schedule.kind === "event" && task.schedule.source_id === source.id) && task.last_failure?.code !== code) {
-          task.last_failure = { at: now, code, message: code==="source_budget"?((error as any)?.reason==="memory_scan_budget"?"Memory-Suchgrenze überschritten":"Quell-Bytegrenze überschritten"):code==="source_timeout"?"Zeitbudget der Quelle überschritten":"Registered source cannot be observed" }; audit(task, now, "source-failed");
+        for (const task of s.tasks) if ((charged.length?charged.some(t=>t.id===task.id):task.schedule.kind === "event" && task.schedule.source_id === source.id) && (task.last_failure?.code !== code || task.last_failure?.message !== message)) {
+          task.last_failure = { at: now, code, message }; audit(task, now, "source-failed");
         }
       }, "control");
     }

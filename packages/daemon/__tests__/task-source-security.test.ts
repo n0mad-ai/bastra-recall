@@ -14,3 +14,8 @@ test("descriptor-bound source/evidence reads never observe outside content durin
   const result = await exec(process.execPath, ["--import", "tsx", probe, "swap"], { timeout: 20000 });
   assert.match(result.stdout, /probe passed/);
 });
+
+test("file source hardlinks are unavailable with a readable reason; a single-link replacement recovers", async () => {
+  const result = await exec(process.execPath, ["--import", "tsx", probe, "hardlink"], { timeout: 15000 });
+  assert.match(result.stdout, /probe passed/);
+});

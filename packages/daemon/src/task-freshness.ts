@@ -21,7 +21,7 @@ export function taskBindingHash(task: Task): string {
 export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
   const handle = await openTaskSourceFile(path);
   try {
-    const info = await handle.stat(); if (!info.isFile()) throw new Error("source is not a regular file");
+    const info = await handle.stat(); // openTaskSourceFile already requires a regular file
     if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
     const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
     if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });

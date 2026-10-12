@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- Task file-source and evidence reads reject non-regular files without blocking and bind the opened source on macOS/Linux, preventing parent-symlink swaps from reading outside a registered root (CodeQL #109). Windows retains the existing path checks without equivalent descriptor containment.
+- Task file-source and evidence reads reject non-regular files without blocking and bind the opened source on macOS/Linux, preventing parent-symlink swaps from reading outside a registered root (CodeQL #109). File-source observation deliberately rejects multiple hardlinks; own rollback backups retain hardlink support and work through symlinked data-directory aliases. Windows and other POSIX platforms retain their available nonblocking/regular-file and path checks without equivalent descriptor containment.
 
 ### Added
 
