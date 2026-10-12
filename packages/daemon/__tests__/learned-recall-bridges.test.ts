@@ -15,6 +15,7 @@ import {
   MIN_BRIDGE_EVIDENCE,
   UNCONFIRMED_BRIDGE_TTL_DAYS,
   bridgeId,
+  bridgeFiredOn,
   distinctiveTerms,
   expandQuery,
   isEphemeralTerm,
@@ -397,4 +398,23 @@ test("expansionsFor needs two shared trigger terms; a one-term bridge fires on i
 test("distinctiveTerms drops everyday words so they can never become trigger terms (20.08.)", () => {
   const terms = distinctiveTerms("antwortentwurf bitte, ich habe den aktuellen stand kurz geprüft");
   assert.deepEqual(terms, ["antwortentwurf", "geprüft"]);
+});
+
+
+test("legacy folded trigger aliases cannot satisfy the two-word rule", async () => {
+  const legacy = bridge({ lang: "de", trigger_terms: ["straße", "strasse"], expansion_terms: ["staging"] });
+  await withPool([legacy], async (pool) => {
+    assert.deepEqual(pool.expansionsFor("strasse", "de"), []);
+    assert.equal(bridgeFiredOn(legacy, new Set(["strasse"]), ["staging"]), false);
+  });
+});
+
+test("legacy folded expansions deduplicate before the reduced expansion cap", async () => {
+  const legacy = bridge({ lang: "de", trigger_terms: ["panel", "sheet"],
+    expansion_terms: ["straße", "strasse", "observer", "staging"],
+    evidence: 1, first_seen: new Date().toISOString() });
+  await withPool([legacy], async (pool) => {
+    assert.deepEqual(pool.expansionsFor("panel sheet", "de"), ["strasse", "observer", "staging"]);
+    assert.equal(bridgeFiredOn(legacy, new Set(["panel", "sheet"]), ["strasse"]), true);
+  });
 });

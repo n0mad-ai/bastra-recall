@@ -250,12 +250,14 @@ const MAX_QUERY_EXPANSION = 12; // cap how much a single query can be widened
  *  pushed the memories the prompt was actually about out of the top-k. A
  *  one-term bridge still fires on its one term: it was minted that specific. */
 const MIN_TRIGGER_OVERLAP = 2;
+// Preserve the two-word minimum of a legacy multi-term bridge even if its
+// aliases collapse to one word; only a genuinely one-term file gets the exception.
 const requiredOverlap = (b: Bridge): number => Math.min(MIN_TRIGGER_OVERLAP, b.trigger_terms.length);
 function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
   let n = 0;
   // Query terms are folded (distinctiveTerms); a pool file minted before the
   // fold still holds "schließt" or "i̇stanbul", so the stored side folds too.
-  for (const t of b.trigger_terms) if (queryTerms.has(foldTerm(t))) n++;
+  for (const t of new Set(b.trigger_terms.map(foldTerm))) if (queryTerms.has(t)) n++;
   return n;
 }
 
@@ -266,7 +268,8 @@ function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
  *  distinctiveTerms(query) of the logged (unexpanded) query. */
 export function bridgeFiredOn(b: Bridge, queryTerms: Set<string>, added: readonly string[]): boolean {
   if (triggerOverlap(b, queryTerms) < requiredOverlap(b)) return false;
-  return added.some((t) => b.expansion_terms.includes(t));
+  const expansions = new Set(b.expansion_terms.map(foldTerm));
+  return added.some((t) => expansions.has(foldTerm(t)));
 }
 
 /** Evidence a bridge needs to be written and loaded at all.
@@ -323,7 +326,7 @@ export function isExpiredUnconfirmed(
  *  least half its terms, never fewer than the confirmed rule asks. */
 function requiredOverlapFor(b: Bridge): number {
   const base = requiredOverlap(b);
-  return hasFullWeight(b) ? base : Math.max(base, Math.ceil(b.trigger_terms.length / 2));
+  return hasFullWeight(b) ? base : Math.max(base, Math.ceil(new Set(b.trigger_terms.map(foldTerm)).size / 2));
 }
 
 // #162: the base query is capped BEFORE expansion terms are appended, so the
@@ -450,9 +453,9 @@ export class BridgePool {
       // #129: a demoted bridge is dampened the same way.
       const cap = hasFullWeight(b) ? MAX_QUERY_EXPANSION : MAX_UNCONFIRMED_EXPANSION;
       let fromThis = 0;
-      for (const e of b.expansion_terms) {
+      for (const e of new Set(b.expansion_terms.map(foldTerm))) {
         if (fromThis >= cap) break;
-        if (!queryTerms.has(foldTerm(e)) && !added.has(e)) {
+        if (!queryTerms.has(e) && !added.has(e)) {
           added.add(e);
           fromThis++;
         }

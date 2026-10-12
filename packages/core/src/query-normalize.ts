@@ -1,3 +1,5 @@
+import { normalizeInwordApostrophes } from "./fold.js";
+
 /**
  * Query-Normalizer + Identifier-erhaltender Tokenizer (#162).
  *
@@ -116,7 +118,7 @@ function scanRawTokens(text: string): string[] {
  */
 export function tokenizeWithIdentifiers(text: string): string[] {
   const out: string[] = [];
-  for (const raw of scanRawTokens(text)) {
+  for (const raw of scanRawTokens(normalizeInwordApostrophes(text))) {
     const token = trimGlue(raw);
     if (!token) continue;
     // Spaceless prose uses ICU words (#711). Mixed identifiers additionally
