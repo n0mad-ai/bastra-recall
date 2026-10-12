@@ -216,3 +216,43 @@ test('reconnect paints the board when a timer response supersedes the foreground
  defer=true;u.get('token').value='fixture';u.get('connect').handlers.submit({preventDefault(){}});const background=tick!();assert.equal(gates.length,2);
  gates[1]();await background;gates[0]();await new Promise(r=>setTimeout(r,0));assert.equal(u.get('workspace').hidden,false);assert.equal(u.get('tasks').children.length,5);assert.ok(descendants(u.get('tasks')).some(n=>n.textContent===liveTask.goal));
 });
+
+async function renewalUI(){
+ let expired=false,renewFails=false,status:any=liveBase,tick:Function|undefined,serial=0;const calls:Array<{url:string,input:any,headers:any}>=[];
+ const u=await ui(status,undefined,{setInterval:(fn:Function)=>{tick=fn;return 1;},clearInterval:()=>{tick=undefined;},fetch:async(url:string,args:any)=>{
+  calls.push({url,input:JSON.parse(args.body),headers:args.headers});
+  if(url==='/ui/tasks/session'){if(renewFails)return{ok:false,json:async()=>({code:'forbidden'})};expired=false;return{ok:true,json:async()=>({csrf:`csrf-${++serial}`,role:'agent'})};}
+  if(url.endsWith('/logout'))return{ok:true,json:async()=>({logged_out:true})};
+  if(expired)return{ok:false,json:async()=>({code:'unauthorized'})};
+  return{ok:true,json:async()=>url.endsWith('task_get')?{...liveTask,expected_revision:'0:0'}:status};
+ }});
+ await runInContext('open()',u.ctx);await new Promise(r=>setTimeout(r,0));
+ return {...u,calls,expire:()=>{expired=true;},deny:()=>{renewFails=true;},allow:()=>{renewFails=false;},change:(next:any)=>{status=next;},tick:async()=>{await tick?.();},sessions:()=>calls.filter(c=>c.url==='/ui/tasks/session').length};
+}
+test('expired local session renews silently and shows an external task with fresh CSRF',async()=>{
+ const u=await renewalUI(),before=u.sessions();u.expire();u.change({...liveBase,tasks:[liveTask]});await u.tick();
+ assert.equal(u.sessions(),before+1);assert.ok(descendants(u.get('tasks')).some(n=>n.textContent===liveTask.goal));assert.equal(u.get('message').hidden,true);
+ assert.equal(u.calls.at(-1)!.headers['x-bastra-task-csrf'],'csrf-2');assert.ok(!u.calls.at(-1)!.headers.Authorization);await u.tick();assert.equal(u.sessions(),before+1);
+});
+test('entered token never renews and explicit logout stays signed out until the view is reopened',async()=>{
+ const u=await renewalUI();await runInContext("localSession=false;token='entered-token'",u.ctx);u.expire();const before=u.sessions();await u.tick();assert.equal(u.sessions(),before);assert.match(u.get('message').textContent,/abgelaufen/);
+ u.get('disconnect').onclick();const doc=(u.ctx as any).document;doc.hidden=true;await doc.handlers.visibilitychange();doc.hidden=false;await doc.handlers.visibilitychange();await u.tick();assert.equal(u.sessions(),before);assert.equal(u.get('workspace').hidden,true);
+ await runInContext('close();open()',u.ctx);await new Promise(r=>setTimeout(r,0));assert.equal(u.sessions(),before+1);
+});
+test('failed renewal announces once and retries only on return or manual refresh',async()=>{
+ const u=await renewalUI(),before=u.sessions();let value='',messages=0;Object.defineProperty(u.get('message'),'textContent',{get:()=>value,set:(next:string)=>{value=next;if(next)messages++;}});
+ u.expire();u.deny();await u.tick();assert.equal(messages,1);assert.equal(u.sessions(),before+1);for(let i=0;i<5;i++)await u.tick();assert.equal(u.sessions(),before+1);assert.equal(messages,1);
+ const doc=(u.ctx as any).document;doc.hidden=true;await doc.handlers.visibilitychange();doc.hidden=false;await doc.handlers.visibilitychange();assert.equal(u.sessions(),before+2);assert.equal(messages,2);
+ u.allow();u.change({...liveBase,tasks:[liveTask]});await u.get('refresh').onclick();assert.equal(u.sessions(),before+3);assert.ok(descendants(u.get('tasks')).some(n=>n.textContent===liveTask.goal));assert.equal(u.get('message').hidden,true);
+});
+test('hidden task window renews only when visible again and busy dialogs stay intact',async()=>{
+ const u=await renewalUI(),before=u.sessions(),doc=(u.ctx as any).document;u.expire();doc.hidden=true;await doc.handlers.visibilitychange();await u.tick();assert.equal(u.sessions(),before);
+ doc.hidden=false;await doc.handlers.visibilitychange();assert.equal(u.sessions(),before+1);
+ u.get('compose').showModal();u.get('goal').value='Unsubmitted';u.expire();await u.tick();assert.equal(u.sessions(),before+1);assert.equal(u.get('goal').value,'Unsubmitted');assert.equal(u.get('compose').open,true);
+ u.get('compose').close();await u.tick();assert.equal(u.sessions(),before+2);
+});
+test('expired user action renews access without retrying the mutation or closing its inspector',async()=>{
+ const u=await renewalUI();u.change({...liveBase,tasks:[liveTask]});await runInContext('refresh()',u.ctx);await runInContext('selectTask(snapshot.tasks[0])',u.ctx);
+ u.expire();const before=u.sessions();u.change({...liveBase,tasks:[{...liveTask,goal:'Current external state'}]});await descendants(u.get('detail-body')).find(n=>n.textContent==='Erledigt')!.handlers.click();
+ assert.equal(u.sessions(),before+1);assert.ok(!u.calls.some(c=>c.url.endsWith('task_resolve')));assert.equal(u.get('detail').open,true);assert.ok(descendants(u.get('detail-body')).some(n=>n.textContent==='Current external state'));assert.match(u.get('message').textContent,/erneut/);
+});
