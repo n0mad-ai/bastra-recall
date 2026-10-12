@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquireCommitClaim, releaseCommitClaim, commitLockPathFor } from "../src/save-commit.js";
-import { MEMORY_WRITE_CONFLICT } from "../src/save-schema.js";
+import { MEMORY_WRITE_CONFLICT, type MemoryWriteConflictError } from "../src/save-schema.js";
 
 const ID = "shared-memory";
 async function harness(t: { after: (fn: () => unknown) => void }): Promise<string> {

@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
 import { saveMemory } from "../src/save.js";
-import { acquireCommitClaim, releaseCommitClaim, commitLockPathFor } from "../src/save-commit.js";
+import { acquireCommitClaim, commitLockPathFor } from "../src/save-commit.js";
 import { scanVaultForId } from "../src/memory-locator.js";
 import { MEMORY_WRITE_CONFLICT, MemoryWriteConflictError } from "../src/save-schema.js";
 import type { SaveMemoryInput } from "../src/save-schema.js";
