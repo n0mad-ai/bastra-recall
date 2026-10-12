@@ -239,6 +239,8 @@ presentation (every edit, full candidate list with summaries).
 
 #### `bastra-recall-prompt-hook` (#33)
 
+The word-search path behind these hooks uses the same tokenizer for notes and queries: Chinese/Japanese/Thai and other supported spaceless runs are segmented into words with Node's ICU `Intl.Segmenter`. If it is unavailable or returns no word-like pieces, the old whole-run behaviour remains. Mixed identifiers such as `服务器.password` keep their whole term and existing components as well as additional word segments; this does not promise a particular rank. [Search spelling and tokenization](./architecture.md#search-and-recall) explains the shared Unicode/case fold.
+
 Detects retrieval prompts by how they open. The leads are per-language data
 (German, English, Russian; #765), anchored at the start of the prompt and
 matched with Unicode letter boundaries: `such`, `finde`, `wo ist` / `find`,
@@ -335,7 +337,10 @@ asking for memory).
 prompt is POSTed to `/hook/reflex` (parallel to the recall call, same
 250 ms budget). The daemon hard-matches the prompt against the
 `recall_when` phrases of memories with `recall_mode: "reflex"`
-(deterministic token-AND, no fuzzy/prefix), budgets to
+(deterministic token-AND, no fuzzy/prefix). Trigger and prompt tokens use the
+same Unicode/case fold (including `İ`/`ı`, `ß`/`SS` and non-Latin in-word
+apostrophe variants); it does not turn `ö` into `o` or infer new word forms.
+The daemon limits hits to
 `BASTRA_REFLEX_MAX_PER_TURN` (default 2) and returns lean hits. The hook
 renders them as a `<recall-hints … trigger="reflex">` block ahead of the
 lookup block. Reflex hits bypass the #161 backoff (user-wired = never
@@ -1209,8 +1214,9 @@ vault rejects that pair. Words common in vault notes are not anchors, letting
 canonical notes take precedence. A note count alone does not prove coverage of the
 query's language. These synthetic rates do not establish real-world quality;
 remaining errors will be measured on real data without further invented retuning.
-There is no stemming or translation. Chinese/Japanese without spaces remain one
-token and do not match the two-token rule (#711).
+The draft matcher uses the shared Unicode/case fold, with no stemming or
+translation. Unlike the BM25 word-search path, it still keeps Chinese/Japanese
+runs without spaces as one token, so they do not satisfy its two-token rule.
 
 **Independent review, different material:** on 200 drafts covering 50 topics and
 a 300-note vault representing both languages: short 0/50, unrelated 0/50, topical
@@ -1852,6 +1858,8 @@ Zusammenfassungen).
 
 #### `bastra-recall-prompt-hook` (#33)
 
+Der Wortsuchpfad hinter diesen Hooks verwendet denselben Tokenizer für Notizen und Anfragen: Chinesische/japanische/thailändische und andere unterstützte Zeichenläufe ohne Leerzeichen werden mit Nodes ICU-`Intl.Segmenter` in Wörter zerlegt. Ist er nicht verfügbar oder liefert keine wortartigen Teile, bleibt das alte Verhalten mit ganzen Zeichenläufen. Gemischte Bezeichner wie `服务器.password` behalten Ganzterm und bisherige Teile sowie zusätzliche Wortsegmente; das verspricht keinen bestimmten Rang. [Schreibweise und Tokenisierung der Suche](./architecture.md#suche-und-abruf) erklärt die gemeinsame Unicode-/Groß-Klein-Faltung.
+
 Erkennt Retrieval-Prompts daran, wie sie anfangen. Die Anfänge sind Daten pro
 Sprache (Deutsch, Englisch, Russisch; #765), am Prompt-Anfang verankert und an
 Unicode-Buchstabengrenzen geprüft: `such`, `finde`, `wo ist` / `find`,
@@ -1960,7 +1968,11 @@ Assertion-Prompt nicht um Erinnerungen).
 Prompt per POST an `/hook/reflex` geschickt (parallel zum Recall-Aufruf,
 gleiches 250-ms-Budget). Der Daemon gleicht den Prompt hart gegen die
 `recall_when`-Phrasen von Erinnerungen mit `recall_mode: "reflex"` ab
-(deterministisches Token-UND, kein Fuzzy-/Präfix-Match), begrenzt auf
+(deterministisches Token-UND, kein Fuzzy-/Präfix-Match). Trigger- und
+Prompt-Tokens verwenden dieselbe Unicode-/Groß-Klein-Faltung (einschließlich
+`İ`/`ı`, `ß`/`SS` und Apostroph-Varianten in nicht-lateinischen Wörtern); sie
+macht aus `ö` kein `o` und leitet keine neuen Wortformen ab.
+Der Daemon begrenzt auf
 `BASTRA_REFLEX_MAX_PER_TURN` (Standard 2) und liefert schlanke Treffer zurück.
 Der Hook rendert sie als Block `<recall-hints … trigger="reflex">` vor dem
 Lookup-Block. Reflex-Treffer umgehen den Backoff aus #161 (vom Nutzer
@@ -2772,8 +2784,10 @@ Der Sprung ist sichtbar: bei 49 Notizen 34/50 passend und 3/50 themenfremd, bei
 festen Korpora mit ihrem erfundenen zweisprachigen Wortschatz, nicht allgemein.
 Diese Zahlen ändern keine Regel oder Schwelle.
 
-Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
-und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
+Der Draft-Matcher nutzt die gemeinsame Unicode-/Groß-Klein-Faltung ohne
+Stemming oder Übersetzen. Anders als der BM25-Wortsuchpfad behält er
+chinesische/japanische Zeichenläufe ohne Leerzeichen als ein Token; sie erfüllen
+seine Zwei-Token-Regel deshalb nicht. Bash prüft ungezeigte Treffer vor erneutem
 Notiz-Lookup. Nach verlorener Buchung und Neustart kann dieselbe ID erneut erscheinen.
 Einmal je Sitzung gilt für Hook-Bänder, direkter Recall je Anfrage. Keine
 Projekt-/Clientfilter. Angefügte Bands ab Zeilenanfang werden vor Erfassung auch

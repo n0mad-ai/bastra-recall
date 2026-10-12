@@ -465,6 +465,8 @@ Ollama clients; an idle Ollama server without a loaded model costs little.
 
 `bastra bridges language <code>` limits query expansion to one language folder; `auto` searches all folders. New bridges are stored under the detected language of their source query, regardless of that override.
 
+Bridge comparisons count distinct words after the shared Unicode/case fold: `straße` and `strasse`, or `İstanbul` and `istanbul`, each count as one word, not two trigger matches. A legacy multi-term bridge whose spellings collapse to one word still cannot satisfy its two-word minimum with that single word; the one-term exception remains only for an originally one-term bridge. Expansion spellings are also folded and deduplicated before caps and duplicate checks. The shared fold uses NFKC, joins in-word apostrophe variants between non-Latin letters and folds case; it does not transliterate `ö` into `o`. These comparisons do not guarantee a better ranking. [Search matching and ICU limits](./architecture.md#search-and-recall).
+
 ### Doctor and release diagnostics
 
 `bastra doctor --fix` repairs registrations without enabling intentional opt-ins. A missing save-notice entry alone keeps healthy recall hooks enabled and names the reinstall command. Under daemon origin, a `config_fingerprint` mismatch warns that running behaviour differs from `daemon.env` pins and the macOS managed service environment; paths/secrets/client-only keys are excluded and the exit code is unchanged. Existing unreadable settings are preserved and setting writes stop. See [Doctor](https://github.com/n0mad-ai/bastra-recall/wiki/Doctor), [telemetry](https://github.com/n0mad-ai/bastra-recall/wiki/Telemetry) and the [release checklist](./RELEASING.md).
@@ -971,6 +973,8 @@ bastra nicht anhalten; ein untätiger Ollama-Server ohne geladenes Modell kostet
 `bastra commons verify` öffnet einen öffentlichen Pull Request mit Rezept-ID, Ergebnis (funktioniert/nicht), optionaler Notiz, Verifier-ID, Betriebssystem, CPU-Architektur und Node-Version. Dein Vault wird dabei nicht übertragen. Scheitert die Einreichung, bleibt der Eintrag zur manuellen Abgabe lokal liegen.
 
 `bastra bridges language <code>` beschränkt die Anfrage-Erweiterung auf einen Sprachordner; `auto` durchsucht alle Ordner. Neue Bridges werden unabhängig von dieser Einstellung nach der erkannten Sprache ihrer Quellanfrage abgelegt.
+
+Bridge-Vergleiche zählen unterschiedliche Wörter nach der gemeinsamen Unicode-/Groß-Klein-Faltung: `straße` und `strasse` oder `İstanbul` und `istanbul` zählen jeweils als ein Wort, nicht als zwei Trigger-Treffer. Eine alte Mehrterm-Bridge, deren Schreibweisen zu einem Wort zusammenfallen, erfüllt ihr Zwei-Wort-Minimum weiterhin nicht mit diesem einzelnen Wort; die Ein-Term-Ausnahme bleibt ursprünglich eintermigen Bridges vorbehalten. Auch Erweiterungsschreibweisen werden vor Obergrenzen und Dublettenprüfungen gefaltet und entdoppelt. Die gemeinsame Faltung verwendet NFKC, verbindet Apostroph-Varianten innerhalb nicht-lateinischer Wörter und faltet Groß-/Kleinschreibung; sie schreibt `ö` nicht in `o` um. Diese Vergleiche garantieren kein besseres Ranking. [Suchvergleich und ICU-Grenzen](./architecture.md#suche-und-abruf).
 
 ### Doctor und Release-Diagnose
 

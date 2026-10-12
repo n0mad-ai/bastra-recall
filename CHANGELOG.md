@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Word search segments supported spaceless scripts through Node/ICU on both index and query sides; mixed identifiers retain their whole term and components with additional segments (#1214 follow-up); thanks @zzallirog (#1189).
+- Lexical comparisons share Unicode/case folding, with non-Latin in-word apostrophe boundaries aligned and folded bridge aliases counted once before overlap checks and expansion caps (#1215 follow-up); thanks @zzallirog (#1193).
 - Bash-fail reads status only from structured fields or the official error/Codex header, caps repeated memory hints per session and skips leading `cd`/`pushd` in the recall query; thanks @zzallirog (#1152).
 - Without fusion, wired prompt-recall hits outside recognized lookups require a strong trigger anchor; fused recall and literal reflex remain unchanged; thanks @zzallirog (#1188).
 
