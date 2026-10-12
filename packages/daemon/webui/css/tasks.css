@@ -1,3 +1,54 @@
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10151b;color:#e8edf3}body{margin:0}main{max-width:1040px;margin:auto;padding:32px 24px}h1{font-size:38px;margin:20px 0 8px}h2{font-size:21px}a{color:#7be2e0}section,details,.card{background:#19222d;border:1px solid #344453;border-radius:12px;padding:20px;margin:18px 0}label{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-weight:600}input,select,textarea,button{font:inherit;color:inherit;background:#10151b;border:1px solid #56687a;border-radius:6px;padding:10px}input,textarea{min-width:0}button{cursor:pointer;background:#253a48;margin:4px 6px 4px 0}button:hover{border-color:#7be2e0}button:disabled{opacity:.45;cursor:default}.check{flex-direction:row;align-items:center}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0 16px}.muted{color:#a8bbcd}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}.meta{line-height:1.7;color:#b8cddd}dialog{max-width:850px;width:85%;border:1px solid #6ccdc9;background:#19222d;color:#e8edf3;border-radius:12px}#message{min-height:24px;color:#a5eee6}code{overflow-wrap:anywhere}nav{display:flex;flex-wrap:wrap;gap:4px}textarea{width:100%;box-sizing:border-box;min-height:100px}.danger{border-color:#d19071}[hidden]{display:none!important}@media(max-width:600px){main{padding:16px}.grid{grid-template-columns:1fr}h1{font-size:30px}}
-
-#task-views button.active{border-color:#7be2e0;color:#a5eee6}
+/* Tasks share Recall's palette, typography, ruled columns and inspector. */
+#tasks-view[hidden], #task-workspace[hidden], #task-message[hidden] { display: none !important; }
+#tasks-view { position: fixed; inset: 58px 0 0; z-index: 16; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+body.tasks-open #system-panel, body.tasks-open #inspector, body.tasks-open #minimap,
+body.tasks-open #hint, body.tasks-open #ring-hint, body.tasks-open #semantic-hint,
+body.tasks-open #orbit-hint, body.tasks-open #live-lane { display: none !important; }
+body.tasks-open.panel-pinned #topbar { right: 0; }
+.task-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; padding: 18px 28px 14px; border-bottom: 1px solid var(--panel-border); }
+.task-head .tv-note { max-width: 640px; }
+#task-message { flex: none; min-height: 24px; margin: 0; padding: 6px 28px; font: 10.5px var(--font-mono); }
+#task-workspace { flex: 1; min-height: 0; }
+.task-board { height: 100%; display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); overflow-x: auto; overflow-y: hidden; }
+.task-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--panel-border); }
+.task-column:last-child { border-right: 0; }
+.task-column-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--panel-border); min-height: 54px; }
+.task-column-head .section-title { padding: 0; }
+.task-count { font: 11.5px var(--font-mono); color: var(--text-dim); }
+.task-column-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 16px 28px; }
+.task-card { border: 1px solid var(--panel-border); border-radius: 0; background: var(--panel); margin-bottom: 12px; padding: 12px; overflow-wrap: anywhere; }
+.task-card-title { display: block; border: 0; background: transparent; color: var(--text); font: 600 12.5px var(--font-display); text-align: left; cursor: pointer; line-height: 1.5; width: 100%; }
+.task-card-title:hover { color: var(--accent); }
+.task-meta { font: 10.5px var(--font-mono); line-height: 1.5; color: var(--text-dim); margin-top: 6px; }
+.task-stage { font: 10.5px var(--font-mono); color: var(--accent); margin-top: 6px; }
+.task-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.task-card .task-actions { margin-top: 10px; }
+.task-card .skill-declare { font-size: 9px; padding: 4px 6px; letter-spacing: 0.05em; }
+.task-column.locked .task-column-head { color: var(--text-dim); background: var(--chip-bg); }
+.task-column.locked .task-column-head::after { content: "gesperrt"; font: 9px var(--font-mono); }
+.task-column.locked .task-column-list { opacity: 0.45; }
+.task-column.drop-target { background: var(--accent-soft); }
+.task-dialog { position: fixed; margin: auto; width: min(850px, calc(100vw - 32px)); max-height: calc(100vh - 96px); padding: 20px 22px 26px; border: 1px solid var(--panel-border); border-radius: 0; background: var(--panel); color: var(--text); backdrop-filter: var(--panel-blur); box-shadow: var(--shadow); overflow-y: auto; overflow-wrap: anywhere; }
+.task-dialog::backdrop { background: var(--dim-wash); backdrop-filter: blur(6px); }
+.task-inspector { inset: 70px 16px 16px auto; margin: 0; width: min(400px, calc(100vw - 32px)); max-height: none; }
+.task-details h3 { font: 600 19px var(--font-display); margin: 12px 0; }
+.task-details p, .task-dialog p { font-size: 12.5px; line-height: 1.5; margin: 8px 0; }
+.task-details button, #task-controls button { margin: 4px 6px 4px 0; }
+.task-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11.5px var(--font-mono); line-height: 1.5; }
+.task-dialog summary { cursor: pointer; font: 11px var(--font-mono); padding: 12px 0; border-top: 1px solid var(--panel-border); }
+.task-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 16px; }
+.task-dialog label { display: block; font-size: 11px; color: var(--text-dim); margin: 12px 0; }
+.task-dialog label .care-note { display: block; margin-top: 6px; }
+.task-dialog .check { display: flex; gap: 8px; align-items: center; }
+.task-dialog button:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 900px) {
+  .task-head { gap: 12px; padding: 12px 16px; flex-direction: column; }
+  #task-message { padding: 6px 16px; }
+  .task-board { grid-template-columns: repeat(5, minmax(240px, 1fr)); scroll-snap-type: x proximity; }
+  .task-column { scroll-snap-align: start; }
+  body.tasks-open #topbar { gap: 10px; padding: 0 12px; }
+  body.tasks-open .wordmark, body.tasks-open #searchbox > .search-icon, body.tasks-open #searchbox > #search, body.tasks-open #searchbox > kbd { display: none; }
+  body.tasks-open #searchbox { flex: 1; min-width: 0; }
+  body.tasks-open #view-switch { overflow-x: auto; min-width: 0; margin-right: -14px; border-right: 0; }
+  body.tasks-open #view-switch button { flex: none; padding: 0 12px; }
+}

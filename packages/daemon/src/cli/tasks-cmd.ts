@@ -40,7 +40,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     const parsed = parseTaskOptions(args.argv ?? args.positional);
     const words = parsed.words, options = parsed.options;
     if (args.sub === "owner-login") { await loginOwnerTaskAccess(); return 0; }
-    if (args.sub === "ui") { process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/tasks.html (UI aktivieren: bastra config set ui.enabled true)\n`); return 0; }
+    if (args.sub === "ui") { process.stdout.write(`${resolveDaemonEndpoint().baseUrl}/ui/#tasks (UI aktivieren: bastra config set ui.enabled true)\n`); return 0; }
     if (args.sub === "boundary") { await declareTaskBoundary(); return 0; }
     if (args.sub === "setup-hooks") { await setupTaskHooks(); return 0; }
     if (args.sub === "client-status") {

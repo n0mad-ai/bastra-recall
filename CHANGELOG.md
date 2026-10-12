@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Proactive notify reminders can be added and controlled in conversation, with automatic local Agent access and a Tasks tab in the Recall UI. Existing prepare/execute approval remains unchanged pending further Owner discussion.
 
+### Security
+
+- Task file-source and evidence reads reject non-regular files without blocking and bind the opened source on macOS/Linux, preventing parent-symlink swaps from reading outside a registered root (CodeQL #109). File-source observation deliberately rejects multiple hardlinks; own rollback backups retain hardlink support and work through symlinked data-directory aliases. Windows and other POSIX platforms retain their available nonblocking/regular-file and path checks without equivalent descriptor containment.
+
 ### Added
 
 - Explicit persisted tasks with one MCP/HTTP/CLI/UI contract, owner review,

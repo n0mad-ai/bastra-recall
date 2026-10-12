@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, realpath, stat } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, realpath, stat, mkdir, symlink, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -12,10 +12,15 @@ import { reconcileTaskTime } from "../src/task-events.js";
 import { newOwnerKey, unlockOwnerKey, signTaskApproval, bytesHash, type ApprovalRegistry } from "../src/task-approval-keys.js";
 import { approvalBinding } from "../src/task-actions.js";
 import { reconcilePendingTaskIntents, taskBackupPath } from "../src/task-execution.js";
-async function fixture(domains = ["personal"]) {
+async function fixture(domains = ["personal"], linkedData = false) {
   const root=await realpath(await mkdtemp(join(tmpdir(),"task-execute-")));await writeFile(join(root,"artifact.txt"),"old\n");
   const envelope=newOwnerKey("synthetic execute password"),registry:ApprovalRegistry={schema_version:1,revision:1,protected_boundary:true,keys:domains.map((domain,i)=>({id:`key-${i}`,domain,public_key:envelope.public_key,fingerprint:bytesHash(envelope.public_key)})),targets:[{id:"artifact",root,path:"artifact.txt",owner_domains:domains,sensitivity:"private",adapter:"local-artifact-v1"}]};
-  const ctx={path:join(root,"tasks.json"),authPath:join(root,"auth.json"),executionHost:true,approvalRegistry:Promise.resolve(registry),now:()=>1000,actionClock:()=>({boot_id:"fixture-boot",monotonic:1000})};
+  let dataRoot = root;
+  if (linkedData) {
+    await mkdir(join(root, "data")); dataRoot = join(root, "linked-data");
+    await symlink(join(root, "data"), dataRoot, process.platform === "win32" ? "junction" : "dir");
+  }
+  const ctx={path:join(dataRoot,"tasks.json"),authPath:join(dataRoot,"auth.json"),executionHost:true,approvalRegistry:Promise.resolve(registry),now:()=>1000,actionClock:()=>({boot_id:"fixture-boot",monotonic:1000})};
   const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains});const auth=`Bearer ${agent.token}`,ownerAuth=`Bearer ${owner.token}`;
   await callTaskCrud(ctx,ownerAuth,"task_create",{idempotency_key:"execute",original_request:"Replace local demo artifact",goal:"Replace demo artifact",resolution_condition:"Owner result",schedule:{kind:"instant",at:500},timezone:"Europe/Madrid",scope:{kind:"personal",name:"fixture"},owner_domains:domains,action_level:"execute",arm:true});await reconcileTaskTime(ctx);const task=(await readTaskStore(ctx.path)).tasks[0];
   const prepared=await callTaskCrud(ctx,auth,"task_prepare",{id:task.id,expected_revision:`initial:${task.revision}`,target_id:"artifact",payload:"new\n"}) as any;
@@ -51,8 +56,15 @@ test("standalone host and forged holder/fence/domain cannot execute; disabled fe
   await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{enabled:false});await assert.rejects(callTaskCrud(f.ctx,f.ownerAuth,"task_challenge",{proposal_id:f.prepared.proposal.id,domain:"personal"}),(e:any)=>e.code==="feature_disabled");
   assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");
 });
-test("rollback is an exact separately approved proposal and refuses intervening changes",async()=>{
-  const f=await fixture();const result=await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any;const rollback=await callTaskCrud(f.ctx,f.auth,"task_rollback_prepare",{receipt_id:result.receipt.id}) as any;
+for (const linkedData of [false, true]) test(`rollback is an exact separately approved proposal and refuses intervening changes${linkedData ? " through a symlinked data directory" : ""}`,async()=>{
+  const f=await fixture(["personal"], linkedData);const result=await callTaskCrud(f.ctx,f.auth,"task_execute",f.input) as any;
+  if (linkedData) {
+    assert.notEqual(f.ctx.path, await realpath(f.ctx.path));
+    // The source-only hardlink restriction must not reject our own backup.
+    const backup = taskBackupPath(f.ctx, result.receipt.backup_id);
+    await link(backup, join(f.root, "backup-copy.json")); assert.equal((await stat(backup)).nlink, 2);
+  }
+  const rollback=await callTaskCrud(f.ctx,f.auth,"task_rollback_prepare",{receipt_id:result.receipt.id}) as any;
   assert.equal(rollback.proposal.rollback_of,result.receipt.id);assert.equal(rollback.executes,false);assert.equal(rollback.new_owner_approvals_required,true);assert.equal(rollback.preview.after,"old\n");
   await assert.rejects(callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:rollback.proposal.id}));await f.approve(rollback.proposal.id);const lease=await callTaskCrud(f.ctx,f.auth,"task_lease",{proposal_id:rollback.proposal.id}) as any;
   await callTaskCrud(f.ctx,f.auth,"task_execute",{proposal_id:rollback.proposal.id,lease_id:lease.lease.id,holder_token:lease.holder_token,fence:lease.lease.fence,idempotency_key:"rollback"});assert.equal(await readFile(join(f.root,"artifact.txt"),"utf8"),"old\n");

@@ -4,7 +4,7 @@ import { archivedIntent } from "./task-archive.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { constants, openSync, fstatSync, closeSync, lstatSync, realpathSync, readFileSync, renameSync } from "node:fs";
-import { lstat, mkdir, open, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, unlink, realpath } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
@@ -117,7 +117,11 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
       if (!receipt || !["succeeded", "reconciled"].includes(receipt.outcome)) fail("not_found", "Successful receipt required");
       const original = store.proposals.find(p => p.id === receipt.proposal_id)!; requireTaskDomains(principal, original.required_domains);
       const target = await readTaskTarget(registry, original.target_id); if (target.hash !== receipt.after_hash) fail("approval_stale", "Intervening edits prohibit rollback");
-      const backup = JSON.parse(await boundedTaskRead(taskBackupPath(ctx, receipt.backup_id), 2 * 1024 * 1024));
+      // Only canonicalize our own data directory, never an untrusted source or
+      // the backup file itself (its final component must still reject symlinks).
+      const dataRoot = await realpath(dirname(ctx.path));
+      const backupPath = join(dataRoot, "task-action-backups", `${id.parse(receipt.backup_id)}.json`);
+      const backup = JSON.parse(await boundedTaskRead(backupPath, 2 * 1024 * 1024));
       if (typeof backup.payload !== "string" || cleanText(backup.payload) !== backup.payload) fail("validation", "Rollback cannot be safely previewed");
       if (backup.intent_id !== receipt.intent_id || bytesHash(backup.payload) !== receipt.before_hash) fail("approval_stale", "Backup binding changed");
       const task = store.tasks.find(t => t.id === original.task_id)!;

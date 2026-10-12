@@ -614,7 +614,7 @@ checks held on an older inconclusive event; completed cursor advancement queues
 the next bounded turn. These guarantees concern accepted journal events; file/Git
 observation remains periodic snapshot observation, not a filesystem event log.
 
-P9 owner surfaces: separate tasks page at /ui/tasks.html (existing optional WebUI),
+P9 owner surfaces: integrated task board at /ui/#tasks (existing optional WebUI),
 explicit Owner token kept only in page memory. All task strings use textContent;
 no inline HTML from memories, events, wishes or draft payloads. Task CRUD, owner
 review/ack/resolve/reconsider choices, status/controls, exact proposal preview,
@@ -818,3 +818,22 @@ This change stops supplying those legacy bindings
 from the managed live/backup/archive data; it does not promise retroactive secrecy.
 Same-UID key access, authorized online comparisons, #1198 and the Owner's later
 prepare/execute policy discussion remain as documented, without a new policy here.
+
+### Local source read containment (CodeQL #109)
+
+File-source observation and bounded evidence/Memory/adapter reads open nonblocking
+and require a regular file before reading. For registered sources/targets the
+caller checks canonical containment; rollback backup reads canonicalize only the
+own data directory, so a symlinked data-directory alias remains supported without
+resolving a foreign writable source path or a backup's final component.
+macOS uses `O_NOFOLLOW_ANY`; Linux compares `readlink(/proc/self/fd/<fd>)` with the
+checked canonical path before reading (unavailable procfs fails closed). A second
+lookup of the pathname alone is not a descriptor binding. Windows and other POSIX
+platforms (including FreeBSD and Android/Termux) retain the existing path checks
+and available nonblocking/regular-file protection, without the macOS/Linux
+containment guarantee against concurrent parent replacement.
+
+File-source observation deliberately rejects files with more than one hardlink
+(`source_unavailable`, with an explanatory status), because an alias can refer to
+content outside the registered root. Use a single-link file for observation.
+This restriction does not apply to backups in the own data directory.

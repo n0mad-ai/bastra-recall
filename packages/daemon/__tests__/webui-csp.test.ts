@@ -35,7 +35,6 @@ async function fetchAsset(path: string): Promise<Res> {
   const settingsDir = await mkdtemp(join(tmpdir(), "csp-settings-"));
   const settingsPath = join(settingsDir, "cli-settings.json");
   await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true } }));
-  await writeFile(join(assets, "tasks.html"), "<!doctype html><title>tasks</title>");
   await writeFile(join(assets, "index.html"), "<!doctype html><title>t</title>");
   await mkdir(join(assets, "css"), { recursive: true });
   await writeFile(join(assets, "css", "app.css"), "body{}");
@@ -265,7 +264,6 @@ test("CSP exclusion: the local demo is excluded from the npm package, not just g
   }
 });
 
-test("task iframe permits only same-origin ancestors; main map still denies framing", async () => {
- const task = await fetchAsset("/ui/tasks.html"); assert.match(String(task.headers["content-security-policy"]), /frame-ancestors 'self'/);
+test("integrated task view retains the main map framing boundary", async () => {
  const map = await fetchAsset("/ui/"); assert.match(String(map.headers["content-security-policy"]), /frame-ancestors 'none'/);
 });
