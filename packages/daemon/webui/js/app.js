@@ -187,6 +187,7 @@ async function main() {
   async function switchView(v) {
     if (v === "tasks") { telemetryView.close(); tasksView.open(); markViewButton(v); $('#view-switch [data-view="tasks"]').scrollIntoView({block:"nearest",inline:"nearest"}); return; }
     tasksView.close();
+    markViewButton(currentView);
     if (v === "telemetry") {
       telemetryView.open();
       markViewButton(v);
