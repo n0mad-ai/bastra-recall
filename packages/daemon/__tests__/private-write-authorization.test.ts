@@ -151,12 +151,23 @@ function restCtx(deps: ToolDeps) {
   return { toolDeps: deps, documentWriteEnabled: true, ccSessionId: null };
 }
 
-/** Everything on disk, path → bytes. The proof that a refusal changed nothing. */
+/** Payload bytes stay identical; released lock coordination may advance its fence. */
 async function snapshot(dir: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const walk = async (rel: string): Promise<void> => {
     for (const entry of await readdir(join(dir, rel), { withFileTypes: true })) {
       const next = rel ? join(rel, entry.name) : entry.name;
+      if (rel === join(".bastra", "locks") && /\.reclaim-[0-9a-f]{16}(\.turns)?$/.test(entry.name)) {
+        if (entry.isDirectory()) {
+          assert.deepEqual(await readdir(join(dir, next)), [], "no acquisition reservation survives a refused write");
+        } else {
+          const fence = JSON.parse(await readFile(join(dir, next), "utf8"));
+          assert.deepEqual(Object.keys(fence).sort(), ["format", "generation", "held", "token", "ts"]);
+          assert.equal(fence.format, "commit-marker-v2");
+          assert.equal(fence.held, false, "no active marker survives a refused write");
+        }
+        continue;
+      }
       if (entry.isDirectory()) await walk(next);
       else out.set(next, await readFile(join(dir, next), "utf8"));
     }

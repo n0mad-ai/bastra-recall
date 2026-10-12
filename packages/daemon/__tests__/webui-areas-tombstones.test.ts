@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertAreaWritable, readAreaMark } from "@bastra-recall/core";
@@ -270,11 +270,12 @@ test("deleteArea: ein .bastra/trash, das auf die Locks zeigt, ist kein Trash", a
     );
     const projects = await readdir(join(v, "memories", "projects"));
     assert.ok(projects.includes("carnexus"), "die Area steht noch");
-    assert.deepEqual(
-      await readdir(join(v, ".bastra", "locks")),
-      [],
-      "und liegt nicht zwischen den Lock-Dateien",
-    );
+    for (const file of await readdir(join(v, ".bastra", "locks"))) {
+      assert.match(file, /^area-[0-9a-f]+\.lock\.reclaim-[0-9a-f]{16}(\.turns)?$/, "only coordination remains, never the area or a claim");
+      const coord = join(v, ".bastra", "locks", file);
+      if (file.endsWith(".turns")) assert.deepEqual(await readdir(coord), [], "no reserved turn remains");
+      else assert.equal(JSON.parse(await readFile(coord, "utf8")).held, false, "the marker is released");
+    }
   } finally {
     await rm(v, { recursive: true, force: true });
   }

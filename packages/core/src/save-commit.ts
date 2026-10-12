@@ -12,11 +12,10 @@
  * only past a ceiling (COMMIT_CLAIM_LIVE_OWNER_MAX_MS), because a reused pid
  * looks alive too. Details on each rule are at the function that implements it.
  */
-import type { BigIntStats } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, access, open, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, mkdir, rm, access, open, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 
@@ -100,38 +99,53 @@ interface CommitClaim {
  */
 interface ClaimSnapshot {
   raw: string;
-  generation: string;
   ageMs: number;
-}
-
-function fileGeneration(info: BigIntStats): string {
-  return [info.dev, info.ino, info.birthtimeNs, info.ctimeNs, info.mtimeNs].join(":");
+  contentTimestamp: boolean;
 }
 
 async function readClaimSnapshot(lockPath: string): Promise<ClaimSnapshot> {
   const handle = await open(lockPath, "r");
   try {
-    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat({ bigint: true })]);
-    return { raw, generation: fileGeneration(info), ageMs: Date.now() - Number(info.mtimeNs) / 1e6 };
+    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
+    // The content timestamp bounds recovery when mount mtime keeps refreshing;
+    // an older mtime still honors existing abandonment/reader semantics.
+    // Identity is the unique token/content, not inode data.
+    let created = info.mtimeMs;
+    let contentTimestamp = false;
+    try {
+      const claim = JSON.parse(raw) as CommitClaim;
+      if (claim.token && Number.isFinite(claim.ts)) { created = Math.min(created, claim.ts); contentTimestamp = true; }
+    } catch { /* legacy/incomplete claim */ }
+    return { raw, ageMs: Date.now() - created, contentTimestamp };
   } finally {
     await handle.close();
   }
 }
 
-async function inspectCommitClaim(lockPath: string): Promise<{
+async function inspectCommitClaim(lockPath: string, observeLegacy = false): Promise<{
   raw: string | null;
-  generation: string | null;
   abandoned: boolean;
 }> {
   let raw: string;
-  let generation: string;
   let ageMs: number;
+  let contentTimestamp: boolean;
   try {
-    ({ raw, generation, ageMs } = await readClaimSnapshot(lockPath));
+    ({ raw, ageMs, contentTimestamp } = await readClaimSnapshot(lockPath));
   } catch (err) {
     // Missing is free for read-only callers; a contending acquirer does not retry.
     // Other inspection failures do not establish that a claim is abandoned.
-    return { raw: null, generation: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
+    return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
+  }
+
+  // Legacy/incomplete claims may have perpetually refreshed mount timestamps.
+  // Bound that fallback by a persistent first observation of the same bytes.
+  // Empty-file publication is protected by the matching creation lease below.
+  if (observeLegacy && !contentTimestamp && ageMs <= COMMIT_CLAIM_STALE_MS) {
+    try {
+      const observed = `${reclaimMarkPath(lockPath, raw)}.turns/claim`;
+      await mkdir(observed, { recursive: true, mode: 0o700 });
+      ageMs = Math.max(ageMs, Date.now() - await reservationTime(observed));
+    } catch { return { raw, abandoned: false }; }
   }
 
   // Erst der Besitzer, dann das Alter. Codex-Gegenreview (P1): Die Reihenfolge
@@ -152,16 +166,16 @@ async function inspectCommitClaim(lockPath: string): Promise<{
       process.kill(claim.pid, 0);
       // owner is alive and working — age says nothing here, up to the ceiling
       // a reused pid cannot plausibly still be the original owner past.
-      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return { raw, generation, abandoned: false };
+      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return { raw, abandoned: false };
     } catch (err) {
       // ESRCH: der Besitzer ist weg, der Claim ist sofort frei. Alles andere
       // (EPERM — fremder Nutzer, gleiche PID) bleibt eine Altersfrage.
-      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return { raw, generation, abandoned: true };
+      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return { raw, abandoned: true };
     }
   }
   // Fremder Host, unparsebarer oder nicht zuordenbarer Claim: nur das Alter
   // kann ihn noch freigeben.
-  return { raw, generation, abandoned: ageMs > COMMIT_CLAIM_STALE_MS };
+  return { raw, abandoned: ageMs > COMMIT_CLAIM_STALE_MS };
 }
 
 export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
@@ -187,49 +201,57 @@ export async function acquireCommitClaim(
     ts: Date.now(),
     token,
   } satisfies CommitClaim);
-  try {
-    const handle = await open(lockPath, "wx", 0o600);
+  let checked = await inspectCommitClaim(lockPath, true);
+  if (checked.raw === null && checked.abandoned) {
+    const creationPath = reclaimMarkPath(lockPath, "");
+    const creation = await takeReclaimMark(creationPath);
+    if (!creation) throw writeConflict(id, filePath, "another save is publishing this claim");
     try {
-      await handle.writeFile(body, "utf8");
-    } finally {
-      await handle.close();
-    }
-    return token;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-    const checked = await inspectCommitClaim(lockPath);
-    if (checked.abandoned && checked.raw !== null && checked.generation !== null) {
-      if (await reclaimStaleClaim(lockPath, body, { raw: checked.raw, generation: checked.generation })) {
-        // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
-        // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
-        // weiter; der tote Vorgänger ist der Befund: Einzeln ein
-        // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
-        // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
-        // der Reclaim geräuschlos gelingt.
-        //
-        // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
-        // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
-        //
-        // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
-        // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
-        // Operations-id). `memory_id` ist die Verbindung, an der man im
-        // Audit-Log weitersucht.
-        reportMutationIncident({
-          operation_id: newOperationId(),
-          op: "claim_reclaim",
-          status: "reclaimed",
-          phase: "claim-reclaim",
-          memory_id: id,
-          detail: "abandoned claim taken over",
-        });
+      try {
+        const handle = await open(lockPath, "wx", 0o600);
+        try { await handle.writeFile(body, "utf8"); }
+        finally { await handle.close(); }
+        await clearClaimObservation(lockPath, "");
         return token;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
       }
-      // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
-      // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
-      throw writeConflict(id, filePath, "another save is reclaiming this claim");
+    } finally {
+      await releaseReclaimMark(creationPath, creation);
     }
-    throw writeConflict(id, filePath, "another save is committing this target");
+    checked = await inspectCommitClaim(lockPath, true);
   }
+  if (checked.abandoned && checked.raw !== null) {
+    if (await reclaimStaleClaim(lockPath, body, { raw: checked.raw })) {
+      // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
+      // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
+      // weiter; der tote Vorgänger ist der Befund: Einzeln ein
+      // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
+      // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
+      // der Reclaim geräuschlos gelingt.
+      //
+      // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
+      // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
+      //
+      // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
+      // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
+      // Operations-id). `memory_id` ist die Verbindung, an der man im
+      // Audit-Log weitersucht.
+      reportMutationIncident({
+        operation_id: newOperationId(),
+        op: "claim_reclaim",
+        status: "reclaimed",
+        phase: "claim-reclaim",
+        memory_id: id,
+        detail: "abandoned claim taken over",
+      });
+      return token;
+    }
+    // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
+    // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
+    throw writeConflict(id, filePath, "another save is reclaiming this claim");
+  }
+  throw writeConflict(id, filePath, "another save is committing this target");
 }
 
 /**
@@ -257,8 +279,9 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  *
  * Beides schließt dieselbe Konstruktion. Die Übernahme wird über eine
  * Markierung serialisiert, deren NAME aus dem Inhalt des verwaisten Claims
- * abgeleitet ist: Genau ein Prozess kann sie mit O_EXCL anlegen, und zwei
- * Reclaimer desselben Claims streiten damit um denselben Pfad. Veröffentlicht
+ * abgeleitet ist: Genau ein Prozess reserviert den nächsten Generationsturn
+ * per mkdir, und zwei Reclaimer desselben Claims streiten um denselben Turn.
+ * Auch unterbrochene Reservierungen altern aus. Veröffentlicht
  * wird per `rename` über den bestehenden Lock — der Pfad ist zu keinem
  * Zeitpunkt leer, es gibt also kein Fenster, in dem er frei aussieht.
  *
@@ -269,7 +292,7 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  *
  * @returns `true`, wenn dieser Aufrufer den Claim jetzt hält.
  */
-async function reclaimStaleClaim(lockPath: string, body: string, checked: Pick<ClaimSnapshot, "raw" | "generation">): Promise<boolean> {
+async function reclaimStaleClaim(lockPath: string, body: string, checked: Pick<ClaimSnapshot, "raw">): Promise<boolean> {
   let stale: ClaimSnapshot;
   try {
     stale = await readClaimSnapshot(lockPath);
@@ -277,20 +300,21 @@ async function reclaimStaleClaim(lockPath: string, body: string, checked: Pick<C
     // Weg oder unlesbar: nichts zu übernehmen, was wir belegen könnten.
     return false;
   }
-  // #1199: bind takeover to the content AND file generation actually checked.
+  // #1199: bind takeover to the exact content/token checked for abandonment.
   // A late reread may already see another writer's fresh/live generation.
-  if (stale.raw !== checked.raw || stale.generation !== checked.generation) return false;
+  if (stale.raw !== checked.raw) return false;
   // Der Name der Markierung IST die Identität des verwaisten Claims. Ein
   // Reclaim für eine andere Generation kollidiert damit nicht, und zwei
   // Reclaims für dieselbe können es nicht vermeiden.
-  const markPath = `${lockPath}.reclaim-${createHash("sha256").update(stale.raw).digest("hex").slice(0, 16)}`;
-  if (!(await takeReclaimMark(markPath))) return false;
+  const markPath = reclaimMarkPath(lockPath, stale.raw);
+  const lease = await takeReclaimMark(markPath);
+  if (!lease) return false;
   try {
     // Zwischen dem Lesen oben und der Markierung kann jemand schneller
     // gewesen sein. Dann steht dort ein anderer Claim, und dieser Reclaim ist
     // gegenstandslos.
     const current = await readClaimSnapshot(lockPath).catch(() => null);
-    if (!current || current.raw !== stale.raw || current.generation !== stale.generation) return false;
+    if (!current || current.raw !== stale.raw) return false;
     // Per rename statt unlink+create: der Lockpfad trägt durchgehend einen
     // gültigen Claim, erst den alten, dann unseren.
     const tmp = `${lockPath}.${process.pid}.${randomUUID().slice(0, 8)}.take`;
@@ -301,47 +325,119 @@ async function reclaimStaleClaim(lockPath: string, body: string, checked: Pick<C
       await unlink(tmp).catch(() => {});
       throw err;
     }
+    await clearClaimObservation(lockPath, stale.raw);
     return true;
   } finally {
-    await unlink(markPath).catch(() => {});
+    await releaseReclaimMark(markPath, lease);
   }
 }
 
-/** Die Markierung nehmen. Eine liegengebliebene (der Reclaimer starb mitten
- *  im Vorgang) würde den Claim sonst dauerhaft unübernehmbar machen — sie
- *  altert deshalb selbst aus. */
-async function takeReclaimMark(markPath: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const handle = await open(markPath, "wx", 0o600);
-      await handle.close();
-      return true;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") return false;
-      if (attempt === 1) return false;
-      let seen: BigIntStats;
-      try {
-        seen = await stat(markPath, { bigint: true });
-      } catch {
-        continue; // Gone since EEXIST: one plain acquisition attempt.
-      }
-      if (Date.now() - Number(seen.mtimeNs) / 1e6 <= RECLAIM_MARK_STALE_MS) return false;
-      // Only one contender may retire this inspected marker generation.
-      // Keep the sibling as a witness: delayed readers cannot win it again.
-      const recovery = `${markPath}.abandoned-${createHash("sha256").update(fileGeneration(seen)).digest("hex").slice(0, 16)}`;
-      try {
-        const handle = await open(recovery, "wx", 0o600);
-        await handle.close();
-        const current = await stat(markPath, { bigint: true });
-        if (fileGeneration(current) !== fileGeneration(seen)) return false;
-        await unlink(markPath);
-      } catch {
-        return false;
-      }
-    }
+interface ReclaimLease {
+  format: "commit-marker-v2";
+  generation: number;
+  token: string;
+  ts: number;
+  held: boolean;
+}
+
+function reclaimMarkPath(lockPath: string, raw: string): string {
+  return `${lockPath}.reclaim-${createHash("sha256").update(raw).digest("hex").slice(0, 16)}`;
+}
+
+async function clearClaimObservation(lockPath: string, raw: string): Promise<void> {
+  await rm(`${reclaimMarkPath(lockPath, raw)}.turns/claim`, { recursive: true, force: true }).catch(() => {});
+}
+
+async function markerState(path: string): Promise<{ raw: string | null; lease?: ReclaimLease }> {
+  let raw: string;
+  try { raw = await readFile(path, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { raw: null }; throw error; }
+  try {
+    const lease = JSON.parse(raw) as ReclaimLease;
+    if (lease.format === "commit-marker-v2" && Number.isSafeInteger(lease.generation) && lease.generation >= 0
+      && typeof lease.token === "string" && lease.token && Number.isFinite(lease.ts) && typeof lease.held === "boolean") return { raw, lease };
+  } catch { /* legacy empty marker */ }
+  return { raw };
+}
+
+/** Timestamp names survive unstable dev/ino/birthtime/ctime/mtime on sync mounts.
+ * An empty reservation gets a persistent first-observation deadline as well. */
+async function reservationTime(path: string): Promise<number> {
+  let names = await readdir(path);
+  let times = names.map(name => /^(\d+)-/.exec(name)?.[1]).filter((value): value is string => !!value).map(Number);
+  if (!times.length) {
+    await mkdir(join(path, `${Date.now()}-observed-${randomUUID()}`));
+    names = await readdir(path);
+    times = names.map(name => /^(\d+)-/.exec(name)?.[1]).filter((value): value is string => !!value).map(Number);
   }
-  /* c8 ignore next */
-  return false;
+  return Math.min(...times);
+}
+
+async function turnNumbers(path: string): Promise<number[]> {
+  return (await readdir(path)).filter(name => /^\d+$/.test(name)).map(Number).filter(Number.isSafeInteger);
+}
+
+/** Each turn is claimed once by mkdir; expired unpublished turns can be skipped.
+ * A crash at any publication step blocks at most the 60-second lease window. */
+async function markerTransition(path: string, seen: Awaited<ReturnType<typeof markerState>>, held: boolean): Promise<ReclaimLease | null> {
+  const turns = `${path}.turns`;
+  await mkdir(turns, { recursive: true, mode: 0o700 });
+  const numbers = await turnNumbers(turns);
+  const published = seen.lease?.generation ?? -1;
+  const last = Math.max(published, ...numbers);
+  if (last > published && Date.now() - await reservationTime(join(turns, String(last))) <= RECLAIM_MARK_STALE_MS) return null;
+  const generation = last + 1;
+  const turn = join(turns, String(generation));
+  try { await mkdir(turn, { mode: 0o700 }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") return null; throw error; }
+  const lease: ReclaimLease = { format: "commit-marker-v2", generation, token: randomUUID(), ts: Date.now(), held };
+  const tmp = `${path}.${lease.token}.new`;
+  let publishedHere = false;
+  try {
+    await mkdir(join(turn, `${lease.ts}-owner-${lease.token}`));
+    if ((await markerState(path)).raw !== seen.raw) return null;
+    await writeFile(tmp, JSON.stringify(lease), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    if ((await markerState(path)).raw !== seen.raw || Math.max(...await turnNumbers(turns)) > generation) return null;
+    await rename(tmp, path);
+    publishedHere = true;
+    // The published token/generation fences late turns. Successful reservations
+    // need no permanent witness; retain only the compact marker record.
+    for (const old of [...numbers, generation].filter(n => n <= generation)) await rm(join(turns, String(old)), { recursive: true, force: true }).catch(() => {});
+    // Retire legacy recovery witnesses after publishing the new protocol.
+    const dir = dirname(path);
+    const base = basename(path);
+    await rm(join(turns, "legacy"), { recursive: true, force: true }).catch(() => {});
+    for (const name of await readdir(dir).catch(() => [])) if (name.startsWith(`${base}.abandoned-`)) await unlink(join(dir, name)).catch(() => {});
+    return lease;
+  } finally {
+    await unlink(tmp).catch(() => {});
+    if (!publishedHere) await rm(turn, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Marker leases use stable tokens and content timestamps. Legacy/incomplete
+ * markers get a bounded observation deadline rather than manual deletion. */
+async function takeReclaimMark(path: string): Promise<ReclaimLease | null> {
+  try {
+    const seen = await markerState(path);
+    if (seen.lease?.held && Date.now() - seen.lease.ts <= RECLAIM_MARK_STALE_MS) return null;
+    if (seen.raw !== null && !seen.lease) {
+      const observed = `${path}.turns/legacy`;
+      await mkdir(observed, { recursive: true, mode: 0o700 });
+      const firstSeen = await reservationTime(observed);
+      let oldEnough = Date.now() - firstSeen > RECLAIM_MARK_STALE_MS;
+      try { oldEnough ||= Date.now() - (await stat(path)).mtimeMs > RECLAIM_MARK_STALE_MS; } catch { /* observation deadline still applies */ }
+      if (!oldEnough) return null;
+    }
+    return await markerTransition(path, seen, true);
+  } catch { return null; }
+}
+
+async function releaseReclaimMark(path: string, lease: ReclaimLease): Promise<void> {
+  try {
+    const seen = await markerState(path);
+    if (seen.lease?.token === lease.token && seen.lease.generation === lease.generation) await markerTransition(path, seen, false);
+  } catch { /* An interrupted release expires; it never requires hand deletion. */ }
 }
 
 /**
