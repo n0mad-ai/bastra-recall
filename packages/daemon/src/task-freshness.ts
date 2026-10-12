@@ -1,8 +1,8 @@
 import { privateContentComparison } from "./task-private-comparison.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Registered bounded evidence only; verify_cmd is never executable. */
-import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
+import { openTaskSourceFile } from "./task-source-file.js";
 import { relative, resolve, isAbsolute } from "node:path";
 import { z } from "zod";
 import matter from "gray-matter";
@@ -19,9 +19,9 @@ export function taskBindingHash(task: Task): string {
   return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
 }
 export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await openTaskSourceFile(path);
   try {
-    const info = await handle.stat(); if (!info.isFile()) throw new Error("source is not a regular file");
+    const info = await handle.stat(); // openTaskSourceFile already requires a regular file
     if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
     const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
     if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
