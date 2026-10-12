@@ -119,17 +119,20 @@ export function tokenizeWithIdentifiers(text: string): string[] {
   for (const raw of scanRawTokens(text)) {
     const token = trimGlue(raw);
     if (!token) continue;
-    // Han/Kana/Thai/…: no spaces between words, so the raw run is a whole
-    // sentence (#711). ICU word segments go in instead — the same function on
-    // the index and the query side, so the symmetry invariant above holds.
-    if (hasSpacelessScript(token)) {
+    // Spaceless prose uses ICU words (#711). Mixed identifiers additionally
+    // keep their whole term and legacy components for exact-match precision.
+    const spaceless = hasSpacelessScript(token);
+    if (spaceless && !GLUE_SPLIT_RE.test(token)) {
       out.push(...segmentWords(token));
       continue;
     }
     out.push(token);
     if (GLUE_SPLIT_RE.test(token)) {
       for (const part of token.split(GLUE_SPLIT_RE)) {
-        if (part) out.push(part);
+        if (part) {
+          out.push(part);
+          if (spaceless) out.push(...segmentWords(part).filter(word => word !== part));
+        }
       }
     }
   }
