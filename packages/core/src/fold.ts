@@ -27,6 +27,12 @@ const ABJAD_POINT_RE = /(?=\p{Mn})[\p{Script_Extensions=Hebrew}\p{Script_Extensi
  *  contraction ("l'état", "don't"). */
 const INWORD_APOSTROPHE_RE = /(?<=(?!\p{Script=Latin})\p{L}\p{M}*)['\u2019\u02bc\u05f3](?=(?!\p{Script=Latin})\p{L})/gu;
 
+/** Join only the existing non-Latin in-word apostrophe spellings, before
+ * token boundaries are chosen. Latin elisions and quotation marks stay intact. */
+export function normalizeInwordApostrophes(text: string): string {
+  return text.replace(INWORD_APOSTROPHE_RE, "");
+}
+
 /**
  * The spelling every matcher compares, case left alone: NFKC, invisible
  * format characters and tatweel removed, abjad vowel points dropped, an
@@ -35,12 +41,11 @@ const INWORD_APOSTROPHE_RE = /(?<=(?!\p{Script=Latin})\p{L}\p{M}*)['\u2019\u02bc
  */
 export function normalizeText(text: string): string {
   if (ASCII_RE.test(text)) return text;
-  return text
+  const spelling = text
     .normalize("NFKC")
     .replace(INVISIBLE_RE, "")
-    .replace(ABJAD_POINT_RE, "")
-    .replace(INWORD_APOSTROPHE_RE, "")
-    .normalize("NFC");
+    .replace(ABJAD_POINT_RE, "");
+  return normalizeInwordApostrophes(spelling).normalize("NFC");
 }
 
 /**

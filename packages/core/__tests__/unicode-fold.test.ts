@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault } from "../src/vault.js";
 import { SearchIndex } from "../src/search.js";
+import { tokenizeWithIdentifiers } from "../src/query-normalize.js";
 import { foldTerm, normalizeText } from "../src/fold.js";
 
 test("foldTerm: one spelling per word, whatever the keyboard or the host locale", () => {
@@ -57,6 +58,40 @@ test("BM25: a fullwidth query finds the note written in ASCII, and back", async 
   } finally {
     search.stop();
     await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("BM25: non-Latin apostrophe variants share boundaries on index and query", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-apostrophe-"));
+  const vault = new Vault(dir);
+  let search: SearchIndex | undefined;
+  try {
+    await mkdir(join(dir, "memories"), { recursive: true });
+    const variants = ["об'єкт", "об’єкт", "обʼєкт", "п'ятниця", "пʼятниця"];
+    for (const [i, title] of variants.entries()) {
+      await writeFile(join(dir, "memories", `apostrophe-${i}.md`),
+        `---\nid: apostrophe-${i}\ntitle: "${title}"\ntype: reference\nsummary: "${title}"\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: ["${title}"]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\n${title}\n`);
+    }
+    for (let i = 0; i < 10; i++) {
+      await writeFile(join(dir, "memories", `filler-${i}.md`),
+        `---\nid: filler-${i}\ntitle: unrelated gardening\ntype: reference\nsummary: unrelated gardening\ntopic_path: [t]\ntags: [t]\nscope: s\nrecall_when: [gardening]\ncreated: 2026-10-01\nupdated: 2026-10-01\n---\ngardening\n`);
+    }
+    await vault.init();
+    search = new SearchIndex(vault);
+    search.start();
+    for (const query of variants) {
+      const expected = query.startsWith("об") ? ["apostrophe-0", "apostrophe-1", "apostrophe-2"] : ["apostrophe-3", "apostrophe-4"];
+      const hits = search.recall(query, { k: 10 });
+      assert.deepEqual(hits.map(h => h.id).sort(), expected, query);
+      assert.equal(new Set(hits.map(h => h.score)).size, 1, "equivalent notes score equally");
+    }
+    // Latin contractions/elisions and surrounding quotation marks still split.
+    assert.deepEqual(tokenizeWithIdentifiers("don't l’état 'об’єкт'"), ["don", "t", "l", "état", "обєкт"]);
+  } finally {
+    search?.stop();
+    await vault.stop();
     await rm(dir, { recursive: true, force: true });
   }
 });
