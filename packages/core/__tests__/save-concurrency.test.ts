@@ -7,6 +7,9 @@
  * - create publishes without replacement, so a late creator is never clobbered.
  */
 import test from "node:test";
+import fsPromises from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
@@ -522,4 +525,31 @@ test("ein .bastra, das in ein aktives Regal zeigt, trägt keine Locks", async (t
 
   await assert.rejects(saveMemory(vault, input("nope")), /not .*own \.bastra/);
   assert.deepEqual(await readdir(shelf), [], "keine Lock-Datei im aktiven Regal");
+});
+
+
+test("late reclaimer cannot displace a live successor of the generation it checked", { timeout: 5000 }, async (t) => {
+  const vault=await harness(t),lock=commitLockPathFor(vault,ID);await mkdir(path.dirname(lock),{recursive:true});
+  await writeFile(lock,JSON.stringify({pid:999999,host:"foreign-fixture",ts:0,token:"abandoned-generation"}),"utf8");const old=new Date(Date.now()-60000);await utimes(lock,old,old);
+  const actors=new AsyncLocalStorage<"A"|"B">(),reads={A:0,B:0};let reachedB!:()=>void,finishedA!:()=>void;
+  const bChecked=new Promise<void>(resolve=>{reachedB=resolve;}),aAcquired=new Promise<void>(resolve=>{finishedA=resolve;});
+  const original=fsPromises.readFile,originalOpen=fsPromises.open;
+  const beforeRead=async(file:unknown)=>{const actor=actors.getStore();if(file===lock&&actor){const n=++reads[actor];if(actor==="A"&&n===2)await bChecked;if(actor==="B"&&n===2){reachedB();await aAcquired;}}};
+  fsPromises.readFile=(async (file:unknown,...args:unknown[])=>{await beforeRead(file);return Reflect.apply(original,fsPromises,[file,...args]);}) as typeof fsPromises.readFile;
+  fsPromises.open=(async (file:unknown,...args:unknown[])=>{
+    const handle=await Reflect.apply(originalOpen,fsPromises,[file,...args]);
+    if(file===lock&&args[0]==="r"){const read=handle.readFile;handle.readFile=async(...readArgs:unknown[])=>{await beforeRead(file);return Reflect.apply(read,handle,readArgs);};}
+    return handle;
+  }) as typeof fsPromises.open;syncBuiltinESMExports();
+  let results:PromiseSettledResult<string>[];
+  try{
+    const a=actors.run("A",()=>acquireCommitClaim(lock,ID,path.join(vault,"a.md"))).finally(finishedA);
+    const b=actors.run("B",()=>acquireCommitClaim(lock,ID,path.join(vault,"b.md")));
+    results=await Promise.allSettled([a,b]);
+  }finally{fsPromises.readFile=original;fsPromises.open=originalOpen;syncBuiltinESMExports();}
+  assert.equal(results.filter(r=>r.status==="fulfilled").length,1,"B must not take A's fresh generation after its old abandonment check");
+  assert.equal(results[0].status,"fulfilled");assert.equal(results[1].status,"rejected");
+  if(results[0].status!=="fulfilled"||results[1].status!=="rejected")throw new Error("unexpected claim results");
+  assert.equal((results[1].reason as MemoryWriteConflictError).code,MEMORY_WRITE_CONFLICT);
+  assert.equal((JSON.parse(await readFile(lock,"utf8")) as {token:string}).token,results[0].value);
 });

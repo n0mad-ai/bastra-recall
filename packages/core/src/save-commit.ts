@@ -97,20 +97,21 @@ interface CommitClaim {
  * ist nur auf ihrer Maschine aussagekräftig, und der Vault liegt erwartbar auf
  * geteilten Cloud-Mounts) oder ein unparsebarer Claim.
  */
-export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
+async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | null; abandoned: boolean }> {
   let raw: string;
   let ageMs: number;
   try {
-    const [content, info] = await Promise.all([
-      readFile(lockPath, "utf8"),
-      stat(lockPath),
-    ]);
-    raw = content;
-    ageMs = Date.now() - info.mtimeMs;
+    // Read bytes and age from one inode, even if the path is replaced meanwhile.
+    const handle = await open(lockPath, "r");
+    try {
+      const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
+      raw = content;
+      ageMs = Date.now() - info.mtimeMs;
+    } finally { await handle.close(); }
   } catch (err) {
     // Gone between EEXIST and here — another writer already cleared it, so this
     // one is free to retry. Anything else stays a conflict: unknown is not free.
-    return (err as NodeJS.ErrnoException)?.code === "ENOENT";
+    return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
   }
 
   // Erst der Besitzer, dann das Alter. Codex-Gegenreview (P1): Die Reihenfolge
@@ -131,16 +132,20 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
       process.kill(claim.pid, 0);
       // owner is alive and working — age says nothing here, up to the ceiling
       // a reused pid cannot plausibly still be the original owner past.
-      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return false;
+      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return { raw, abandoned: false };
     } catch (err) {
       // ESRCH: der Besitzer ist weg, der Claim ist sofort frei. Alles andere
       // (EPERM — fremder Nutzer, gleiche PID) bleibt eine Altersfrage.
-      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return true;
+      if ((err as NodeJS.ErrnoException)?.code === "ESRCH") return { raw, abandoned: true };
     }
   }
   // Fremder Host, unparsebarer oder nicht zuordenbarer Claim: nur das Alter
   // kann ihn noch freigeben.
-  return ageMs > COMMIT_CLAIM_STALE_MS;
+  return { raw, abandoned: ageMs > COMMIT_CLAIM_STALE_MS };
+}
+
+export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
+  return (await inspectCommitClaim(lockPath)).abandoned;
 }
 
 /**
@@ -173,8 +178,9 @@ export async function acquireCommitClaim(
       return token;
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-      if (attempt === 0 && (await claimIsAbandoned(lockPath))) {
-        if (await reclaimStaleClaim(lockPath, body)) {
+      const checked = attempt === 0 ? await inspectCommitClaim(lockPath) : null;
+      if (checked?.abandoned && checked.raw !== null) {
+        if (await reclaimStaleClaim(lockPath, body, checked.raw)) {
           // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
           // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
           // weiter; der tote Vorgänger ist der Befund: Einzeln ein
@@ -247,7 +253,7 @@ const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
  *
  * @returns `true`, wenn dieser Aufrufer den Claim jetzt hält.
  */
-async function reclaimStaleClaim(lockPath: string, body: string): Promise<boolean> {
+async function reclaimStaleClaim(lockPath: string, body: string, checkedGeneration: string): Promise<boolean> {
   let stale: string;
   try {
     stale = await readFile(lockPath, "utf8");
@@ -255,6 +261,9 @@ async function reclaimStaleClaim(lockPath: string, body: string): Promise<boolea
     // Weg oder unlesbar: nichts zu übernehmen, was wir belegen könnten.
     return false;
   }
+  // #1199: bind takeover to the bytes whose abandonment was actually checked.
+  // A late reread may already see another writer's fresh/live generation.
+  if (stale !== checkedGeneration) return false;
   // Der Name der Markierung IST die Identität des verwaisten Claims. Ein
   // Reclaim für eine andere Generation kollidiert damit nicht, und zwei
   // Reclaims für dieselbe können es nicht vermeiden.
