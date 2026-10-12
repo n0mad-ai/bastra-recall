@@ -818,3 +818,12 @@ This change stops supplying those legacy bindings
 from the managed live/backup/archive data; it does not promise retroactive secrecy.
 Same-UID key access, authorized online comparisons, #1198 and the Owner's later
 prepare/execute policy discussion remain as documented, without a new policy here.
+
+### Local source read containment (CodeQL #109)
+
+File-source observation and bounded evidence/Memory/adapter reads open nonblocking
+and require a regular file before reading. macOS uses `O_NOFOLLOW_ANY` on the
+canonical checked path; Linux compares `/proc/self/fd/<fd>` with that checked
+path before reading (unavailable procfs fails closed). A second path lookup alone
+is not a descriptor binding. Windows retains the existing path/final-component
+checks; containment against concurrent parent replacement is not guaranteed there.

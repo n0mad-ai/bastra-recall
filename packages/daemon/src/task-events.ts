@@ -4,8 +4,8 @@ import { canonicalTaskValue } from "./task-canonical.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
 import { verifyTaskEvent, taskBindingHash } from "./task-freshness.js";
 import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { open, realpath, lstat } from "node:fs/promises";
+import { realpath, lstat } from "node:fs/promises";
+import { openTaskSourceFile } from "./task-source-file.js";
 import { relative, resolve, isAbsolute } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -194,7 +194,7 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
       } else if (source.kind === "file") {
         const target = resolve(root, source.path!); const rel = relative(root, target);
         if (rel.startsWith("..") || isAbsolute(rel) || (await lstat(target)).isSymbolicLink() || await realpath(target) !== target) throw new Error("path containment");
-        const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+        const handle = await openTaskSourceFile(target);
         try {
           if ((await handle.stat()).size > maxBytes) throw Object.assign(new Error("source byte budget"),{code:"source_budget"});
           const bytes = Buffer.alloc(maxBytes + 1); const read = await handle.read(bytes, 0, bytes.length, 0);
