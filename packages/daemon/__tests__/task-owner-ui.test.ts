@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {createContext,runInContext} from "node:vm";
 class Node {
- dataset:Record<string,string>={};attributes:Record<string,string>={};open=false;draggable=false;classList={toggle:()=>{},add:()=>{},remove:()=>{}};
+ dataset:Record<string,string>={};attributes:Record<string,string>={};open=false;draggable=false;classNames=new Set<string>();classList={toggle:(name:string,on:boolean)=>{if(on)this.classNames.add(name);else this.classNames.delete(name);},add:(name:string)=>{this.classNames.add(name);},remove:(name:string)=>{this.classNames.delete(name);}};
  setAttribute(name:string,value:string){this.attributes[name]=value;}
  onclick!:()=>Promise<void>;
  textContent="";children:Node[]=[];disabled=false;hidden=false;value="";id="";className="";handlers:Record<string,Function>={};
@@ -74,6 +74,9 @@ test("kanban locks unauthorized drop targets and blocked drops never call mutati
  await cols.find(c=>c.dataset.taskColumn==="done")!.handlers.drop({preventDefault(){}});
  assert.equal(calls.filter(url=>url.endsWith("task_resolve")).length,0);
  assert.match(u.get("message").textContent,/nicht abgelegt/);
+ for(const col of cols){assert.equal(col.children[0].attributes['aria-disabled'],'false');assert.ok(!col.classNames.has('locked'));assert.ok(!col.classNames.has('drop-target'));}
+ await card.handlers.dragstart({dataTransfer:{setData(){}}});assert.ok(cols.some(col=>col.classNames.has('locked')));await card.handlers.dragend();
+ for(const col of cols){assert.equal(col.children[0].attributes['aria-disabled'],'false');assert.ok(!col.classNames.has('locked'));assert.ok(!col.classNames.has('drop-target'));}
 });
 
 test("archive columns initially show the newest twenty and load older records on demand",async()=>{
@@ -125,4 +128,11 @@ test('seen acknowledgement remains separate from task completion after the copy 
  const base={role:'agent',controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[task],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}},calls:string[]=[];
  const u=await ui(base,{cards:[{task_id:'ack',occurrence_id:'occurrence',goal:'Reminder',action_level:'notify',due_at:1000,timezone:'Europe/Madrid',why_now:'Fällig'}]}, {fetch:async(url:string)=>{calls.push(url);return{ok:true,json:async()=>url.endsWith('task_get')?{...task,expected_revision:'fresh'}:url.endsWith('task_due')?{cards:[{task_id:'ack',occurrence_id:'occurrence',goal:'Reminder',action_level:'notify',due_at:1000,timezone:'Europe/Madrid'}]}:base};}});
  await u.get('due').onclick();await descendants(u.get('cards')).find(n=>n.textContent==='Als gesehen markieren')!.handlers.click();assert.ok(calls.some(c=>c.endsWith('task_acknowledge')));assert.ok(!calls.some(c=>c.endsWith('task_resolve')));
+});
+
+test('successful task actions visibly announce their result in the shared status region',async()=>{
+ const base={role:'agent',controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}};
+ const u=await ui(base);await runInContext("message('Aufgabe gespeichert.')",u.ctx);assert.equal(u.get('message').hidden,false);assert.equal(u.get('message').textContent,'Aufgabe gespeichert.');assert.equal(u.get('message').dataset.kind,'success');
+ await runInContext("message('')",u.ctx);assert.equal(u.get('message').hidden,true);
+ const html=await readFile(new URL('../webui/index.html',import.meta.url),'utf8');assert.match(html,/id="task-message"[^>]*role="status"[^>]*aria-live="polite"/);
 });
