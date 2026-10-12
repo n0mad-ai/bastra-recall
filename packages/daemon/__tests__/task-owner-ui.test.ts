@@ -179,3 +179,11 @@ test('topbar accent border follows only search inputs, with separate keyboard fo
  const topbar=await readFile(new URL('../webui/css/topbar.css',import.meta.url),'utf8');
  assert.match(topbar,/#view-switch button:focus-visible/);
 });
+
+test('background redraw preserves archive-button focus and falls back safely when an action disappears',async()=>{
+ const u=await liveUI(),archives=[{id:'old',at:1000,task_count:1}],base={...liveBase,archives,tasks:[liveTask]};u.change(base);await runInContext('refresh()',u.ctx);
+ const doc=(u.ctx as any).document,archive=()=>u.get('tasks').children.find(c=>c.dataset.taskColumn==='done')!.children[1].children.at(-1)!;
+ doc.activeElement=archive();u.change({...base,tasks:[{...liveTask,goal:'Changed outside'}]});await u.tick();assert.equal(doc.activeElement,archive());
+ const card=u.get('tasks').children[0].children[1].children[0];doc.activeElement=descendants(card).find(n=>n.textContent==='Erledigt');u.change({...base,tasks:[{...liveTask,state:'resolved'}]});await u.tick();
+ const done=u.get('tasks').children.find(c=>c.dataset.taskColumn==='done')!.children[1].children[0];assert.equal(doc.activeElement,done.children[0]);
+});

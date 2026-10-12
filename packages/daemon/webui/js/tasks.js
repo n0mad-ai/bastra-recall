@@ -7,8 +7,8 @@ const active=()=>visible&&!document.hidden;
 const busy=()=>dragTask||['detail','compose','settings','cards-dialog','proposal'].some(name=>$(name).open);
 async function poll(){
  if(!active()||busy()||polling||accessExpired||(!token&&!localSession))return;
- polling=true;
- try{await refresh(true);}catch(e){if(e.code==='unauthorized'){accessExpired=true;message(e.message,true);}}
+ polling=true;const epoch=connection;
+ try{await refresh(true);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){accessExpired=true;message(e.message,true);}}
  finally{polling=false;}
 }
 function armPolling(){clearInterval(pollTimer);pollTimer=active()?setInterval(poll,1500):0;}
@@ -89,13 +89,14 @@ function boardCard(t){const card=text('article','','task-card');card.dataset.tas
 function renderBoard(){const board=$("tasks"),focus=document.activeElement;
  const positions=Array.from(board.children,col=>[col.dataset.taskColumn,col.children[1].scrollTop,col.children[1].scrollLeft]);
  let focused;
- for(const col of board.children)for(const card of col.children[1].children){const index=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]).indexOf(focus);if(index>=0&&card.dataset.taskKey)focused={key:card.dataset.taskKey,column:col.dataset.taskColumn,index};}
+ for(const col of board.children)for(const card of col.children[1].children){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);if(card===focus||controls.includes(focus))focused={key:card.dataset.taskKey,column:col.dataset.taskColumn,label:focus.textContent,title:card.children[0]===focus};}
  board.replaceChildren();const tasks=[...snapshot.tasks,...coldTasks],seen=new Set(),unique=tasks.filter(t=>!seen.has(taskKey(t))&&seen.add(taskKey(t)));
  for(const [key,label] of columns){const col=text('section','','task-column');col.dataset.taskColumn=key;col.setAttribute('aria-label',label);const items=unique.filter(t=>columnFor(t)===key).sort((a,b)=>(b.updated_at??b.schedule.at??0)-(a.updated_at??a.schedule.at??0));const heading=text('header','','task-column-head');heading.append(text('h2',label,'section-title'),text('span',String(items.length),'task-count'));const list=text('div','','task-column-list');for(const t of items.slice(0,limits[key]??items.length))list.append(boardCard(t));if(!items.length)list.append(text('p','Keine Aufgaben','tv-empty'));
  if(items.length>(limits[key]??Infinity))list.append(button('Ältere Einträge laden',async()=>{limits[key]+=20;renderBoard();}));if(key==='done'||key==='failed')for(const entry of snapshot.archives||[])list.append(button(`Archiv ${time(entry.at)} · ${entry.task_count} Aufgaben`,async()=>{const data=await api('list',{archive_id:entry.id});coldTasks=data.tasks.map(t=>({...t,deliveries:[]}));renderBoard();}));
  col.append(heading,list);col.addEventListener('dragover',e=>{if(dragTask&&canMove(dragTask,key)){e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='move';}});col.addEventListener('drop',e=>{e.preventDefault();const t=dragTask;dragTask=null;setDropTargets(null);if(t&&canMove(t,key))action(()=>moveTask(t,key));else message('Diese Aufgabe kann hier nicht abgelegt werden.',true);});board.append(col);}
  for(const [key,top,left] of positions){const col=Array.from(board.children).find(c=>c.dataset.taskColumn===key);if(col){col.children[1].scrollTop=top;col.children[1].scrollLeft=left;}}
- if(focused){for(const col of board.children)for(const card of col.children[1].children)if(card.dataset.taskKey===focused.key){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);controls[focused.index]?.focus({preventScroll:true});}}
+ if(focused){let target;for(const col of board.children)for(const card of col.children[1].children){if(focused.key&&card.dataset.taskKey===focused.key){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);target=focused.title?card.children[0]:controls.find(n=>n.textContent===focused.label)||card.children[0];}else if(!focused.key&&col.dataset.taskColumn===focused.column&&card.textContent===focused.label)target=card;}
+ if(!target){target=Array.from(board.children).find(c=>c.dataset.taskColumn===focused.column)?.children[0];if(target)target.tabIndex=-1;}target?.focus({preventScroll:true});}
  if(selectedId&&!$("detail").open){const selected=unique.find(t=>taskKey(t)===selectedId);if(selected)$("detail-body").replaceChildren(taskDetails(selected));}
 }
 for(const name of ['detail','compose','settings','cards'])$(`${name}-close`).onclick=()=>$(name==='cards'?'cards-dialog':name).close();
