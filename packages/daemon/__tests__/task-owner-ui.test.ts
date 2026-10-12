@@ -170,3 +170,12 @@ test('background failure keeps last good board and success message, expired acce
  u.fail('network');await u.tick();assert.equal(u.get('tasks').children,board);assert.equal(u.get('message').textContent,'Aufgabe gespeichert.');
  u.fail('unauthorized');await u.tick();assert.match(u.get('message').textContent,/abgelaufen/);const calls=u.calls();await u.tick();assert.equal(u.calls(),calls);assert.equal(u.get('tasks').children,board);
 });
+
+
+test('topbar accent border follows only search inputs, with separate keyboard focus on view buttons',async()=>{
+ const css=await readFile(new URL('../webui/css/search.css',import.meta.url),'utf8');
+ assert.ok(!css.includes('#searchbox:focus-within'));
+ assert.match(css,/#searchbox:has\(#search:focus,\s*#chat-input:focus\)/);
+ const topbar=await readFile(new URL('../webui/css/topbar.css',import.meta.url),'utf8');
+ assert.match(topbar,/#view-switch button:focus-visible/);
+});
