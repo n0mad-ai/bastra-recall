@@ -270,8 +270,14 @@ the leads above cover three languages and do not decide whether a prompt
 recalls: a lookup in a language without a list is not labelled `retrieval` on
 a guess. What surfaces there is gated by score: only hits ≥ 100, plus
 memories you wired as `recall_mode: reflex` at the normal floor. Without
-fusion (vector arm off or timed out) the score says nothing, so only wired
-memories surface. `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
+fusion (vector arm off or timed out), raw BM25 scores cannot be read on the
+fused scale, so only wired memories can surface. Outside a **recognized lookup**
+(`detected_mode: "retrieval"`), a wired recall hit also needs
+`anchor_strength: "strong"`: two significant words from its own triggers, or a
+rare identifier, anchored in the prompt. A high raw BM25 score alone is not enough.
+Recognized lookups keep the normal floor without this additional anchor check.
+The fused recall path and the separate literal-reflex path are unchanged.
+`BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
 behaviour: non-retrieval prompts emit `{}` apart from wired reflex memories.
 
 **Turns nobody typed (#703):** Claude Code delivers a finished background task
@@ -644,12 +650,37 @@ path as a structured `tool_response`. The lane does two jobs:
    failure-mode memories, and emits
    `<recall-hints surface="claude-code" trigger="bash-fail">`.
 
+**Status sources.** Structured `exit_code`, `exitCode`, `returncode`,
+`return_code` or `status` values take precedence. The text fallback reads the
+failure event's `error` wording and, for Codex plain-text `output`, only its
+bounded header before `Output:` (up to eight header lines). Command output
+below `Output:` is never searched for an exit status; neither are separate
+`stdout`, `stderr` or `content` fields. Without a nearby `Output:` separator,
+only the first line of `output` is considered for older/plain status formats.
+A successful command printing “Exit code 1” in its own stdout therefore does
+not become a failure. Error/body text can still supply query context after a
+failure has been established; it cannot establish the status there.
+
+The query skips leading `cd`/`pushd` clauses: `cd dir && npm test` names
+`npm test`, not the directory. A command consisting only of `cd` keeps that
+head. This is not a full shell parser: `(cd dir && cmd)`, `VAR=1 cd x && y`
+and `cd dir || exit` can still give an incomplete or misleading command head.
+
 The fail-recall is throttled to one hint per 30 s per session (marker file in
 `$TMPDIR/bastra-hook/fail-throttle-<session>.ts`); the act-signal is not.
-Skips its own `bastra-recall-*` invocations to avoid loops.
+With a real session ID it also shares the shown-memory counter with the other
+recall lanes: default **one delivered hint per memory per session**
+(`BASTRA_HOOK_MAX_SHOW`, minimum 1). A newer `load_memory` marker permits another
+hint; `compact` and `clear` reset the session's shown state, `resume` does not.
+There is no automatic four-hour repeat reset. A repeated memory line is dropped,
+not the failed-command event or its act-signal. If all eligible hits were already
+shown, `status: "deduped"` records that outcome; `dropped_dedup_count` counts
+removed hits, also when fresh hits remain. Without a real session ID this
+shown-state filter is not applied. Skips its own `bastra-recall-*` invocations
+to avoid loops.
 
 Telemetry: `bash_fail_hook_call` with `exit_code, command_head, hit_count,
-top_score, status` (hook side) and dimensioned `hook_act` with `tool_name,
+top_score, status, dropped_dedup_count` (hook side) and dimensioned `hook_act` with `tool_name,
 excerpt_chars, matched_episodes, exit_code`, plus `client`, `hook_source` and
 the pseudonymous experiment session (daemon side).
 
@@ -1855,9 +1886,16 @@ nicht, ob ein Prompt Recall bekommt: Eine Suchanfrage in einer Sprache ohne
 Liste wird nicht auf Verdacht als `retrieval` eingestuft. Was dort erscheint,
 begrenzt der Score: nur Treffer ≥ 100, dazu Memories, die du als
 `recall_mode: reflex` verdrahtet hast, an der normalen Untergrenze. Ohne Fusion
-(Vektor-Arm aus oder in die Deadline gelaufen) sagt der Score nichts, dann
-erscheinen nur verdrahtete Memories. `BASTRA_PROMPT_HOOK_MODE=retrieval-only`
-stellt das alte Verhalten her: Prompts ohne Retrieval-Bezug geben bis auf
+(Vektor-Arm aus oder in die Deadline gelaufen) lassen sich rohe BM25-Scores
+nicht auf der Fusionsskala lesen, dann können nur verdrahtete Memories erscheinen.
+Außerhalb eines **erkannten Lookups** (`detected_mode: "retrieval"`) braucht ein
+verdrahteter Recall-Treffer außerdem `anchor_strength: "strong"`: zwei bedeutende
+Wörter seiner eigenen Trigger oder ein seltener Bezeichner, im Prompt verankert.
+Ein hoher roher BM25-Score allein reicht nicht. Erkannte Lookups behalten die
+normale Untergrenze ohne diese zusätzliche Ankerprüfung. Der fusionierte
+Recall-Pfad und der getrennte wörtliche Reflex-Pfad bleiben unverändert.
+`BASTRA_PROMPT_HOOK_MODE=retrieval-only` stellt das alte Verhalten her:
+Prompts ohne Retrieval-Bezug geben bis auf
 verdrahtete Reflex-Memories `{}` aus.
 
 **Turns, die niemand getippt hat (#703):** Claude Code liefert eine fertige
@@ -2199,13 +2237,40 @@ Fehler-Events wird in denselben Anfragepfad normalisiert wie eine strukturierte
    ruft ähnliche Erinnerungen zu Fehlermustern ab und gibt
    `<recall-hints surface="claude-code" trigger="bash-fail">` aus.
 
+**Statusquellen.** Strukturierte Werte in `exit_code`, `exitCode`, `returncode`,
+`return_code` oder `status` haben Vorrang. Der Text-Fallback liest die
+`error`-Formulierung des Fehler-Events und bei Codex-Klartext in `output` nur
+den begrenzten Kopfblock vor `Output:` (bis zu acht Kopfzeilen). Befehlsausgabe
+unter `Output:` wird nie nach einem Exit-Status durchsucht, ebenso wenig separate
+Felder `stdout`, `stderr` oder `content`. Ohne nahe `Output:`-Trennzeile wird
+für ältere/einfache Statusformate nur die erste Zeile von `output` betrachtet.
+Ein erfolgreicher Befehl, der „Exit code 1“ in seine eigene stdout-Ausgabe
+schreibt, wird deshalb kein Fehler. Fehler-/Ausgabetext kann weiterhin Kontext
+für die Anfrage liefern, nachdem der Fehler feststeht; den Status kann er dort
+nicht bestimmen.
+
+Die Anfrage überspringt führende `cd`-/`pushd`-Klauseln: `cd dir && npm test`
+nennt `npm test`, nicht den Ordner. Ein reiner `cd`-Befehl behält diesen Kopf.
+Das ist kein vollständiger Shell-Parser: `(cd dir && cmd)`, `VAR=1 cd x && y`
+und `cd dir || exit` können weiterhin einen unvollständigen oder irreführenden
+Befehlskopf liefern.
+
 Der Fehler-Recall ist auf einen Hinweis pro 30 s pro Session gedrosselt
 (Markerdatei in `$TMPDIR/bastra-hook/fail-throttle-<session>.ts`); das
-Handlungssignal nicht. Eigene `bastra-recall-*`-Aufrufe werden übersprungen, um
-Schleifen zu vermeiden.
+Handlungssignal nicht. Bei echter Session-ID teilt er außerdem den Zähler
+bereits gezeigter Erinnerungen mit den anderen Recall-Lanes: standardmäßig
+**ein gelieferter Hinweis pro Memory und Session** (`BASTRA_HOOK_MAX_SHOW`,
+mindestens 1). Ein neuerer `load_memory`-Marker erlaubt einen weiteren Hinweis;
+`compact` und `clear` setzen den Shown-Status der Session zurück, `resume` nicht.
+Es gibt keinen automatischen Vier-Stunden-Reset. Entfernt wird die wiederholte
+Memory-Zeile, nicht das Fehler-Event oder dessen Handlungssignal. Waren alle
+geeigneten Treffer schon gezeigt, hält `status: "deduped"` das fest;
+`dropped_dedup_count` zählt entfernte Treffer, auch wenn frische übrig bleiben.
+Ohne echte Session-ID wird dieser Shown-Filter nicht angewendet. Eigene
+`bastra-recall-*`-Aufrufe werden übersprungen, um Schleifen zu vermeiden.
 
 Telemetrie: `bash_fail_hook_call` mit `exit_code, command_head, hit_count,
-top_score, status` (Hook-Seite) und das dimensionierte `hook_act` mit
+top_score, status, dropped_dedup_count` (Hook-Seite) und das dimensionierte `hook_act` mit
 `tool_name, excerpt_chars, matched_episodes, exit_code`, dazu `client`,
 `hook_source` und die pseudonyme Experiment-Session (Daemon-Seite).
 
