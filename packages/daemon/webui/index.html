@@ -417,7 +417,27 @@
     </div>
   </div>
 
-  <section id="tasks-view" hidden aria-label="Aufgaben"><iframe id="tasks-frame" title="Aufgaben und Erinnerungen" data-src="tasks.html" class="tasks-frame"></iframe></section>
+  <section id="tasks-view" hidden aria-label="Aufgaben" lang="de">
+    <header class="task-head">
+      <div><h1 class="section-title">Aufgaben</h1><p class="tv-note">Erinnerungen erscheinen beim nächsten Gespräch. Vorbereiten und Ausführen brauchen deine Freigabe.</p></div>
+      <nav class="task-actions" aria-label="Aufgaben verwalten">
+        <button id="task-new" class="skill-declare">Neue Aufgabe</button>
+        <button id="task-due" class="skill-declare">Fällige Karten</button>
+        <button id="task-settings-open" class="skill-declare">Steuerung</button>
+        <button id="task-refresh" class="skill-declare">Aktualisieren</button>
+      </nav>
+    </header>
+    <p id="task-message" hidden class="tv-note" role="status" aria-live="polite"></p>
+    <div id="task-workspace" hidden><div id="task-tasks" class="task-board" role="region" tabindex="0" aria-label="Kanban-Brett"></div></div>
+    <dialog id="task-detail" class="task-dialog task-inspector" aria-label="Aufgabendetails"><button id="task-detail-close" class="skill-declare">Schließen</button><div id="task-detail-body" class="insp-body"></div></dialog>
+    <dialog id="task-compose" class="task-dialog" aria-labelledby="task-compose-title"><h2 id="task-compose-title" class="insp-title">Aufgabe anlegen</h2><form id="task-create"><label>Was soll passieren?<input class="care-note" id="task-goal" maxlength="4096" required placeholder="Nach sieben Tagen auswerten"></label><div class="task-form-grid"><label>Auslöser<select class="care-note" id="task-timing"><option value="after">Verstrichene Dauer</option><option value="when">Ortszeit</option></select></label><label>Wann?<input class="care-note" id="task-when" required value="7d" placeholder="7d oder 2026-10-12T18:00"></label><label>Zeitzone<input class="care-note" id="task-timezone" required value="Europe/Madrid"></label><label>Bereich<input class="care-note" id="task-domain" required value="personal"></label><label>Stufe<select class="care-note" id="task-level"><option value="notify">Erinnern</option><option value="prepare">Vorbereiten</option><option value="execute">Ausführen</option></select></label><label>Wiederholung (optional)<input class="care-note" id="task-every" placeholder="1d oder 1w"></label><label>Anzahl (bei Wiederholung)<input class="care-note" id="task-count" type="number" min="1" max="10000" value="3"></label></div><label class="check"><input id="task-arm" type="checkbox"> Direkt aktivieren</label><button class="skill-declare">Anlegen</button></form>
+<button id="task-compose-close" class="skill-declare">Schließen</button></dialog>
+    <dialog id="task-settings" class="task-dialog" aria-label="Steuerung und Zugang"><h2 class="insp-title">Steuerung und Zugang</h2><section id="task-access"><h3 class="tv-h3">Erweiterter Zugriff</h3><form id="task-connect"><label>Zugangsschlüssel <input class="care-note" id="task-token" type="password" autocomplete="off" required></label><button class="skill-declare">Verbinden</button></form><p>Der Zugangsschlüssel bleibt nur in diesem Browserfenster. Teile ihn nicht im Gespräch. Erinnerungen brauchen hier keinen Schlüssel. Einrichtung und Hilfe: <code>bastra help tasks</code>.</p></section>
+<div id="task-status"></div><nav id="task-controls"><button class="skill-declare" data-control="mute">Stumm</button><button class="skill-declare" data-control="unmute">Wieder hörbar</button><button class="skill-declare" data-control="off">Funktion aus</button><button class="skill-declare" data-control="on">Funktion an</button><button class="skill-declare" data-control="stop">Ausführung stoppen</button><button class="skill-declare" id="task-disconnect">Abmelden</button></nav>
+<div class="tv-cols"><section class="tv-section"><h3 class="tv-h3">Wirkungen und Abgleich</h3><div id="task-actions"></div></section><section class="tv-section"><h3 class="tv-h3">Quellen, Adapter und Freigaben</h3><div id="task-sources"></div><p class="tv-note">Eine Wirkung braucht alle Owner-Signaturen. Schlüssel entsperrt nur die CLI. Aktivieren: <code>bastra tasks boundary</code>, Prozesse neu starten, <code>bastra tasks execution-enable</code>.</p></section></div><button id="task-settings-close" class="skill-declare">Schließen</button></dialog>
+    <dialog id="task-cards-dialog" class="task-dialog" aria-label="Fällige Karten"><h2 class="insp-title">Fällige Karten</h2><div id="task-cards"></div><button id="task-cards-close" class="skill-declare">Schließen</button></dialog>
+    <dialog id="task-proposal" class="task-dialog"><h2 class="insp-title">Exakter Vorschlag</h2><div id="task-preview"></div><details><summary>Technische Details</summary><pre id="task-binding"></pre><p id="task-sign-command"></p></details><p class="tv-note">Die Freigabe erfolgt außerhalb dieser Ansicht.</p><button class="skill-declare" id="task-close-preview">Schließen</button></dialog>
+  </section>
 
   <!-- Telemetry tab (#463): the stats.ts series, rendered. A scroll page over
        the canvas rather than a view of it — nothing here has a position. -->
