@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "issue": 1058,
+  "status": "subset_numbers_registered",
+  "harness": "src/flat-scale-subset.ts",
+  "protocol": {
+    "backend": "production EmbeddingIndex exact cosine Flat, v1.1.0 core",
+    "sizes": [
+      1403,
+      1000,
+      3000,
+      10000,
+      50000
+    ],
+    "current_size": "1403 matches prior read-only size census; all scale corpora are synthetic",
+    "dimension": 768,
+    "vectors": "seeded numeric fixture vectors, deterministic provider; not an embedding model/semantic quality benchmark",
+    "interference": "entries >=512 are close perturbations of the first 512 entity vectors",
+    "queries": "12 fixed targets <512, exact and noisy vector slices, 3 repeats each; same probes across sizes",
+    "metrics": [
+      "cache load",
+      "dense query p50/p95",
+      "synthetic target hit@1/@10",
+      "sampled RSS",
+      "corpus/vector/cache disk bytes",
+      "one update via reindexFile + embed callback",
+      "one delete via reconciliation + orphan exclusion"
+    ],
+    "setup": "precomputed vectors and content hashes loaded through production persistence format; no inference backfill",
+    "unmeasured": [
+      "HNSW comparison/98 percent of Flat criterion",
+      "semantic retrieval/gold set/M1",
+      "temporal/conflict quality",
+      "production switch/recovery",
+      "neural embed/backfill time",
+      "peak RSS and isolated-host latency"
+    ],
+    "gate": "descriptive supported backend subset only; no M5/HNSW gate passed"
+  },
+  "command": "node --import tsx packages/eval/src/flat-scale-subset.ts --size <registered-size> --out <artifact>",
+  "measurement": {
+    "results": "flat-scale-subset-results.json",
+    "run_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+    "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+    "preregistered_protocol_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+    "gates_passed": []
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "issue": 644,
+  "harness": "supersession-hybrid",
+  "engine": {
+    "repo_commit": "c0a4b7f0e0930acf125da43e6e9d9e90f0245d0c",
+    "repo_dirty": false,
+    "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+  },
+  "corpus_sha256": "d4f9e8db364abe7ef6ac00f7e689761211f8265d0a57bd8314c7b08b70ca6b22",
+  "registration_sha256": "f49d38e43796c0e2b31e86d567114d1fcbeca4ff71c64aae1673e20f022a8800",
+  "code_sha256": "2605605c3bdb62b2d588df3f8db5d810b35c17cc3ae14bb22be2f3bc06818959",
+  "arm": "hybrid",
+  "embedding_model": "embeddinggemma",
+  "embedding_model_digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+  "rrf_vector_weight": 1.5,
+  "k": 3,
+  "summary": {
+    "n": 36,
+    "predecessor_outranks": 24,
+    "strict_score_inversions": 24,
+    "score_ties": 0,
+    "both_missing": 0,
+    "successor_hit_at_1": 12,
+    "successor_hit_at_3": 36,
+    "predecessor_reachable": 36
+  },
+  "reversed_order_control": {
+    "n": 36,
+    "predecessor_outranks": 24,
+    "strict_score_inversions": 24,
+    "score_ties": 0,
+    "both_missing": 0,
+    "successor_hit_at_1": 12,
+    "successor_hit_at_3": 36,
+    "predecessor_reachable": 36
+  },
+  "slices": {
+    "order": {
+      "old-first": {
+        "n": 36,
+        "predecessor_outranks": 24,
+        "strict_score_inversions": 24,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 12,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      },
+      "new-first": {
+        "n": 36,
+        "predecessor_outranks": 24,
+        "strict_score_inversions": 24,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 12,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      }
+    },
+    "language": {
+      "en": {
+        "n": 36,
+        "predecessor_outranks": 28,
+        "strict_score_inversions": 28,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 8,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      },
+      "de": {
+        "n": 36,
+        "predecessor_outranks": 20,
+        "strict_score_inversions": 20,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 16,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      }
+    },
+    "kind": {
+      "value-change": {
+        "n": 36,
+        "predecessor_outranks": 24,
+        "strict_score_inversions": 24,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 12,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      },
+      "polarity-flip": {
+        "n": 36,
+        "predecessor_outranks": 24,
+        "strict_score_inversions": 24,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 12,
+        "successor_hit_at_3": 36,
+        "predecessor_reachable": 36
+      }
+    },
+    "query_class": {
+      "neutral": {
+        "n": 24,
+        "predecessor_outranks": 12,
+        "strict_score_inversions": 12,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 12,
+        "successor_hit_at_3": 24,
+        "predecessor_reachable": 24
+      },
+      "old-anchor": {
+        "n": 24,
+        "predecessor_outranks": 20,
+        "strict_score_inversions": 20,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 4,
+        "successor_hit_at_3": 24,
+        "predecessor_reachable": 24
+      },
+      "paraphrase": {
+        "n": 24,
+        "predecessor_outranks": 16,
+        "strict_score_inversions": 16,
+        "score_ties": 0,
+        "both_missing": 0,
+        "successor_hit_at_1": 8,
+        "successor_hit_at_3": 24,
+        "predecessor_reachable": 24
+      }
+    }
+  },
+  "verdict_sha256": "f6ef73e76bff59d6b9dfe28cd6425b9b2cb03f78355edad1988a5d63cfb6c84b",
+  "verdict": "hybrid baseline measured; historical/as-of queries, answer quality and population durability remain unmeasured",
+  "artifact": {
+    "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/supersession-hybrid.json",
+    "sha256": "6ab76e191b4f1653ccbe1b697b503e4dc6d870cab6b7498cb88825a313b4bac0"
+  },
+  "slices_note": "Language/kind/query-class slices contain both order controls; primary/reversed summaries each contain 36 queries."
+}

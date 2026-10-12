@@ -263,6 +263,14 @@ npm run longmemeval --workspace=@bastra-recall/eval -- \
 
 ### The comparison
 
+The shipped-default row was measured end-to-end from the clean `v1.1.0` tag
+(`b1e39ec5`), with embeddinggemma and RRF vector weight 1.5. Hybrid MRR is
+0.896505; BM25 MRR is 0.716440. This confirms the earlier offline-refusion
+figures (83.2% / 98.2% / 0.897 rounded). The original weight-1 records remain
+unchanged. Retrieval only: no answer model or judge; one new full run, no new
+determinism claim. Model digest, unmodified machine-written engine identity
+and artifact hash are recorded alongside the aggregate results.
+
 The two reference harnesses do not share a protocol with each other, so one
 configuration cannot be comparable to both. Rather than publish one number and a
 caveat, the arm runs a configuration per comparator. Every row below is
@@ -273,7 +281,8 @@ either end.
 
 | our configuration | turns | `top_k` | **hybrid R@5** | R@1 | R@3 | bm25 R@5 |
 |---|---|---:|---:|---:|---:|---:|
-| default | all | 20 | **98.2%** | 79.6% | 95.2% | 84.6% |
+| shipped default: v1.1.0, weight 1.5 | all | 20 | **98.2%** | 83.2% | 96.4% | 84.6% |
+| v1.0.0: weight 1 (legacy `default` id) | all | 20 | **98.2%** | 79.6% | 95.2% | 84.6% |
 | mempalace-matched | user | 50 | **97.2%** | 83.2% | 94.4% | 82.8% |
 | robustness: uncleaned S | all | 20 | 97.8% | 79.8% | 94.6% | 85.4% |
 

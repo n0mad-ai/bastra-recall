@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "issue": 1082,
+  "n": 500,
+  "baseline": "shipped-default-v1.1.0, #1081",
+  "primary": "whole_bm25_maxsim R@1 versus shipped hybrid",
+  "paired": {
+    "maxsim_dense": {
+      "r@1": {
+        "maxsim_only": 42,
+        "shipped_only": 14,
+        "both": 402,
+        "neither": 42,
+        "exact_two_sided_sign_test_p": 0.00023444586091919684
+      },
+      "r@5": {
+        "maxsim_only": 6,
+        "shipped_only": 6,
+        "both": 485,
+        "neither": 3,
+        "exact_two_sided_sign_test_p": 1
+      }
+    },
+    "whole_bm25_maxsim": {
+      "r@1": {
+        "maxsim_only": 23,
+        "shipped_only": 9,
+        "both": 407,
+        "neither": 61,
+        "exact_two_sided_sign_test_p": 0.020061607006937265
+      },
+      "r@5": {
+        "maxsim_only": 5,
+        "shipped_only": 2,
+        "both": 489,
+        "neither": 4,
+        "exact_two_sided_sign_test_p": 0.453125
+      }
+    },
+    "chunk_bm25_maxsim": {
+      "r@1": {
+        "maxsim_only": 30,
+        "shipped_only": 18,
+        "both": 398,
+        "neither": 54,
+        "exact_two_sided_sign_test_p": 0.11140289106101875
+      },
+      "r@5": {
+        "maxsim_only": 5,
+        "shipped_only": 2,
+        "both": 489,
+        "neither": 4,
+        "exact_two_sided_sign_test_p": 0.453125
+      }
+    }
+  },
+  "interpretation": "descriptive benchmark comparison; no population/causal claim or shipping gate passed",
+  "p_value_adjustment": "none; three max-sim arms were examined; no confirmatory endpoint improvement claim"
+}

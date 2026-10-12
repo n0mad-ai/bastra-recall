@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "issue": 1109,
+  "status": "diagnostic_protocol_registered",
+  "harness": "scripts/draft-csls.mjs",
+  "protocol": {
+    "inputs": "read-only existing draft store and quote-vector store; matched id/fingerprint/quote hash; no re-embedding",
+    "pairs": "all unordered valid pairs with no shared evidence session",
+    "neighborhood": "mean cosine to 10 nearest eligible cross-session drafts; fewer-than-10 neighborhoods excluded from ranked comparison",
+    "csls": "2*cosine(x,y) - r(x) - r(y)",
+    "controls": ["raw cosine", "production character-bigram Dice"],
+    "selection": "top 120 per method; deterministic input-order tie break; not a prevalence or precision sample",
+    "endpoints": ["eligible pair count", "unlabelled top-set overlap", "raw cosine distribution", "runtime", "existing vector storage"],
+    "no_labels": "precision, false positives, durable fact versus repeated request, adjudication and safe promotion are not evaluable",
+    "unmeasured": ["contributor corpus reproduction", "quote-plus-situation", "translated restatements and conflicts", "rare-token guards", "draft-to-vault duplicates", "post-expiry fact recurrence"],
+    "model_identity": "stored provider/dimension only; historic model digest was not persisted; input vectors are content-hashed, not asserted to come from the current model tag",
+    "gate": "none; no ranking, thresholds or promotion changes"
+  },
+  "command": "node --import tsx packages/eval/scripts/draft-csls.mjs --drafts <store> --vectors <vectors> --out <aggregate-artifact>"
+}

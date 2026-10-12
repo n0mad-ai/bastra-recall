@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "issue": 1058,
+  "runs": [
+    {
+      "schema_version": 1,
+      "issue": 1058,
+      "engine": {
+        "repo_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      },
+      "registration_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+      "code_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "dataset_sha256": "be04c5b71f8cbff2d88f1d1cbb63d03604c8455a3232cb769987165f054beb4f",
+      "initial_vector_file_sha256": "af8529d8cbd310ffc7979b8efab8289937e6bad3775b9f32b8b2556ef9a99d88",
+      "backend": "production exact Flat",
+      "provider": "eval-seeded-vector-v1",
+      "dim": 768,
+      "size": 1403,
+      "setup_and_total_ms": 277.524834,
+      "vault_load_ms": 64.22120900000004,
+      "vector_cache_load_ms": 9.953915999999936,
+      "slices": {
+        "exact": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 1.3609579999999823,
+          "query_ms_p95": 2.540083000000095
+        },
+        "noisy": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 1.1820000000000164,
+          "query_ms_p95": 1.3630000000000564
+        }
+      },
+      "sampled_rss_bytes": {
+        "after_load": 186761216,
+        "after_queries": 210337792,
+        "after_mutations": 228802560
+      },
+      "disk_bytes": {
+        "initial_corpus": 357765,
+        "initial_vectors": 5773403,
+        "initial_embed_cache": 204908,
+        "post_mutation_vectors": 5769288
+      },
+      "update_ms": 3.161459000000036,
+      "update_target_hit_at_1": true,
+      "delete_reconcile_ms": 10.963500000000067,
+      "deleted_id_absent": true,
+      "fixture_provider_calls": 75,
+      "neural_model_calls": 0,
+      "limitations": [
+        "synthetic vectors are not a semantic model/gold-set test",
+        "shared host and sampled RSS, not isolated latency or peak memory",
+        "single update/delete per scale",
+        "HNSW unavailable and unmeasured",
+        "no production switch/recovery or M1 gate"
+      ],
+      "verdict": "supported Flat scaling subset measured; HNSW/M5 confirmation not evaluable",
+      "artifact": {
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/flat-scale-1403.json",
+        "sha256": "63f13026d4ad1817e3c2a11639aa20e2a47f705e359ff5f3dc50e5f24887a45b"
+      }
+    },
+    {
+      "schema_version": 1,
+      "issue": 1058,
+      "engine": {
+        "repo_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      },
+      "registration_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+      "code_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "dataset_sha256": "dd0405fef4c46d44e77b8a34786d434367028311453dbe2150a9863c2a888fc4",
+      "initial_vector_file_sha256": "b8bbedd4a8328f723b162cdd4a0d10de4685f72ac2a2c6da4cdc1091da8c1d7d",
+      "backend": "production exact Flat",
+      "provider": "eval-seeded-vector-v1",
+      "dim": 768,
+      "size": 1000,
+      "setup_and_total_ms": 201.28004199999998,
+      "vault_load_ms": 49.90620800000002,
+      "vector_cache_load_ms": 8.107124999999996,
+      "slices": {
+        "exact": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 0.9571670000000267,
+          "query_ms_p95": 1.0059160000000134
+        },
+        "noisy": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 0.8145410000000197,
+          "query_ms_p95": 1.0100420000000554
+        }
+      },
+      "sampled_rss_bytes": {
+        "after_load": 154583040,
+        "after_queries": 179978240,
+        "after_mutations": 194805760
+      },
+      "disk_bytes": {
+        "initial_corpus": 255000,
+        "initial_vectors": 4115058,
+        "initial_embed_cache": 146070,
+        "post_mutation_vectors": 4110943
+      },
+      "update_ms": 2.847500000000025,
+      "update_target_hit_at_1": true,
+      "delete_reconcile_ms": 9.016332999999975,
+      "deleted_id_absent": true,
+      "fixture_provider_calls": 75,
+      "neural_model_calls": 0,
+      "limitations": [
+        "synthetic vectors are not a semantic model/gold-set test",
+        "shared host and sampled RSS, not isolated latency or peak memory",
+        "single update/delete per scale",
+        "HNSW unavailable and unmeasured",
+        "no production switch/recovery or M1 gate"
+      ],
+      "verdict": "supported Flat scaling subset measured; HNSW/M5 confirmation not evaluable",
+      "artifact": {
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/flat-scale-1000.json",
+        "sha256": "07c90292f9bf90f9116af778cded48bd643189baa9901c8eb72f15f629fb186c"
+      }
+    },
+    {
+      "schema_version": 1,
+      "issue": 1058,
+      "engine": {
+        "repo_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      },
+      "registration_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+      "code_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "dataset_sha256": "f47ab643a954ea305d25dcd461499c8ade3b8f9b71f9599e09ae7062a3504af2",
+      "initial_vector_file_sha256": "553bf200cd55a1bf0d31e8b33320a103f2877f43f308fcdc72ccd5c3b2174ba3",
+      "backend": "production exact Flat",
+      "provider": "eval-seeded-vector-v1",
+      "dim": 768,
+      "size": 3000,
+      "setup_and_total_ms": 529.492792,
+      "vault_load_ms": 103.18708300000003,
+      "vector_cache_load_ms": 15.917291999999975,
+      "slices": {
+        "exact": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 2.7805829999999787,
+          "query_ms_p95": 3.568125000000009
+        },
+        "noisy": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 2.702792000000045,
+          "query_ms_p95": 2.8932920000000877
+        }
+      },
+      "sampled_rss_bytes": {
+        "after_load": 220839936,
+        "after_queries": 239140864,
+        "after_mutations": 297451520
+      },
+      "disk_bytes": {
+        "initial_corpus": 765000,
+        "initial_vectors": 12345058,
+        "initial_embed_cache": 438070,
+        "post_mutation_vectors": 12340943
+      },
+      "update_ms": 3.28287499999999,
+      "update_target_hit_at_1": true,
+      "delete_reconcile_ms": 17.53008299999999,
+      "deleted_id_absent": true,
+      "fixture_provider_calls": 75,
+      "neural_model_calls": 0,
+      "limitations": [
+        "synthetic vectors are not a semantic model/gold-set test",
+        "shared host and sampled RSS, not isolated latency or peak memory",
+        "single update/delete per scale",
+        "HNSW unavailable and unmeasured",
+        "no production switch/recovery or M1 gate"
+      ],
+      "verdict": "supported Flat scaling subset measured; HNSW/M5 confirmation not evaluable",
+      "artifact": {
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/flat-scale-3000.json",
+        "sha256": "aee3ec95fbb17b639e361e69639f3f641a4c84c4f2d6267b0609c45dd7665ede"
+      }
+    },
+    {
+      "schema_version": 1,
+      "issue": 1058,
+      "engine": {
+        "repo_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      },
+      "registration_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+      "code_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "dataset_sha256": "a1a25920313c776d0a728323390fb31bc5760681b7c5e5c9cd9fdd97ad545e2d",
+      "initial_vector_file_sha256": "43b5d36762943e7e9917b980a4cd0332b1ee7600841e0641fafd3497f4f78de3",
+      "backend": "production exact Flat",
+      "provider": "eval-seeded-vector-v1",
+      "dim": 768,
+      "size": 10000,
+      "setup_and_total_ms": 1828.721792,
+      "vault_load_ms": 366.56108300000005,
+      "vector_cache_load_ms": 55.03500000000008,
+      "slices": {
+        "exact": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 9.88495799999987,
+          "query_ms_p95": 12.087750000000142
+        },
+        "noisy": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 9.84962500000006,
+          "query_ms_p95": 10.496041000000105
+        }
+      },
+      "sampled_rss_bytes": {
+        "after_load": 569114624,
+        "after_queries": 529793024,
+        "after_mutations": 643104768
+      },
+      "disk_bytes": {
+        "initial_corpus": 2550000,
+        "initial_vectors": 41150058,
+        "initial_embed_cache": 1460070,
+        "post_mutation_vectors": 41145943
+      },
+      "update_ms": 3.91016599999989,
+      "update_target_hit_at_1": true,
+      "delete_reconcile_ms": 45.00904199999991,
+      "deleted_id_absent": true,
+      "fixture_provider_calls": 75,
+      "neural_model_calls": 0,
+      "limitations": [
+        "synthetic vectors are not a semantic model/gold-set test",
+        "shared host and sampled RSS, not isolated latency or peak memory",
+        "single update/delete per scale",
+        "HNSW unavailable and unmeasured",
+        "no production switch/recovery or M1 gate"
+      ],
+      "verdict": "supported Flat scaling subset measured; HNSW/M5 confirmation not evaluable",
+      "artifact": {
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/flat-scale-10000.json",
+        "sha256": "b7186a272ba26e62367f81a32339f89966d0f919e240c60f85a51c582784d7d8"
+      }
+    },
+    {
+      "schema_version": 1,
+      "issue": 1058,
+      "engine": {
+        "repo_commit": "fb0fa91eebd9e79c44ba773cf0fcd5800db22aa1",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      },
+      "registration_sha256": "78afcdb52a7e71e82260412717f4b7bd7d6d924032b389346b56f879603cd67f",
+      "code_sha256": "8dd41255dc388f8f2526dc17e138ff8eada0231acab51eb586ebe3421ca12d41",
+      "dataset_sha256": "6219d790942bedaa6a4d161b33f48910200137fdeeb9c0f4f8389202537e606c",
+      "initial_vector_file_sha256": "2b01d71fcba84db683e0566b1f7b08edb286b5127df0fbdbdb3fe135f3e5ef18",
+      "backend": "production exact Flat",
+      "provider": "eval-seeded-vector-v1",
+      "dim": 768,
+      "size": 50000,
+      "setup_and_total_ms": 9784.3355,
+      "vault_load_ms": 1731.4705409999997,
+      "vector_cache_load_ms": 363.62774999999965,
+      "slices": {
+        "exact": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 57.07954100000006,
+          "query_ms_p95": 64.2519169999996
+        },
+        "noisy": {
+          "n": 36,
+          "target_hit_at_1": 36,
+          "target_hit_at_10": 36,
+          "query_ms_p50": 58.130833000000166,
+          "query_ms_p95": 73.61529200000041
+        }
+      },
+      "sampled_rss_bytes": {
+        "after_load": 2033680384,
+        "after_queries": 2230501376,
+        "after_mutations": 2442674176
+      },
+      "disk_bytes": {
+        "initial_corpus": 12750000,
+        "initial_vectors": 205750058,
+        "initial_embed_cache": 7300070,
+        "post_mutation_vectors": 205745943
+      },
+      "update_ms": 7.138667000001078,
+      "update_target_hit_at_1": true,
+      "delete_reconcile_ms": 247.1430419999997,
+      "deleted_id_absent": true,
+      "fixture_provider_calls": 75,
+      "neural_model_calls": 0,
+      "limitations": [
+        "synthetic vectors are not a semantic model/gold-set test",
+        "shared host and sampled RSS, not isolated latency or peak memory",
+        "single update/delete per scale",
+        "HNSW unavailable and unmeasured",
+        "no production switch/recovery or M1 gate"
+      ],
+      "verdict": "supported Flat scaling subset measured; HNSW/M5 confirmation not evaluable",
+      "artifact": {
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/flat-scale-50000.json",
+        "sha256": "7ea34fdefa476e29e379b5a994bc9c45101305ef668ea0777f72e1e28280fd74"
+      }
+    }
+  ],
+  "gates_passed": [],
+  "HNSW": "not evaluable; no implemented backend measured"
+}

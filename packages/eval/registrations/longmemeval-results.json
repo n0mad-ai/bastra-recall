@@ -1,5 +1,5 @@
 {
-  "$comment": "Committed EXCERPT of the #500 run artifacts. The full files (3.4 MB, a 500-row per-question array each) live outside the repo at the path in `archive.directory`; this file carries what a number has to be checkable by — the identity of each run, its summary metrics and the sha256 of the file it was taken from — so the published figures stay verifiable when the large files are gone. Regenerating any row means re-running the command in `configurations[].measurement.command` of longmemeval-run.json.",
+  "$comment": "Committed EXCERPT of the #500 run artifacts. The full files (3.4 MB, a 500-row per-question array each) live outside the repo at the path in `archive.directory`; this file carries what a number has to be checkable by — the identity of each run, its summary metrics and the sha256 of the file it was taken from — so the published figures stay verifiable when the large files are gone. Regenerating any row means re-running the command in `configurations[].measurement.command` of longmemeval-run.json. The top-level archive is for the legacy runs; newer runs declare their own row-level archive locator.",
   "schema_version": 1,
   "archive": {
     "directory": "~/.bastra/longmemeval-runs/2026-09-09",
@@ -308,6 +308,193 @@
       "far_retention": {
         "bm25": 0.8428891736066624,
         "hybrid": 0.9837484861379334
+      }
+    },
+    {
+      "id": "shipped-default-v1.1.0",
+      "file": "longmemeval-v110.json",
+      "file_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
+      "archive": {
+        "kind": "durable local artifact outside the repository",
+        "locator": "~/.codex/measurement-runs/2026-10-11-messung-b/longmemeval-v110.json"
+      },
+      "corpus": "longmemeval_s_cleaned.json",
+      "turns": "all",
+      "k": 20,
+      "n_questions": 500,
+      "n_documents_indexed": 23854,
+      "embedding_model": "embeddinggemma",
+      "embedding_model_identity": {
+        "model": "embeddinggemma:latest",
+        "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+        "ollama_version": "0.40.3",
+        "same_digest_as_observed_before_run": true
+      },
+      "rrf_vector_weight": 1.5,
+      "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+      "code_hash": "771642995ba6aa2107fdace0dd5b2cf5cf84d2418f9e879ed89296b393f0a78d",
+      "engine": {
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+        "core_src_files": 61,
+        "repo_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+        "repo_dirty": false
+      },
+      "summary": {
+        "bm25": {
+          "r@1": 0.614,
+          "r@3": 0.776,
+          "r@5": 0.846,
+          "r@10": 0.92,
+          "r@20": 0.972,
+          "ndcg@10": 0.7089807860110351,
+          "mrr": 0.7164404859416464
+        },
+        "hybrid": {
+          "r@1": 0.832,
+          "r@3": 0.964,
+          "r@5": 0.982,
+          "r@10": 0.984,
+          "r@20": 0.996,
+          "ndcg@10": 0.8978705456775917,
+          "mrr": 0.8965052308802307
+        }
+      },
+      "by_type": {
+        "knowledge-update": {
+          "n": 78,
+          "bm25": 0.8589743589743589,
+          "hybrid": 1
+        },
+        "multi-session": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 1
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "bm25": 0.8571428571428571,
+          "hybrid": 1
+        },
+        "single-session-preference": {
+          "n": 30,
+          "bm25": 0.7666666666666667,
+          "hybrid": 0.9666666666666667
+        },
+        "single-session-user": {
+          "n": 70,
+          "bm25": 0.7857142857142857,
+          "hybrid": 0.9428571428571428
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 0.9699248120300752
+        }
+      },
+      "near_far": {
+        "cut": 0.6666666666666666,
+        "mode": "median",
+        "near": 277,
+        "far": 223
+      },
+      "survival_dense": 2.5972278842234036,
+      "far_retention": {
+        "bm25": 0.8428891736066624,
+        "hybrid": 0.9837484861379334
+      },
+      "by_type_derivation": {
+        "schema_version": 1,
+        "source_artifact_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
+        "derivation_code_sha256": "f1f9e779ab6d4262029658b102be0c4f82cb03ab6d6136fc4909d776db154423",
+        "source_engine": {
+          "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+          "core_src_files": 61,
+          "repo_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+          "repo_dirty": false
+        },
+        "n_questions": 500,
+        "rule": "For each question type and arm, first ranked id in gold determines rank; hit@k iff 0 < rank <= k. Counts/n gives recall_any@k.",
+        "command": "python3 packages/eval/scripts/extract-longmemeval-types.py --artifact <archived-full-run> --out <derived-aggregate>"
+      },
+      "by_type_r_at_1": {
+        "knowledge-update": {
+          "n": 78,
+          "arms": {
+            "bm25": {
+              "hits": 48,
+              "value": 0.6153846153846154
+            },
+            "hybrid": {
+              "hits": 69,
+              "value": 0.8846153846153846
+            }
+          }
+        },
+        "multi-session": {
+          "n": 133,
+          "arms": {
+            "bm25": {
+              "hits": 85,
+              "value": 0.6390977443609023
+            },
+            "hybrid": {
+              "hits": 120,
+              "value": 0.9022556390977443
+            }
+          }
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "arms": {
+            "bm25": {
+              "hits": 40,
+              "value": 0.7142857142857143
+            },
+            "hybrid": {
+              "hits": 47,
+              "value": 0.8392857142857143
+            }
+          }
+        },
+        "single-session-preference": {
+          "n": 30,
+          "arms": {
+            "bm25": {
+              "hits": 12,
+              "value": 0.4
+            },
+            "hybrid": {
+              "hits": 21,
+              "value": 0.7
+            }
+          }
+        },
+        "single-session-user": {
+          "n": 70,
+          "arms": {
+            "bm25": {
+              "hits": 34,
+              "value": 0.4857142857142857
+            },
+            "hybrid": {
+              "hits": 44,
+              "value": 0.6285714285714286
+            }
+          }
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "arms": {
+            "bm25": {
+              "hits": 88,
+              "value": 0.6616541353383458
+            },
+            "hybrid": {
+              "hits": 115,
+              "value": 0.8646616541353384
+            }
+          }
+        }
       }
     }
   ],

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "issue": 600,
+  "status": "r3_control_numbers_registered",
+  "harness": "src/correction-sequences.ts",
+  "corpus": "fixtures/correction-sequences.json",
+  "protocol": {
+    "profile": "v1.1.0 core, BM25 and shipped hybrid embeddinggemma / weight 1.5 / k5",
+    "unit": "16 invented independent entities, dev/test splits, DE/EN; no tuning on test",
+    "families": [
+      "repeated value changes with return to initial value",
+      "polarity reversal",
+      "older-validity fact arriving last",
+      "unresolved conflicting sources"
+    ],
+    "truth": "latest validity time for non-conflict; conflicting peers remain a set, not arbitrary truth",
+    "projection": "reference type/equal storage dates; validity/source text in body, replacement links for current chain; no as-of API invoked",
+    "states": "ingest each version, then terminal component reload, hidden-directory archive of old version, restore old version",
+    "archive_scope": "filesystem fixture visibility only; not product archive API/security confirmation",
+    "metrics": [
+      "current-version hit@1/@5",
+      "obsolete top1",
+      "old version outranks current",
+      "conflict evidence completeness in pool",
+      "by-id old version access",
+      "terminal reload rank stability",
+      "old resurfacing after filesystem restore",
+      "old/current score ties and strict score advantages",
+      "old top1 with same current value versus incorrect value top1"
+    ],
+    "unmeasured": [
+      "answer accuracy/evidence fidelity/uncertainty/citations",
+      "historical as-of semantics",
+      "live ingestion/watchers",
+      "product archive/restore API and audits",
+      "field longevity",
+      "internal gold set/M1"
+    ],
+    "gate": "descriptive synthetic retrieval baseline; unsupported capabilities not passed",
+    "links": "Replacement links follow validity order, not ingestion order; late-old never declares that it replaces the newer current fact.",
+    "order_control": "Original and reversed version-ID/filename mapping and file creation order; chronology, bodies and queries unchanged. Controls are paired, not new independent entities.",
+    "primary_denominator": "56 non-conflict ingest trials at stage >=2 per arm/order; reload/restore repeats and archive visibility changes reported separately."
+  },
+  "command": "node --import tsx packages/eval/src/correction-sequences.ts --out <artifact>",
+  "amendment": "Pre-registration robustness review fixed a late-old fixture projection that had linked by ingestion order. The preliminary diagnostic is excluded; rerun before registering numbers.",
+  "amendment_r3": "Reviewer-requested paired order control and score/value diagnostics; original artifact preserved. Value return 14\u219230\u219260\u219214 retained and disclosed.",
+  "measurement": {
+    "engine": {
+      "repo_commit": "fc40eb797ad025c8d6e6ac8b5f913622f216d99f",
+      "repo_dirty": false,
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+    },
+    "results": "correction-sequences-results.json",
+    "preregistered_protocol_sha256": "144711e2fb47af1725e347b3bc59adb280c782c23510c7dd7b5da8b26aa76ba1",
+    "model_digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+    "gates_passed": []
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "issue": 1082,
+  "n": 500,
+  "paired": {
+    "r@1": {
+      "chunk_only": 22,
+      "whole_only": 58,
+      "both": 249,
+      "neither": 171
+    },
+    "r@5": {
+      "chunk_only": 12,
+      "whole_only": 43,
+      "both": 380,
+      "neither": 65
+    }
+  },
+  "gate": "none; descriptive protocol-specific lexical counterpart"
+}
