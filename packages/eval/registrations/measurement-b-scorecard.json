@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "issue": 387,
+  "campaign": "measurement-B-2026-10-11",
+  "scope": "reference index for this campaign only; does not replace the shared V2 scorecard or other measurement owners",
+  "baseline_profile": {
+    "repo_tag": "v1.1.0",
+    "engine": {
+      "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80",
+      "core_src_files": 61,
+      "repo_commit": "b1e39ec5d6048b034c8c5b8d78998773809dc0ea",
+      "repo_dirty": false
+    },
+    "embedding_model": "embeddinggemma",
+    "model_identity": {
+      "model": "embeddinggemma:latest",
+      "digest": "85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1",
+      "ollama_version": "0.40.3",
+      "same_digest_as_observed_before_run": true
+    },
+    "rrf_vector_weight": 1.5,
+    "rrf_k": 5,
+    "hardware": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "os_release": "27.0.0",
+      "cpu_model": "Apple M4 Pro",
+      "logical_cpus": 14,
+      "total_memory_bytes": 25769803776
+    },
+    "corpus": "longmemeval_s_cleaned.json",
+    "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+    "harness_hash": "771642995ba6aa2107fdace0dd5b2cf5cf84d2418f9e879ed89296b393f0a78d",
+    "artifact_sha256": "5d07ab2666efc110ce708540cae1b864ede12cfceaae633e9541be751491db2e",
+    "controls": [
+      "production whole-session BM25",
+      "production shipped-default hybrid"
+    ],
+    "reranker": "none",
+    "reader": "none",
+    "judge": "none",
+    "index_scope": "fresh isolated index per question",
+    "granularity": "session",
+    "k": 20
+  },
+  "measurements": [
+    {
+      "issue": 1081,
+      "status": "measured_baseline",
+      "pr": 1166,
+      "registration": "longmemeval-run.json",
+      "results": "longmemeval-results.json",
+      "n": 500,
+      "primary": "session recall_any@k; no answer model or judge",
+      "gates_passed": []
+    },
+    {
+      "issue": 644,
+      "status": "measured_subset",
+      "pr": 1160,
+      "registration": "supersession-durability.json",
+      "results": "supersession-durability-results.json",
+      "n": 36,
+      "control_trials": 36,
+      "primary": "strict score inversions and order-sensitive ties separately",
+      "remaining": [
+        "as-of answers",
+        "internal gold-set gate"
+      ],
+      "gates_passed": [],
+      "hybrid": {
+        "pr": 1174,
+        "registration": "supersession-hybrid.json",
+        "results": "supersession-hybrid-results.json",
+        "n": 36,
+        "order_control_trials": 36,
+        "strict_predecessor_score_inversions": 24,
+        "gates_passed": [],
+        "status": "measured_subset",
+        "query_class_predecessor_leads_both_orders": {
+          "old-anchor": "20/24",
+          "paraphrase": "16/24",
+          "neutral": "12/24"
+        },
+        "interpretation": "24 versus 17 strict advantages is not deterioration evidence because BM25 has 18 ties; replaces raw ranking only; product archive/daemon/agent answer paths unmeasured."
+      }
+    },
+    {
+      "issue": 1082,
+      "status": "complete_lexical_and_true_maxsim_external_measurement",
+      "pr": 1168,
+      "registration": "chunk-maxsim.json",
+      "results": "chunk-maxsim-lexical-results.json",
+      "n_lexical": 500,
+      "primary": "true maximum over chunk vectors versus shipped hybrid; lexical counterpart separately",
+      "remaining": [
+        "main gold set",
+        "M1",
+        "production storage decision"
+      ],
+      "gates_passed": [],
+      "n_dense": 500,
+      "dense_results": "chunk-maxsim-dense-results.json",
+      "paired_results": "chunk-maxsim-paired-results.json"
+    },
+    {
+      "issue": 1109,
+      "status": "unlabelled_diagnostic_measured_quality_not_evaluable",
+      "pr": 1165,
+      "registration": "draft-csls.json",
+      "results": "draft-csls-results.json",
+      "n_vectors": 112,
+      "n_pairs": 4321,
+      "remaining": [
+        "independent pair labels/adjudication",
+        "historic model digest",
+        "contributor reproduction",
+        "representation and expiry comparisons"
+      ],
+      "gates_passed": []
+    },
+    {
+      "issue": 686,
+      "status": "due_readonly_recount_zero_matching_rows",
+      "pr": 1161,
+      "results": "test-event-recount-results.json",
+      "cleanup_lines_proposed": 0,
+      "production_cleanup_performed": false,
+      "gates_passed": []
+    },
+    {
+      "issue": 421,
+      "status": "due_shadow_week_measured_enforce_not_evaluable",
+      "pr": 1162,
+      "results": "mcp-scope-shadow-results.json",
+      "n": 255,
+      "remaining": [
+        "independent relevance labels",
+        "per-row profile/version",
+        "owner enforce decision"
+      ],
+      "gates_passed": []
+    },
+    {
+      "issue": 600,
+      "status": "measured_subset",
+      "pr": 1176,
+      "registration": "correction-sequences.json",
+      "results": "correction-sequences-results.json",
+      "entities": 16,
+      "remaining": [
+        "answer/evidence/uncertainty/citation quality",
+        "historical as-of semantics",
+        "live ingestion",
+        "product archive API/audit contract",
+        "field longevity",
+        "M1"
+      ],
+      "gates_passed": [],
+      "trials_per_arm_per_order": 176,
+      "correction_opportunities_per_arm_per_order": 56,
+      "orders": [
+        "original",
+        "reversed"
+      ],
+      "ingest_by_order_arm": {
+        "original": {
+          "bm25": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 22,
+            "strict_old_score_advantage": 56,
+            "obsolete_top1_same_value": 16,
+            "incorrect_value_top1": 40,
+            "current_evaluable": 56,
+            "current_hit_at_1": 0,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 56,
+            "obsolete_outranks_current": 56,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          },
+          "hybrid": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 0,
+            "strict_old_score_advantage": 49,
+            "obsolete_top1_same_value": 11,
+            "incorrect_value_top1": 38,
+            "current_evaluable": 56,
+            "current_hit_at_1": 7,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 49,
+            "obsolete_outranks_current": 49,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          }
+        },
+        "reversed": {
+          "bm25": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 22,
+            "strict_old_score_advantage": 56,
+            "obsolete_top1_same_value": 16,
+            "incorrect_value_top1": 40,
+            "current_evaluable": 56,
+            "current_hit_at_1": 0,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 56,
+            "obsolete_outranks_current": 56,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          },
+          "hybrid": {
+            "trials": 56,
+            "top_score_tie": 0,
+            "obsolete_top1_score_tie": 0,
+            "old_current_score_tie": 0,
+            "strict_old_score_advantage": 44,
+            "obsolete_top1_same_value": 9,
+            "incorrect_value_top1": 35,
+            "current_evaluable": 56,
+            "current_hit_at_1": 12,
+            "current_hit_at_5": 56,
+            "obsolete_top1": 44,
+            "obsolete_outranks_current": 44,
+            "conflict_evaluable": 0,
+            "conflict_complete": 0,
+            "reload_evaluable": 0,
+            "reload_equal": 0,
+            "oldest_reachable": 56
+          }
+        }
+      },
+      "controls": "24 non-conflict trials each per arm/order: reload and restore repeat ingest end state; hide-old changes pool. Not extra independent opportunities.",
+      "interpretation": "Raw replaces-path core ranking; superseded_by ignored. Same-value returns separated; hit@5 trivial at <=4 memories/k5. Previous gap-persists claim withdrawn.",
+      "artifact_sha256": "60726f3e1349b7e8792332ee226aa941ed1980430262ef6b4d9fcdedee37b6a5",
+      "engine": {
+        "repo_commit": "fc40eb797ad025c8d6e6ac8b5f913622f216d99f",
+        "repo_dirty": false,
+        "core_src_sha256": "ebf88433a45f8ee8856a6c4370acc57d385d8aaa7346fd6243b19681b0711c80"
+      }
+    },
+    {
+      "issue": 1058,
+      "status": "measured_subset",
+      "pr": 1177,
+      "registration": "flat-scale-subset.json",
+      "results": "flat-scale-subset-results.json",
+      "sizes": [
+        1403,
+        1000,
+        3000,
+        10000,
+        50000
+      ],
+      "dimension": 768,
+      "provider": "deterministic synthetic fixture; no neural model",
+      "remaining": [
+        "HNSW comparison/98-percent criterion",
+        "semantic and temporal/conflict quality",
+        "production switch/recovery",
+        "peak/isolated resource bounds",
+        "M1"
+      ],
+      "gates_passed": []
+    },
+    {
+      "issue": 480,
+      "status": "not_evaluable_under_local_model_only_constraint",
+      "pr": 1178,
+      "results": "model2vec-local-check-results.json",
+      "complete_local_candidates_in_bounded_search": 0,
+      "downloads": 0,
+      "inference_calls": 0,
+      "remaining": [
+        "known existing local model/runtime or separately authorized setup",
+        "model quality/latency/multilingual/fallback evidence"
+      ],
+      "gates_passed": []
+    }
+  ],
+  "unmeasured_campaign_gates": [
+    "internal M1 tolerances",
+    "answer quality",
+    "longitudinal utility",
+    "causal benefit",
+    "enforce/promotion safety",
+    "V2 stable approval"
+  ],
+  "excluded_owners": [
+    402,
+    598,
+    410
+  ],
+  "production_changes": false,
+  "privacy": "aggregate registrations and input hashes only; private raw records stay local",
+  "continuation": "Owner-authorized ordered subsets: #644 hybrid, #600 sequences, #1058 Flat scale, #480 local-only; no new production behavior or passed gate"
+}
