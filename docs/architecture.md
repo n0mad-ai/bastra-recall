@@ -133,6 +133,10 @@ The current index is in-memory MiniSearch BM25, not SQLite/FTS5. The searched fi
 
 It then applies staleness reranking based on lifecycle fields such as `valid_until`, `expires_after_days`, and `last_reviewed_at`.
 
+The index and query share word tokenization. Runs in scripts commonly written without spaces (including Chinese, Japanese and Thai) use Node's ICU word segmentation via `Intl.Segmenter`. Word boundaries depend on the Node/ICU build; if segmentation is unavailable or produces no word-like pieces, the original run is kept. Mixed identifiers such as `服务器.password` retain their whole term and existing `.`, `_`, `-` components, with word segments added alongside them. This improves lexical matching opportunities, not a guarantee about ranks or scores.
+
+Lexical comparisons use the shared Unicode spelling/case fold (`normalizeText` / `foldTerm`): NFKC compatibility normalization, canonical spelling, removal of invisible format characters and optional abjad vowel points, and locale-independent case folding including `İ`/`ı` → `i` and `ß`/`SS` → `ss`. The common fold does **not** transliterate `ö` to `o`. In-word apostrophe variants between non-Latin letters, for example `об'єкт` / `обʼєкт`, are joined before the shared tokenizer chooses boundaries on both index and query sides. Latin contractions/elisions such as `don't` / `l'état` keep their punctuation boundary. These are spelling comparisons, not translation or a new inflection rule.
+
 #### Hybrid Recall
 
 Embeddings are an optional, configurable second pass; BM25 keyword search is the default. The provider is resolved in one shared place (`resolveEmbeddingChoice` in `packages/daemon/src/settings.ts`, used by the daemon, the bridge, and the CLI) with the precedence env > cli-settings > none:
@@ -517,6 +521,10 @@ Der aktuelle Index ist ein In-Memory-MiniSearch-BM25-Index, nicht SQLite/FTS5. D
 - `sensitivity !== private`, außer der Aufruf kommt über einen vertrauenswürdigen lokalen Transport (#464)
 
 Danach wird nach Aktualität neu gewichtet, anhand von Lebenszyklus-Feldern wie `valid_until`, `expires_after_days` und `last_reviewed_at`.
+
+Index und Anfrage verwenden dieselbe Worttokenisierung. Zeichenläufe in Schriften, die häufig ohne Leerzeichen geschrieben werden (etwa Chinesisch, Japanisch und Thai), nutzen Nodes ICU-Wortsegmentierung über `Intl.Segmenter`. Wortgrenzen hängen vom Node-/ICU-Build ab; ist Segmentierung nicht verfügbar oder liefert sie keine wortartigen Teile, bleibt der ursprüngliche Lauf erhalten. Gemischte Bezeichner wie `服务器.password` behalten ihren Ganzterm und die bisherigen `.`, `_`, `-`-Teile; Wortsegmente kommen zusätzlich dazu. Das eröffnet weitere Stichworttreffer, garantiert aber keine Ränge oder Scores.
+
+Lexikalische Vergleiche nutzen die gemeinsame Unicode-Schreibweise und Groß-/Klein-Faltung (`normalizeText` / `foldTerm`): NFKC-Kompatibilitätsnormalisierung, kanonische Schreibweise, Entfernung unsichtbarer Formatzeichen und optionaler Vokalzeichen von Abjads sowie locale-unabhängige Groß-/Klein-Faltung einschließlich `İ`/`ı` → `i` und `ß`/`SS` → `ss`. Die gemeinsame Faltung schreibt `ö` **nicht** in `o` um. Apostroph-Varianten innerhalb nicht-lateinischer Wörter, etwa `об'єкт` / `обʼєкт`, werden auf Index- und Anfrageseite zusammengeführt, bevor der gemeinsame Tokenizer Wortgrenzen wählt. Lateinische Verkürzungen wie `don't` / `l'état` behalten ihre Satzzeichengrenze. Das sind Schreibweisenvergleiche, keine Übersetzung oder neue Flexionsregel.
 
 #### Hybrider Abruf
 
