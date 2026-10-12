@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "issue": 480,
+  "engine": {
+    "repo_commit": "479faf4c1612ed934a327eb937bc41102eaebb53",
+    "repo_dirty": false
+  },
+  "code_sha256": "96f9ea734e1bbe910f453f6cb25bbc71eaae5a0cf6834f7e051abf310477a26f",
+  "search_scope": [
+    "configured HF caches",
+    "standard HF/Model2Vec/Potion-related caches",
+    "local uv tool cache excluding site-packages",
+    "repository cache/model directories"
+  ],
+  "roots_checked": 7,
+  "existing_roots": 2,
+  "unreadable_directories": 0,
+  "weight_candidate_directories": 0,
+  "complete_candidate_directories": 0,
+  "python_package_present": false,
+  "network_calls": 0,
+  "downloads": 0,
+  "model_inference_calls": 0,
+  "verdict": "not evaluable under local-model-only constraint",
+  "limitations": [
+    "bounded inventory, not exhaustive proof of absence in every directory/environment",
+    "no model quality or latency measured",
+    "no fallback/adoption gate passed"
+  ]
+}
