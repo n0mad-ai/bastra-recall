@@ -614,7 +614,7 @@ checks held on an older inconclusive event; completed cursor advancement queues
 the next bounded turn. These guarantees concern accepted journal events; file/Git
 observation remains periodic snapshot observation, not a filesystem event log.
 
-P9 owner surfaces: separate tasks page at /ui/tasks.html (existing optional WebUI),
+P9 owner surfaces: integrated task board at /ui/#tasks (existing optional WebUI),
 explicit Owner token kept only in page memory. All task strings use textContent;
 no inline HTML from memories, events, wishes or draft payloads. Task CRUD, owner
 review/ack/resolve/reconsider choices, status/controls, exact proposal preview,
