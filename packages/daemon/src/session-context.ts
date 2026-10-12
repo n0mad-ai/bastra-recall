@@ -11,6 +11,8 @@
  * (`session-context-contract.test.ts` vergleicht beide Wege), und die
  * projektbewusste Fassung mit Budgets hängt am POST desselben Pfades.
  */
+import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
+import { defaultTaskContext } from "./task-transport.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
@@ -32,7 +34,7 @@ export type { SessionContextDeps };
 export async function buildSessionContext(
   toolDeps: ToolDeps,
   vault: Vault,
-  deps: SessionContextDeps = {},
+  deps: SessionContextDeps = {}, dueText?: string,
 ): Promise<string> {
   // `expand_hops: 0` steht hier ausdrücklich: Der Forwarder-Vertrag kennt keine
   // Hops (mcp-forwarder.ts fragt sie ebenfalls nicht an), und der Default des
@@ -41,7 +43,7 @@ export async function buildSessionContext(
   const assembled = await assembleSessionSections(
     toolDeps,
     vault,
-    { project: null, expand_hops: 0 },
+    { project: null, expand_hops: 0, dueText },
     deps,
   );
   return renderSessionContext(assembled.sections, vault.size());
@@ -50,12 +52,14 @@ export async function buildSessionContext(
 /** GET /hook/session-context — loopback-only, no auth (same trust level as
  *  the other /hook/* endpoints). Serves the forwarder's first-call inject. */
 export async function handleSessionContext(
-  _req: IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
   toolDeps: ToolDeps,
   vault: Vault,
 ): Promise<void> {
-  const context = await buildSessionContext(toolDeps, vault);
+  const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), "unknown", "session");
+  const context = await buildSessionContext(toolDeps, vault, {}, due?.text);
+  if (due && context.includes(due.text)) res.once("finish", due.record);
   sendJsonPlain(res, 200, { context, vault_size: vault.size() });
 }
 
@@ -92,7 +96,10 @@ export async function handleSessionContextPost(
   const budget = (b.budget ?? {}) as Record<string, unknown>;
   const caps = (b.caps ?? {}) as Record<string, unknown>;
   const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+  // The SessionStart lane consumes raw data and delivers once at its outer exit.
+  const due = b.assembly_only === true ? undefined : await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
   const assembled = await assembleSessionSections(toolDeps, vault, {
+    dueText: due?.text,
     project,
     source: typeof b.source === "string" ? b.source : null,
     session_id: typeof b.session_id === "string" ? b.session_id : null,
@@ -147,6 +154,7 @@ export async function handleSessionContextPost(
     },
   });
   const context = renderSessionContext(assembled.sections, vault.size());
+  if (due && assembled.reports.some(r => r.kind === "due" && r.included)) res.once("finish", due.record);
   sendJsonPlain(res, 200, {
     context,
     vault_size: vault.size(),

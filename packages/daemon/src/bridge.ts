@@ -30,6 +30,12 @@
  *   docs_settings_get()                  -> { mode, language }
  *   docs_settings_set({ mode?, language? }) -> { mode, language }
  */
+import { isTaskExecution } from "./task-execution.js";
+import { forwardTaskExecution } from "./task-execution-client.js";
+import { isTaskTool, defaultTaskContext, taskClientAuthorization, taskFailure } from "./task-transport.js";
+import { taskAttachment } from "./task-delivery.js";
+import type { TaskServiceContext } from "./task-service.js";
+import { callTaskCrud } from "./task-service.js";
 import {
   Vault,
   SearchIndex,
@@ -66,6 +72,8 @@ import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { startVaultReconcile } from "./daemon-jobs.js";
+import { ensureLocalTaskAgent } from "./task-auto-setup.js";
+import { startProactiveTaskJob } from "./daemon-jobs.js";
 import readline from "node:readline";
 import * as path from "node:path";
 
@@ -205,8 +213,15 @@ interface Request {
   params?: Record<string, unknown>;
 }
 
+let passiveTaskContext: TaskServiceContext | undefined;
 function send(payload: object): void {
-  process.stdout.write(JSON.stringify(payload) + "\n");
+  const write = (value: object) => process.stdout.write(JSON.stringify(value) + "\n");
+  if (!passiveTaskContext || !("result" in payload)) { write(payload); return; }
+  void (async () => {
+    const attachment = await taskAttachment(passiveTaskContext!, await taskClientAuthorization(), "bridge", "http");
+    write(attachment ? { ...payload, proactive_due: attachment.due } : payload);
+    attachment?.record();
+  })().catch(() => write(payload));
 }
 
 async function main(): Promise<void> {
@@ -226,6 +241,10 @@ async function main(): Promise<void> {
   // BASTRA_VAULT_RECONCILE_MS=0 disables it in both places alike. unref()'d,
   // so it never keeps this process alive; cleared below on stdin close.
   const reconcileTimer = startVaultReconcile(vault);
+  // Dedicated mapping is required even on this trusted legacy transport.
+  passiveTaskContext = defaultTaskContext({ vault, vaultPath: VAULT_PATH! });
+  await ensureLocalTaskAgent().catch(() => undefined);
+  const proactiveJob = (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
   const search = new SearchIndex(vault);
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);
@@ -273,7 +292,7 @@ async function main(): Promise<void> {
 
   const rl = readline.createInterface({ input: process.stdin });
 
-  rl.on("line", (line) => {
+  rl.on("line", async (line) => {
     let req: Request;
     try {
       req = JSON.parse(line);
@@ -283,6 +302,11 @@ async function main(): Promise<void> {
     const { id, method, params } = req;
     try {
       let result: unknown;
+      if (isTaskTool(method)) {
+        const result = isTaskExecution(method) ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization()) : await callTaskCrud(defaultTaskContext({ vault, vaultPath: VAULT_PATH! }), await taskClientAuthorization(), method, params ?? {});
+        process.stdout.write(JSON.stringify({ id, result }) + "\n");
+        return;
+      }
       switch (method) {
         case "vault_status":
           result = { size: vault.size() };
@@ -527,7 +551,7 @@ async function main(): Promise<void> {
     } catch (err) {
       send({
         id,
-        error: { message: err instanceof Error ? err.message : String(err) },
+        error: isTaskTool(method) ? taskFailure(err).body : { message: err instanceof Error ? err.message : String(err) },
       });
     }
   });
@@ -539,6 +563,7 @@ async function main(): Promise<void> {
     // its owner's shutdown is the wrong invariant to leave for the next
     // reader of this file.
     if (reconcileTimer) clearInterval(reconcileTimer);
+    proactiveJob?.stop();
     process.stderr.write("[bastra-recall.bridge] stdin closed, exiting\n");
     process.exit(0);
   });

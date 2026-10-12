@@ -412,7 +412,7 @@ export async function handleWebUi(
       // CSP governs a DOCUMENT, so it rides on the html only — on a stylesheet
       // or a script response the browser ignores it, and shipping it there
       // would just suggest a protection that isn't happening.
-      ...(type.startsWith("text/html") ? { "Content-Security-Policy": CSP } : {}),
+      ...(type.startsWith("text/html") ? { "Content-Security-Policy": rel === "tasks.html" ? CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'") : CSP } : {}),
     });
     createReadStream(target)
       .on("error", () => res.destroy())

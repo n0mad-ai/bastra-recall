@@ -9,6 +9,7 @@
  * The hook-CLI import rule (#305) applies here too: node stdlib and sibling
  * leafs only, never the @bastra-recall/core barrel.
  */
+import { taskClientHeaders } from "./task-client-auth.js";
 import { request } from "node:http";
 import type { HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 import type { PinnedFloorLean } from "./pinned-block.js";
@@ -88,7 +89,7 @@ export function postSessionContext(
       reject(err);
       return;
     }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
+    const payload = Buffer.from(JSON.stringify({ ...body, assembly_only: true }), "utf8");
     const req = request(
       {
         method: "POST",
@@ -149,6 +150,7 @@ export function postRecall(
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
+          ...taskClientHeaders(),
           "Content-Length": payload.byteLength.toString(),
         },
         timeout: timeoutMs,

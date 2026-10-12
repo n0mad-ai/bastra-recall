@@ -1,3 +1,6 @@
+import { startTaskRuntime, type TaskRuntime } from "./task-runtime.js";
+import { defaultTaskContext } from "./task-transport.js";
+import type { TaskServiceContext } from "./task-service.js";
 import { envOff } from "./env.js";
 import { randomUUID } from "node:crypto";
 /**
@@ -68,6 +71,7 @@ export interface BackgroundJobDeps {
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
+  startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
   startVaultReconcile(deps.vault);
   startForwarderSweep();
   startMintSchedule(deps);
@@ -410,4 +414,12 @@ function startLogRetention(): void {
   };
   prune();
   setInterval(prune, 24 * 60 * 60_000).unref();
+}
+
+/** Same background-job host as all daemon periodic work; no OS wakeup claimed. */
+export function startProactiveTaskJob(ctx: TaskServiceContext, cadence = 60000): { runtime: TaskRuntime; stop: () => void } {
+  const runtime = startTaskRuntime(ctx);
+  const timer = setInterval(() => { void runtime.tick(); }, cadence); timer.unref();
+  runtime.onStop(() => clearInterval(timer));
+  return { runtime, stop: () => runtime.stop() };
 }

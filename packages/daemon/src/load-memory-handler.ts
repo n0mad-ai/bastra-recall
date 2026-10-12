@@ -141,7 +141,7 @@ export async function loadMemoryHandler(
               origin: hookHint ? "hook" : followsRecall ? "recall" : "direct",
             }
           : {}),
-        caller_session: ctx?.sessionId ?? null,
+        caller_session: ctx?.sessionId ?? callerSessionStore.getStore() ?? null,
       }),
     );
 

@@ -65,6 +65,10 @@
  *     `Access-Control-Allow-Private-Network: true` beantwortet (nur wenn die
  *     Origin erlaubt ist).
  */
+import { installTaskHttpProjection } from "./task-delivery.js";
+import { defaultTaskContext } from "./task-transport.js";
+import { requestTaskReconciliation } from "./task-runtime-signal.js";
+import { tasksPath } from "./task-store.js";
 import { createServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type {
@@ -201,6 +205,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   const ctx = await createHttpServerContext(opts);
 
   const server = createServer((req, res) => {
+    installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
     const t0 = Date.now();
     const url = req.url ?? "";
     const method = req.method ?? "GET";
@@ -208,7 +213,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // Activity signal for idle self-shutdown — count real work, not the cheap
     // liveness pings (else a monitor, or bastra.io's admin bridge probing every
     // 60s, would keep us alive forever).
-    if (!ctx.isHealthProbe(url)) onActivity?.();
+    if (!ctx.isHealthProbe(url)) { onActivity?.(); requestTaskReconciliation(tasksPath()); }
 
     // DNS-Rebinding-Gate für alles außer /api/v1/* (dort schützt das Token):
     // die offenen Endpoints sind loopback-only by design — ein nicht-loopback
@@ -242,6 +247,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         allowedOrigin !== null &&
         req.headers["access-control-request-private-network"] === "true";
       sendCors(res, allowedOrigin, { allowPrivateNetwork });
+      if (url.startsWith("/api/v1/tasks")) res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
       res.writeHead(204);
       res.end();
       return;
