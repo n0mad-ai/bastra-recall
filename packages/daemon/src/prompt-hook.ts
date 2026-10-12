@@ -31,6 +31,7 @@
  *     log the calls that never reached it, and that rate is exactly what
  *     #346's fallback will be judged against.
  */
+import { taskClientHeaders } from "./task-client-auth.js";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -111,6 +112,7 @@ function postPromptLane(baseUrl: string, body: unknown, timeoutMs: number): Prom
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
+          ...taskClientHeaders(),
           "Content-Length": payload.byteLength.toString(),
         },
       },

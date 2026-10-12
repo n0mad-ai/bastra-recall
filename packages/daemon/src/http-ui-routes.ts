@@ -5,6 +5,8 @@
  * before this dispatcher. Returns true when the request was handled.
  * Split out of http.ts (file-size convention); the route order is preserved.
  */
+import { dispatchTaskUi } from "./task-ui-session.js";
+import { defaultTaskContext } from "./task-transport.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault, SearchIndex } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
@@ -46,6 +48,7 @@ export function dispatchUiRoutes(
   ctx: UiRouteCtx,
 ): boolean {
   const { vault, search, toolDeps, liveUpdates } = ctx;
+  if (dispatchTaskUi(req, res, method, url, defaultTaskContext(toolDeps, true))) return true;
 
   // Vault care (#207): flags from the map, appended to vault-care.md in the
   // vault (open format — an AI session works the list off). Loopback-only

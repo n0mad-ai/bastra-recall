@@ -36,7 +36,7 @@ async function fixture(work: (vault: Vault, vaultId: string, dir: string, deps: 
   const prev = new Map(Object.keys(env).map(k => [k,process.env[k]])); Object.assign(process.env,env);
   const vault = new Vault(root); await vault.init(); const search = new SearchIndex(vault); search.start();
   try { await work(vault, await draftVaultId(root), dir, {vault,search,vaultPath:root,telemetry:new Telemetry()}); }
-  finally { search.stop(); await vault.stop(); for (const [k,v] of prev) if (v===undefined) delete process.env[k]; else process.env[k]=v; await rm(dir,{recursive:true,force:true}); }
+  finally { search.stop(); await vault.stop(); for (const [k,v] of prev) if (v===undefined) delete process.env[k]; else process.env[k]=v; await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:50}); }
 }
 async function candidate(d: Draft, kind: "draft_would_promote"|"draft_would_block" = "draft_would_promote") {
   await upsertDraft(d,now);

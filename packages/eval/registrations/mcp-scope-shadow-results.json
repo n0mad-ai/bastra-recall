@@ -1,0 +1,209 @@
+{
+  "measured_at": "2026-10-11T08:28:02.294668+00:00",
+  "schema_version": 1,
+  "issue": 421,
+  "harness": "mcp-scope-shadow.py",
+  "engine": {
+    "repo_commit": "e0c2a386e0ea11227eacfc09ae5c2fedfa80d4bd",
+    "repo_dirty": false
+  },
+  "code_sha256": "5abf45019297325f76ca30fce449aef5add06fa6686c57c400ada6b5513e3baf",
+  "input_manifest_sha256": "adc914d3ad31167f58027a02a5ce896af2db18e65fbc4cec11db1467dcecec9c",
+  "window": {
+    "start": "2026-09-29T03:32:59Z",
+    "end_exclusive": "2026-10-06T03:32:59Z"
+  },
+  "invalid_rows": 0,
+  "excluded_eval_rows": 0,
+  "duplicate_recall_ids": 0,
+  "rows_without_recall_id": 0,
+  "summary": {
+    "rows": 255,
+    "shadow_rows_with_counter": 255,
+    "applicable_rows": 217,
+    "rows_with_potential_drops": 92,
+    "potential_drops": 214,
+    "affected_share_of_observed_rows": 0.3607843137254902,
+    "affected_share_of_applicable_rows": 0.423963133640553,
+    "skip_reasons": {
+      "none": 217,
+      "no-scope-evidence": 14,
+      "no-project": 13,
+      "explicit-scope": 11
+    },
+    "modes": {
+      "shadow": 255
+    },
+    "clients": {
+      "unknown": 255
+    }
+  },
+  "by_origin": {
+    "legacy-unclassified": {
+      "rows": 111,
+      "shadow_rows_with_counter": 111,
+      "applicable_rows": 88,
+      "rows_with_potential_drops": 25,
+      "potential_drops": 48,
+      "affected_share_of_observed_rows": 0.22522522522522523,
+      "affected_share_of_applicable_rows": 0.2840909090909091,
+      "skip_reasons": {
+        "none": 88,
+        "no-scope-evidence": 14,
+        "no-project": 4,
+        "explicit-scope": 5
+      },
+      "modes": {
+        "shadow": 111
+      },
+      "clients": {
+        "unknown": 111
+      }
+    },
+    "agent": {
+      "rows": 144,
+      "shadow_rows_with_counter": 144,
+      "applicable_rows": 129,
+      "rows_with_potential_drops": 67,
+      "potential_drops": 166,
+      "affected_share_of_observed_rows": 0.4652777777777778,
+      "affected_share_of_applicable_rows": 0.5193798449612403,
+      "skip_reasons": {
+        "explicit-scope": 6,
+        "none": 129,
+        "no-project": 9
+      },
+      "modes": {
+        "shadow": 144
+      },
+      "clients": {
+        "unknown": 144
+      }
+    }
+  },
+  "by_date": {
+    "2026-09-30": {
+      "rows": 6,
+      "shadow_rows_with_counter": 6,
+      "applicable_rows": 6,
+      "rows_with_potential_drops": 2,
+      "potential_drops": 5,
+      "affected_share_of_observed_rows": 0.3333333333333333,
+      "affected_share_of_applicable_rows": 0.3333333333333333,
+      "skip_reasons": {
+        "none": 6
+      },
+      "modes": {
+        "shadow": 6
+      },
+      "clients": {
+        "unknown": 6
+      }
+    },
+    "2026-10-01": {
+      "rows": 51,
+      "shadow_rows_with_counter": 51,
+      "applicable_rows": 51,
+      "rows_with_potential_drops": 17,
+      "potential_drops": 33,
+      "affected_share_of_observed_rows": 0.3333333333333333,
+      "affected_share_of_applicable_rows": 0.3333333333333333,
+      "skip_reasons": {
+        "none": 51
+      },
+      "modes": {
+        "shadow": 51
+      },
+      "clients": {
+        "unknown": 51
+      }
+    },
+    "2026-10-02": {
+      "rows": 43,
+      "shadow_rows_with_counter": 43,
+      "applicable_rows": 25,
+      "rows_with_potential_drops": 5,
+      "potential_drops": 9,
+      "affected_share_of_observed_rows": 0.11627906976744186,
+      "affected_share_of_applicable_rows": 0.2,
+      "skip_reasons": {
+        "none": 25,
+        "no-scope-evidence": 14,
+        "no-project": 4
+      },
+      "modes": {
+        "shadow": 43
+      },
+      "clients": {
+        "unknown": 43
+      }
+    },
+    "2026-10-04": {
+      "rows": 67,
+      "shadow_rows_with_counter": 67,
+      "applicable_rows": 52,
+      "rows_with_potential_drops": 13,
+      "potential_drops": 14,
+      "affected_share_of_observed_rows": 0.19402985074626866,
+      "affected_share_of_applicable_rows": 0.25,
+      "skip_reasons": {
+        "explicit-scope": 9,
+        "none": 52,
+        "no-project": 6
+      },
+      "modes": {
+        "shadow": 67
+      },
+      "clients": {
+        "unknown": 67
+      }
+    },
+    "2026-10-05": {
+      "rows": 85,
+      "shadow_rows_with_counter": 85,
+      "applicable_rows": 80,
+      "rows_with_potential_drops": 54,
+      "potential_drops": 152,
+      "affected_share_of_observed_rows": 0.6352941176470588,
+      "affected_share_of_applicable_rows": 0.675,
+      "skip_reasons": {
+        "none": 80,
+        "no-project": 3,
+        "explicit-scope": 2
+      },
+      "modes": {
+        "shadow": 85
+      },
+      "clients": {
+        "unknown": 85
+      }
+    },
+    "2026-10-06": {
+      "rows": 3,
+      "shadow_rows_with_counter": 3,
+      "applicable_rows": 3,
+      "rows_with_potential_drops": 1,
+      "potential_drops": 1,
+      "affected_share_of_observed_rows": 0.3333333333333333,
+      "affected_share_of_applicable_rows": 0.3333333333333333,
+      "skip_reasons": {
+        "none": 3
+      },
+      "modes": {
+        "shadow": 3
+      },
+      "clients": {
+        "unknown": 3
+      }
+    }
+  },
+  "verdict": "descriptive shadow readout only; relevance, causal utility and enforce safety not evaluable",
+  "limitations": [
+    "unknown client identity",
+    "no row-level code/configuration version",
+    "no independent labels for dropped/retained candidates",
+    "agent and legacy-unclassified traffic are separate, not human observations",
+    "duplicate ids, if present, require reconciliation before a per-call interpretation"
+  ],
+  "inputs_modified": false
+}

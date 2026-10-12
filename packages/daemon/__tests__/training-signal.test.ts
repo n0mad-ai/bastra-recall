@@ -305,7 +305,9 @@ test("E — a forwarded call's session links recall and load without being passe
     await callerSessionStore.run("forwarded-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
     await callerSessionStore.run("other-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
     const loads = await loadRows(dir);
-    assert.deepEqual(loads.map((row) => row.from_recall), [served.recall_id, null]);
+    // Telemetry writes are fire-and-forget; arrival order is not call order.
+    assert.equal(loads.length, 2);
+    assert.deepEqual(Object.fromEntries(loads.map(row => [row.caller_session, row.from_recall])), { "forwarded-session": served.recall_id, "other-session": null });
   } finally { search.stop(); await vault.stop(); }
 }));
 
@@ -321,7 +323,8 @@ test("E — two sessions served the same note are never linked to each other's r
     await loadMemoryHandler(deps, { id }); // a caller that names no session
     await loadMemoryHandler(deps, { id }, { sessionId: "session-C" }); // a session that was served nothing
     const loads = await loadRows(dir);
-    assert.deepEqual(loads.map((row) => row.from_recall), [a.recall_id, b.recall_id, null, null]);
+    assert.equal(loads.length, 4);
+    assert.deepEqual(Object.fromEntries(loads.map(row => [row.caller_session, row.from_recall])), { "session-A": a.recall_id, "session-B": b.recall_id, null: null, "session-C": null });
     assert.ok(loads.every((row) => row.follows_recall === b.recall_id), "the window link is the fallback on every row");
     assert.equal(telemetry.findRecallFor(id, null), null);
   } finally { search.stop(); await vault.stop(); }

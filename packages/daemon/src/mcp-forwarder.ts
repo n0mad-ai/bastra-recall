@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { maybeTaskDueItem } from "./mcp-forwarder-calls.js";
 /**
  * bastra-recall MCP-stdio forwarder.
  *
@@ -39,6 +40,7 @@
  *                             welche Tools DIESER Client sieht und aufrufen
  *                             darf. Default ohne Wert: `full`.
  */
+import { isTaskTool, taskFailure } from "./task-transport.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -288,10 +290,12 @@ async function main(): Promise<void> {
         liveStatusline.last_phrase_at = Date.now();
         flushStatusline();
         const sessionContext = await maybeSessionContextItem();
+        const taskDue = await maybeTaskDueItem();
         return {
           content: [
             { type: "text", text: JSON.stringify(result, null, 2) },
             ...(sessionContext ? [sessionContext] : []),
+            ...(taskDue ? [taskDue] : []),
           ],
         };
       } catch (err) {
@@ -310,7 +314,7 @@ async function main(): Promise<void> {
         flushStatusline();
         return {
           isError: true,
-          content: [{ type: "text" as const, text: (err as Error).message }],
+          content: [{ type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message }],
         };
       }
     }
@@ -360,7 +364,7 @@ async function main(): Promise<void> {
       return {
         isError: true,
         content: [
-          { type: "text" as const, text: (err as Error).message },
+          { type: "text" as const, text: isTaskTool(name) ? JSON.stringify(taskFailure(err).body) : (err as Error).message },
         ],
       };
     }

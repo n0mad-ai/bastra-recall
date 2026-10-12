@@ -23,6 +23,9 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
+Proactive tasks (unreleased): notify reminders can be added and controlled in conversation; local hooks/MCP receive Agent access automatically. Due cards arrive at next contact, with acknowledgement and completion kept separate. The Recall UI Tasks tab lists active, completed and failed/cancelled work. The existing action path uses exact Owner signatures for one registered reversible local UTF-8 adapter; that approval policy remains open for later discussion. Email, Slack, GitHub, cloud and provider actions are unsupported. [Instructions](./docs/Proactive%20Tasks.md) · [disposable demo](./docs/design/proactive-tasks-demo.md).
+
+
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
 ### Why not just CLAUDE.md?
@@ -37,13 +40,15 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Version 1.0.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Version 1.1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="A terminal session: two questions, and Bastra Recall surfaces the matching decisions on its own. The status line at the bottom counts the calls, hits and milliseconds." width="100%" />
 </p>
 
 <p align="center"><sub>Two questions, answered from a vault the assistant was never told to search. The bar at the bottom is Claude Code's status line.</sub></p>
+
+1.1.0 adds secret-redacted local draft review (confirmation saves nothing; automatic promotion stays off), save notices for Claude Code/Codex, and optional terminal panels. [Drafts and relay](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Drafts) · [controls and redaction limits](https://github.com/n0mad-ai/bastra-recall/wiki/Secret-Redaction) · [panels](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
 ### Install
 
@@ -79,7 +84,7 @@ You can repeat the lookup in another connected client using the same vault. This
 
 | AI client | Status | Setup and behavior |
 |---|---|---|
-| **Claude Code** | Tested — in daily use | MCP, Skill, seven quiet hooks and statusline |
+| **Claude Code** | Tested — in daily use | MCP, Skill, ten hook registrations (eight without Stop/SessionEnd), save notices and statusline. [Hooks](./docs/hooks.md) |
 | **Claude Desktop** | Tested | MCP and memory guidance; session context on the first tool call. [Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), including the macOS `.mcpb` extension |
 | **Codex CLI** | Verified for the v1.0 integration | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implemented; not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
@@ -123,6 +128,10 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 
 ### Guides
 
+- [Doctor](https://github.com/n0mad-ai/bastra-recall/wiki/Doctor) — setup, missing save notices and daemon config warnings.
+- [Telemetry](https://github.com/n0mad-ai/bastra-recall/wiki/Telemetry) — delivered context, candidates and measurable costs.
+- [Release checks](https://github.com/n0mad-ai/bastra-recall/wiki/Release-Check) — verify the complete published set.
+
 - [Import existing memories](https://github.com/n0mad-ai/bastra-recall/wiki/Importing-Memories) — lists, chat exports, rules and memory folders. Folder imports go directly into a separate intake area; the other paths stage candidates for review.
 - [Vault map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) — explore, search and flag memories for care.
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates.
@@ -135,7 +144,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 
 ### Roadmap
 
-Version 1.0 focuses on measured recall quality, relevant session context and clearer control over memory use. The cumulative session context budget is being measured in shadow mode; it does not yet enforce a live session-wide limit. [Roadmap and release boundaries](./PLAN.md).
+The 1.x release line focuses on measured recall quality, relevant session context and clearer control over memory use. The cumulative session context budget is being measured in shadow mode; it does not yet enforce a live session-wide limit. [Roadmap and release boundaries](./PLAN.md).
 
 A native Bastra Mac app is in development. The open-source package already includes the local browser-based vault map and works independently of that app.
 
@@ -161,6 +170,9 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
 
+Proaktive Aufgaben (Unreleased): notify-Erinnerungen entstehen und werden im Gespräch bedient; lokale Hooks/MCP erhalten ihren Agent-Zugang automatisch. Fällige Karten erscheinen beim nächsten Kontakt, Quittieren und Erledigen bleiben getrennt. Der Aufgaben-Tab der Recall-UI zeigt aktive, erledigte und fehlgeschlagene/abgebrochene Arbeit. Der bestehende Aktionsweg verlangt exakte Owner-Signaturen für eine registrierte rückrollbare lokale UTF-8-Datei; die Freigabepolitik bleibt für spätere Diskussion offen. E-Mail, Slack, GitHub, Cloud und Anbieter-Aktionen sind nicht unterstützt. [Anleitung](./docs/Proaktive%20Aufgaben.md) · [Wegwerf-Demo](./docs/design/proactive-tasks-demo.md).
+
+
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 
 ### Warum nicht einfach CLAUDE.md?
@@ -175,13 +187,15 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Version 1.0.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Version 1.1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="Eine Terminal-Sitzung: zwei Fragen, und Bastra Recall legt die passenden Entscheidungen von selbst vor. Die Statusleiste unten zählt Aufrufe, Treffer und Millisekunden." width="100%" />
 </p>
 
 <p align="center"><sub>Zwei Fragen, beantwortet aus einem Vault, das der Assistent nicht durchsuchen sollte. Die Leiste unten ist die Statusleiste von Claude Code.</sub></p>
+
+1.1.0 ergänzt die Prüfung lokaler Entwürfe mit geschwärzten Zugangsdaten (Bestätigung speichert nichts; automatische Beförderung bleibt aus), Speicherhinweise für Claude Code/Codex und optionale Terminal-Panels. [Entwürfe und Relay](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Drafts) · [Steuerung und Schwärzungsgrenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Secret-Redaction) · [Panels](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
 ### Installation
 
@@ -217,7 +231,7 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 
 | KI-Client | Status | Einrichtung und Verhalten |
 |---|---|---|
-| **Claude Code** | Getestet – im täglichen Einsatz | MCP, Skill, sieben ruhige Hooks und Statusline |
+| **Claude Code** | Getestet – im täglichen Einsatz | MCP, Skill, zehn Hook-Registrierungen (acht ohne Stop/SessionEnd), Speicherhinweise und Statusline. [Hooks](./docs/hooks.md#deutsch) |
 | **Claude Desktop** | Getestet | MCP und Memory-Anleitung; Sitzungskontext beim ersten Tool-Aufruf. [Einrichtung](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop), einschließlich macOS-Extension `.mcpb` |
 | **Codex CLI** | Für die v1.0-Integration verifiziert | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implementiert; noch nicht im Feld getestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
@@ -261,6 +275,10 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 
 ### Anleitungen
 
+- [Doctor](https://github.com/n0mad-ai/bastra-recall/wiki/Doctor) – Einrichtung, fehlende Speicherhinweise und Daemon-Konfigurationswarnungen.
+- [Telemetrie](https://github.com/n0mad-ai/bastra-recall/wiki/Telemetry) – gelieferter Kontext, Kandidaten und messbare Kosten.
+- [Release-Prüfungen](https://github.com/n0mad-ai/bastra-recall/wiki/Release-Check) – das vollständige veröffentlichte Set prüfen.
+
 - [Vorhandene Erinnerungen importieren](https://github.com/n0mad-ai/bastra-recall/wiki/Importing-Memories) – Listen, Chat-Exporte, Regeln und Memory-Ordner. Ordnerimporte landen direkt in einem getrennten Bereich; die anderen Wege bereiten Kandidaten zur Prüfung vor.
 - [Vault-Map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) – Erinnerungen erkunden, suchen und zur Pflege markieren.
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren.
@@ -273,7 +291,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 
 ### Roadmap
 
-Version 1.0 konzentriert sich auf gemessene Abrufqualität, passenden Sitzungskontext und klarere Kontrolle über die Gedächtnisnutzung. Das kumulative Kontextbudget einer Sitzung wird im Shadow-Modus gemessen; es erzwingt noch keine globale Obergrenze. [Roadmap und Release-Grenzen](./PLAN.md).
+Die 1.x-Release-Reihe konzentriert sich auf gemessene Abrufqualität, passenden Sitzungskontext und klarere Kontrolle über die Gedächtnisnutzung. Das kumulative Kontextbudget einer Sitzung wird im Shadow-Modus gemessen; es erzwingt noch keine globale Obergrenze. [Roadmap und Release-Grenzen](./PLAN.md).
 
 Eine native Bastra-Mac-App ist in Entwicklung. Das Open-Source-Paket enthält bereits die lokale browserbasierte Vault-Map und funktioniert unabhängig von dieser App.
 

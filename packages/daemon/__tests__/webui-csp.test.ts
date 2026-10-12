@@ -263,3 +263,7 @@ test("CSP exclusion: the local demo is excluded from the npm package, not just g
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("integrated task view retains the main map framing boundary", async () => {
+ const map = await fetchAsset("/ui/"); assert.match(String(map.headers["content-security-policy"]), /frame-ancestors 'none'/);
+});

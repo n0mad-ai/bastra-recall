@@ -74,6 +74,7 @@ async function runGate(env = {}) {
         GITHUB_OUTPUT: outputs,
         GITHUB_REPOSITORY: "n0mad-ai/bastra-recall",
         DRY_RUN: "false",
+        WIKI_UPDATED: "true",
         TAG: `v${VERSION}`,
         GITHUB_SHA: SHA_A,
         ...env,
@@ -201,4 +202,19 @@ test("#548 workflow (regression guard, not the acceptance test): every job build
       `job ${n} checks out the dispatch ref instead of the commit the gate resolved`,
     );
   }
+});
+
+for (const value of [undefined, "false", "1"]) {
+  test(`release gate refuses missing/invalid Wiki confirmation: ${value}`, async () => {
+    const { code, out, outputs } = await runGate({ DRAFT_JSON: draft(), WIKI_UPDATED: value });
+    assert.notEqual(code, 0);
+    assert.match(out, /Wiki updated is required/);
+    assert.ok(!outputs.includes("publish=true"));
+  });
+}
+
+test("publishing workflow exposes the required Wiki attestation to the gate", () => {
+  const workflow = readFileSync(WORKFLOW, "utf8");
+  assert.match(workflow, /wiki_updated:[\s\S]*?default: false[\s\S]*?type: boolean/);
+  assert.ok(workflow.includes("WIKI_UPDATED: ${{ inputs.wiki_updated }}"));
 });

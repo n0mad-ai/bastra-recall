@@ -1,0 +1,221 @@
+import { privateContentComparison } from "./task-private-comparison.js";
+import { canonicalTaskValue } from "./task-canonical.js";
+/** Registered bounded evidence only; verify_cmd is never executable. */
+import { realpath } from "node:fs/promises";
+import { openTaskSourceFile } from "./task-source-file.js";
+import { relative, resolve, isAbsolute } from "node:path";
+import { z } from "zod";
+import matter from "gray-matter";
+import { mutateMemoryFile, memoryRevision, scanVaultForIdAsync, occupantOfRaw, parseMemoryWith } from "@bastra-recall/core";
+import type { ToolDeps } from "./tool-deps.js";
+import type { Task, TaskStore, TaskSource } from "./task-schema.js";
+import { cleanText, readTaskStore, transactTaskStore } from "./task-store.js";
+import type { TaskServiceContext } from "./task-service.js";
+import { taskValueHash } from "./task-events.js";
+export type TaskEvent = TaskStore["events"][number];
+export type Verification = NonNullable<Task["verification"]>;
+export interface TaskMemorySnapshot { id: string; revision: string; raw: string; body: string; sensitivity: string }
+export function taskBindingHash(task: Task): string {
+  return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
+}
+export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
+  const handle = await openTaskSourceFile(path);
+  try {
+    const info = await handle.stat(); // openTaskSourceFile already requires a regular file
+    if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
+    const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
+    if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
+    return strictUtf8 ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, result.bytesRead)) : bytes.subarray(0, result.bytesRead).toString("utf8");
+  } finally { await handle.close(); }
+}
+export function taskMemoryReader(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
+  return async (id: string, budget?: {max_bytes:number;timeout_ms:number}): Promise<TaskMemorySnapshot> => {
+    const indexed = deps.vault.get(id);
+    if (indexed && indexed.fm.id !== id) throw new Error("memory cache identity disagreement");
+    const max=budget?.max_bytes??1024*1024,deadline=Date.now()+(budget?.timeout_ms??1000);
+    let limit: string | undefined;
+    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: max, maxFiles: 1000, deadline, onLimit: reason => { limit ??= reason; } });
+    if (limit) throw Object.assign(new Error("Memory-Aufnahmebudget überschritten"), { code: limit === "timeout" ? "source_timeout" : "source_budget", reason: limit === "files" ? "memory_scan_budget" : undefined });
+    if (located.kind !== "unique") throw new Error("memory binding unresolved");
+    const root = await realpath(deps.vaultPath); const target = await realpath(located.filePath);
+    const rel = relative(root, target); if (rel.startsWith("..") || isAbsolute(rel) || target !== resolve(root, relative(resolve(deps.vaultPath), resolve(located.filePath)))) throw new Error("memory escaped");
+    const raw = await boundedTaskRead(target, max);
+    if(Date.now()>deadline)throw Object.assign(new Error("memory timeout"),{code:"source_timeout"});
+    const occupant = occupantOfRaw(raw, target); if (occupant.kind !== "memory" || occupant.id !== id) throw new Error("memory rebound");
+    const memory = parseMemoryWith(matter, raw, target, Date.now());
+    return { id, raw, body: memory.body, revision: memoryRevision(raw), sensitivity: memory.fm.sensitivity ?? "public" };
+  };
+}
+/** Owner-only revisioned body change via the existing ID/CAS mutation boundary. */
+export function taskMemoryChanger(deps: Pick<ToolDeps, "vault" | "vaultPath">) {
+  const reader = taskMemoryReader(deps);
+  return async (id: string, revision: string, body: string, changeId: string, expectedHash?: string, updatedDate?: string): Promise<string> => {
+    const snapshot = await reader(id);
+    // Recovery is recognized by exact resulting bytes recorded before the write.
+    // Never add an idempotency marker to the user's memory frontmatter.
+    if (expectedHash && taskValueHash(snapshot.raw) === expectedHash) return snapshot.revision;
+    if (snapshot.revision !== revision) throw Object.assign(new Error("Decision revision changed"), { code: "conflict" });
+    const located = await scanVaultForIdAsync(deps.vaultPath, id, undefined, { maxBytes: 1024 * 1024, maxFiles: 1000, deadline: Date.now() + 1000 });
+    if (located.kind !== "unique") throw Object.assign(new Error("Decision absent or ambiguous"), { code: "conflict" });
+    const outcome = await mutateMemoryFile(located.filePath, id, {
+      precondition: raw => {
+        if (memoryRevision(raw) !== revision || (expectedHash && taskValueHash(matter.stringify(body, { ...matter(raw).data, updated: updatedDate })) !== expectedHash))
+          throw Object.assign(new Error("Decision revision changed"), { code: "conflict" });
+      },
+      body: () => body, frontmatter: current => ({ ...current, updated: updatedDate ?? new Date().toISOString().slice(0, 10) }),
+    }, { vaultRoot: deps.vaultPath, op: "proactive_decision_change" });
+    if (outcome.kind !== "written") throw Object.assign(new Error("Decision CAS failed"), { code: "conflict" });
+    return outcome.revision;
+  };
+}
+export function taskEventToAssess(task: Task, store: TaskStore): TaskEvent | undefined {
+  if (task.schedule.kind !== "event") return undefined;
+  const sourceId = task.schedule.source_id, cursor = task.last_event_sequence ?? 0;
+  const events = store.events.filter(e => e.source_id === sourceId);
+  return events.find(e => e.sequence > cursor) ?? events.at(-1);
+}
+/** Cache admission key is captured from the snapshot ACTUALLY assessed. */
+export function taskCheckMaterial(task: Task, store: TaskStore): string {
+  const event = taskEventToAssess(task, store);
+  const sources = store.sources.filter(s => (task.schedule.kind === "event" && s.id === task.schedule.source_id) || task.evidence.some(e => e.source_id === s.id))
+    .map(s => [s.id, s.revision, s.enabled]).sort((a,b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
+  const latest = [...store.events].reverse().find(e => task.schedule.kind === "event" && e.source_id === task.schedule.source_id);
+  return canonicalTaskValue(["task-check-v2", taskBindingHash(task),task.budget, event?.id ?? null, event?.sequence ?? null,event?.observation_bytes??null,event?.observation_ms??null, latest?.id ?? null, sources]);
+}
+function result(task: Task, event: TaskEvent, source: TaskSource | undefined, now: number, outcome: Verification["outcome"], reason: string): Verification {
+  return { outcome, reason, source_id: event.source_id, source_revision: event.source_revision, event_id: event.id,
+    binding_hash: taskBindingHash(task), observed_at: event.observed_at, state_updated_at: event.state_updated_at,
+    max_age_ms: source?.max_age_ms ?? 0, timeout_ms: task.budget.timeout_ms, checked_at: now };
+}
+export function verifyTaskEvent(task: Task, event: TaskEvent, store: TaskStore, now: number): Verification {
+  const source = store.sources.find(s => s.id === event.source_id);
+  const out = (outcome: Verification["outcome"], reason: string) => result(task, event, source, now, outcome, reason);
+  if (!source?.enabled) return out("unavailable", "source_disabled_or_missing");
+  if (event.source_revision !== String(source.revision) || event.actor !== source.producer_actor
+    || !source.owner_domains.every(d => task.owner_domains.includes(d))) return out("inconclusive", "source_identity_drift");
+  if(source.kind!=="event") {
+    if(event.observation_bytes===undefined||event.observation_ms===undefined)return out("unavailable","observation_budget_unknown");
+    if(event.observation_bytes>task.budget.max_source_bytes)return out("unavailable","source_budget");
+    if(event.observation_ms>task.budget.timeout_ms)return out("unavailable","source_timeout");
+  }
+  if (event.state_updated_at === undefined || event.state_updated_at > event.observed_at || event.observed_at > now)
+    return out("inconclusive", "unattributable_state_age");
+  if (now - event.state_updated_at > source.max_age_ms) return out("stale", "state_too_old");
+  if (task.evidence.some(e => e.state_updated_at !== undefined && (e.state_updated_at > now || e.state_updated_at > e.observed_at))) return out("inconclusive", "unattributable_state_age");
+  if (task.evidence.some(e => e.provenance !== "attributable")) return out("inconclusive", "unknown_or_contested_evidence");
+  if (task.evidence.some(e => e.observed_at > now || now - (e.state_updated_at ?? e.observed_at) > e.max_age_ms)) return out("stale", "evidence_too_old");
+  if (task.schedule.kind !== "event" || !task.schedule.expected_hash || !event.value_hash) return out("inconclusive", "missing_comparison_hash");
+  if (task.schedule.predicate === "premise") return out("inconclusive", "premise_requires_evidence_verifier");
+  return out(task.schedule.expected_hash === event.value_hash ? "verified" : "refuted", "exact_versioned_value");
+}
+const claimEvidence = z.strictObject({ claim_id: z.string(), claim_revision: z.string(), value: z.string(), state_updated_at: z.number().int().nonnegative().safe(), provenance: z.enum(["attributable", "contested", "unknown"]) });
+type ReadContext = TaskServiceContext & {
+  deadline?: number; sourceCache?: Map<string, Promise<{raw: string; body: string; revision: string}>>;
+  sourceReads?: Map<string, number>;
+};
+async function evidenceSnapshot(ctx: ReadContext, source: TaskSource, max: number): Promise<{ raw: string; body: string; revision: string }> {
+  if (ctx.deadline !== undefined && Date.now() >= ctx.deadline) throw new Error("source timeout");
+  const key = `${source.id}:${source.revision}:${max}`;
+  const cached = ctx.sourceCache?.get(key); if (cached) return cached;
+  if ((ctx.sourceReads?.get(source.id) ?? 0) >= 10 || (ctx.sourceReads && [...ctx.sourceReads.values()].reduce((a, b) => a + b, 0) >= 100)) throw new Error("source budget");
+  ctx.sourceReads?.set(source.id, (ctx.sourceReads.get(source.id) ?? 0) + 1);
+  const pending = (async () => {
+  if (source.kind === "memory" && ctx.memoryRead) {
+    const snap = await ctx.memoryRead(source.memory_id!,{max_bytes:max,timeout_ms:Math.max(1,Math.min(1000,(ctx.deadline??Date.now()+1000)-Date.now()))});
+    if (Buffer.byteLength(snap.raw) > max || (snap.sensitivity !== "public" && source.sensitivity === "public")) throw new Error("evidence disclosure denied");
+    return snap;
+  }
+  if (source.kind !== "file") throw new Error("unsupported evidence source");
+  const root = await realpath(source.root!); const path = resolve(root, source.path!); const rel = relative(root, path);
+  if (root !== source.root || rel.startsWith("..") || isAbsolute(rel) || await realpath(path) !== path) throw new Error("evidence path escaped");
+  const raw = await boundedTaskRead(path, max); return { raw, body: raw, revision: taskValueHash(raw) };
+  })();
+  ctx.sourceCache?.set(key, pending);
+  const snapshot = await pending;
+  if (ctx.deadline !== undefined && Date.now() >= ctx.deadline) throw new Error("source timeout");
+  return snapshot;
+}
+export async function verifyBoundEvidence(ctx: ReadContext, task: Task, store: TaskStore, now: number): Promise<{ outcome: Verification["outcome"]; reason: string }> {
+  if (task.evidence.length > 10) return { outcome: "unavailable", reason: "source_budget" };
+  for (const reference of task.evidence) {
+    if (reference.state_updated_at !== undefined && (reference.state_updated_at > now || reference.state_updated_at > reference.observed_at)) return { outcome: "inconclusive", reason: "unattributable_state_age" };
+    if (reference.provenance !== "attributable") return { outcome: "inconclusive", reason: "unknown_or_contested_evidence" };
+    if (reference.observed_at > now || now - (reference.state_updated_at ?? reference.observed_at) > reference.max_age_ms)
+      return { outcome: "stale", reason: "evidence_too_old" };
+    const source = store.sources.find(s => s.id === reference.source_id && s.enabled);
+    if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d))) return { outcome: "unavailable", reason: "evidence_unavailable" };
+    try {
+      const snap = await evidenceSnapshot(ctx, source, task.budget.max_source_bytes);
+      if (snap.revision !== reference.revision || (reference.hash && taskValueHash(snap.raw) !== reference.hash))
+        return { outcome: "stale", reason: "evidence_revision_drift" };
+    } catch { return { outcome: "unavailable", reason: "evidence_read_failed" }; }
+  }
+  return { outcome: "verified", reason: "bound_sources_verified" };
+}
+export async function verifyTaskSource(ctx: ReadContext, task: Task, event: TaskEvent, store: TaskStore, now: number): Promise<Verification> {
+  ctx = { ...ctx, deadline: ctx.deadline ?? Date.now() + task.budget.timeout_ms };
+  const basic = verifyTaskEvent(task, event, store, now);
+  if (task.schedule.kind !== "event" || task.schedule.predicate !== "premise" || basic.reason !== "premise_requires_evidence_verifier") {
+    if (["verified", "refuted"].includes(basic.outcome) && task.evidence.length) {
+      const evidence = await verifyBoundEvidence(ctx, task, store, now);
+      if (evidence.outcome !== "verified") return { ...basic, ...evidence };
+    }
+    return basic;
+  }
+  const out = (outcome: Verification["outcome"], reason: string): Verification => ({ ...basic, outcome, reason });
+  if (task.schedule.verifier_id !== "versioned-value-v1" || !task.decision || !event.claim) return out("inconclusive", "unregistered_claim_verifier");
+  const allEvidence = await verifyBoundEvidence(ctx, task, store, now);
+  if (allEvidence.outcome !== "verified") return out(allEvidence.outcome, allEvidence.reason);
+  const claim = event.claim;
+  if (claim.claim_id !== task.decision.assumption_id || claim.claim_revision !== task.decision.assumption_revision) return out("inconclusive", "irrelevant_claim");
+  const reference = task.evidence.find(e => e.id === claim.evidence_id && e.revision === claim.evidence_revision && e.provenance === "attributable");
+  const source = reference && store.sources.find(s => s.id === reference.source_id && s.enabled);
+  if (!source || !source.owner_domains.every(d => task.owner_domains.includes(d))) return out("unavailable", "evidence_unavailable");
+  try {
+    const snap = await evidenceSnapshot(ctx, source, task.budget.max_source_bytes);
+    if (snap.revision !== claim.evidence_revision || (reference?.hash && reference.hash !== taskValueHash(snap.raw))) return out("stale", "evidence_revision_drift");
+    const data = claimEvidence.safeParse(JSON.parse(snap.body));
+    if (!data.success || data.data.provenance !== "attributable") return out("inconclusive", "evidence_not_attributable");
+    if (data.data.state_updated_at > now || data.data.state_updated_at > event.observed_at || data.data.state_updated_at > reference!.observed_at) return out("inconclusive", "unattributable_state_age");
+    if (now - data.data.state_updated_at > reference!.max_age_ms) return out("stale", "producer_state_too_old");
+    if (data.data.claim_id !== claim.claim_id || data.data.claim_revision !== claim.claim_revision || await privateContentComparison(ctx.path, data.data.value) !== claim.value_hash)
+      return out("inconclusive", "claim_evidence_mismatch");
+    return { ...out(claim.value_hash === task.schedule.expected_hash ? "verified" : "refuted", "verified_claim_snapshot"), refuted_value: data.data.value, state_updated_at: data.data.state_updated_at, max_age_ms: Math.min(basic.max_age_ms, reference!.max_age_ms) };
+  } catch { return out("unavailable", "evidence_read_failed"); }
+}
+function verificationChanged(before: Verification | undefined, after: Verification): boolean {
+  const stable = (v: Verification) => ({ ...v, ...(v.refuted_value ? { refuted_value: cleanText(v.refuted_value) } : {}), checked_at: 0, observed_at: v.event_id === "clock" ? 0 : v.observed_at });
+  return !before || canonicalTaskValue(stable(before)) !== canonicalTaskValue(stable(after));
+}
+/** Off-path cache, re-bound on every read; no command strings or model attestations. */
+export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?: ReadonlySet<string>, maxMs = 5000): Promise<Map<string, string>> {
+  const assessed = new Map<string, string>();
+  const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return assessed;
+  const sourceCache: ReadContext["sourceCache"] = new Map(); const sourceReads = new Map<string, number>();
+  const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
+  for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
+    if (Date.now() - started >= maxMs) break;
+    const event = taskEventToAssess(task, store);
+    if (!event && task.schedule.kind === "event") { assessed.set(task.id, taskCheckMaterial(task, store)); continue; }
+    const observed = event ?? { id: "clock", dedup_key: "clock", sequence: 0, source_id: "clock", source_revision: "clock", actor: "task-source-reader", owner_domains: task.owner_domains, sensitivity: task.sensitivity, observed_at: (ctx.now ?? Date.now)(), state_updated_at: (ctx.now ?? Date.now)(), value: "clock" };
+    const boundedCtx: ReadContext = { ...ctx, deadline: Date.now() + Math.min(task.budget.timeout_ms, maxMs - (Date.now() - started)), sourceCache, sourceReads };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unavailable = { ...verifyTaskEvent(task, observed, store, (ctx.now ?? Date.now)()), outcome: "unavailable" as const, reason: "source_timeout" };
+    const verification = await Promise.race([task.schedule.kind === "event" ? verifyTaskSource(boundedCtx, task, observed, store, (ctx.now ?? Date.now)())
+      : verifyBoundEvidence(boundedCtx, task, store, (ctx.now ?? Date.now)()).then(evidence => ({ ...unavailable, ...evidence, source_id: "clock", event_id: "clock", state_updated_at: Math.min(...task.evidence.map(e => e.state_updated_at ?? e.observed_at)), max_age_ms: Math.min(...task.evidence.map(e => e.max_age_ms)) })),
+      new Promise<Verification>(resolve => { timer = setTimeout(() => resolve(unavailable), task.budget.timeout_ms); })]);
+    if (timer) clearTimeout(timer);
+    assessed.set(task.id, taskCheckMaterial(task, store));
+    if (verificationChanged(task.verification, verification)) updates.push({ id: task.id, verification });
+  }
+  if (!updates.length) return assessed;
+  await transactTaskStore(ctx.path, undefined, s => {
+    for (const update of updates) {
+      const task = s.tasks.find(t => t.id === update.id); if (!task || taskBindingHash(task) !== update.verification.binding_hash) continue;
+      if (!verificationChanged(task.verification, update.verification)) continue;
+      const before = task.revision++; task.verification = update.verification; task.updated_at = update.verification.checked_at;
+      task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "freshness", before_revision: before, after_revision: task.revision, reason: update.verification.reason });
+    }
+  });
+  return assessed;
+}

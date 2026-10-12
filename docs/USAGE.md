@@ -106,7 +106,7 @@ by itself.
 
 ### The Claude Code reflex layer in detail
 
-Seven quiet hooks ship by default, all speaking to the daemon's loopback HTTP endpoint:
+Ten hook entries ship by default (eight without Stop/SessionEnd), all speaking to the daemon's loopback HTTP endpoint. The additional PostToolUse write-tool entry reports confirmed saves/edits; `BASTRA_SAVE_NOTICE=0` silences it:
 
 - **`PreToolUse`** (`bastra-recall-hook`) — fires before every `Write`/`Edit`/`MultiEdit`/`NotebookEdit`. Topic-detects from the tool intent and injects `<recall-hints>` as `additionalContext`.
 - **`SessionStart`** (`bastra-recall-session-hook`) — fires on `startup`/`resume`/`clear`/`compact`. Preloads top user-prefs + cross-project rules + project-scoped memories as `<session-context>` so the AI knows who, what, and what-not from the first prompt.
@@ -465,6 +465,10 @@ Ollama clients; an idle Ollama server without a loaded model costs little.
 
 `bastra bridges language <code>` limits query expansion to one language folder; `auto` searches all folders. New bridges are stored under the detected language of their source query, regardless of that override.
 
+### Doctor and release diagnostics
+
+`bastra doctor --fix` repairs registrations without enabling intentional opt-ins. A missing save-notice entry alone keeps healthy recall hooks enabled and names the reinstall command. Under daemon origin, a `config_fingerprint` mismatch warns that running behaviour differs from `daemon.env` pins and the macOS managed service environment; paths/secrets/client-only keys are excluded and the exit code is unchanged. Existing unreadable settings are preserved and setting writes stop. See [Doctor](https://github.com/n0mad-ai/bastra-recall/wiki/Doctor), [telemetry](https://github.com/n0mad-ai/bastra-recall/wiki/Telemetry) and the [release checklist](./RELEASING.md).
+
 ### Troubleshooting
 
 - **Ollama says `using already-running ollama on 11434`** — another server answered after the first check. Bastra reuses it without starting a competing server; a brew or systemd start label appears only after that start command succeeded.
@@ -600,7 +604,7 @@ ausgeschlossen und wendet keinen Vorschlag selbst an.
 
 ### Der Claude-Code-Reflex-Layer im Detail
 
-Sieben ruhige Hooks werden standardmäßig installiert, alle über den lokalen HTTP-Endpoint des Daemons:
+Standardmäßig werden zehn Hook-Einträge installiert (acht ohne Stop/SessionEnd), alle über den lokalen HTTP-Endpoint des Daemons. Der zusätzliche PostToolUse-Eintrag für Schreibwerkzeuge meldet bestätigte Speicherungen/Änderungen; `BASTRA_SAVE_NOTICE=0` schaltet ihn stumm:
 
 - **`PreToolUse`** (`bastra-recall-hook`) — feuert vor jedem `Write`/`Edit`/`MultiEdit`/`NotebookEdit`. Erkennt das Thema aus dem Tool-Aufruf und injiziert `<recall-hints>` als `additionalContext`.
 - **`SessionStart`** (`bastra-recall-session-hook`) — feuert bei `startup`/`resume`/`clear`/`compact`. Lädt Top-User-Präferenzen + projektübergreifende Regeln + projekt-spezifische Memories als `<session-context>` vor, damit die AI ab dem ersten Prompt weiß: wer, was, und was-nicht.
@@ -967,6 +971,10 @@ bastra nicht anhalten; ein untätiger Ollama-Server ohne geladenes Modell kostet
 `bastra commons verify` öffnet einen öffentlichen Pull Request mit Rezept-ID, Ergebnis (funktioniert/nicht), optionaler Notiz, Verifier-ID, Betriebssystem, CPU-Architektur und Node-Version. Dein Vault wird dabei nicht übertragen. Scheitert die Einreichung, bleibt der Eintrag zur manuellen Abgabe lokal liegen.
 
 `bastra bridges language <code>` beschränkt die Anfrage-Erweiterung auf einen Sprachordner; `auto` durchsucht alle Ordner. Neue Bridges werden unabhängig von dieser Einstellung nach der erkannten Sprache ihrer Quellanfrage abgelegt.
+
+### Doctor und Release-Diagnose
+
+`bastra doctor --fix` repariert Registrierungen, ohne bewusste Opt-ins einzuschalten. Ein allein fehlender Speicherhinweis-Eintrag lässt gesunde Recall-Hooks aktiv und nennt den Neuinstallationsbefehl. Unter daemon origin warnt ein abweichender `config_fingerprint`, dass das laufende Verhalten von `daemon.env`-Pins und der verwalteten macOS-Dienstumgebung abweicht; Pfade/Geheimnisse/reine Client-Schlüssel sind ausgenommen, der Exit-Code bleibt gleich. Vorhandene unlesbare Einstellungen bleiben erhalten, Einstellungsschreibvorgänge brechen ab. Siehe [Doctor](https://github.com/n0mad-ai/bastra-recall/wiki/Doctor), [Telemetrie](https://github.com/n0mad-ai/bastra-recall/wiki/Telemetry) und [Release-Checkliste](./RELEASING.md#deutsch).
 
 ### Fehlerbehebung
 

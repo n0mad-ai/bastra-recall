@@ -29,6 +29,7 @@ import { createWeather } from "./managers/weather.js";
 import { createWeatherChip } from "./managers/weather-chip.js";
 import { createDrillSwitcher } from "./managers/drill-switcher.js";
 import { createContextMenu } from "./managers/context-menu.js";
+import { createTasksView } from "./tasks.js";
 import { createTelemetryView } from "./managers/telemetry-view.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -176,6 +177,7 @@ async function main() {
   // Telemetry tab (#463): a scroll page over the stage, not a canvas view.
   // The canvas keeps its view underneath and comes back untouched.
   const telemetryView = createTelemetryView();
+  const tasksView = createTasksView();
   const markViewButton = (v) =>
     $("#view-switch")
       .querySelectorAll("button")
@@ -183,6 +185,9 @@ async function main() {
 
   let viewLoading = false; // semantic layout fetch in flight — don't re-enter
   async function switchView(v) {
+    if (v === "tasks") { telemetryView.close(); tasksView.open(); markViewButton(v); $('#view-switch [data-view="tasks"]').scrollIntoView({block:"nearest",inline:"nearest"}); return; }
+    tasksView.close();
+    markViewButton(currentView);
     if (v === "telemetry") {
       telemetryView.open();
       markViewButton(v);
@@ -603,8 +608,8 @@ async function main() {
   loop.start();
   // Mindspace (the universe) is the home view — first visit lands there;
   // afterwards the last-used view wins as before
-  const savedView = localStorage.getItem(VIEW_KEY) ?? "orbit";
-  if (savedView === "ring" || savedView === "semantic" || savedView === "orbit") void switchView(savedView);
+  const savedView = location.hash === "#tasks" ? "tasks" : localStorage.getItem(VIEW_KEY) ?? "orbit";
+  if (savedView === "tasks" || savedView === "ring" || savedView === "semantic" || savedView === "orbit") void switchView(savedView);
 
   // ── choreography/demo runner (opt-in via ?demo=1) ──────────────
   // A self-running show for filming the map on a phone. It drives the real

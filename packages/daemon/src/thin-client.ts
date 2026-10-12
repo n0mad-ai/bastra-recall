@@ -13,6 +13,7 @@
  * module existed and are committed + tested as-is. Folding them onto this
  * helper is a follow-up cleanup, not worth churning a shipped client for.
  */
+import { taskClientHeaders } from "./task-client-auth.js";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { decorateHookPayload } from "./hook-surface.js";
@@ -96,6 +97,7 @@ export function postLane(
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
+          ...taskClientHeaders(),
           "Content-Length": payload.byteLength.toString(),
         },
       },

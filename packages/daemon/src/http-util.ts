@@ -44,7 +44,7 @@ export function sendCors(
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization",
+    "Content-Type, Authorization, X-Bastra-Task-Authorization",
   );
   res.setHeader("Access-Control-Max-Age", "600");
   // Private Network Access: Chrome verlangt bei einem Preflight von öffentlicher

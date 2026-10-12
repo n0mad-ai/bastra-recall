@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "issue": 1109,
+  "measured_at": "2026-10-11T08:38:15.381Z",
+  "engine": {
+    "repo_commit": "1b337c2111ecc723a8af8afe2a1a05071e550d66",
+    "repo_dirty": false
+  },
+  "code_sha256": "c6905bbdf1fdd72cca613767ae27d324fd43632ae7396672a1b87a2662268363",
+  "registration_sha256": "4eb7f4d3e0795313435e309e32e0d9e9a82674b3e999ddba5345962d1434d242",
+  "input_sha256": {
+    "drafts": "690c73576d2b30958a15155f074bd05b0aa767b9c75326971a43a470d1d04539",
+    "vectors": "c079f7f5296bb4c2cf6b3c9b363f293a1b5755c99767cc31ccbc0f061fd27ee2"
+  },
+  "stored_provider": "ollama-embeddinggemma",
+  "stored_dimension": 768,
+  "historical_model_digest": null,
+  "counts": {
+    "drafts": 112,
+    "valid_matched_vectors": 112,
+    "rejected_drafts": 0,
+    "cross_session_pairs": 4321,
+    "same_session_pairs_excluded": 1895,
+    "csls_eligible_pairs": 4321,
+    "drafts_without_10_neighbors": 0,
+    "ranked_top_n": 120,
+    "independently_labelled_pairs": 0
+  },
+  "unlabelled_top_overlap": {
+    "cosine_csls": 65,
+    "cosine_dice": 52,
+    "dice_csls": 33
+  },
+  "cosine_distribution": {
+    "p50": 0.30075779671438085,
+    "p90": 0.42333699956096527,
+    "p99": 0.5583471327079581
+  },
+  "cost": {
+    "wall_ms": 55.50345800000002,
+    "existing_vector_file_bytes": 481234,
+    "raw_vector_bytes": 344064,
+    "inference_calls": 0,
+    "rss_bytes_at_end": 108773376
+  },
+  "csls_distribution": {
+    "p50": -0.29279075819829725,
+    "p90": -0.09492153527281821,
+    "p99": 0.116852276500921
+  },
+  "precision": null,
+  "false_positives": null,
+  "verdict": "unlabelled ranking diagnostic measured; durable-fact discrimination and promotion gate not evaluable",
+  "inputs_modified": false,
+  "private_content_published": false
+}

@@ -43,6 +43,9 @@ Commands:
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' writes a LaunchAgent;
                              a hand-written one is never replaced without --force
+  tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm>
+                             Owner token prompt; JSON input file. Add agent before
+                             the file to use explicit BASTRA_TASK_TOKEN.
   drafts <list|purge|undo>         Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
@@ -202,6 +205,46 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  tasks: `bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
+Usage: bastra tasks <create|list|due|status|setup-hooks|client-status|ui> [options]
+Erster Zugang: tasks auth mint owner ich personal ~/.bastra/owner-task.token.
+Token im lokalen Editor kopieren, nur verborgen im Terminal/Browser eingeben.
+Optional tasks owner-login: private Ablage nur für interaktive Owner-CLI, nie Hooks/MCP.
+Dann tasks setup-hooks, tasks client-status, tasks create --goal "Test" --after 1m --arm.
+Nach Fälligkeit: tasks due, tasks acknowledge ID --occurrence VORKOMMEN, tasks resolve ID.
+Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung.
+  bastra tasks create --goal "Nach sieben Tagen auswerten" --after 7d --domain personal --timezone Europe/Madrid --arm
+  bastra tasks create --goal "Täglich prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --every 1d --count 3
+  bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid
+  bastra tasks list | due | status [--json] [--agent]
+  bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
+  bastra tasks get|review|resolve|cancel|rearm <id>
+  bastra tasks acknowledge <id> --occurrence <occurrence-id>
+  bastra tasks snooze <id> --until 2026-10-13T18:00
+  bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal
+  bastra tasks targets update ID --root DIR --path FILE --domain DOMAIN
+  bastra tasks targets remove ID  Owner: stoppen, Grenzerklärung zurücksetzen
+  bastra tasks targets list       Vorhandene lokale reversible Ziele, kein Anbieter
+  bastra tasks archive ID         Nur abgeschlossene Arbeit; vorher tasks stop
+  bastra tasks archive-restore ARCHIV_ID  Verlauf/Rollback aufnehmen, unscharf
+  bastra tasks recover [--lock]   Owner offline: Prozesse stoppen, Backup/Original sichern
+  bastra tasks setup-hooks        Owner richtet lokale Hook-Karten mit eigener Agent-Kennung ein
+  bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
+  bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
+Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
+Client-Kennung. Anlegen ist standardmäßig unscharf, --arm braucht Owner-Rolle.
+--after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
+Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
+  bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
+  bastra tasks auth revoke credential-id
+  bastra tasks boundary          Owner erklärt geschützte Grenze; Prozesse danach neu starten
+  bastra tasks execution-enable   Owner aktiviert lokalen Adapter und hebt Stopp auf
+  bastra tasks keys enroll domain new-private-file
+  bastra tasks release LEASE_ID   Eigene Reservierung freigeben; keine Freigabe erneuern
+  bastra tasks approve|deny proposal-id domain private-key-file
+Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen
+signieren. Notify/prepare funktionieren ohne Signing-Key. Kein Hintergrund-Wakeup;
+BASTRA_TASK_TOKEN überschreibt die private lokale Hook-Konfiguration.`,
   drafts: `bastra drafts — local session drafts
 
 Usage:

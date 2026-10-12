@@ -1642,6 +1642,61 @@ test("#677 — the default gate is the score: a sub-MUST_LOAD ordinary hit stays
   }
 });
 
+test("unfused: a wired memory outside a question needs a strong anchor, not a raw BM25 score over shared articles", async () => {
+  const wired = (id: string, anchor?: "strong" | "weak") => ({
+    id,
+    title: "C",
+    type: "lesson",
+    scope: "all-projects",
+    summary: "c",
+    score: 212, // raw BM25: "la", "de", "los" shared with the memory body push it over any floor
+    recall_mode: "reflex",
+    ...(anchor ? { anchor_strength: anchor } : {}),
+  });
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-unfused-wired-"));
+  const { daemon } = await startRecallMock({
+    hits: [wired("only-articles", "weak"), wired("no-trigger-term"), wired("anchored", "strong")],
+    unfused: true,
+    degraded: "vector-arm-timeout",
+  });
+  try {
+    const { stdout } = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: "s-unfused-wired", prompt: "rota los logs en la máquina de build", cwd: process.cwd() },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+    );
+    const ctx =
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? "";
+    assert.match(ctx, /anchored/, "two content words of its trigger in the prompt: evidence");
+    assert.ok(!ctx.includes("only-articles") && !ctx.includes("no-trigger-term"), "a raw score over articles is not");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("unfused: an explicit lookup keeps the normal floor for a wired memory, anchored or not", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-unfused-wired-lookup-"));
+  const { daemon } = await startRecallMock({
+    hits: [{ id: "weakly-anchored", title: "C", type: "lesson", scope: "all-projects", summary: "c", score: 212, recall_mode: "reflex", anchor_strength: "weak" }],
+    unfused: true,
+    degraded: "vector-arm-timeout",
+  });
+  try {
+    const { stdout } = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: "s-unfused-wired-lookup", prompt: "find the build log rotation notes", cwd: process.cwd() },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+    );
+    const ctx =
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? "";
+    assert.match(ctx, /weakly-anchored/, "the user asked for a lookup: retrieval mode is exempt from the anchor gate");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("#677 — unfused, the generic score gate cannot be read: no ordinary hit injects on the raw BM25 scale", async () => {
   const stateDir = await mkdtemp(join(tmpdir(), "bastra-677-unfused-"));
   const { daemon } = await startRecallMock({

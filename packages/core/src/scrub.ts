@@ -49,6 +49,7 @@ export const INJECTED_BLOCK_TAGS = [
   "import-review",
   "vault-onboarding",
   "bastra-session-context",
+  "bastra-due",
   "reflex-candidate",
   "consolidation-candidate",
   "adoption-candidate",
