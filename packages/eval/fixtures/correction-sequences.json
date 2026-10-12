@@ -1,0 +1,501 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "dev-en-value-change",
+      "split": "dev",
+      "language": "en",
+      "kind": "value-change",
+      "title": "Retention dev-en-value-change",
+      "versions": [
+        {
+          "id": "dev-en-value-change-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-en-value-change-v2",
+          "value": "30 days",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-en-value-change-v3",
+          "value": "60 days",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-en-value-change-v4",
+          "value": "14 days",
+          "valid_from": "2026-04-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention dev-en-value-change?",
+        "Does Retention dev-en-value-change still use 14 days?"
+      ]
+    },
+    {
+      "id": "dev-en-polarity-reversal",
+      "split": "dev",
+      "language": "en",
+      "kind": "polarity-reversal",
+      "title": "Coffee dev-en-polarity-reversal",
+      "versions": [
+        {
+          "id": "dev-en-polarity-reversal-v1",
+          "value": "likes coffee",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-en-polarity-reversal-v2",
+          "value": "dislikes coffee",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-en-polarity-reversal-v3",
+          "value": "likes coffee",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Coffee dev-en-polarity-reversal?",
+        "Does Coffee dev-en-polarity-reversal still use likes coffee?"
+      ]
+    },
+    {
+      "id": "dev-en-late-old",
+      "split": "dev",
+      "language": "en",
+      "kind": "late-old",
+      "title": "Retention dev-en-late-old",
+      "versions": [
+        {
+          "id": "dev-en-late-old-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-en-late-old-v2",
+          "value": "30 days",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-en-late-old-v3",
+          "value": "7 days",
+          "valid_from": "2025-12-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention dev-en-late-old?",
+        "Does Retention dev-en-late-old still use 14 days?"
+      ]
+    },
+    {
+      "id": "dev-en-conflict",
+      "split": "dev",
+      "language": "en",
+      "kind": "conflict",
+      "title": "Retention dev-en-conflict",
+      "versions": [
+        {
+          "id": "dev-en-conflict-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-en-conflict-v2",
+          "value": "30 days",
+          "valid_from": "2026-01-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention dev-en-conflict?",
+        "Does Retention dev-en-conflict still use 14 days?"
+      ]
+    },
+    {
+      "id": "dev-de-value-change",
+      "split": "dev",
+      "language": "de",
+      "kind": "value-change",
+      "title": "Aufbewahrung dev-de-value-change",
+      "versions": [
+        {
+          "id": "dev-de-value-change-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-de-value-change-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-de-value-change-v3",
+          "value": "60 Tage",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-de-value-change-v4",
+          "value": "14 Tage",
+          "valid_from": "2026-04-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung dev-de-value-change?",
+        "Gilt für Aufbewahrung dev-de-value-change weiterhin 14 Tage?"
+      ]
+    },
+    {
+      "id": "dev-de-polarity-reversal",
+      "split": "dev",
+      "language": "de",
+      "kind": "polarity-reversal",
+      "title": "Kaffee dev-de-polarity-reversal",
+      "versions": [
+        {
+          "id": "dev-de-polarity-reversal-v1",
+          "value": "mag Kaffee",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-de-polarity-reversal-v2",
+          "value": "mag keinen Kaffee",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-de-polarity-reversal-v3",
+          "value": "mag Kaffee",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Kaffee dev-de-polarity-reversal?",
+        "Gilt für Kaffee dev-de-polarity-reversal weiterhin mag Kaffee?"
+      ]
+    },
+    {
+      "id": "dev-de-late-old",
+      "split": "dev",
+      "language": "de",
+      "kind": "late-old",
+      "title": "Aufbewahrung dev-de-late-old",
+      "versions": [
+        {
+          "id": "dev-de-late-old-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-de-late-old-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "dev-de-late-old-v3",
+          "value": "7 Tage",
+          "valid_from": "2025-12-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung dev-de-late-old?",
+        "Gilt für Aufbewahrung dev-de-late-old weiterhin 14 Tage?"
+      ]
+    },
+    {
+      "id": "dev-de-conflict",
+      "split": "dev",
+      "language": "de",
+      "kind": "conflict",
+      "title": "Aufbewahrung dev-de-conflict",
+      "versions": [
+        {
+          "id": "dev-de-conflict-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "dev-de-conflict-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung dev-de-conflict?",
+        "Gilt für Aufbewahrung dev-de-conflict weiterhin 14 Tage?"
+      ]
+    },
+    {
+      "id": "test-en-value-change",
+      "split": "test",
+      "language": "en",
+      "kind": "value-change",
+      "title": "Retention test-en-value-change",
+      "versions": [
+        {
+          "id": "test-en-value-change-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-en-value-change-v2",
+          "value": "30 days",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-en-value-change-v3",
+          "value": "60 days",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-en-value-change-v4",
+          "value": "14 days",
+          "valid_from": "2026-04-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention test-en-value-change?",
+        "Does Retention test-en-value-change still use 14 days?"
+      ]
+    },
+    {
+      "id": "test-en-polarity-reversal",
+      "split": "test",
+      "language": "en",
+      "kind": "polarity-reversal",
+      "title": "Coffee test-en-polarity-reversal",
+      "versions": [
+        {
+          "id": "test-en-polarity-reversal-v1",
+          "value": "likes coffee",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-en-polarity-reversal-v2",
+          "value": "dislikes coffee",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-en-polarity-reversal-v3",
+          "value": "likes coffee",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Coffee test-en-polarity-reversal?",
+        "Does Coffee test-en-polarity-reversal still use likes coffee?"
+      ]
+    },
+    {
+      "id": "test-en-late-old",
+      "split": "test",
+      "language": "en",
+      "kind": "late-old",
+      "title": "Retention test-en-late-old",
+      "versions": [
+        {
+          "id": "test-en-late-old-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-en-late-old-v2",
+          "value": "30 days",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-en-late-old-v3",
+          "value": "7 days",
+          "valid_from": "2025-12-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention test-en-late-old?",
+        "Does Retention test-en-late-old still use 14 days?"
+      ]
+    },
+    {
+      "id": "test-en-conflict",
+      "split": "test",
+      "language": "en",
+      "kind": "conflict",
+      "title": "Retention test-en-conflict",
+      "versions": [
+        {
+          "id": "test-en-conflict-v1",
+          "value": "14 days",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-en-conflict-v2",
+          "value": "30 days",
+          "valid_from": "2026-01-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "What is the current rule for Retention test-en-conflict?",
+        "Does Retention test-en-conflict still use 14 days?"
+      ]
+    },
+    {
+      "id": "test-de-value-change",
+      "split": "test",
+      "language": "de",
+      "kind": "value-change",
+      "title": "Aufbewahrung test-de-value-change",
+      "versions": [
+        {
+          "id": "test-de-value-change-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-de-value-change-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-de-value-change-v3",
+          "value": "60 Tage",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-de-value-change-v4",
+          "value": "14 Tage",
+          "valid_from": "2026-04-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung test-de-value-change?",
+        "Gilt für Aufbewahrung test-de-value-change weiterhin 14 Tage?"
+      ]
+    },
+    {
+      "id": "test-de-polarity-reversal",
+      "split": "test",
+      "language": "de",
+      "kind": "polarity-reversal",
+      "title": "Kaffee test-de-polarity-reversal",
+      "versions": [
+        {
+          "id": "test-de-polarity-reversal-v1",
+          "value": "mag Kaffee",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-de-polarity-reversal-v2",
+          "value": "mag keinen Kaffee",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-de-polarity-reversal-v3",
+          "value": "mag Kaffee",
+          "valid_from": "2026-03-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Kaffee test-de-polarity-reversal?",
+        "Gilt für Kaffee test-de-polarity-reversal weiterhin mag Kaffee?"
+      ]
+    },
+    {
+      "id": "test-de-late-old",
+      "split": "test",
+      "language": "de",
+      "kind": "late-old",
+      "title": "Aufbewahrung test-de-late-old",
+      "versions": [
+        {
+          "id": "test-de-late-old-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-de-late-old-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-02-01",
+          "source": "source-b"
+        },
+        {
+          "id": "test-de-late-old-v3",
+          "value": "7 Tage",
+          "valid_from": "2025-12-01",
+          "source": "source-a"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung test-de-late-old?",
+        "Gilt für Aufbewahrung test-de-late-old weiterhin 14 Tage?"
+      ]
+    },
+    {
+      "id": "test-de-conflict",
+      "split": "test",
+      "language": "de",
+      "kind": "conflict",
+      "title": "Aufbewahrung test-de-conflict",
+      "versions": [
+        {
+          "id": "test-de-conflict-v1",
+          "value": "14 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-a"
+        },
+        {
+          "id": "test-de-conflict-v2",
+          "value": "30 Tage",
+          "valid_from": "2026-01-01",
+          "source": "source-b"
+        }
+      ],
+      "queries": [
+        "Was gilt aktuell für Aufbewahrung test-de-conflict?",
+        "Gilt für Aufbewahrung test-de-conflict weiterhin 14 Tage?"
+      ]
+    }
+  ]
+}
