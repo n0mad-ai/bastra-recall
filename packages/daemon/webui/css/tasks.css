@@ -1,5 +1,5 @@
 /* Tasks share Recall's palette, typography, ruled columns and inspector. */
-#tasks-view[hidden], #task-workspace[hidden] { display: none !important; }
+#tasks-view[hidden], #task-workspace[hidden], #task-message[hidden] { display: none !important; }
 #tasks-view { position: fixed; inset: 58px 0 0; z-index: 16; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
 body.tasks-open #system-panel, body.tasks-open #inspector, body.tasks-open #minimap,
 body.tasks-open #hint, body.tasks-open #ring-hint, body.tasks-open #semantic-hint,
