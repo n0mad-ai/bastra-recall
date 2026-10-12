@@ -35,6 +35,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkReleaseDocs } from "./release-docs.mjs";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -155,6 +156,13 @@ for (const rel of VERSIONED) {
     die(`${rel} at ${targetSha} is version ${json.version}, but the draft is tagged ${tag}`);
   }
 }
+
+try { checkReleaseDocs(repoRoot, want); } catch (error) { die(error.message); }
+
+if (process.env.WIKI_UPDATED !== "true") {
+  die("Wiki updated is required: update and publish the English and German Wiki for this release, then dispatch with wiki_updated=true (WIKI_UPDATED=true).");
+}
+console.log("Required checklist: Wiki updated (English + German) — confirmed by releaser.");
 
 console.log(`Publishing the staged draft ${tag} from ${targetSha}.`);
 emit({ publish: "true", tag, sha: targetSha });

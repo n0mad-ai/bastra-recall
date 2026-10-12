@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * bump.mjs — set a new version across all workspace packages AND keep the
+ * bump.mjs — set README release lines and versions across workspace packages; keep the
  * internal cross-dependency pins in lockstep.
  *
  * Why: `npm version --workspaces` bumps each package's own version but does
@@ -20,6 +20,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { README_RELEASE_LINE, isPrereleaseVersion } from "./release-docs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -43,6 +44,18 @@ const DEP_FIELDS = [
   "peerDependencies",
   "optionalDependencies",
 ];
+
+// Read and validate both README release lines before changing any files.
+const readmePath = resolve(repoRoot, "README.md");
+const readme = readFileSync(readmePath, "utf8");
+const isPrerelease = isPrereleaseVersion(version);
+if (!isPrerelease && ["is available", "ist verfügbar"].some(phrase =>
+  (readme.match(README_RELEASE_LINE) ?? []).filter(line => line.includes(phrase)).length !== 1)) {
+  console.error("error: README needs one English and one German release version line");
+  process.exit(1);
+}
+const updatedReadme = isPrerelease ? readme : readme.replace(README_RELEASE_LINE,
+  (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`);
 
 // 1) Collect package.json paths: root + every workspace.
 const rootPkgPath = resolve(repoRoot, "package.json");
@@ -88,6 +101,11 @@ for (const { path, json } of pkgs) {
   if (!dryRun && dirty) {
     writeFileSync(path, JSON.stringify(json, null, 2) + "\n");
   }
+}
+
+if (updatedReadme !== readme) {
+  changes.push(`README.md: English and German release version → ${version}`);
+  if (!dryRun) writeFileSync(readmePath, updatedReadme);
 }
 
 // 3b) Guard: no hardcoded version literals in daemon source.
@@ -150,7 +168,6 @@ for (const relPath of GUARDED_SOURCES) {
 // (`workflow_dispatch`), which is also the only way the jobs can attach assets
 // to something that is not public yet.
 // A hyphen in the +build metadata (1.0.0+2026-09-28) is not a prerelease.
-const isPrerelease = version.split("+")[0].includes("-");
 const releaseCmd = isPrerelease
   ? `gh release create v${version} --draft --prerelease --generate-notes --target "$(git rev-parse HEAD)"`
   : `gh release create v${version} --draft --generate-notes --target "$(git rev-parse HEAD)"`;
@@ -159,12 +176,17 @@ const stagingNote = isPrerelease
   : "  # draft: invisible and untagged until `promote` has verified the whole set";
 
 function printHandoff() {
+  console.log(isPrerelease
+    ? "Prerelease: README keeps the stable release version; no matching CHANGELOG section is required by npm test."
+    : `npm test will fail until CHANGELOG.md has a section for ${version}.`);
   console.log(
     `\nNext:\n  npm install            # refresh package-lock\n` +
+      `  # REQUIRED: update CHANGELOG, README and Wiki EN/DE; publish Wiki after review\n` +
+      `  # wiki_updated=true confirms the Wiki is updated for v${version}\n` +
       `  git commit -am "release: v${version}"\n` +
       `  git push\n` +
       `  ${releaseCmd}\n${stagingNote}\n` +
-      `  gh workflow run publish-npm.yml -f tag=v${version} -f dry_run=false\n` +
+      `  gh workflow run publish-npm.yml -f tag=v${version} -f dry_run=false -f wiki_updated=true\n` +
       "  # builds, attaches, publishes npm LAST — and only then publishes the draft\n" +
       "  # #548: dispatch BEFORE the branch moves on. The gate refuses a run whose\n" +
       "  # commit is not the one the draft points at, rather than building something\n" +

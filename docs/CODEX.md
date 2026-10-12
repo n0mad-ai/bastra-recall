@@ -26,7 +26,7 @@ The adapter:
 4. backs up existing configuration before changes and pins ephemeral `npx` runtimes;
 5. activates the same integration for Codex CLI, Codex IDE, and ChatGPT desktop on this host.
 
-On the first Codex start, review and trust the seven displayed Bastra hooks; the same dialog remains available through `/hooks`. Codex binds trust to the exact hook hash and asks for review again after substantive changes. Restart ChatGPT desktop, existing Codex sessions, and the IDE extension afterward.
+On the first Codex start, review and trust the eight displayed Bastra hooks (seven without Stop); the same dialog remains available through `/hooks`. Codex binds trust to the exact hook hash and asks for review again after substantive changes. Restart ChatGPT desktop, existing Codex sessions, and the IDE extension afterward.
 
 ### Reflex layer
 
@@ -38,6 +38,7 @@ On the first Codex start, review and trust the seven displayed Bastra hooks; the
 | `PreToolUse: update_plan` | normalize plan steps into the existing topology/Todo lane — needs `tools.update_plan.enabled = true` in `~/.codex/config.toml`; Codex has shipped the planning tool off by default since 0.152.0, so `bastra install codex` sets the key itself (a commented block that `bastra uninstall codex` removes again; a value you set to `false` is left alone) (#506) |
 | `PreToolUse: Bash` | check risky or destructive commands before execution |
 | `PostToolUse: Bash` | capture failures and act signals; accept any Codex JSON response value |
+| `PostToolUse: Recall write tools` | report confirmed saves/edits; re-run `bastra install codex` and trust the new entry in `/hooks`. `BASTRA_SAVE_NOTICE=0` disables it; a missing notice alone keeps healthy recall hooks active. [Compatibility and rendering limits](./codex-save-notice.md) |
 | `Stop` | quiet save evaluation; disabled by `--no-stop-hook` |
 
 Every hook path is fail-open: an unreachable daemon must not block a Codex turn. Injected blocks carry `surface="codex"`, and telemetry uses the distinct `codex` client value. The current Codex JSONL transcript shape is supported additively; because OpenAI marks it unstable, older shapes and empty fallbacks remain available.
@@ -88,7 +89,7 @@ Der Adapter:
 4. sichert vorhandene Konfigurationen vor Änderungen und pinnt flüchtige `npx`-Runtimes;
 5. aktiviert dieselbe Integration für Codex CLI, Codex IDE und ChatGPT Desktop auf diesem Host.
 
-Beim ersten Codex-Start die sieben angezeigten Bastra-Hooks prüfen und vertrauen; später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach ChatGPT Desktop, bestehende Codex-Sitzungen und die IDE-Erweiterung neu starten.
+Beim ersten Codex-Start die acht angezeigten Bastra-Hooks (sieben ohne Stop) prüfen und vertrauen; später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach ChatGPT Desktop, bestehende Codex-Sitzungen und die IDE-Erweiterung neu starten.
 
 ### Reflex-Layer
 
@@ -100,6 +101,7 @@ Beim ersten Codex-Start die sieben angezeigten Bastra-Hooks prüfen und vertraue
 | `PreToolUse: update_plan` | Plan-Schritte in die vorhandene Topologie-/Todo-Lane normalisieren — braucht `tools.update_plan.enabled = true` in `~/.codex/config.toml`; seit Codex 0.152.0 ist das Planungs-Tool per Default aus, deshalb setzt `bastra install codex` den Schlüssel selbst (kommentierter Block, `bastra uninstall codex` nimmt ihn zurück; ein von dir auf `false` gesetzter Wert bleibt unangetastet) (#506) |
 | `PreToolUse: Bash` | riskante oder destruktive Befehle vor Ausführung prüfen |
 | `PostToolUse: Bash` | Fehlschläge und Act-Signale erfassen; beliebige Codex-JSON-Antwortwerte unterstützen |
+| `PostToolUse: Recall-Schreibwerkzeuge` | bestätigte Speicherungen/Änderungen melden; `bastra install codex` erneut ausführen und den neuen Eintrag in `/hooks` bestätigen. `BASTRA_SAVE_NOTICE=0` deaktiviert ihn; ein allein fehlender Hinweis lässt gesunde Recall-Hooks aktiv. [Kompatibilität und Darstellungsgrenzen](./codex-save-notice.md#deutsch) |
 | `Stop` | stille Save-Evaluation; bei `--no-stop-hook` deaktiviert |
 
 Alle Hook-Pfade sind fail-open: Ein nicht erreichbarer Daemon darf keinen Codex-Turn blockieren. Injizierte Blöcke tragen `surface="codex"`, Telemetrie verwendet den getrennten Client-Wert `codex`. Das aktuelle Codex-JSONL-Transkriptformat wird additiv unterstützt; weil OpenAI es als instabil kennzeichnet, bleiben ältere Formate und leere Fallbacks erhalten.

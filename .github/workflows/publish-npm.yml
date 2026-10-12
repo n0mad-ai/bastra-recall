@@ -14,6 +14,11 @@ on:
         required: false
         default: ""
         type: string
+      wiki_updated:
+        description: "REQUIRED for publishing: Wiki updated and published for this release (EN + DE)"
+        required: true
+        default: false
+        type: boolean
       dry_run:
         description: "Run all release checks but do not publish"
         required: true
@@ -71,6 +76,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           DRY_RUN: ${{ inputs.dry_run }}
+          WIKI_UPDATED: ${{ inputs.wiki_updated }}
         run: node scripts/verify-release-binding.mjs
 
   stub:
