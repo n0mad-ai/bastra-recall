@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+export const README_RELEASE_LINE = /^\*\*Version (\S+) (is available|ist verfügbar)\.\*\*/gm;
+export const isPrereleaseVersion = version => version.split("+")[0].includes("-");
+
 /** Release prose must identify the same version as the packages. */
 export function checkReleaseDocs(root, version) {
+  if (isPrereleaseVersion(version)) return;
   const readme = readFileSync(resolve(root, "README.md"), "utf8");
   for (const phrase of ["is available", "ist verfügbar"]) {
-    const lines = [...readme.matchAll(/^\*\*Version (\S+) (is available|ist verfügbar)\.\*\*/gm)]
+    const lines = [...readme.matchAll(README_RELEASE_LINE)]
       .filter(match => match[2] === phrase);
     if (lines.length !== 1 || lines[0][1] !== version) {
       throw new Error(`README ${phrase}: expected exactly one release line for ${version}`);

@@ -59,7 +59,7 @@ The injection column counts the 86 probes that fit the production length limits
 (59 new, 27 earlier; see [section 1](#resistance-to-injected-instructions)), the
 dot refers to the 59 new ones.
 
-- **A small new model is reliably better than measurement baseline at two of the
+- **A small new model is reliably better than the measurement baseline at two of the
   three jobs.** `tev1:4b` answers 96 % of the draft-check questions correctly
   (default `gemma3:4b`: 88 %), let 1 of 86 injected instructions through
   (default: 19), and as a reranker picks the right note almost twice as often

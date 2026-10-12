@@ -20,6 +20,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { README_RELEASE_LINE, isPrereleaseVersion } from "./release-docs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,14 +48,14 @@ const DEP_FIELDS = [
 // Read and validate both README release lines before changing any files.
 const readmePath = resolve(repoRoot, "README.md");
 const readme = readFileSync(readmePath, "utf8");
-const releaseLines = /^\*\*Version [^\s]+ (?:is available|ist verfügbar)\.\*\*/gm;
-if (["is available", "ist verfügbar"].some(phrase =>
-  (readme.match(releaseLines) ?? []).filter(line => line.includes(phrase)).length !== 1)) {
+const isPrerelease = isPrereleaseVersion(version);
+if (!isPrerelease && ["is available", "ist verfügbar"].some(phrase =>
+  (readme.match(README_RELEASE_LINE) ?? []).filter(line => line.includes(phrase)).length !== 1)) {
   console.error("error: README needs one English and one German release version line");
   process.exit(1);
 }
-const updatedReadme = readme.replace(releaseLines, (line) =>
-  line.replace(/^\*\*Version [^\s]+ /, `**Version ${version} `));
+const updatedReadme = isPrerelease ? readme : readme.replace(README_RELEASE_LINE,
+  (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`);
 
 // 1) Collect package.json paths: root + every workspace.
 const rootPkgPath = resolve(repoRoot, "package.json");
@@ -167,7 +168,6 @@ for (const relPath of GUARDED_SOURCES) {
 // (`workflow_dispatch`), which is also the only way the jobs can attach assets
 // to something that is not public yet.
 // A hyphen in the +build metadata (1.0.0+2026-09-28) is not a prerelease.
-const isPrerelease = version.split("+")[0].includes("-");
 const releaseCmd = isPrerelease
   ? `gh release create v${version} --draft --prerelease --generate-notes --target "$(git rev-parse HEAD)"`
   : `gh release create v${version} --draft --generate-notes --target "$(git rev-parse HEAD)"`;
@@ -176,6 +176,9 @@ const stagingNote = isPrerelease
   : "  # draft: invisible and untagged until `promote` has verified the whole set";
 
 function printHandoff() {
+  console.log(isPrerelease
+    ? "Prerelease: README keeps the stable release version; no matching CHANGELOG section is required by npm test."
+    : `npm test will fail until CHANGELOG.md has a section for ${version}.`);
   console.log(
     `\nNext:\n  npm install            # refresh package-lock\n` +
       `  # REQUIRED: update CHANGELOG, README and Wiki EN/DE; publish Wiki after review\n` +
