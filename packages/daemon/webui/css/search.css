@@ -32,7 +32,7 @@
   box-shadow: var(--shadow);
   transition: border-color 0.15s ease, flex-basis 0.35s ease;
 }
-#searchbox:focus-within { border-color: var(--accent); }
+#searchbox:has(#search:focus, #chat-input:focus) { border-color: var(--accent); }
 .search-icon { width: 15px; height: 15px; color: var(--text-dim); flex: none; }
 #search {
   flex: 1;
