@@ -59,7 +59,7 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, linkSync } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, linkSync, fstatSync, constants, type Stats } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -201,11 +201,11 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
 function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
   const guard = `${lockPath}.mutation`;
   let fd: number;
-  try { fd = openSync(guard, "wx", 0o600); }
+  try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
   catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       if (!recoverMutationGuard(guard)) return undefined;
-      try { fd = openSync(guard, "wx", 0o600); }
+      try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
       catch (retry) {
         if ((retry as NodeJS.ErrnoException).code === "EEXIST") return undefined;
         throw retry;
@@ -222,14 +222,22 @@ function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
   }
 }
 
-/** Reclaim only the inspected orphan. A concurrent replacement is restored
- * without overwriting a marker that another contender has already acquired. */
+/** Read metadata and contents through the same open descriptor. */
+function mutationSnapshot(path: string): { raw: string; st: Stats } {
+  const fd = openSync(path, "r");
+  try { return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) }; }
+  finally { closeSync(fd); }
+}
+
+/** Reclaim only the inspected orphan. Restore a concurrent replacement without
+ * overwriting a marker that another contender has already acquired. */
 function recoverMutationGuard(guard: string): boolean {
   let observed: string;
-  let inspected: ReturnType<typeof statSync>;
+  let inspected: Stats;
   try {
-    inspected = statSync(guard);
-    observed = readFileSync(guard, "utf8");
+    const snapshot = mutationSnapshot(guard);
+    inspected = snapshot.st;
+    observed = snapshot.raw;
     let validOwner = false;
     try {
       const body = JSON.parse(observed) as LockBody;
@@ -243,9 +251,10 @@ function recoverMutationGuard(guard: string): boolean {
   try { renameSync(guard, moved); } catch { return false; }
   let removeMoved = false;
   try {
-    const detached = statSync(moved);
+    const snapshot = mutationSnapshot(moved);
+    const detached = snapshot.st;
     if (detached.ino === inspected.ino && detached.dev === inspected.dev
-      && detached.mtimeMs === inspected.mtimeMs && readFileSync(moved, "utf8") === observed) {
+      && detached.mtimeMs === inspected.mtimeMs && snapshot.raw === observed) {
       removeMoved = true;
       return true;
     }
