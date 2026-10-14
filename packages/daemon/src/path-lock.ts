@@ -50,16 +50,16 @@
  * expensive failure.
  *
  * The non-strict mutation guard covers only synchronous filesystem operations.
- * If a process dies inside that short interval, its `.mutation` file is left
- * in place: acquisition keeps the same timeout/fail-open policy, and requires
- * removal of that marker after stopping the writers. It is never age-reaped,
- * because that would recreate the same unchecked-deletion race. Old writers
- * that do not use the guard must be stopped before relying on this guarantee.
+ * Its owner body permits recovery after a confirmed local process death.
+ * Empty/invalid bodies from an interrupted create are recovered after 30 s;
+ * live or remote owners are never displaced by age. Recovery renames and
+ * compares the observed bytes, restoring a changed marker with an exclusive
+ * hard link. Old writers must be stopped before relying on this guarantee.
  *
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, linkSync } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -70,6 +70,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const LOCK_STALE_MS = 10_000;
 /** How long a writer waits for the lock before continuing fail-open. */
 const LOCK_WAIT_MS = 5_000;
+const MUTATION_EMPTY_STALE_MS = 30_000;
 
 const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
@@ -202,13 +203,58 @@ function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
   let fd: number;
   try { fd = openSync(guard, "wx", 0o600); }
   catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") return undefined;
-    throw err;
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      if (!recoverMutationGuard(guard)) return undefined;
+      try { fd = openSync(guard, "wx", 0o600); }
+      catch (retry) {
+        if ((retry as NodeJS.ErrnoException).code === "EEXIST") return undefined;
+        throw retry;
+      }
+    } else throw err;
   }
-  try { return fn(); }
+  try {
+    writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+    return fn();
+  }
   finally {
     closeSync(fd);
     unlinkSync(guard);
+  }
+}
+
+/** Reclaim only the inspected orphan. A concurrent replacement is restored
+ * without overwriting a marker that another contender has already acquired. */
+function recoverMutationGuard(guard: string): boolean {
+  let observed: string;
+  let inspected: ReturnType<typeof statSync>;
+  try {
+    inspected = statSync(guard);
+    observed = readFileSync(guard, "utf8");
+    let validOwner = false;
+    try {
+      const body = JSON.parse(observed) as LockBody;
+      validOwner = typeof body.host === "string" && Number.isSafeInteger(body.pid)
+        && body.pid > 0 && typeof body.token === "string" && !!body.token;
+    } catch { /* interrupted body write */ }
+    if (validOwner ? !deadLocal(observed)
+      : Date.now() - inspected.mtimeMs <= MUTATION_EMPTY_STALE_MS) return false;
+  } catch { return false; }
+  const moved = `${guard}.${randomUUID()}.orphan`;
+  try { renameSync(guard, moved); } catch { return false; }
+  let removeMoved = false;
+  try {
+    const detached = statSync(moved);
+    if (detached.ino === inspected.ino && detached.dev === inspected.dev
+      && detached.mtimeMs === inspected.mtimeMs && readFileSync(moved, "utf8") === observed) {
+      removeMoved = true;
+      return true;
+    }
+    linkSync(moved, guard);
+    removeMoved = true;
+    return false;
+  } catch { return false; } // Preserve the displaced marker if restoration failed.
+  finally {
+    if (removeMoved) try { unlinkSync(moved); } catch { /* best-effort cleanup */ }
   }
 }
 

@@ -212,3 +212,27 @@ test("pending-suggestions (#551): an entry inside the cap is stored byte-for-byt
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("#1207: a stranded fresh mutation marker bounds pending writes and reports no text", { timeout: 8_000 }, async (t) => {
+  const { writeFile, readFile } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-busy-"));
+  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  const path = join(dir, "pending.json");
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
+  t.after(async () => {
+    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+    await rm(dir, { recursive: true, force: true });
+  });
+  await writeFile(`${path}.lock.mutation`, "");
+  let stderr = "";
+  t.mock.method(process.stderr, "write", (chunk: string) => { stderr += chunk; return true; });
+  const start = performance.now();
+  await writePendingSuggestion("PRIVATE suggestion text");
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed >= 5_000 && elapsed < 7_000, `bounded wait: ${elapsed}ms`);
+  assert.equal(await readFile(`${path}.lock.mutation`, "utf8"), "");
+  assert.match(stderr, /lock busy for 5000ms.*one suggestion lost/);
+  assert.doesNotMatch(stderr, /PRIVATE suggestion text/);
+});
