@@ -170,7 +170,7 @@ export async function acquireCommitClaim(
   } satisfies CommitClaim);
   return withPreparedClaim(lockPath, body, id, filePath, async prepared => {
     try {
-      await link(prepared, lockPath);
+      await publishPrepared(prepared, lockPath, body);
       return token;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
@@ -186,6 +186,20 @@ export async function acquireCommitClaim(
       throw writeConflict(id, filePath, "another save is committing or reclaiming this target");
     }
   });
+}
+
+/** Keep mutations available on filesystems without hardlinks. The fallback
+ * deliberately retains main's open-before-write window; it is not atomic
+ * complete publication and does not claim the hardlink safety guarantee. */
+const LINK_UNSUPPORTED = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EXDEV", "EINVAL", "EMLINK"]);
+async function publishPrepared(prepared: string, target: string, raw: string): Promise<void> {
+  try { await link(prepared, target); return; }
+  catch (error) {
+    if (!LINK_UNSUPPORTED.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+  const handle = await open(target, "wx", 0o600);
+  try { await handle.writeFile(raw, "utf8"); }
+  finally { await handle.close(); }
 }
 
 /** Complete regular bytes precede publication. Helpers live only in this ID's
@@ -282,9 +296,9 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
   const updated = JSON.stringify({ ...claim, reclaimed_from: digest });
   await writeFile(prepared, updated, "utf8");
   const marker = `${lockPath}.reclaim-${digest}`;
-  let owned = false;
+  let owned = false, publicationAttempted = false;
   try {
-    owned = await takeReclaimMark(lockPath, marker, prepared);
+    owned = await takeReclaimMark(lockPath, marker, prepared, updated);
     if (!owned) return false;
     // Recheck freshness as well as bytes: a main writer can still be between
     // open(wx) and write, so its new empty file must not match an old empty one.
@@ -300,15 +314,23 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     }
     if (!await markerOwnedBy(marker, claim.token)) return false;
     await unlink(lockPath);
-    await link(prepared, lockPath);
+    publicationAttempted = true;
+    await publishPrepared(prepared, lockPath, updated);
     // A main process can execute its pre-existing blind stale-marker deletion.
     // Do not report acquisition after observable lease loss or replacement.
     const [stillOwned, published] = await Promise.all([
       markerOwnedBy(marker, claim.token),
       readFile(lockPath, "utf8").then(raw => (JSON.parse(raw) as CommitClaim).token === claim.token),
     ]);
-    return stillOwned && published;
-  } catch { return false; }
+    if (!stillOwned || !published) {
+      await releaseCommitClaim(lockPath, claim.token);
+      return false;
+    }
+    return true;
+  } catch {
+    if (publicationAttempted) await releaseCommitClaim(lockPath, claim.token);
+    return false;
+  }
   finally { if (owned) await removeOwnedMarker(marker, claim.token); }
 }
 
@@ -335,11 +357,11 @@ async function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: num
   } finally { await handle.close(); }
 }
 
-async function takeReclaimMark(lockPath: string, marker: string, prepared: string): Promise<boolean> {
+async function takeReclaimMark(lockPath: string, marker: string, prepared: string, raw: string): Promise<boolean> {
   // main uses marker mtime, so refresh the private record before linking it.
   const now = new Date(Date.now());
   await utimes(prepared, now, now);
-  try { await link(prepared, marker); return true; }
+  try { await publishPrepared(prepared, marker, raw); return true; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false; }
   let seen: string, age: number;
   try {
@@ -367,7 +389,7 @@ async function takeReclaimMark(lockPath: string, marker: string, prepared: strin
     const current = await markerSnapshot(marker);
     if (current.raw !== seen || Date.now() - current.mtimeMs <= RECLAIM_MARK_STALE_MS) return false;
     await unlink(marker);
-    await link(prepared, marker);
+    await publishPrepared(prepared, marker, raw);
     return true;
   } catch { return false; }
   finally {

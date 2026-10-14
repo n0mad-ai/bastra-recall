@@ -551,5 +551,5 @@ test("late reclaimer cannot displace a live successor of the generation it check
   assert.equal(results[0].status,"fulfilled");assert.equal(results[1].status,"rejected");
   if(results[0].status!=="fulfilled"||results[1].status!=="rejected")throw new Error("unexpected claim results");
   assert.equal((results[1].reason as MemoryWriteConflictError).code,MEMORY_WRITE_CONFLICT);
-  assert.equal((JSON.parse(await readFile(lock, "utf8")) as {token:string}).token,results[0].value);
+  assert.equal((JSON.parse(await readFile(lock,"utf8")) as {token:string}).token,results[0].value);
 });

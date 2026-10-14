@@ -230,3 +230,48 @@ test('a second takeover retires the first dead owner’s earlier canonical marke
   assert.deepEqual(await fs.readdir(dir),[],'both canonical generations and the dead preparation must be retired');
   }
 });
+
+test('unsupported hardlinks fall back to exclusive regular-file publication', {timeout:5000}, async t => {
+  const link=fs.link;
+  fs.link=(async()=>{throw Object.assign(new Error('hardlinks unsupported'),{code:'ENOTSUP'});}) as typeof fs.link;
+  syncBuiltinESMExports();
+  try {
+    for(const raw of ['',JSON.stringify({pid:1,host:'foreign-fixture',ts:0,token:'old'})]){
+      const {dir,lock}=await fixture(t,raw);if(raw==='')await fs.unlink(lock);
+      const token=await acquireCommitClaim(lock,'fixture',lock);
+      assert.ok((await fs.lstat(lock)).isFile());
+      assert.equal((JSON.parse(await fs.readFile(lock,'utf8')) as {token:string}).token,token);
+      await assert.rejects(acquireCommitClaim(lock,'fixture',lock),/another save/);
+      await releaseCommitClaim(lock,token);
+      assert.deepEqual(await fs.readdir(dir),[]);
+    }
+  } finally {fs.link=link;syncBuiltinESMExports();}
+});
+
+test('failed post-publication verification retires only the caller’s claim', {timeout:5000}, async t => {
+  for(const replace of [false,true]){
+    const raw=JSON.stringify({pid:1,host:'foreign-fixture',ts:0,token:'old'});
+    const {dir,lock}=await fixture(t,raw);
+    const marker=`${lock}.reclaim-${createHash('sha256').update(raw).digest('hex').slice(0,16)}`;
+    const original={readFile:fs.readFile,link:fs.link};let injected=false;
+    const successor=JSON.stringify({pid:process.pid,host:hostname(),ts:Date.now(),token:'successor'});
+    fs.readFile=(async(...args:any[])=>{
+      if(!replace&&args[0]===marker&&!injected){
+        const current=JSON.parse(await original.readFile(lock,'utf8')) as {token:string};
+        if(current.token!=='old'){injected=true;throw Object.assign(new Error('verification failed'),{code:'EIO'});}
+      }
+      return Reflect.apply(original.readFile,fs,args);
+    }) as typeof fs.readFile;
+    fs.link=(async(...args:Parameters<typeof fs.link>)=>{
+      const result=await original.link(...args);
+      if(replace&&args[1]===lock&&!injected){injected=true;await fs.unlink(lock);await fs.writeFile(lock,successor,{flag:'wx'});}
+      return result;
+    }) as typeof fs.link;syncBuiltinESMExports();
+    try {await assert.rejects(acquireCommitClaim(lock,'fixture',lock),/another save/);}
+    finally {Object.assign(fs,original);syncBuiltinESMExports();}
+    assert.ok(injected);
+    if(replace){assert.equal(await fs.readFile(lock,'utf8'),successor);await releaseCommitClaim(lock,'successor');}
+    assert.deepEqual(await fs.readdir(dir),[],'no ten-minute orphan or foreign-claim deletion');
+    const next=await acquireCommitClaim(lock,'fixture',lock);await releaseCommitClaim(lock,next);
+  }
+});

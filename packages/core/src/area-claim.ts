@@ -30,7 +30,7 @@
  * für die dieselben Regeln gelten wie für Trash und Locks: eigenes
  * Unterverzeichnis, kein Symlink.
  */
-import { readdir, readFile, rename, lstat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
@@ -261,7 +261,7 @@ function claimBody(): string {
  */
 async function exclusiveHeld(lockPath: string): Promise<boolean> {
   try {
-    await lstat(lockPath);
+    await stat(lockPath);
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return false;
     return true;
@@ -494,8 +494,10 @@ export async function withAreaExclusive<T>(
       // in `acquireCommitClaim()`: O_EXCL, und für den verwaisten Fall eine
       // Reclaim-Markierung, deren NAME aus dem Inhalt des alten Claims
       // abgeleitet ist — zwei Reclaimer streiten damit um denselben Pfad, und
-      // veröffentlicht wird per `rename` über den bestehenden Lock, sodass der
-      // Pfad nie leer aussieht. Ein Lock-Mechanismus, zwei Aufrufer.
+      // veröffentlicht wird nach `unlink` exklusiv per `link` (ohne Hardlinks
+      // per `open(wx)` + Schreiben). In der Lücke kann ein normaler Bewerber
+      // gewinnen; dann verliert der Reclaimer mit Konflikt statt ihn zu
+      // überschreiben. Ein Lock-Mechanismus, zwei Aufrufer.
       let token: string;
       try {
         token = await acquireCommitClaim(lock, `area:${name}`, lock);
