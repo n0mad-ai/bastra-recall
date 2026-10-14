@@ -217,7 +217,7 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  * name. Serialising costs nothing the hook can feel — the file holds at most
  * five short entries and one write is a read plus a rename — and the hook
  * has no lock wait on the Stop response path: that wrapper defers a busy
- * write, while background callers retry until they hold the real lock.
+ * write, while background callers retry for at most 11 seconds.
  *
  * Every relay mutation uses the same cross-process path lock: the daemon
  * produces/consumes entries and the drafts CLI can explicitly clear the file.
@@ -240,6 +240,9 @@ export async function writePendingSuggestion(
   }
   try {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    // Outlast the 10 s stale lease (and the 4 s synchronous guards), so
+    // a crashed holder still lets this suggestion be retained on retry.
+    const deadline = Date.now() + 11_000;
     while (pendingRelayEnabled()) {
       let ran = false;
       await tryWithPathLock(path, async () => {
@@ -322,6 +325,10 @@ export async function writePendingSuggestion(
       if (opts.deferOnBusy) {
         const { deferOnBusy: _defer, ...background } = opts;
         void writePendingSuggestion(blocks, background);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        reportLoss("lock busy for 11000ms — one suggestion lost");
         return;
       }
       // A busy writable directory is ordinary contention; retain the write.

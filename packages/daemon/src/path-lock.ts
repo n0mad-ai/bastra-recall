@@ -39,7 +39,8 @@
  * PROMISE: mutations of the same path are fully serialised — guaranteed within
  * this process, and across processes as long as every writer sees the same
  * local file, asked for `crossProcess` and actually acquired the lease.
- * Takeover after {@link LOCK_STALE_MS} uses age only, not owner liveness;
+ * Takeover after {@link LOCK_STALE_MS} uses age, not owner liveness, and
+ * removes only the observed token under an exclusive mutation guard;
  * a paused live process can therefore still own a stale snapshot. A writer that cannot get the lock
  * within {@link LOCK_WAIT_MS} proceeds WITHOUT the cross-process lock and says
  * so on stderr. That fail-open is deliberate: the worst case is exactly the
@@ -48,10 +49,21 @@
  * saved — or a Stop hook that hangs on a wedged lock — would be the more
  * expensive failure.
  *
+ * The non-strict mutation guard covers only synchronous filesystem operations.
+ * Its owner body permits recovery after a confirmed local process death.
+ * Every guard (including empty, live and remote owners) expires after 4 s;
+ * a confirmed dead local owner is recovered immediately. An exclusive
+ * recovery marker serialises rechecking and deleting the observed inode,
+ * bytes and mtime without moving any marker. Owners release only their own
+ * inode and tolerate an already removed marker. The recovery marker also
+ * expires after 4 s, leaving one second before the acquisition wait expires.
+ * A process paused inside synchronous work beyond that grace can be displaced. Old writers must be stopped before relying on
+ * this guarantee.
+ *
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, lstatSync, fstatSync, constants, type Stats } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -62,6 +74,10 @@ import { setTimeout as delay } from "node:timers/promises";
 const LOCK_STALE_MS = 10_000;
 /** How long a writer waits for the lock before continuing fail-open. */
 const LOCK_WAIT_MS = 5_000;
+// Both guards cover synchronous filesystem work only. Four seconds leaves
+// ample headroom for slow disks and one second to recover interrupted/remote
+// markers before the five-second acquisition deadline.
+const MUTATION_STALE_MS = 4_000;
 
 const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
@@ -135,6 +151,16 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
   await mkdir(dirname(path), { recursive: true, mode: 0o700 }).catch(() => undefined);
   for (;;) {
     try {
+      if (!strictLocal) {
+        const acquired = mutateLock(lockPath, () => {
+          const fd = openSync(lockPath, "wx", 0o600);
+          try { writeFileSync(fd, body, "utf8"); }
+          finally { closeSync(fd); }
+          return true;
+        });
+        if (acquired) return token;
+        throw Object.assign(new Error("lock mutation busy"), { code: "EEXIST" });
+      }
       const handle = await open(lockPath, "wx", 0o600);
       try {
         await handle.writeFile(body, "utf8");
@@ -151,18 +177,20 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
         return null;
       }
     }
-    // Orphaned? Age is the only indicator that needs no extra state; the loser
-    // of a takeover race lands in the old behaviour, not in something worse.
+    // Capture the body BEFORE the age check: a replacement between this
+    // snapshot and removal must never become the object of the old decision.
     try {
+      const observed = strictLocal ? undefined : await readFile(lockPath, "utf8");
       const st = await stat(lockPath);
       if (strictLocal) {
         if (reclaimDeadLocal(lockPath, body)) return token;
       } else if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-        await unlink(lockPath).catch(() => undefined);
-        continue;
+        if (removeStaleLock(lockPath, observed!)) continue;
       }
     } catch {
-      continue; // The lock vanished meanwhile — retry immediately.
+      if (strictLocal) continue; // Preserve the strict-local retry policy.
+      // A missing lease can also mean an interrupted mutation guard. Still
+      // honor the acquisition deadline instead of spinning forever.
     }
     if (Date.now() >= deadline) {
       process.stderr.write(
@@ -172,6 +200,107 @@ async function acquireFileLock(path: string, giveUp = "writing unserialized", st
     }
     await delay(5 + Math.floor(Math.random() * 10));
   }
+}
+
+/** Serialize every non-strict create/reclaim/release. There is no await while
+ * the guard is held, and the lease path never disappears during validation.
+ * A rename-and-restore would allow a new holder into that empty interval. */
+function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
+  const guard = `${lockPath}.mutation`;
+  let fd: number;
+  try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      if (!recoverMutationGuard(guard)) return undefined;
+      try { fd = openSync(guard, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+      catch (retry) {
+        if ((retry as NodeJS.ErrnoException).code === "EEXIST") return undefined;
+        throw retry;
+      }
+    } else throw err;
+  }
+  try {
+    writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+    return fn();
+  }
+  finally {
+    releaseMutationGuard(guard, fd);
+  }
+}
+
+/** Close after checking ownership; never remove a successor's marker. */
+function releaseMutationGuard(path: string, fd: number): void {
+  try {
+    const owned = fstatSync(fd);
+    try {
+      const current = lstatSync(path);
+      if (current.ino === owned.ino && current.dev === owned.dev) unlinkSync(path);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  } finally { closeSync(fd); }
+}
+
+/** Read metadata and contents through the same open descriptor. */
+function mutationSnapshot(path: string): { raw: string; st: Stats } {
+  // Read-only: mode is unused by Node, but explicit for temp-file analyzers.
+  const fd = openSync(path, "r", 0o600);
+  try { return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) }; }
+  finally { closeSync(fd); }
+}
+
+function sameMutationSnapshot(a: { raw: string; st: Stats }, b: { raw: string; st: Stats }): boolean {
+  return a.st.ino === b.st.ino && a.st.dev === b.st.dev
+    && a.st.mtimeMs === b.st.mtimeMs && a.raw === b.raw;
+}
+
+function expiredMutation(snapshot: { raw: string; st: Stats }): boolean {
+  return Date.now() - snapshot.st.mtimeMs > MUTATION_STALE_MS || deadLocal(snapshot.raw);
+}
+
+/** Validate the still-named inode immediately before deletion. */
+function removeObservedMutation(path: string, observed: { raw: string; st: Stats }): boolean {
+  const current = mutationSnapshot(path);
+  if (!sameMutationSnapshot(observed, current) || !expiredMutation(current)) return false;
+  const named = lstatSync(path);
+  if (named.ino !== current.st.ino || named.dev !== current.st.dev
+    || named.mtimeMs !== current.st.mtimeMs) return false;
+  unlinkSync(path);
+  return true;
+}
+
+/** Serialise recovery without renaming or restoring another owner's marker.
+ * Both marker sections are synchronous; age bounds even unknown owners. */
+function recoverMutationGuard(guard: string): boolean {
+  try {
+    const observed = mutationSnapshot(guard);
+    if (!expiredMutation(observed)) return false;
+    const recovery = `${guard}.recover`;
+    let fd: number;
+    try { fd = openSync(recovery, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") return false;
+      // An interrupted recovery must not wedge the next recovery forever.
+      // Back off after cleanup; contenders still acquire this marker via wx.
+      removeObservedMutation(recovery, mutationSnapshot(recovery));
+      return false;
+    }
+    try {
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+      return removeObservedMutation(guard, observed);
+    } finally { releaseMutationGuard(recovery, fd); }
+  } catch { return false; } // Real filesystem failures remain conservative.
+}
+
+function removeStaleLock(lockPath: string, observed: string): boolean {
+  return mutateLock(lockPath, () => {
+    // Exact bytes bind the age decision to the token as well as every other
+    // field. Keep age recovery of legacy/empty bodies, too, as before.
+    if (readFileSync(lockPath, "utf8") !== observed
+      || Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS) return false;
+    unlinkSync(lockPath);
+    return true;
+  }) === true;
 }
 
 /** Strict local reclaim has no age-only live-owner takeover. The existing
@@ -243,8 +372,23 @@ function ownershipCheck(path: string, token: string): () => void {
  * call wrote. Gone, unreadable or unparsable — none of that is provably still
  * ours, so it is left alone; it ages out on its own.
  */
-async function releaseFileLock(path: string, token: string): Promise<void> {
+async function releaseFileLock(path: string, token: string, strictLocal = false): Promise<void> {
   const lockPath = pathLockFilePath(path);
+  if (!strictLocal) {
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    do {
+      try {
+        const released = mutateLock(lockPath, () => {
+          const current = JSON.parse(readFileSync(lockPath, "utf8")) as LockBody;
+          if (current.token === token) unlinkSync(lockPath);
+          return true;
+        });
+        if (released) return;
+      } catch { return; } // Missing/unknown lock is never ours to remove.
+      if (Date.now() >= deadline) return;
+      await delay(5 + Math.floor(Math.random() * 10));
+    } while (true);
+  }
   try {
     const raw = await readFile(lockPath, "utf8");
     const lock = JSON.parse(raw) as LockBody;
@@ -273,7 +417,7 @@ export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) 
         try {
           return await fn(token && opts.strictLocal ? ownershipCheck(path, token) : () => {});
         } finally {
-          if (token) await releaseFileLock(path, token);
+          if (token) await releaseFileLock(path, token, opts.strictLocal);
         }
       }
     : () => fn(() => {});
@@ -299,23 +443,23 @@ export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) 
  * booking after its owner releases it. Called only off the response path. */
 function tryFileLock(path: string, takeOverStale: boolean): string | null {
   const lockPath = pathLockFilePath(path);
-  // At most one age-only takeover and one retry; never wait or diagnose.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let fd: number | undefined;
-    try {
+  try {
+    return mutateLock(lockPath, () => {
+      if (takeOverStale) {
+        try {
+          // The guard protects this whole age check and removal, including
+          // legacy bodies without tokens. No acquisition can replace it.
+          if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS)
+            unlinkSync(lockPath);
+        } catch { /* Missing/unknown stays subject to the exclusive create. */ }
+      }
       const token = randomUUID();
-      fd = openSync(lockPath, "wx", 0o600);
-      writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
+      const fd = openSync(lockPath, "wx", 0o600);
+      try { writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8"); }
+      finally { closeSync(fd); }
       return token;
-    } catch (err) {
-      if (!takeOverStale || attempt !== 0 || (err as NodeJS.ErrnoException)?.code !== "EEXIST") return null;
-      try {
-        if (Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS) return null;
-        unlinkSync(lockPath);
-      } catch { return null; }
-    } finally { if (fd !== undefined) closeSync(fd); }
-  }
-  return null;
+    }) ?? null;
+  } catch { return null; }
 }
 
 /** Advisory feedback normally queues off the response path. `noQueue` skips a
