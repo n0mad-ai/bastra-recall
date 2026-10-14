@@ -30,7 +30,7 @@
  * für die dieselben Regeln gelten wie für Trash und Locks: eigenes
  * Unterverzeichnis, kein Symlink.
  */
-import { readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, lstat, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
@@ -261,7 +261,7 @@ function claimBody(): string {
  */
 async function exclusiveHeld(lockPath: string): Promise<boolean> {
   try {
-    await stat(lockPath);
+    await lstat(lockPath);
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return false;
     return true;
