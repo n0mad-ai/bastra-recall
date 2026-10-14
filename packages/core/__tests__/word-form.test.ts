@@ -64,3 +64,42 @@ test("letterCount: letters, not code points", () => {
   assert.equal(letterCount("में"), 1); // a Devanagari vowel sign is a mark
   assert.equal(letterCount("배포"), 4); // a Hangul syllable counts its jamo
 });
+
+// Independent counterexamples from the #1191 review; both directions matter.
+const unrelatedPairs: [string, string][] = [
+  ["backup", "backdoor"], ["server", "service"], ["auth", "auto"],
+  ["delete", "delegate"], ["publish", "public"], ["file", "film"],
+  ["plane", "plant"], ["model", "modem"], ["folder", "folded"],
+  ["thread", "threat"], ["lease", "least"], ["sale", "salt"],
+  ["station", "static"], ["script", "scribble"], ["cancel", "cancerous"],
+];
+for (const [a, b] of unrelatedPairs) {
+  test(`sameWordForm rejects unrelated words: ${a}/${b}`, () => {
+    assert.equal(sameWordForm(a, b), false);
+    assert.equal(sameWordForm(b, a), false);
+    assert.equal(hasWordForm(new Set([a]), b), false);
+  });
+}
+
+test("sameWordForm keeps ordinary English inflections", () => {
+  for (const [a, b] of [["backup", "backups"], ["delete", "deleted"]]) {
+    assert.equal(sameWordForm(a, b), true);
+    assert.equal(sameWordForm(b, a), true);
+  }
+});
+
+test("word-form families stay closed and respect canonical spellings", () => {
+  for (const [a, b] of [
+    ["قالب", "زقالب"], ["חשבונית", "זחשבונית"],
+    ["kiolezo", "xiolezo"], ["청구서", "청구서xyz"],
+    ["切り替え", "切り替えxyz"], ["antwort", "antwortxyz"],
+    ["şablonu", "şablonxyz"], ["арка", "аркеxyz"],
+    ["देवनागरी", "देवनागरु"],
+  ]) {
+    assert.equal(sameWordForm(a, b), false, `${a} ≁ ${b}`);
+    assert.equal(sameWordForm(b, a), false, `${b} ≁ ${a}`);
+  }
+  assert.equal(sameWordForm("şablonu".normalize("NFD"), "şablonlarında"), true);
+  assert.equal(sameWordForm("청구서".normalize("NFD"), "청구서들을"), true);
+  assert.equal(sameWordForm("café", "cafe\u0301"), true);
+});

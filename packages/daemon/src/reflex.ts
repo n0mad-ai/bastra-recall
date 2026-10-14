@@ -65,7 +65,8 @@ const IDENTIFIER_TOKEN_RE = /[-_./#+@:]|\d/;
 /** Hartes Phrase-gegen-Kontext-Matching (deterministisch, kein Score):
  *  ALLE Inhaltstokens der Phrase (≥3 Zeichen, ohne Funktionswörter) müssen
  *  im Kontext vorkommen — mindestens 2 Tokens, oder genau 1 Identifier-Token
- *  exakt. Kein Prefix, kein Fuzzy. */
+ *  exakt. Unterstützte Flexionsformen zählen über feste Affixfamilien;
+ *  keine freie Stammähnlichkeit. */
 export function phraseMatchesContext(
   phrase: string,
   contextTokens: Set<string>,
@@ -137,7 +138,7 @@ function evaluatePhrase(
   // A case or verb ending is not a different word: "арке" in the prompt
   // satisfies the trigger token "арка", "antworten" the token "antwort" (#565
   // needed a generative model for this; core `hasWordForm` is a
-  // language-neutral affix rule).
+  // conservative rule with known affix families).
   const missing = meaningful.filter((t) => !hasWordForm(contextTokens, t));
   return {
     matched: missing.length === 0,

@@ -1,15 +1,4 @@
-/**
- * Word forms: when two tokens are the same word, in any suffixing,
- * agglutinating or prefixing language, without a stemmer or a word list.
- *
- * Exact token equality is right for English and wrong for most languages: a
- * Russian case ending ("арка" / "арке"), a German verb form ("Antwort" /
- * "antworten"), a Finnish or Turkish case suffix, an Arabic or Hebrew article
- * prefix. `sameWordForm` accepts a long enough common stem with a bounded
- * ending, a long ending on a long stem, or a short prefix before the stem;
- * short tokens, identifiers and numbers stay exact. Lengths are counted in
- * letters (`letterCount`), not code points.
- */
+/** Conservative word forms using closed affix families; exact lookup first. */
 
 const ASCII_RE = /^[\x00-\x7f]*$/;
 const LETTER_OR_DIGIT_RE = /[\p{L}\p{N}]/u;
@@ -20,7 +9,7 @@ const LETTER_OR_DIGIT_RE = /[\p{L}\p{N}]/u;
  * sign or virama is none ("में" = 1, "स्क्रिप्ट" = 5) and a Hangul syllable
  * counts its jamo ("배포" = 4 — a Korean syllable carries what two or three
  * Latin letters do). Code points overcount Indic words and undercount Korean
- * ones; letters make one threshold mean the same thing in every script.
+ * ones; this preserves the minimum-length contract across these scripts.
  */
 export function letterCount(token: string): number {
   if (ASCII_RE.test(token)) {
@@ -40,105 +29,93 @@ export function letterCount(token: string): number {
 const LETTERS_ONLY_RE = /^[\p{L}\p{M}]+$/u;
 /** Below this many letters two different tokens are never one word. */
 export const WORD_FORM_MIN_LEN = 4;
-/** The abjads write consonants only: a three-letter Hebrew or Arabic word
- *  (ספר, كتب) carries what a five- or six-letter Latin word does. */
 const ABJAD_WORD_FORM_MIN_LEN = 3;
-const ABJAD_RE = /[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Samaritan}\p{Script=Mandaic}]/u;
-/** An ending longer than this is a different word, not an inflection… */
-const WORD_FORM_MAX_GAP = 3;
-/** …unless the stem itself is at least this long: agglutinative endings
- *  (Finnish -ssakin, Turkish -larında, Korean particle chains) are long, but
- *  they hang on long stems. */
-const LONG_STEM = 6;
-/** A prefix (article, clitic, noun-class marker) is at most this long. */
-const WORD_FORM_MAX_PREFIX = 3;
-/** The stem a prefix is stripped against must be this long outside the
- *  abjads — shorter stems rhyme by accident ("range"/"orange"). */
-const PREFIXED_STEM_MIN = 6;
 
-function minWordFormLetters(token: string): number {
-  return ABJAD_RE.test(token) ? ABJAD_WORD_FORM_MIN_LEN : WORD_FORM_MIN_LEN;
+// Closed, deliberately conservative families, not language detection. Never
+// mix endings between families (e.g. German -er and English -ed would turn
+// folder/folded into a match). Unknown forms stay exact; expanded triggers
+// remain available for them. These lists are not a morphological dictionary:
+// homonyms and words sharing an attested stem/ending can still collide.
+const LATIN_RE = /^[\p{Script=Latin}\p{M}]+$/u;
+const CYRILLIC_RE = /^[\p{Script=Cyrillic}\p{M}]+$/u;
+const JAPANESE_RE = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{M}]+$/u;
+const HANGUL_RE = /^\p{Script=Hangul}+$/u;
+const ARABIC_RE = /^[\p{Script=Arabic}\p{M}]+$/u;
+const HEBREW_RE = /^[\p{Script=Hebrew}\p{M}]+$/u;
+const endings = (values: string): ReadonlySet<string> => new Set(["", ...values.split(" ")]);
+const GERMAN = endings("e en er ern em es s n");
+const FINNISH = endings("n t ssa ssä sta stä lla llä lta ltä lle na nä ksi tta ttä in issa");
+const TURKISH = endings("u ü i ı a e da de ta te dan den tan ten lar ler ları leri lari larında larinda lerinde");
+const RUSSIAN = endings("а я у ю е и ы о ов ев ей ом ем ой ам ям ах ях ами ями ия ию ии ий ь ть ить л ла ли ет ют ешь");
+const JAPANESE = endings("る た て ます ました ない");
+const KOREAN = endings("은 는 이 가 을 를 에 에서 의 도 들 들을 들이 들은 들의");
+const HEBREW = endings("ים ות ת");
+const BARE = new Set([""]);
+// English needs transitions rather than a shared suffix set: -er/-ed, for
+// example, can be different lexemes. Silent e is replaced, not arbitrary d.
+const ENGLISH_PAIRS = new Set(["|s", "|es", "|ed", "|ing", "e|ed", "e|ing", "ies|y"]);
+
+function suffixMatch(a: string, b: string, suffixes: ReadonlySet<string>, minStem: number): boolean {
+  let common = 0;
+  while (common < Math.min(a.length, b.length) && a[common] === b[common]) common++;
+  for (let at = common; at >= minStem; at--) {
+    if (suffixes.has(a.slice(at)) && suffixes.has(b.slice(at))) return true;
+  }
+  return false;
+}
+
+function englishMatch(a: string, b: string): boolean {
+  let common = 0;
+  while (common < Math.min(a.length, b.length) && a[common] === b[common]) common++;
+  for (let at = common; at >= 4; at--) {
+    const tails = [a.slice(at), b.slice(at)].sort();
+    if (ENGLISH_PAIRS.has(tails.join("|"))) return true;
+  }
+  return false;
+}
+
+function prefixedMatch(a: string, b: string, prefixes: readonly string[], suffixes: ReadonlySet<string>): boolean {
+  for (const pa of prefixes) {
+    if (!a.startsWith(pa)) continue;
+    for (const pb of prefixes) {
+      if (!b.startsWith(pb)) continue;
+      if (suffixMatch(a.slice(pa.length), b.slice(pb.length), suffixes, 3)) return true;
+    }
+  }
+  return false;
 }
 
 /**
- * The characters `sameWordForm` compares: canonical decomposition with every
- * combining mark kept on its base letter, so "й", "é" and a Devanagari
- * consonant with its vowel sign each stay one character, while a Hangul
- * syllable opens into its jamo (letters in their own right, not marks).
- */
-function formUnits(token: string): string[] {
-  const out: string[] = [];
-  for (const ch of token.normalize("NFD")) {
-    if (out.length > 0 && COMBINING_MARK_RE.test(ch)) out[out.length - 1] += ch;
-    else out.push(ch);
-  }
-  return out;
-}
-const COMBINING_MARK_RE = /\p{M}/u;
-
-function indexOfRun(hay: string[], needle: string[], from: number, to: number): number {
-  outer: for (let i = from; i <= to && i + needle.length <= hay.length; i++) {
-    for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
-    return i;
-  }
-  return -1;
-}
-
-/**
- * Are `a` and `b` forms of the same word? Case-sensitive — callers compare
- * lowercased tokens. Exact equality always holds. Otherwise both
- * must be letters only (identifiers, numbers and paths stay exact), the
- * shorter at least `WORD_FORM_MIN_LEN` letters (three in the abjads), and one
- * of three shapes must hold, compared on canonically decomposed characters:
- *
- * - suffix: the common prefix covers the shorter token except its last
- *   character (≤ 5 characters) or its last two, and the lengths are at most
- *   `WORD_FORM_MAX_GAP` apart — or any distance when the shared stem is the
- *   whole shorter token less one character and at least `LONG_STEM` long;
- * - prefix: the shorter token, less at most two trailing characters, sits
- *   inside the longer one after a prefix of one to `WORD_FORM_MAX_PREFIX`
- *   characters (or with its first character swapped for another one), with
- *   at most `WORD_FORM_MAX_GAP` after it; that stem needs `PREFIXED_STEM_MIN`
- *   characters outside the abjads.
- *
- *   арка ~ арке · Antwort ~ antworten · 切り替え ~ 切り替える · update ~ updated
- *   laskun ~ laskuissa · şablonu ~ şablonlarında · 청구서 ~ 청구서들을
- *   قالب ~ بالقالب · חשבונית ~ החשבוניות · kiolezo ~ violezo
- *   state ≁ statement · range ≁ orange · code ≁ card · ci ≁ cd
+ * Conservative word-form fallback for lowercased, letters-only tokens.
+ * Each script/family admits only known suffixes on a shared stem, or fixed
+ * articles/class prefixes. No arbitrary end or first-letter substitutions.
+ * NFC keeps combining marks on their letter and Hangul syllables intact;
+ * letterCount still supplies the contributor's script-sensitive threshold.
+ * Callers keep their existing tokenization (ICU for Japanese; Korean words
+ * retain their particles). Unknown scripts/forms use exact equality only.
  */
 export function sameWordForm(a: string, b: string): boolean {
   if (a === b) return true;
   if (!LETTERS_ONLY_RE.test(a) || !LETTERS_ONLY_RE.test(b)) return false;
-  const ua = formUnits(a);
-  const ub = formUnits(b);
-  const [s, l] = ua.length <= ub.length ? [ua, ub] : [ub, ua];
-  const shorter = s === ua ? a : b;
-  const minLetters = minWordFormLetters(shorter);
-  if (letterCount(shorter) < minLetters) return false;
-  const gap = l.length - s.length;
-
-  let prefix = 0;
-  while (prefix < s.length && s[prefix] === l[prefix]) prefix++;
-  if (prefix === s.length && gap === 0) return true; // NFC vs NFD spelling
-  // A three-character stem has no ending to spare: ספר ~ ספרים, not ספר ~ ספק.
-  const need = s.length <= 3 ? s.length : Math.max(3, s.length <= 5 ? s.length - 1 : s.length - 2);
-  if (prefix >= need && gap <= WORD_FORM_MAX_GAP) return true;
-  // A long ending needs the whole shorter token (less one character) as its
-  // stem: laskun ~ laskuissa, not contract ~ contradiction.
-  if (prefix >= Math.max(LONG_STEM, s.length - 1)) return true;
-
-  const stemMin = minLetters === WORD_FORM_MIN_LEN ? PREFIXED_STEM_MIN : ABJAD_WORD_FORM_MIN_LEN;
-  for (let lead = 0; lead <= 1; lead++) {
-    for (let trail = 0; trail <= 2; trail++) {
-      const stem = s.slice(lead, s.length - trail);
-      if (stem.length < stemMin) continue;
-      // A changed first character is a swapped prefix of the same size
-      // (ki-/vi-, ال/لل), not room for a longer one (decision ≁ precision).
-      const at = indexOfRun(l, stem, 1, lead === 1 ? 1 : WORD_FORM_MAX_PREFIX);
-      if (at < 0) continue;
-      if (l.length - at - stem.length <= WORD_FORM_MAX_GAP) return true;
-    }
+  a = a.normalize("NFC");
+  b = b.normalize("NFC");
+  if (a === b) return true;
+  if (ARABIC_RE.test(a) && ARABIC_RE.test(b)) {
+    return prefixedMatch(a, b, ["", "ال", "بال", "لل", "وال"], BARE);
   }
+  if (HEBREW_RE.test(a) && HEBREW_RE.test(b)) {
+    return prefixedMatch(a, b, ["", "ה", "וה", "ב", "בה", "ל", "לה"], HEBREW);
+  }
+  if (Math.min(letterCount(a), letterCount(b)) < WORD_FORM_MIN_LEN) return false;
+  if (LATIN_RE.test(a) && LATIN_RE.test(b)) {
+    if (englishMatch(a, b) || [GERMAN, FINNISH, TURKISH].some((s) => suffixMatch(a, b, s, 4))) return true;
+    // Swahili ki-/vi- noun classes; never arbitrary swapped first letters.
+    return ((a.startsWith("ki") && b.startsWith("vi")) || (a.startsWith("vi") && b.startsWith("ki"))) &&
+      a.slice(2).length >= 4 && a.slice(2) === b.slice(2);
+  }
+  if (CYRILLIC_RE.test(a) && CYRILLIC_RE.test(b)) return suffixMatch(a, b, RUSSIAN, 3);
+  if (JAPANESE_RE.test(a) && JAPANESE_RE.test(b)) return suffixMatch(a, b, JAPANESE, 4);
+  if (HANGUL_RE.test(a) && HANGUL_RE.test(b)) return suffixMatch(a, b, KOREAN, 2);
   return false;
 }
 
