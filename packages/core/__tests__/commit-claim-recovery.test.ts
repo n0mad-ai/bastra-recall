@@ -44,3 +44,48 @@ test('an empty legacy generation cannot displace a newly published claim',{timeo
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1,'the delayed empty-generation reclaimer must lose');
  for(const r of results)if(r.status==='fulfilled')await releaseCommitClaim(lock,r.value);assert.deepEqual(await fs.readdir(dir),[]);
 });
+
+test('a one-shot ENOENT before legacy marker removal leaves no orphan', { timeout: 5000 }, async t => {
+  const raw = JSON.stringify({ pid: 1, host: 'foreign-fixture', ts: 0, token: 'old' });
+  const { dir, lock } = await fixture(t, raw);
+  const marker = `${lock}.reclaim-${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`;
+  await fs.writeFile(marker, '');
+  const old = new Date(Date.now() - 120000);
+  await fs.utimes(marker, old, old);
+  const unlink = fs.unlink;
+  let injected = false;
+  fs.unlink = (async path => {
+    if (path === marker && !injected) {
+      injected = true;
+      throw Object.assign(new Error('one-shot provider failure'), { code: 'ENOENT' });
+    }
+    return unlink(path);
+  }) as typeof fs.unlink;
+  syncBuiltinESMExports();
+  try {
+    const token = await acquireCommitClaim(lock, 'fixture', lock);
+    await releaseCommitClaim(lock, token);
+  } finally {
+    fs.unlink = unlink;
+    syncBuiltinESMExports();
+  }
+  assert.ok(injected);
+  assert.deepEqual(await fs.readdir(dir), []);
+});
+
+test('expired recovery marker and interrupted reservation are retired completely', { timeout: 5000 }, async t => {
+  const raw = JSON.stringify({ pid: 1, host: 'foreign-fixture', ts: 0, token: 'old' });
+  const { dir, lock } = await fixture(t, raw);
+  const phase = join(`${lock}.recovery`, createHash('sha256').update(raw).digest('hex').slice(0, 16));
+  await fs.mkdir(phase, { recursive: true });
+  const body = JSON.stringify({ token: 'interrupted', ts: Date.now() - 120000 });
+  const link = 'bastra-claim-v1-' + Buffer.from(body).toString('base64url');
+  await fs.symlink(link, join(phase, 'marker'), 'file');
+  const reservation = join(phase, `${Date.now() - 120000}-00000000-0000-0000-0000-000000000001`);
+  await fs.mkdir(reservation);
+  await fs.symlink(link, join(reservation, 'candidate'), 'file');
+  const token = await acquireCommitClaim(lock, 'fixture', lock);
+  await assert.rejects(acquireCommitClaim(lock, 'fixture', lock), /another save/);
+  await releaseCommitClaim(lock, token);
+  assert.deepEqual(await fs.readdir(dir), []);
+});

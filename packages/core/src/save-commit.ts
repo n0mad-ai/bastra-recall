@@ -367,8 +367,11 @@ async function cleanupLegacyMarks(lockPath: string, marks: string[]): Promise<vo
     const base = `${basename(lockPath)}.reclaim-${digest}`;
     for (const name of names) if (name === base || name.startsWith(`${base}.abandoned-`))
       await unlink(join(dirname(lockPath), name)).catch(error => {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return unlink(join(dirname(lockPath), name)).catch(() => {});
-        return undefined;
+        // Also retry an ENOENT reported before the removal actually happened.
+        // A one-shot provider error must not strand a legacy marker permanently.
+        return unlink(join(dirname(lockPath), name)).catch(retryError => {
+          if ((retryError as NodeJS.ErrnoException).code !== "ENOENT") throw retryError;
+        });
       });
   }
 }
