@@ -188,3 +188,24 @@ test('release preserves a fresh foreign reservation and canonical marker', {time
   await fs.unlink(marker);await fs.rmdir(fresh);await fs.rmdir(phase);await fs.rmdir(`${lock}.recovery`);
   assert.deepEqual(await fs.readdir(dir),[]);
 });
+
+test('observable legacy marker loss fails closed before claim replacement', {timeout:5000}, async t => {
+  const raw=JSON.stringify({pid:1,host:'foreign-fixture',ts:0,token:'old'});
+  const {lock}=await fixture(t,raw);
+  const marker=`${lock}.reclaim-${createHash('sha256').update(raw).digest('hex').slice(0,16)}`;
+  const readFile=fs.readFile;let injected=false;
+  fs.readFile=(async (...args:any[])=>{
+    if(args[0]===marker&&!injected){
+      injected=true;
+      // The old takeReclaimMark can perform these exact operations after a
+      // cached stale stat: delete our fresh marker, publish its empty marker.
+      await fs.unlink(marker);await fs.writeFile(marker,'',{flag:'wx'});
+    }
+    return Reflect.apply(readFile,fs,args);
+  }) as typeof fs.readFile;syncBuiltinESMExports();
+  try {await assert.rejects(acquireCommitClaim(lock,'fixture',lock),/another save/);}
+  finally {fs.readFile=readFile;syncBuiltinESMExports();}
+  assert.ok(injected);
+  assert.equal(await fs.readFile(lock,'utf8'),raw);
+  assert.equal(await fs.readFile(marker,'utf8'),'','foreign canonical marker is preserved');
+});

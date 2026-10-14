@@ -275,11 +275,23 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     // open(wx) and write, so its new empty file must not match an old empty one.
     const current = await inspectCommitClaim(lockPath);
     if (current.raw !== checked || !current.abandoned) return false;
+    if (!await markerOwnedBy(marker, claim.token)) return false;
     await unlink(lockPath);
     await link(prepared, lockPath);
-    return true;
+    // A main process can execute its pre-existing blind stale-marker deletion.
+    // Do not report acquisition after observable lease loss or replacement.
+    const [stillOwned, published] = await Promise.all([
+      markerOwnedBy(marker, claim.token),
+      readFile(lockPath, "utf8").then(raw => (JSON.parse(raw) as CommitClaim).token === claim.token),
+    ]);
+    return stillOwned && published;
   } catch { return false; }
   finally { if (owned) await removeOwnedMarker(marker, claim.token); }
+}
+
+async function markerOwnedBy(marker: string, token: string): Promise<boolean> {
+  try { return (JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token === token; }
+  catch { return false; }
 }
 
 async function removeOwnedMarker(marker: string, token: string): Promise<void> {
