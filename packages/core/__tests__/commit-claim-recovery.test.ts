@@ -209,3 +209,21 @@ test('observable legacy marker loss fails closed before claim replacement', {tim
   assert.equal(await fs.readFile(lock,'utf8'),raw);
   assert.equal(await fs.readFile(marker,'utf8'),'','foreign canonical marker is preserved');
 });
+
+test('a second takeover retires the first dead owner’s earlier canonical marker', {timeout:10000}, async t => {
+  const raw=JSON.stringify({pid:1,host:'foreign-fixture',ts:0,token:'old'});
+  const {dir,lock}=await fixture(t,raw);
+  const child=fork(new URL('./fixtures/commit-claim-crash.ts',import.meta.url),[lock,'after-link'],{
+    execArgv:['--import','tsx'],stdio:['ignore','ignore','pipe','ipc'],
+  });
+  t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
+  const message=await Promise.race([
+    once(child,'message').then(([m])=>m as {checkpoint:string}),
+    once(child,'exit').then(([code])=>{throw new Error('child exited before gate: '+code);}),
+  ]);
+  assert.equal(message.checkpoint,'published');
+  const exited=once(child,'exit');child.kill('SIGKILL');await exited;
+  const token=await acquireCommitClaim(lock,'fixture',lock);
+  await releaseCommitClaim(lock,token);
+  assert.deepEqual(await fs.readdir(dir),[],'both canonical generations and the dead preparation must be retired');
+});

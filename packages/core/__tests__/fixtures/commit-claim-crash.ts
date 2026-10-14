@@ -3,11 +3,12 @@ import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { acquireCommitClaim } from '../../src/save-commit.js';
 const lock = process.argv[2]!;
-if (process.argv[3] === 'before-link') {
+if (['before-link','after-link'].includes(process.argv[3]!)) {
   const link = fs.link;
   fs.link = (async (...args: Parameters<typeof fs.link>) => {
     if (args[1] === lock) {
-      process.send?.({ checkpoint: 'prepared' });
+      if (process.argv[3] === 'after-link') await link(...args);
+      process.send?.({ checkpoint: process.argv[3] === 'after-link' ? 'published' : 'prepared' });
       await new Promise<void>(() => {});
     }
     return link(...args);

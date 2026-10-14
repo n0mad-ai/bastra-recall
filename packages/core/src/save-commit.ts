@@ -275,6 +275,14 @@ async function reclaimStaleClaim(lockPath: string, prepared: string, body: strin
     // open(wx) and write, so its new empty file must not match an old empty one.
     const current = await inspectCommitClaim(lockPath);
     if (current.raw !== checked || !current.abandoned) return false;
+    // A predecessor killed after publication may still own its earlier marker.
+    // Retire that exact token while its cleanup pointer remains durable here.
+    let predecessor: CommitClaim | undefined;
+    try { predecessor = JSON.parse(checked) as CommitClaim; } catch { /* empty main claim */ }
+    if (predecessor?.reclaimed_from && /^[0-9a-f]{16}$/.test(predecessor.reclaimed_from)) {
+      await removeOwnedMarker(`${lockPath}.reclaim-${predecessor.reclaimed_from}`, predecessor.token);
+      if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+    }
     if (!await markerOwnedBy(marker, claim.token)) return false;
     await unlink(lockPath);
     await link(prepared, lockPath);
