@@ -89,3 +89,34 @@ test('expired recovery marker and interrupted reservation are retired completely
   await releaseCommitClaim(lock, token);
   assert.deepEqual(await fs.readdir(dir), []);
 });
+
+test('incomplete legacy claims recover even when provider mtime is always now', { timeout: 5000 }, async t => {
+  const { dir, lock } = await fixture(t, '');
+  const open = fs.open, now = Date.now;
+  let elapsed = 0;
+  Date.now = () => now() + elapsed;
+  fs.open = (async (...args: Parameters<typeof fs.open>) => {
+    const handle = await open(...args);
+    if (args[0] === lock && args[1] === 'r') {
+      const stat = handle.stat.bind(handle);
+      handle.stat = (async () => {
+        const info = await stat();
+        return Object.assign(info, { mtimeMs: Date.now() });
+      }) as typeof handle.stat;
+    }
+    return handle;
+  }) as typeof fs.open;
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(acquireCommitClaim(lock, 'fixture', lock), /another save/);
+    elapsed = 31000;
+    const token = await acquireCommitClaim(lock, 'fixture', lock);
+    await assert.rejects(acquireCommitClaim(lock, 'fixture', lock), /another save/);
+    await releaseCommitClaim(lock, token);
+    assert.deepEqual(await fs.readdir(dir), []);
+  } finally {
+    Date.now = now;
+    fs.open = open;
+    syncBuiltinESMExports();
+  }
+});

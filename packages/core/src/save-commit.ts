@@ -137,7 +137,15 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
       try {
         const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
         raw = content;
-        ageMs = Date.now() - info.mtimeMs;
+        let timestamp: number | undefined;
+        try { timestamp = (JSON.parse(content) as CommitClaim).ts; } catch { /* incomplete legacy claim */ }
+        ageMs = Number.isFinite(timestamp) ? Date.now() - timestamp! : Date.now() - info.mtimeMs;
+        // File providers may refresh inode times forever. An incomplete legacy
+        // claim also gets a content-bound first observation, only on this rare
+        // compatibility path; a new complete claim never needs this state.
+        if (!Number.isFinite(timestamp) && ageMs <= COMMIT_CLAIM_STALE_MS) {
+          ageMs = Math.max(ageMs, await legacyObservationAge(lockPath, content));
+        }
       } finally { await handle.close(); }
     }
   } catch (err) {
@@ -303,6 +311,22 @@ async function reclaimStaleClaim(lockPath: string, body: string, checkedGenerati
   }
 }
 
+/** A bounded migration fallback for incomplete legacy files whose mtime is
+ * rewritten by a provider. The observation is cleaned by the next successful
+ * modern release, and is never consulted for a complete modern generation. */
+async function legacyObservationAge(lockPath: string, raw: string): Promise<number> {
+  const recovery = recoveryPath(lockPath);
+  const phase = join(recovery, createHash("sha256").update(raw).digest("hex").slice(0, 16));
+  await ensureRecoveryDirectory(recovery);
+  await ensureRecoveryDirectory(phase);
+  const observed = join(phase, "observed");
+  try { await publishRecord(observed, JSON.stringify({ ts: Date.now() })); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const value = JSON.parse(await readClaimRaw(observed)) as { ts: number };
+  if (!Number.isFinite(value.ts)) throw new Error("invalid legacy observation");
+  return Date.now() - value.ts;
+}
+
 async function ensureRecoveryDirectory(path: string): Promise<void> {
   await mkdir(path, { mode: 0o700 }).catch(error => { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; });
   const info = await lstat(path);
@@ -390,7 +414,7 @@ async function cleanupRecovery(lockPath: string, raw: string): Promise<void> {
       const info = await lstat(phase);if(!info.isDirectory()||info.isSymbolicLink())continue;
       for (const name of await readdir(phase)) {
         if (leaseTime(name) !== null) await removeReservation(join(phase, name));
-        else if (name === "marker" || /^take-[0-9a-f-]{36}$/.test(name)) await unlink(join(phase, name));
+        else if ((name === "marker" || name === "observed") || /^take-[0-9a-f-]{36}$/.test(name)) await unlink(join(phase, name));
       }
       await rmdir(phase);
     }
