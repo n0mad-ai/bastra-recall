@@ -469,23 +469,36 @@ export class JoinState {
       if (entry.hint_only && entry.hint_session_id !== (payload.session_id ?? null)) continue;
 
       let matchStrength = 0;
-      // Reserve exact matches first, then consume each remaining edit token
-      // at most once per memory; dateien must not count for datei AND dateien.
-      const remaining = new Set(inputTokens);
+      // Seed exact matches, then augment the bipartite assignment. A token
+      // may move to another edit token so the count is independent of order;
+      // every edit token still contributes at most once per memory.
+      const owners = new Map<string, string>();
       const unmatched: string[] = [];
       for (const token of entry.distinctive_tokens) {
-        if (remaining.delete(token)) matchStrength++;
-        else unmatched.push(token);
-      }
-      for (const token of unmatched) {
-        if (!hasWordForm(remaining, token)) continue;
-        for (const candidate of remaining) {
-          if (!sameWordForm(token, candidate)) continue;
-          remaining.delete(candidate);
+        if (inputTokens.has(token) && !owners.has(token)) {
+          owners.set(token, token);
           matchStrength++;
-          break;
-        }
+        } else unmatched.push(token);
       }
+      const neighbors = new Map<string, string[]>();
+      const assign = (token: string, seen: Set<string>): boolean => {
+        let candidates = neighbors.get(token);
+        if (!candidates) {
+          candidates = hasWordForm(inputTokens, token)
+            ? [...inputTokens].filter(candidate => sameWordForm(token, candidate)) : [];
+          neighbors.set(token, candidates);
+        }
+        for (const candidate of candidates) {
+          if (seen.has(candidate)) continue;
+          seen.add(candidate);
+          const owner = owners.get(candidate);
+          if (owner !== undefined && !assign(owner, seen)) continue;
+          owners.set(candidate, token);
+          return true;
+        }
+        return false;
+      };
+      for (const token of unmatched) if (assign(token, new Set())) matchStrength++;
       if (!closeOnMiss && matchStrength < 2) continue; // stays open (#144)
       entry.closed = true;
       // #478 Part 2: an injected-but-never-loaded hint is counted in its OWN

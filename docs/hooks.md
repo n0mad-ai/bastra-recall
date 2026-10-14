@@ -337,9 +337,15 @@ asking for memory).
 prompt is POSTed to `/hook/reflex` (parallel to the recall call, same
 250 ms budget). The daemon hard-matches the prompt against the
 `recall_when` phrases of memories with `recall_mode: "reflex"`
-(deterministic token-AND, no fuzzy/prefix). Trigger and prompt tokens use the
-same Unicode/case fold (including `İ`/`ı`, `ß`/`SS` and non-Latin in-word
-apostrophe variants); it does not turn `ö` into `o` or infer new word forms.
+(deterministic token-AND with exact tokens or supported word forms, no fuzzy
+scoring or arbitrary prefix matching). Word forms use closed suffix families
+for German, English, Finnish, Turkish, Russian, Japanese and Korean, plus fixed
+Arabic/Hebrew article or clitic prefixes and Swahili ki-/vi-. This heuristic can
+confuse different words sharing a stem and allowed endings (for example
+`nicht`/`nichts` or `Fehler`/`fehlen`); unknown forms and German ge-participles
+need explicit trigger expansion. Trigger and prompt tokens use the same
+Unicode/case fold (including `İ`/`ı`, `ß`/`SS` and non-Latin in-word apostrophe
+variants); the fold does not turn `ö` into `o`.
 The daemon limits hits to
 `BASTRA_REFLEX_MAX_PER_TURN` (default 2) and returns lean hits. The hook
 renders them as a `<recall-hints … trigger="reflex">` block ahead of the
@@ -1968,10 +1974,17 @@ Assertion-Prompt nicht um Erinnerungen).
 Prompt per POST an `/hook/reflex` geschickt (parallel zum Recall-Aufruf,
 gleiches 250-ms-Budget). Der Daemon gleicht den Prompt hart gegen die
 `recall_when`-Phrasen von Erinnerungen mit `recall_mode: "reflex"` ab
-(deterministisches Token-UND, kein Fuzzy-/Präfix-Match). Trigger- und
-Prompt-Tokens verwenden dieselbe Unicode-/Groß-Klein-Faltung (einschließlich
-`İ`/`ı`, `ß`/`SS` und Apostroph-Varianten in nicht-lateinischen Wörtern); sie
-macht aus `ö` kein `o` und leitet keine neuen Wortformen ab.
+(deterministisches Token-UND mit exakten Tokens oder unterstützten Wortformen,
+keine Fuzzy-Bewertung oder beliebigen Präfixe). Wortformen verwenden feste
+Endungsfamilien für Deutsch, Englisch, Finnisch, Türkisch, Russisch, Japanisch
+und Koreanisch sowie feste arabische/hebräische Artikel- oder Klitikpräfixe und
+Swahili ki-/vi-. Diese Heuristik kann verschiedene Wörter mit gleichem Stamm und
+erlaubten Endungen verwechseln (etwa `nicht`/`nichts` oder `Fehler`/`fehlen`);
+unbekannte Formen und deutsche ge-Partizipien brauchen eine explizite
+Trigger-Erweiterung. Trigger- und Prompt-Tokens verwenden dieselbe
+Unicode-/Groß-Klein-Faltung (einschließlich `İ`/`ı`, `ß`/`SS` und
+Apostroph-Varianten in nicht-lateinischen Wörtern); die Faltung macht aus `ö`
+kein `o`.
 Der Daemon begrenzt auf
 `BASTRA_REFLEX_MAX_PER_TURN` (Standard 2) und liefert schlanke Treffer zurück.
 Der Hook rendert sie als Block `<recall-hints … trigger="reflex">` vor dem
