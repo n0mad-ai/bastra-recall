@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { tokenizeWithIdentifiers, foldTerm } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { distinctiveTokensForActedOn } from "../src/tool-handlers.js";
 import { phraseMatchesContext } from "../src/reflex.js";
@@ -63,7 +63,7 @@ test("acted_on stays strict: an unrelated edit in the same language is not acted
 });
 
 function ctx(prompt: string): [Set<string>, string] {
-  const toks = tokenizeWithIdentifiers(prompt.toLowerCase());
+  const toks = tokenizeWithIdentifiers(prompt).map(foldTerm);
   return [new Set(toks), ` ${toks.join(" ")} `];
 }
 
@@ -81,3 +81,33 @@ test("reflex stays strict: a missing content word still blocks the trigger", () 
   const [tokens, seq] = ctx("глянь что в арке");
   assert.equal(phraseMatchesContext("ревью арка", tokens, seq), false);
 });
+
+for (const [trigger, prompt] of [
+  ["delete files", "delegate files"],
+  ["auth policy", "auto policy"],
+  ["delete backup", "delegate backdoor"],
+]) {
+  test(`reflex rejects unrelated words: ${trigger}/${prompt}`, () => {
+    const [tokens, seq] = ctx(prompt);
+    assert.equal(phraseMatchesContext(trigger, tokens, seq), false);
+  });
+}
+
+test("acted_on: unrelated lookalikes do not count as memory use", () => {
+  const ep = actedOn("delete backup snapshots", "delegate backdoor closed immediately");
+  assert.equal(ep?.match_strength, 0);
+  assert.equal(ep?.acted_on, false);
+});
+
+// Exercise actual tokenization/folding: ICU segments Japanese; Korean keeps
+// word particles attached, and Turkish dotless i folds to i before matching.
+for (const [trigger, prompt] of [
+  ["切り替え maintainer", "maintainerと切り替える"],
+  ["청구서 업데이트", "청구서들을 업데이트"],
+  ["şablonu kontrol", "şablonlarında kontrol"],
+]) {
+  test(`reflex word forms after segmentation/folding: ${trigger}`, () => {
+    const [tokens, seq] = ctx(prompt);
+    assert.equal(phraseMatchesContext(trigger, tokens, seq), true);
+  });
+}
