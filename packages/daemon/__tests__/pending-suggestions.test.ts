@@ -214,7 +214,7 @@ test("pending-suggestions (#551): an entry inside the cap is stored byte-for-byt
 });
 
 
-test("#1207: a stranded fresh mutation marker bounds pending writes and reports no text", { timeout: 8_000 }, async (t) => {
+test("#1207: a busy lease bounds pending writes and reports no text", { timeout: 14_000 }, async (t) => {
   const { writeFile, readFile } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "bastra-pending-busy-"));
   const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
@@ -225,14 +225,35 @@ test("#1207: a stranded fresh mutation marker bounds pending writes and reports 
     else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
     await rm(dir, { recursive: true, force: true });
   });
-  await writeFile(`${path}.lock.mutation`, "");
+  await writeFile(`${path}.lock`, "busy");
+  const { utimes } = await import("node:fs/promises");
+  const future = new Date(Date.now() + 60_000);
+  await utimes(`${path}.lock`, future, future);
   let stderr = "";
   t.mock.method(process.stderr, "write", (chunk: string) => { stderr += chunk; return true; });
   const start = performance.now();
   await writePendingSuggestion("PRIVATE suggestion text");
   const elapsed = performance.now() - start;
-  assert.ok(elapsed >= 5_000 && elapsed < 7_000, `bounded wait: ${elapsed}ms`);
-  assert.equal(await readFile(`${path}.lock.mutation`, "utf8"), "");
-  assert.match(stderr, /lock busy for 5000ms.*one suggestion lost/);
+  assert.ok(elapsed >= 11_000 && elapsed < 13_000, `bounded wait: ${elapsed}ms`);
+  assert.equal(await readFile(`${path}.lock`, "utf8"), "busy");
+  assert.match(stderr, /lock busy for 11000ms.*one suggestion lost/);
   assert.doesNotMatch(stderr, /PRIVATE suggestion text/);
+});
+
+
+test("#1207: a recently crashed lease retains the pending suggestion after stale takeover", { timeout: 13_000 }, async (t) => {
+  const { writeFile, readFile } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-crashed-"));
+  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  const path = join(dir, "pending.json");
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
+  t.after(async () => {
+    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+    await rm(dir, { recursive: true, force: true });
+  });
+  await writeFile(`${path}.lock`, "crashed");
+  await writePendingSuggestion("retained after stale takeover");
+  const rows = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(rows[0].blocks, "retained after stale takeover");
 });

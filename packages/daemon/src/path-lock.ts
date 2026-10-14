@@ -51,15 +51,19 @@
  *
  * The non-strict mutation guard covers only synchronous filesystem operations.
  * Its owner body permits recovery after a confirmed local process death.
- * Empty/invalid bodies from an interrupted create are recovered after 30 s;
- * live or remote owners are never displaced by age. Recovery renames and
- * compares the observed bytes, restoring a changed marker with an exclusive
- * hard link. Old writers must be stopped before relying on this guarantee.
+ * Every guard (including empty, live and remote owners) expires after 5 s;
+ * a confirmed dead local owner is recovered immediately. An exclusive
+ * recovery marker serialises rechecking and deleting the observed inode,
+ * bytes and mtime without moving any marker. Owners release only their own
+ * inode and tolerate an already removed marker. The recovery marker also
+ * expires after 5 s. A process paused inside synchronous work beyond that
+ * grace can be displaced. Old writers must be stopped before relying on
+ * this guarantee.
  *
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, linkSync, fstatSync, constants, type Stats } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync, readFileSync, renameSync, lstatSync, fstatSync, constants, type Stats } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -70,7 +74,9 @@ import { setTimeout as delay } from "node:timers/promises";
 const LOCK_STALE_MS = 10_000;
 /** How long a writer waits for the lock before continuing fail-open. */
 const LOCK_WAIT_MS = 5_000;
-const MUTATION_EMPTY_STALE_MS = 30_000;
+// Both guards cover synchronous filesystem work only. Five seconds leaves
+// ample headroom for slow disks, while bounding interrupted/remote markers.
+const MUTATION_STALE_MS = 5_000;
 
 const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
@@ -217,9 +223,21 @@ function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
     return fn();
   }
   finally {
-    closeSync(fd);
-    unlinkSync(guard);
+    releaseMutationGuard(guard, fd);
   }
+}
+
+/** Close after checking ownership; never remove a successor's marker. */
+function releaseMutationGuard(path: string, fd: number): void {
+  try {
+    const owned = fstatSync(fd);
+    try {
+      const current = lstatSync(path);
+      if (current.ino === owned.ino && current.dev === owned.dev) unlinkSync(path);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  } finally { closeSync(fd); }
 }
 
 /** Read metadata and contents through the same open descriptor. */
@@ -230,42 +248,47 @@ function mutationSnapshot(path: string): { raw: string; st: Stats } {
   finally { closeSync(fd); }
 }
 
-/** Reclaim only the inspected orphan. Restore a concurrent replacement without
- * overwriting a marker that another contender has already acquired. */
+function sameMutationSnapshot(a: { raw: string; st: Stats }, b: { raw: string; st: Stats }): boolean {
+  return a.st.ino === b.st.ino && a.st.dev === b.st.dev
+    && a.st.mtimeMs === b.st.mtimeMs && a.raw === b.raw;
+}
+
+function expiredMutation(snapshot: { raw: string; st: Stats }): boolean {
+  return Date.now() - snapshot.st.mtimeMs > MUTATION_STALE_MS || deadLocal(snapshot.raw);
+}
+
+/** Validate the still-named inode immediately before deletion. */
+function removeObservedMutation(path: string, observed: { raw: string; st: Stats }): boolean {
+  const current = mutationSnapshot(path);
+  if (!sameMutationSnapshot(observed, current) || !expiredMutation(current)) return false;
+  const named = lstatSync(path);
+  if (named.ino !== current.st.ino || named.dev !== current.st.dev
+    || named.mtimeMs !== current.st.mtimeMs) return false;
+  unlinkSync(path);
+  return true;
+}
+
+/** Serialise recovery without renaming or restoring another owner's marker.
+ * Both marker sections are synchronous; age bounds even unknown owners. */
 function recoverMutationGuard(guard: string): boolean {
-  let observed: string;
-  let inspected: Stats;
   try {
-    const snapshot = mutationSnapshot(guard);
-    inspected = snapshot.st;
-    observed = snapshot.raw;
-    let validOwner = false;
-    try {
-      const body = JSON.parse(observed) as LockBody;
-      validOwner = typeof body.host === "string" && Number.isSafeInteger(body.pid)
-        && body.pid > 0 && typeof body.token === "string" && !!body.token;
-    } catch { /* interrupted body write */ }
-    if (validOwner ? !deadLocal(observed)
-      : Date.now() - inspected.mtimeMs <= MUTATION_EMPTY_STALE_MS) return false;
-  } catch { return false; }
-  const moved = `${guard}.${randomUUID()}.orphan`;
-  try { renameSync(guard, moved); } catch { return false; }
-  let removeMoved = false;
-  try {
-    const snapshot = mutationSnapshot(moved);
-    const detached = snapshot.st;
-    if (detached.ino === inspected.ino && detached.dev === inspected.dev
-      && detached.mtimeMs === inspected.mtimeMs && snapshot.raw === observed) {
-      removeMoved = true;
-      return true;
+    const observed = mutationSnapshot(guard);
+    if (!expiredMutation(observed)) return false;
+    const recovery = `${guard}.recover`;
+    let fd: number;
+    try { fd = openSync(recovery, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600); }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") return false;
+      // An interrupted recovery must not wedge the next recovery forever.
+      // Back off after cleanup; contenders still acquire this marker via wx.
+      removeObservedMutation(recovery, mutationSnapshot(recovery));
+      return false;
     }
-    linkSync(moved, guard);
-    removeMoved = true;
-    return false;
-  } catch { return false; } // Preserve the displaced marker if restoration failed.
-  finally {
-    if (removeMoved) try { unlinkSync(moved); } catch { /* best-effort cleanup */ }
-  }
+    try {
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token: randomUUID() }), "utf8");
+      return removeObservedMutation(guard, observed);
+    } finally { releaseMutationGuard(recovery, fd); }
+  } catch { return false; } // Real filesystem failures remain conservative.
 }
 
 function removeStaleLock(lockPath: string, observed: string): boolean {
