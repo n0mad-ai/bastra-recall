@@ -224,7 +224,8 @@ function mutateLock<T>(lockPath: string, fn: () => T): T | undefined {
 
 /** Read metadata and contents through the same open descriptor. */
 function mutationSnapshot(path: string): { raw: string; st: Stats } {
-  const fd = openSync(path, "r");
+  // Read-only: mode is unused by Node, but explicit for temp-file analyzers.
+  const fd = openSync(path, "r", 0o600);
   try { return { raw: readFileSync(fd, "utf8"), st: fstatSync(fd) }; }
   finally { closeSync(fd); }
 }
