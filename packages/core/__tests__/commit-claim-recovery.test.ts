@@ -6,6 +6,8 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {tmpdir, hostname} from 'node:os';
+import {fork} from 'node:child_process';
+import {once} from 'node:events';
 import * as mainClaims from './fixtures/commit-claim-main.js';
 import {acquireCommitClaim,releaseCommitClaim} from '../src/save-commit.js';
 const gate=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};};
@@ -144,5 +146,45 @@ test('a new reclaimer holds main’s canonical marker until publication', {timeo
   } finally {resume.resolve();Object.assign(fs,original);syncBuiltinESMExports();}
   assert.equal(results.filter(r=>r.status==='fulfilled').length,1,'main must not enter while a new reclaimer holds G');
   for(const r of results)if(r.status==='fulfilled')await releaseCommitClaim(lock,r.value);
+  assert.deepEqual(await fs.readdir(dir),[]);
+});
+
+test('main can recover a crashed new claim and ignores an unpublished preparation', {timeout:10000}, async t => {
+  for (const phase of ['held','before-link']) {
+    const {dir,lock}=await fixture(t,'');await fs.unlink(lock);
+    const child=fork(new URL('./fixtures/commit-claim-crash.ts',import.meta.url),[lock,phase],{
+      execArgv:['--import','tsx'],stdio:['ignore','ignore','pipe','ipc'],
+    });
+    t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
+    const message=await Promise.race([
+      once(child,'message').then(([message])=>message as {checkpoint:string}),
+      once(child,'exit').then(([code])=>{throw new Error('child exited before gate: '+code);}),
+    ]);
+    assert.equal(message.checkpoint,phase==='held'?'held':'prepared');
+    if(phase==='held')assert.equal(await mainClaims.claimIsAbandoned(lock),false);
+    const exited=once(child,'exit');child.kill('SIGKILL');await exited;
+    const old=await mainClaims.acquireCommitClaim(lock,'fixture',lock);
+    await mainClaims.releaseCommitClaim(lock,old);
+    const modern=await acquireCommitClaim(lock,'fixture',lock);
+    await releaseCommitClaim(lock,modern);
+    assert.deepEqual(await fs.readdir(dir),[],'new retry retires its dead preparation; rollback stayed writable');
+  }
+});
+
+test('release preserves a fresh foreign reservation and canonical marker', {timeout:5000}, async t => {
+  const {dir,lock}=await fixture(t,'');await fs.unlink(lock);
+  const phase=join(`${lock}.recovery`,'0000000000000000');
+  const fresh=join(phase,`${Date.now()}-${process.pid}-00000000-0000-0000-0000-000000000001`);
+  await fs.mkdir(fresh,{recursive:true});
+  const marker=`${lock}.reclaim-0000000000000000`;
+  await fs.writeFile(marker,JSON.stringify({token:'foreign',pid:process.pid,host:hostname(),ts:Date.now()}));
+  const token=await acquireCommitClaim(lock,'fixture',lock);
+  // A stale own pointer must not authorize deleting someone else's new token.
+  const raw=JSON.parse(await fs.readFile(lock,'utf8')) as Record<string,unknown>;
+  await fs.writeFile(lock,JSON.stringify({...raw,reclaimed_from:'0000000000000000'}));
+  await releaseCommitClaim(lock,token);
+  assert.ok((await fs.lstat(fresh)).isDirectory());
+  assert.equal((JSON.parse(await fs.readFile(marker,'utf8')) as {token:string}).token,'foreign');
+  await fs.unlink(marker);await fs.rmdir(fresh);await fs.rmdir(phase);await fs.rmdir(`${lock}.recovery`);
   assert.deepEqual(await fs.readdir(dir),[]);
 });
