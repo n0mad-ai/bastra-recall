@@ -13,7 +13,7 @@
  * looks alive too. Details on each rule are at the function that implements it.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, access, open, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readFile, access, open, link, lstat, mkdir, readdir, rmdir, unlink, writeFile, utimes } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
@@ -83,6 +83,8 @@ interface CommitClaim {
    *  Writer läuft in die entstandene Lücke. Der Release prüft deshalb, ob der
    *  Claim auf der Platte noch DERSELBE ist. */
   token: string;
+  /** Public main readers ignore this optional cleanup pointer. */
+  reclaimed_from?: string;
 }
 
 /**
@@ -109,8 +111,7 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
       ageMs = Date.now() - info.mtimeMs;
     } finally { await handle.close(); }
   } catch (err) {
-    // Gone between EEXIST and here — another writer already cleared it, so this
-    // one is free to retry. Anything else stays a conflict: unknown is not free.
+    // No checked generation remains to reclaim. Unknown is never free.
     return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
   }
 
@@ -167,154 +168,257 @@ export async function acquireCommitClaim(
     ts: Date.now(),
     token,
   } satisfies CommitClaim);
-  for (let attempt = 0; attempt < 2; attempt++) {
+  return withPreparedClaim(lockPath, body, id, filePath, async prepared => {
     try {
-      const handle = await open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(body, "utf8");
-      } finally {
-        await handle.close();
-      }
+      await publishPrepared(prepared, lockPath, body);
       return token;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-      const checked = attempt === 0 ? await inspectCommitClaim(lockPath) : null;
-      if (checked?.abandoned && checked.raw !== null) {
-        if (await reclaimStaleClaim(lockPath, body, checked.raw)) {
-          // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
-          // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
-          // weiter; der tote Vorgänger ist der Befund: Einzeln ein
-          // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
-          // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
-          // der Reclaim geräuschlos gelingt.
-          //
-          // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
-          // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
-          //
-          // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
-          // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
-          // Operations-id). `memory_id` ist die Verbindung, an der man im
-          // Audit-Log weitersucht.
-          reportMutationIncident({
-            operation_id: newOperationId(),
-            op: "claim_reclaim",
-            status: "reclaimed",
-            phase: "claim-reclaim",
-            memory_id: id,
-            detail: "abandoned claim taken over",
-          });
-          return token;
-        }
-        // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
-        // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
-        throw writeConflict(id, filePath, "another save is reclaiming this claim");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const checked = await inspectCommitClaim(lockPath);
+      if (checked.abandoned && checked.raw !== null
+        && await reclaimStaleClaim(lockPath, prepared, body, checked.raw)) {
+        reportMutationIncident({
+          operation_id: newOperationId(), op: "claim_reclaim", status: "reclaimed",
+          phase: "claim-reclaim", memory_id: id, detail: "abandoned claim taken over",
+        });
+        return token;
       }
-      throw writeConflict(id, filePath, "another save is committing this target");
+      throw writeConflict(id, filePath, "another save is committing or reclaiming this target");
     }
+  });
+}
+
+/** Keep mutations available on filesystems without hardlinks. The fallback
+ * deliberately retains main's open-before-write window; it is not atomic
+ * complete publication and does not claim the hardlink safety guarantee. */
+const LINK_UNSUPPORTED = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EXDEV", "EINVAL", "EMLINK"]);
+async function publishPrepared(prepared: string, target: string, raw: string): Promise<void> {
+  try { await link(prepared, target); return; }
+  catch (error) {
+    if (!LINK_UNSUPPORTED.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
   }
-  /* c8 ignore next */
-  throw writeConflict(id, filePath, "another save is committing this target");
+  const handle = await open(target, "wx", 0o600);
+  try { await handle.writeFile(raw, "utf8"); }
+  finally { await handle.close(); }
+}
+
+/** Complete regular bytes precede publication. Helpers live only in this ID's
+ * directory, so interrupted preparations never require a lock-directory scan. */
+async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, filePath: string, run: (prepared: string) => Promise<T>): Promise<T> {
+  const directory = `${lockPath}.publish`;
+  const name = `${Date.now()}-${process.pid}-${(JSON.parse(raw) as CommitClaim).token}.tmp`;
+  const prepared = join(directory, name);
+  let directoryChecked = false;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const created = await ensureDirectory(directory);
+        directoryChecked = true;
+        if (!created) await cleanupPreparations(directory, lockPath);
+        const handle = await open(prepared, "wx", 0o600);
+        try { await handle.writeFile(raw, "utf8"); }
+        finally { await handle.close(); }
+        break;
+      } catch (error) {
+        // Another preparation can remove the now-empty shared container.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        if (attempt > 0) throw writeConflict(id, filePath, "another save is preparing this claim");
+      }
+    }
+    return await run(prepared);
+  } finally {
+    if (directoryChecked) await removeOwnFile(prepared);
+    await rmdir(directory).catch(() => {});
+  }
+}
+
+async function ensureDirectory(path: string): Promise<boolean> {
+  try { await mkdir(path, { mode: 0o700 }); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid claim helper directory");
+  return false;
+}
+
+async function removeOwnFile(path: string): Promise<void> {
+  // Also retry an ENOENT raised before the actual deletion by a provider.
+  await unlink(path).catch(() => unlink(path).catch(() => {}));
+}
+
+function reservationOwner(name: string, helper = false): { ts: number; pid: number; token: string } | null {
+  const match = (helper
+    ? /^(\d+)-(\d+)-([0-9a-f-]{36})\.tmp$/
+    : /^(\d+)-(\d+)-([0-9a-f-]{36})$/).exec(name);
+  return match ? { ts: Number(match[1]), pid: Number(match[2]), token: match[3]! } : null;
+}
+function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): boolean {
+  try { process.kill(owner.pid, 0); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; }
+  return Date.now() - owner.ts > ceiling;
+}
+async function cleanupPreparations(directory: string, lockPath: string): Promise<void> {
+  for (const name of await readdir(directory)) {
+    const owner = reservationOwner(name, true);
+    if (!owner || !ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) continue;
+    const prepared = join(directory, name);
+    const raw = await readFile(prepared, "utf8").catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error; // Keep the durable pointer for a later retry on I/O failure.
+    });
+    if (raw === null) continue;
+    let claim: CommitClaim | undefined;
+    try { claim = JSON.parse(raw) as CommitClaim; } catch { /* incomplete preparation never published */ }
+    // main may already have replaced the crashed public claim, losing its
+    // pointer. The still-owned preparation carries the same durable cleanup key.
+    if (claim?.token === owner.token && claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
+      await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, owner.token);
+    }
+    await removeOwnFile(prepared);
+  }
 }
 
 /**
  * Wie lange eine Reclaim-Markierung liegen darf, bevor sie selbst als
  * verwaist gilt. Bewusst das Doppelte des Claim-Fensters: Ein Reclaim dauert
- * einen Read und ein Rename, und die Markierung soll nie vor dem Claim
+ * wenige Dateioperationen, und die Markierung soll nie vor dem Claim
  * ablaufen, den sie gerade übernimmt.
  */
 const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
 
-/**
- * Einen verwaisten Claim übernehmen — als EINZIGER, und ohne Lücke.
- *
- * Codex-Gegenreview (P0): Hier stand `unlink(lockPath)` gefolgt von einem
- * neuen `open(wx)`. Zwei Fehler in drei Zeilen:
- *
- *   - Mehrere Reclaimer konnten denselben alten Claim gleichzeitig als
- *     verwaist erkennen und ihn danach jeweils blind löschen — einer entfernte
- *     dabei den gerade neu angelegten Lock des anderen. Gemessen: 200 Runden
- *     mit je 16 Reclaimern, 85 Runden mit mehr als einem Gewinner, bis zu drei
- *     gleichzeitig. Mit echten Saves: 11 von 80 Runden mit zwei aktiven
- *     Dateien derselben id.
- *   - Zwischen `unlink` und `open` war der Lock ABWESEND. Ein ganz normaler
- *     Acquirer, der in dieses Fenster lief, hielt den Lock für frei.
- *
- * Beides schließt dieselbe Konstruktion. Die Übernahme wird über eine
- * Markierung serialisiert, deren NAME aus dem Inhalt des verwaisten Claims
- * abgeleitet ist: Genau ein Prozess kann sie mit O_EXCL anlegen, und zwei
- * Reclaimer desselben Claims streiten damit um denselben Pfad. Veröffentlicht
- * wird per `rename` über den bestehenden Lock — der Pfad ist zu keinem
- * Zeitpunkt leer, es gibt also kein Fenster, in dem er frei aussieht.
- *
- * Was das NICHT löst: Ein Reclaimer, der zwischen Prüfung und `rename` länger
- * als {@link RECLAIM_MARK_STALE_MS} stillsteht, kann seine Markierung an einen
- * Nachfolger verlieren. Dafür ist die Lease per Heartbeat gedacht, die noch
- * aussteht — auf geteilten Cloud-Vaults bleibt sie nötig.
- *
- * @returns `true`, wenn dieser Aufrufer den Claim jetzt hält.
- */
-async function reclaimStaleClaim(lockPath: string, body: string, checkedGeneration: string): Promise<boolean> {
-  let stale: string;
+/** Use main's canonical marker, so both versions serialize ordinary takeovers.
+ * New markers are complete regular files, hardlinked from the prepared claim.
+ * Only marker expiry needs reservations. An unmodified main process still has
+ * its own blind stale-marker deletion race; new code cannot fence that reader. */
+async function reclaimStaleClaim(lockPath: string, prepared: string, body: string, checked: string): Promise<boolean> {
+  if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+  const digest = createHash("sha256").update(checked).digest("hex").slice(0, 16);
+  const claim = JSON.parse(body) as CommitClaim;
+  const updated = JSON.stringify({ ...claim, reclaimed_from: digest });
+  await writeFile(prepared, updated, "utf8");
+  const marker = `${lockPath}.reclaim-${digest}`;
+  let owned = false, publicationAttempted = false;
   try {
-    stale = await readFile(lockPath, "utf8");
-  } catch {
-    // Weg oder unlesbar: nichts zu übernehmen, was wir belegen könnten.
-    return false;
-  }
-  // #1199: bind takeover to the bytes whose abandonment was actually checked.
-  // A late reread may already see another writer's fresh/live generation.
-  if (stale !== checkedGeneration) return false;
-  // Der Name der Markierung IST die Identität des verwaisten Claims. Ein
-  // Reclaim für eine andere Generation kollidiert damit nicht, und zwei
-  // Reclaims für dieselbe können es nicht vermeiden.
-  const markPath = `${lockPath}.reclaim-${createHash("sha256").update(stale).digest("hex").slice(0, 16)}`;
-  if (!(await takeReclaimMark(markPath))) return false;
-  try {
-    // Zwischen dem Lesen oben und der Markierung kann jemand schneller
-    // gewesen sein. Dann steht dort ein anderer Claim, und dieser Reclaim ist
-    // gegenstandslos.
-    const current = await readFile(lockPath, "utf8").catch(() => null);
-    if (current !== stale) return false;
-    // Per rename statt unlink+create: der Lockpfad trägt durchgehend einen
-    // gültigen Claim, erst den alten, dann unseren.
-    const tmp = `${lockPath}.${process.pid}.${randomUUID().slice(0, 8)}.take`;
-    await writeFile(tmp, body, "utf8");
-    try {
-      await rename(tmp, lockPath);
-    } catch (err) {
-      await unlink(tmp).catch(() => {});
-      throw err;
+    owned = await takeReclaimMark(lockPath, marker, prepared, updated);
+    if (!owned) return false;
+    // Recheck freshness as well as bytes: a main writer can still be between
+    // open(wx) and write, so its new empty file must not match an old empty one.
+    const current = await inspectCommitClaim(lockPath);
+    if (current.raw !== checked || !current.abandoned) return false;
+    // A predecessor killed after publication may still own its earlier marker.
+    // Retire that exact token while its cleanup pointer remains durable here.
+    let predecessor: CommitClaim | undefined;
+    try { predecessor = JSON.parse(checked) as CommitClaim; } catch { /* empty main claim */ }
+    if (predecessor?.reclaimed_from && /^[0-9a-f]{16}$/.test(predecessor.reclaimed_from)) {
+      await removeOwnedMarker(`${lockPath}.reclaim-${predecessor.reclaimed_from}`, predecessor.token);
+      if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+    }
+    if (!await markerOwnedBy(marker, claim.token)) return false;
+    await unlink(lockPath);
+    publicationAttempted = true;
+    await publishPrepared(prepared, lockPath, updated);
+    // A main process can execute its pre-existing blind stale-marker deletion.
+    // Do not report acquisition after observable lease loss or replacement.
+    const [stillOwned, published] = await Promise.all([
+      markerOwnedBy(marker, claim.token),
+      readFile(lockPath, "utf8").then(raw => (JSON.parse(raw) as CommitClaim).token === claim.token),
+    ]);
+    if (!stillOwned || !published) {
+      await releaseCommitClaim(lockPath, claim.token);
+      return false;
     }
     return true;
-  } finally {
-    await unlink(markPath).catch(() => {});
+  } catch {
+    if (publicationAttempted) await releaseCommitClaim(lockPath, claim.token);
+    return false;
+  }
+  finally { if (owned) await removeOwnedMarker(marker, claim.token); }
+}
+
+async function markerOwnedBy(marker: string, token: string): Promise<boolean> {
+  try { return (JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token === token; }
+  catch { return false; }
+}
+
+async function removeOwnedMarker(marker: string, token: string): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if ((JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token !== token) return;
+      await unlink(marker);
+      return;
+    } catch { /* One-shot errors retry; abandoned markers expire after 60s. */ }
   }
 }
 
-/** Die Markierung nehmen. Eine liegengebliebene (der Reclaimer starb mitten
- *  im Vorgang) würde den Claim sonst dauerhaft unübernehmbar machen — sie
- *  altert deshalb selbst aus. */
-async function takeReclaimMark(markPath: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const handle = await open(markPath, "wx", 0o600);
-      await handle.close();
-      return true;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") return false;
-      if (attempt === 1) return false;
-      let ageMs: number;
-      try {
-        ageMs = Date.now() - (await stat(markPath)).mtimeMs;
-      } catch {
-        continue; // gerade verschwunden — noch ein Versuch
-      }
-      if (ageMs <= RECLAIM_MARK_STALE_MS) return false;
-      await unlink(markPath).catch(() => {});
+async function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: number }> {
+  const handle = await open(path, "r");
+  try {
+    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
+    return { raw, mtimeMs: info.mtimeMs };
+  } finally { await handle.close(); }
+}
+
+async function takeReclaimMark(lockPath: string, marker: string, prepared: string, raw: string): Promise<boolean> {
+  // main uses marker mtime, so refresh the private record before linking it.
+  const now = new Date(Date.now());
+  await utimes(prepared, now, now);
+  try { await publishPrepared(prepared, marker, raw); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false; }
+  let seen: string, age: number;
+  try {
+    const snapshot = await markerSnapshot(marker);
+    seen = snapshot.raw; age = Date.now() - snapshot.mtimeMs;
+  } catch { return false; }
+  if (age <= RECLAIM_MARK_STALE_MS) return false;
+  const recovery = `${lockPath}.recovery`;
+  const phase = join(recovery, marker.slice(marker.lastIndexOf(".reclaim-") + 9));
+  const reservation = join(phase, `${Date.now()}-${process.pid}-${randomUUID()}`);
+  let reserved = false;
+  try {
+    await ensureDirectory(recovery);
+    await ensureDirectory(phase);
+    await mkdir(reservation, { mode: 0o700 }); reserved = true;
+    for (const name of await readdir(phase)) {
+      if (join(phase, name) === reservation) continue;
+      const owner = reservationOwner(name);
+      if (!owner) return false;
+      if (!ownerExpired(owner, RECLAIM_MARK_STALE_MS)) return false;
+      await rmdir(join(phase, name));
     }
+    // Marker bytes bind modern generations; main's empty markers are also
+    // re-aged here so a fresh main replacement is never treated as expired.
+    const current = await markerSnapshot(marker);
+    if (current.raw !== seen || Date.now() - current.mtimeMs <= RECLAIM_MARK_STALE_MS) return false;
+    await unlink(marker);
+    await publishPrepared(prepared, marker, raw);
+    return true;
+  } catch { return false; }
+  finally {
+    if (reserved) await rmdir(reservation).catch(() => rmdir(reservation).catch(() => {}));
+    await rmdir(phase).catch(() => {});
+    await rmdir(recovery).catch(() => {});
   }
-  /* c8 ignore next */
-  return false;
+}
+
+/** Release never deletes another claimant's marker. Only immutable, expired
+ * reservation names can be retired here; a fresh reservation remains intact. */
+async function cleanupReservations(lockPath: string): Promise<void> {
+  const recovery = `${lockPath}.recovery`;
+  try {
+    const root = await lstat(recovery);
+    if (!root.isDirectory() || root.isSymbolicLink()) return;
+    for (const generation of await readdir(recovery)) {
+      if (!/^[0-9a-f]{16}$/.test(generation)) continue;
+      const phase = join(recovery, generation);
+      const info = await lstat(phase);
+      if (!info.isDirectory() || info.isSymbolicLink()) continue;
+      for (const name of await readdir(phase)) {
+        const owner = reservationOwner(name);
+        if (owner && ownerExpired(owner, RECLAIM_MARK_STALE_MS)) await rmdir(join(phase, name));
+      }
+      await rmdir(phase).catch(() => {});
+    }
+    await rmdir(recovery).catch(() => {});
+  } catch { /* A later release can retire bounded dead reservations. */ }
 }
 
 /**
@@ -328,16 +432,19 @@ async function takeReclaimMark(markPath: string): Promise<boolean> {
  * gehört der Lock jemand anderem und bleibt stehen.
  */
 export async function releaseCommitClaim(lockPath: string, token: string): Promise<void> {
+  let claim: CommitClaim;
   try {
-    const raw = await readFile(lockPath, "utf8");
-    const claim = JSON.parse(raw) as CommitClaim;
-    if (claim.token !== token) return; // nicht mehr unserer
-  } catch {
-    // Weg, unlesbar oder unparsebar: nichts davon ist nachweislich unser Lock.
-    // Stehen lassen — er altert aus, statt dass wir den eines anderen löschen.
-    return;
+    claim = JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim;
+    if (claim.token !== token) return;
+  } catch { return; }
+  if (claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
+    await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, token);
+    // Preserve the final token-read/unlink boundary after the rare cleanup.
+    try { if ((JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim).token !== token) return; }
+    catch { return; }
   }
   await unlink(lockPath).catch(() => {});
+  await cleanupReservations(lockPath);
 }
 
 export function writeConflict(id: string, filePath: string, detail: string): MemoryWriteConflictError {

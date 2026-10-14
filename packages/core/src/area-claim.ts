@@ -494,8 +494,10 @@ export async function withAreaExclusive<T>(
       // in `acquireCommitClaim()`: O_EXCL, und für den verwaisten Fall eine
       // Reclaim-Markierung, deren NAME aus dem Inhalt des alten Claims
       // abgeleitet ist — zwei Reclaimer streiten damit um denselben Pfad, und
-      // veröffentlicht wird per `rename` über den bestehenden Lock, sodass der
-      // Pfad nie leer aussieht. Ein Lock-Mechanismus, zwei Aufrufer.
+      // veröffentlicht wird nach `unlink` exklusiv per `link` (ohne Hardlinks
+      // per `open(wx)` + Schreiben). In der Lücke kann ein normaler Bewerber
+      // gewinnen; dann verliert der Reclaimer mit Konflikt statt ihn zu
+      // überschreiben. Ein Lock-Mechanismus, zwei Aufrufer.
       let token: string;
       try {
         token = await acquireCommitClaim(lock, `area:${name}`, lock);
