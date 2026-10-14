@@ -192,7 +192,7 @@ export async function acquireCommitClaim(
  * directory, so interrupted preparations never require a lock-directory scan. */
 async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, filePath: string, run: (prepared: string) => Promise<T>): Promise<T> {
   const directory = `${lockPath}.publish`;
-  const name = `${Date.now()}-${process.pid}-${randomUUID()}.tmp`;
+  const name = `${Date.now()}-${process.pid}-${(JSON.parse(raw) as CommitClaim).token}.tmp`;
   const prepared = join(directory, name);
   let directoryChecked = false;
   try {
