@@ -121,7 +121,7 @@ async function readClaimRaw(path: string): Promise<string> {
  * ist nur auf ihrer Maschine aussagekräftig, und der Vault liegt erwartbar auf
  * geteilten Cloud-Mounts) oder ein unparsebarer Claim.
  */
-async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | null; abandoned: boolean }> {
+async function inspectCommitClaim(lockPath: string, trackLegacyAge = false): Promise<{ raw: string | null; abandoned: boolean }> {
   let raw: string;
   let ageMs: number;
   try {
@@ -139,11 +139,11 @@ async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | nul
         raw = content;
         let timestamp: number | undefined;
         try { timestamp = (JSON.parse(content) as CommitClaim).ts; } catch { /* incomplete legacy claim */ }
-        ageMs = Number.isFinite(timestamp) ? Date.now() - timestamp! : Date.now() - info.mtimeMs;
+        ageMs = trackLegacyAge && Number.isFinite(timestamp) ? Date.now() - timestamp! : Date.now() - info.mtimeMs;
         // File providers may refresh inode times forever. An incomplete legacy
         // claim also gets a content-bound first observation, only on this rare
         // compatibility path; a new complete claim never needs this state.
-        if (!Number.isFinite(timestamp) && ageMs <= COMMIT_CLAIM_STALE_MS) {
+        if (trackLegacyAge && !Number.isFinite(timestamp) && ageMs <= COMMIT_CLAIM_STALE_MS) {
           ageMs = Math.max(ageMs, await legacyObservationAge(lockPath, content));
         }
       } finally { await handle.close(); }
@@ -213,7 +213,7 @@ export async function acquireCommitClaim(
     return token;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-    const checked = await inspectCommitClaim(lockPath);
+    const checked = await inspectCommitClaim(lockPath, true);
     if (checked?.abandoned && checked.raw !== null) {
       if (await reclaimStaleClaim(lockPath, body, checked.raw)) {
         // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
