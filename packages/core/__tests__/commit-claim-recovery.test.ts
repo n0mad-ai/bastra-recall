@@ -211,6 +211,7 @@ test('observable legacy marker loss fails closed before claim replacement', {tim
 });
 
 test('a second takeover retires the first dead owner’s earlier canonical marker', {timeout:10000}, async t => {
+  for (const rollback of [false,true]) {
   const raw=JSON.stringify({pid:1,host:'foreign-fixture',ts:0,token:'old'});
   const {dir,lock}=await fixture(t,raw);
   const child=fork(new URL('./fixtures/commit-claim-crash.ts',import.meta.url),[lock,'after-link'],{
@@ -223,7 +224,9 @@ test('a second takeover retires the first dead owner’s earlier canonical marke
   ]);
   assert.equal(message.checkpoint,'published');
   const exited=once(child,'exit');child.kill('SIGKILL');await exited;
+  if(rollback){const old=await mainClaims.acquireCommitClaim(lock,'fixture',lock);await mainClaims.releaseCommitClaim(lock,old);}
   const token=await acquireCommitClaim(lock,'fixture',lock);
   await releaseCommitClaim(lock,token);
   assert.deepEqual(await fs.readdir(dir),[],'both canonical generations and the dead preparation must be retired');
+  }
 });

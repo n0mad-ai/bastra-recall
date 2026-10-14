@@ -200,7 +200,7 @@ async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, f
       try {
         const created = await ensureDirectory(directory);
         directoryChecked = true;
-        if (!created) await cleanupPreparations(directory);
+        if (!created) await cleanupPreparations(directory, lockPath);
         const handle = await open(prepared, "wx", 0o600);
         try { await handle.writeFile(raw, "utf8"); }
         finally { await handle.close(); }
@@ -231,20 +231,34 @@ async function removeOwnFile(path: string): Promise<void> {
   await unlink(path).catch(() => unlink(path).catch(() => {}));
 }
 
-function reservationOwner(name: string, suffix = ""): { ts: number; pid: number } | null {
+function reservationOwner(name: string, suffix = ""): { ts: number; pid: number; token: string } | null {
   const escaped = suffix.replace(/\./g, "\\.");
-  const match = new RegExp(`^(\\d+)-(\\d+)-[0-9a-f-]{36}${escaped}$`).exec(name);
-  return match ? { ts: Number(match[1]), pid: Number(match[2]) } : null;
+  const match = new RegExp(`^(\\d+)-(\\d+)-([0-9a-f-]{36})${escaped}$`).exec(name);
+  return match ? { ts: Number(match[1]), pid: Number(match[2]), token: match[3]! } : null;
 }
 function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): boolean {
   try { process.kill(owner.pid, 0); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; }
   return Date.now() - owner.ts > ceiling;
 }
-async function cleanupPreparations(directory: string): Promise<void> {
+async function cleanupPreparations(directory: string, lockPath: string): Promise<void> {
   for (const name of await readdir(directory)) {
     const owner = reservationOwner(name, ".tmp");
-    if (owner && ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) await removeOwnFile(join(directory, name));
+    if (!owner || !ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) continue;
+    const prepared = join(directory, name);
+    const raw = await readFile(prepared, "utf8").catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error; // Keep the durable pointer for a later retry on I/O failure.
+    });
+    if (raw === null) continue;
+    let claim: CommitClaim | undefined;
+    try { claim = JSON.parse(raw) as CommitClaim; } catch { /* incomplete preparation never published */ }
+    // main may already have replaced the crashed public claim, losing its
+    // pointer. The still-owned preparation carries the same durable cleanup key.
+    if (claim?.token === owner.token && claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
+      await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, owner.token);
+    }
+    await removeOwnFile(prepared);
   }
 }
 
