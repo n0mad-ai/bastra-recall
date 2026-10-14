@@ -103,3 +103,36 @@ test("word-form families stay closed and respect canonical spellings", () => {
   assert.equal(sameWordForm("청구서".normalize("NFD"), "청구서들을"), true);
   assert.equal(sameWordForm("café", "cafe\u0301"), true);
 });
+
+test("hasWordForm prefilter preserves every family and canonical spelling in both directions", () => {
+  for (const [a, b] of [
+    ["antwort", "antworten"], ["delete", "deleted"], ["laskun", "laskuissa"],
+    ["şablonu", "şablonlarında"], ["снял", "снять"], ["切り替え", "切り替える"],
+    ["청구서", "청구서들을"], ["قالب", "بالقالب"], ["חשבונית", "החשבוניות"],
+    ["kiolezo", "violezo"], ["café", "cafe\u0301"],
+    ["şablonu".normalize("NFD"), "şablonlarında"],
+    ["청구서".normalize("NFD"), "청구서들을"],
+  ]) {
+    assert.equal(hasWordForm(new Set([a]), b), true, `${a}/${b}`);
+    assert.equal(hasWordForm(new Set([b]), a), true, `${b}/${a}`);
+  }
+});
+
+test("hasWordForm miss scan avoids expensive comparisons across a long prompt", () => {
+  // 1239 different letters-only tokens, 77 phrases' worth of fallback misses.
+  const tokens = new Set(Array.from({ length: 1239 }, (_, i) =>
+    `context${String.fromCharCode(97 + Math.floor(i / 676), 97 + Math.floor(i / 26) % 26, 97 + i % 26)}`));
+  const word = "antworten";
+  const measure = (fn: () => boolean) => {
+    const start = performance.now();
+    for (let i = 0; i < 77; i++) assert.equal(fn(), false);
+    return performance.now() - start;
+  };
+  // Warm both implementations; relative and absolute bounds are generous.
+  measure(() => [...tokens].some(t => sameWordForm(word, t)));
+  measure(() => hasWordForm(tokens, word));
+  const fullScan = measure(() => [...tokens].some(t => sameWordForm(word, t)));
+  const filtered = measure(() => hasWordForm(tokens, word));
+  assert.ok(filtered < fullScan * 0.65, `filtered=${filtered}ms full=${fullScan}ms`);
+  assert.ok(filtered < 500, `77 misses took ${filtered}ms`);
+});

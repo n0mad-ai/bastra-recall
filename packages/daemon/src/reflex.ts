@@ -9,7 +9,8 @@
  *
  * „Hart" heißt deterministisch, ohne Score: eine Phrase matcht, wenn alle
  * ihre Tokens (≥3 Zeichen, lowercase, tokenizeWithIdentifiers) im Kontext
- * vorkommen — mindestens 2 Tokens, oder genau 1 Identifier-Token exakt;
+ * exakt oder als unterstützte Wortform vorkommen (feste Affixfamilien;
+ * mögliche Falschtreffer) — mindestens 2 Tokens, oder genau 1 Identifier-Token exakt;
  * eine mehrwortige Phrase, von der nur ein Inhaltstoken übrig bleibt
  * („antwortentwurf bitte"), matcht wörtlich als Tokenfolge (20.08.);
  * „oder"/„or" (Sprachdaten, #707) oder ein freistehendes „/" teilt eine
@@ -17,7 +18,7 @@
  * matchedRecallWhen (MiniSearch: fuzzy/prefix). recall_when_expanded zählt
  * seit dem 19.08.-Vorfall MIT: deterministisch aus den autorisierten Phrasen
  * generiert, erweitert es die Formulierung, nicht die Autorisierung — ohne
- * das überlebt kein Token-AND die deutsche Flexion. Die semantische
+ * erweitert es auch unbekannte Wortformen. Die semantische
  * Absicherung derselben Lücke liegt in prompt-lane.ts (mode-"none"-Filter).
  *
  * Budget: BASTRA_REFLEX_MAX_PER_TURN bzw. reflex.maxPerTurn (default 2,

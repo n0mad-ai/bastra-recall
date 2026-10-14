@@ -1,5 +1,6 @@
 /** Conservative word forms using closed affix families; exact lookup first. */
 
+const PREFIXED_RE = /^[\p{Script=Arabic}\p{Script=Hebrew}]|^(?:ki|vi)/u;
 const ASCII_RE = /^[\x00-\x7f]*$/;
 const LETTER_OR_DIGIT_RE = /[\p{L}\p{N}]/u;
 
@@ -126,8 +127,15 @@ export function sameWordForm(a: string, b: string): boolean {
 export function hasWordForm(tokens: ReadonlySet<string>, word: string): boolean {
   if (tokens.has(word)) return true;
   if (letterCount(word) < ABJAD_WORD_FORM_MIN_LEN) return false;
+  const w = word.normalize("NFC");
+  const prefixed = PREFIXED_RE.test(w);
   for (const t of tokens) {
-    if (sameWordForm(word, t)) return true;
+    // Suffix families preserve at least two initial code units. Canonical
+    // spelling and the fixed ar/he/sw prefixes are the only exceptions.
+    const candidate = ASCII_RE.test(t) ? t : t.normalize("NFC");
+    if (!prefixed && (candidate.charCodeAt(0) !== w.charCodeAt(0) ||
+      candidate.charCodeAt(1) !== w.charCodeAt(1)) && !PREFIXED_RE.test(candidate)) continue;
+    if (sameWordForm(w, candidate)) return true;
   }
   return false;
 }

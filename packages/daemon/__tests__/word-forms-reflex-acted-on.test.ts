@@ -111,3 +111,23 @@ for (const [trigger, prompt] of [
     assert.equal(phraseMatchesContext(trigger, tokens, seq), true);
   });
 }
+
+test("acted_on: one edit token cannot satisfy two memory word forms", () => {
+  for (const memory of ["datei dateien", "dateien datei"]) {
+    const ep = actedOn(memory, "dateien");
+    assert.equal(ep?.match_strength, 1);
+    assert.equal(ep?.acted_on, false);
+  }
+});
+
+test("acted_on: exact spellings are reserved before inflection matches", () => {
+  const ep = actedOn("datei dateien", "dateien datei");
+  assert.equal(ep?.match_strength, 2);
+  assert.equal(ep?.acted_on, true);
+});
+
+test("acted_on: two different inflected edit tokens still count separately", () => {
+  const ep = actedOn("antwort backup", "antworten backups");
+  assert.equal(ep?.match_strength, 2);
+  assert.equal(ep?.acted_on, true);
+});

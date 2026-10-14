@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { hasWordForm } from "@bastra-recall/core";
+import { hasWordForm, sameWordForm } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import { tokens as words } from "./save-similarity.js";
@@ -469,9 +469,22 @@ export class JoinState {
       if (entry.hint_only && entry.hint_session_id !== (payload.session_id ?? null)) continue;
 
       let matchStrength = 0;
+      // Reserve exact matches first, then consume each remaining edit token
+      // at most once per memory; dateien must not count for datei AND dateien.
+      const remaining = new Set(inputTokens);
+      const unmatched: string[] = [];
       for (const token of entry.distinctive_tokens) {
-        // An inflected form in the edit counts like the memory's own spelling.
-        if (hasWordForm(inputTokens, token)) matchStrength++;
+        if (remaining.delete(token)) matchStrength++;
+        else unmatched.push(token);
+      }
+      for (const token of unmatched) {
+        if (!hasWordForm(remaining, token)) continue;
+        for (const candidate of remaining) {
+          if (!sameWordForm(token, candidate)) continue;
+          remaining.delete(candidate);
+          matchStrength++;
+          break;
+        }
       }
       if (!closeOnMiss && matchStrength < 2) continue; // stays open (#144)
       entry.closed = true;
