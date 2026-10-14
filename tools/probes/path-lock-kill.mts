@@ -1,7 +1,7 @@
 /** #1207 crash-recovery measurement (POSIX, 200 SIGKILL rounds).
  * Run from repo root:
  * node --import tsx --import ./scripts/test-env.mjs tools/probes/path-lock-kill.mts
- * Empty guards are aged via utimes after the kill; no 5-second sleeps.
+ * Empty guards are aged via utimes after the kill; no 4-second sleeps.
  */
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, readdir, utimes, rm } from 'node:fs/promises';
@@ -34,7 +34,7 @@ try {
   child.kill('SIGKILL'); await exited;
   const guard=pathLockFilePath(state)+'.mutation';
   const body=await readFile(guard,'utf8');
-  if(body) full++; else { empty++; const old=new Date(Date.now()-6000); await utimes(guard,old,old); }
+  if(body) full++; else { empty++; const old=new Date(Date.now()-4500); await utimes(guard,old,old); }
   const start=performance.now();
   await withPathLock(state,async()=>{await writeFile(state,String(i))},{crossProcess:true,requireLock:true});
   max=Math.max(max,performance.now()-start);
@@ -42,5 +42,5 @@ try {
  }
  const leftovers=(await readdir(dir)).filter(x=>x!== 'worker.mts' && x!== 'state.json');
  if(leftovers.length) throw new Error('leftovers '+leftovers);
- console.log(JSON.stringify({rounds:200,full,empty,emptyAgeAdvancedMs:6000,maxFollowupMs:max,failed:0,leftovers:0}));
+ console.log(JSON.stringify({rounds:200,full,empty,emptyAgeAdvancedMs:4500,maxFollowupMs:max,failed:0,leftovers:0}));
 } finally {await rm(dir,{recursive:true,force:true});}

@@ -240,7 +240,7 @@ export async function writePendingSuggestion(
   }
   try {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    // Outlast the 10 s stale lease (and the 5 s synchronous guards), so
+    // Outlast the 10 s stale lease (and the 4 s synchronous guards), so
     // a crashed holder still lets this suggestion be retained on retry.
     const deadline = Date.now() + 11_000;
     while (pendingRelayEnabled()) {

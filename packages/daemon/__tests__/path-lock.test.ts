@@ -174,13 +174,42 @@ test("#1207: dead and aged empty mutation guards recover in both lanes", async (
     const guard = `${pathLockFilePath(state)}.mutation`;
     await writeFile(guard, body);
     if (body === "" || body === "invalid") {
-      const old = new Date(Date.now() - 6_000);
+      const old = new Date(Date.now() - 4_500);
       await utimes(guard, old, old);
     }
     assert.equal(advisory
       ? await tryWithPathLock(state, async () => "recovered", { crossProcess: true })
       : await withPathLock(state, async () => "recovered", { crossProcess: true, requireLock: true }), "recovered");
     assert.equal(existsSync(guard), false);
+  }
+});
+
+test("#1207: fresh markers recover before the acquisition deadline in required and fail-open lanes", async (t) => {
+  const { utimes } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "bastra-marker-deadline-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  for (const recovery of [false, true]) for (const remote of [false, true]) for (const requireLock of [false, true]) {
+    const state = join(dir, "state.json");
+    const guard = `${pathLockFilePath(state)}.mutation`;
+    const start = Date.now();
+    const body = remote ? JSON.stringify({ pid: process.pid, host: "remote", ts: start, token: "remote" }) : "";
+    await writeFile(guard, recovery ? JSON.stringify({ pid: 2147483647, host: hostname(), token: "dead" }) : body);
+    const marker = recovery ? `${guard}.recover` : guard;
+    if (recovery) await writeFile(marker, body);
+    await utimes(marker, new Date(start), new Date(start));
+    // Advance only the clock; real filesystem I/O and retry scheduling remain.
+    // At 5 s the old equal stale/wait bounds reject or invoke without a lease.
+    let now = start - 25;
+    t.mock.method(Date, "now", () => now += 25);
+    try {
+      assert.equal(await withPathLock(state, async () => {
+        assert.ok(existsSync(pathLockFilePath(state)), "callback must hold a lease, including the fail-open lane");
+        return "held";
+      }, { crossProcess: true, requireLock }), "held");
+      assert.ok(now - start < 5_000, "recovery leaves headroom before the deadline");
+      assert.equal(existsSync(guard), false);
+      assert.equal(existsSync(`${guard}.recover`), false);
+    } finally { t.mock.restoreAll(); }
   }
 });
 
@@ -241,7 +270,7 @@ test("#1207: recovery preserves a fresh empty replacement with identical bytes",
   const state = join(dir, "state.json");
   const guard = `${pathLockFilePath(state)}.mutation`;
   await writeFile(guard, "");
-  const old = new Date(Date.now() - 6_000);
+  const old = new Date(Date.now() - 4_500);
   await utimes(guard, old, old);
   const open = fs.default.openSync;
   t.mock.method(fs.default, "openSync", (...args: Parameters<typeof open>) => {
@@ -273,7 +302,7 @@ test("#1207: aged mutation and recovery markers expire regardless of owner", asy
   ]) {
     const state = join(dir, "state.json");
     const guard = `${pathLockFilePath(state)}.mutation`;
-    const old = new Date(Date.now() - 6_000);
+    const old = new Date(Date.now() - 4_500);
     for (const marker of [guard, `${guard}.recover`]) {
       await writeFile(marker, JSON.stringify(owner));
       await utimes(marker, old, old);

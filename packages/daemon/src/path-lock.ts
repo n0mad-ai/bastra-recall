@@ -51,13 +51,13 @@
  *
  * The non-strict mutation guard covers only synchronous filesystem operations.
  * Its owner body permits recovery after a confirmed local process death.
- * Every guard (including empty, live and remote owners) expires after 5 s;
+ * Every guard (including empty, live and remote owners) expires after 4 s;
  * a confirmed dead local owner is recovered immediately. An exclusive
  * recovery marker serialises rechecking and deleting the observed inode,
  * bytes and mtime without moving any marker. Owners release only their own
  * inode and tolerate an already removed marker. The recovery marker also
- * expires after 5 s. A process paused inside synchronous work beyond that
- * grace can be displaced. Old writers must be stopped before relying on
+ * expires after 4 s, leaving one second before the acquisition wait expires.
+ * A process paused inside synchronous work beyond that grace can be displaced. Old writers must be stopped before relying on
  * this guarantee.
  *
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
@@ -74,9 +74,10 @@ import { setTimeout as delay } from "node:timers/promises";
 const LOCK_STALE_MS = 10_000;
 /** How long a writer waits for the lock before continuing fail-open. */
 const LOCK_WAIT_MS = 5_000;
-// Both guards cover synchronous filesystem work only. Five seconds leaves
-// ample headroom for slow disks, while bounding interrupted/remote markers.
-const MUTATION_STALE_MS = 5_000;
+// Both guards cover synchronous filesystem work only. Four seconds leaves
+// ample headroom for slow disks and one second to recover interrupted/remote
+// markers before the five-second acquisition deadline.
+const MUTATION_STALE_MS = 4_000;
 
 const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
