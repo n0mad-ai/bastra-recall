@@ -498,7 +498,7 @@ test("nur einer kann einen verwaisten Claim übernehmen", async (t) => {
 
     // Und der Lock gehört genau dem Gewinner — nicht einem Nachzügler, der
     // ihn nach dem Löschen des Vorgängers neu angelegt hat.
-    const held = JSON.parse(await claimBytes(lock)) as { token: string };
+    const held = JSON.parse(await readFile(lock, "utf8")) as { token: string };
     assert.equal(
       held.token,
       (won[0] as PromiseFulfilledResult<string>).value,
@@ -551,11 +551,6 @@ test("late reclaimer cannot displace a live successor of the generation it check
   assert.equal(results[0].status,"fulfilled");assert.equal(results[1].status,"rejected");
   if(results[0].status!=="fulfilled"||results[1].status!=="rejected")throw new Error("unexpected claim results");
   assert.equal((results[1].reason as MemoryWriteConflictError).code,MEMORY_WRITE_CONFLICT);
-  assert.equal((JSON.parse(await claimBytes(lock)) as {token:string}).token,results[0].value);
+  assert.equal((JSON.parse(await readFile(lock, "utf8")) as {token:string}).token,results[0].value);
 });
 
-async function claimBytes(lock:string):Promise<string>{
- const {readlink}=await import("node:fs/promises");
- try{return Buffer.from(path.basename(await readlink(lock)).slice("bastra-claim-v1-".length),"base64url").toString("utf8");}
- catch(error){if((error as NodeJS.ErrnoException).code!=="EINVAL")throw error;return readFile(lock,"utf8");}
-}

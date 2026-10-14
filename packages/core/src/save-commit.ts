@@ -13,9 +13,9 @@
  * looks alive too. Details on each rule are at the function that implements it.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, access, open, stat, lstat, readlink, symlink, mkdir, readdir, rmdir, unlink } from "node:fs/promises";
+import { readFile, access, open, link, stat, lstat, mkdir, readdir, rmdir, unlink, writeFile, utimes } from "node:fs/promises";
 import { hostname } from "node:os";
-import { join, dirname, basename } from "node:path";
+import { join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 
@@ -83,30 +83,8 @@ interface CommitClaim {
    *  Writer läuft in die entstandene Lücke. Der Release prüft deshalb, ob der
    *  Claim auf der Platte noch DERSELBE ist. */
   token: string;
-  /** Only for retiring pre-draft reclaim files after interrupted takeover. */
-  legacy_marks?: string[];
-}
-
-// The link target carries data; it is never followed. Junctions provide
-// a native Windows representation. Legacy regular-file claims remain readable.
-const CLAIM_LINK_PREFIX = "bastra-claim-v1-";
-function linkBody(target: string): string {
-  const value = basename(target);
-  return value.startsWith(CLAIM_LINK_PREFIX)
-    ? Buffer.from(value.slice(CLAIM_LINK_PREFIX.length), "base64url").toString("utf8")
-    : `unknown-link:${target}`;
-}
-async function publishRecord(path: string, raw: string): Promise<void> {
-  const value = CLAIM_LINK_PREFIX + Buffer.from(raw).toString("base64url");
-  await symlink(process.platform === "win32" ? join(dirname(path), value) : value, path,
-    process.platform === "win32" ? "junction" : "file");
-}
-async function readClaimRaw(path: string): Promise<string> {
-  try { return linkBody(await readlink(path)); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EINVAL") throw error;
-    return readFile(path, "utf8");
-  }
+  /** Public main readers ignore this optional cleanup pointer. */
+  reclaimed_from?: string;
 }
 
 /**
@@ -121,36 +99,19 @@ async function readClaimRaw(path: string): Promise<string> {
  * ist nur auf ihrer Maschine aussagekräftig, und der Vault liegt erwartbar auf
  * geteilten Cloud-Mounts) oder ein unparsebarer Claim.
  */
-async function inspectCommitClaim(lockPath: string, trackLegacyAge = false): Promise<{ raw: string | null; abandoned: boolean }> {
+async function inspectCommitClaim(lockPath: string): Promise<{ raw: string | null; abandoned: boolean }> {
   let raw: string;
   let ageMs: number;
   try {
+    // Read bytes and age from one inode, even if the path is replaced meanwhile.
+    const handle = await open(lockPath, "r");
     try {
-      raw = linkBody(await readlink(lockPath));
-      let timestamp: number | undefined;
-      try { timestamp = (JSON.parse(raw) as CommitClaim).ts; } catch { /* unknown link */ }
-      ageMs = Number.isFinite(timestamp) ? Date.now() - timestamp! : Date.now() - (await lstat(lockPath)).mtimeMs;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EINVAL") throw error;
-      // Legacy regular claims: read bytes and age through the same descriptor.
-      const handle = await open(lockPath, "r");
-      try {
-        const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
-        raw = content;
-        let timestamp: number | undefined;
-        try { timestamp = (JSON.parse(content) as CommitClaim).ts; } catch { /* incomplete legacy claim */ }
-        ageMs = trackLegacyAge && Number.isFinite(timestamp) ? Date.now() - timestamp! : Date.now() - info.mtimeMs;
-        // File providers may refresh inode times forever. An incomplete legacy
-        // claim also gets a content-bound first observation, only on this rare
-        // compatibility path; a new complete claim never needs this state.
-        if (trackLegacyAge && !Number.isFinite(timestamp) && ageMs <= COMMIT_CLAIM_STALE_MS) {
-          ageMs = Math.max(ageMs, await legacyObservationAge(lockPath, content));
-        }
-      } finally { await handle.close(); }
-    }
+      const [content, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
+      raw = content;
+      ageMs = Date.now() - info.mtimeMs;
+    } finally { await handle.close(); }
   } catch (err) {
-    // Gone between EEXIST and here: no checked generation to reclaim.
-    // Anything else also stays a conflict: unknown is not free.
+    // No checked generation remains to reclaim. Unknown is never free.
     return { raw: null, abandoned: (err as NodeJS.ErrnoException)?.code === "ENOENT" };
   }
 
@@ -189,9 +150,9 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
 }
 
 /**
- * Take a complete commit claim atomically, reclaiming an abandoned predecessor
- * once. Two writers racing to reclaim the same dead generation must not both
- * win; contention reports a conflict, which is the
+ * Take the commit claim, reclaiming it once if the previous owner provably
+ * died. A single retry is deliberate: two writers racing to reclaim the same
+ * dead claim means one wins and the other reports a conflict, which is the
  * documented outcome for contention and costs no data — the compare-and-swap
  * below still has to agree before anything is published.
  */
@@ -207,219 +168,191 @@ export async function acquireCommitClaim(
     ts: Date.now(),
     token,
   } satisfies CommitClaim);
-  try {
-    // One atomic publication: no open-before-write empty generation exists.
-    await publishRecord(lockPath, body);
-    return token;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
-    const checked = await inspectCommitClaim(lockPath, true);
-    if (checked?.abandoned && checked.raw !== null) {
-      if (await reclaimStaleClaim(lockPath, body, checked.raw)) {
-        // #377: Ein übernommener Lock heißt, dass ein früherer Schreibvorgang
-        // gestorben ist, ohne aufzuräumen. Für DIESEN Aufrufer geht es
-        // weiter; der tote Vorgänger ist der Befund: Einzeln ein
-        // abgebrochenes Terminal, gehäuft ein Hinweis auf Abstürze oder eine
-        // zu kurze Verwaisungsfrist. Ohne Ereignis sieht das niemand, weil
-        // der Reclaim geräuschlos gelingt.
-        //
-        // `reclaimed` ist dafür der eigene Status: Die anderen fünf würden
-        // hier alle etwas Falsches behaupten (siehe `MutationStatus`).
-        //
-        // Eigene `operation_id`: Die Mutation des Vorgängers ist von hier aus
-        // nicht identifizierbar (sein Claim trägt pid und Zeit, keine
-        // Operations-id). `memory_id` ist die Verbindung, an der man im
-        // Audit-Log weitersucht.
+  return withPreparedClaim(lockPath, body, id, filePath, async prepared => {
+    try {
+      await link(prepared, lockPath);
+      return token;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const checked = await inspectCommitClaim(lockPath);
+      if (checked.abandoned && checked.raw !== null
+        && await reclaimStaleClaim(lockPath, prepared, body, checked.raw)) {
         reportMutationIncident({
-          operation_id: newOperationId(),
-          op: "claim_reclaim",
-          status: "reclaimed",
-          phase: "claim-reclaim",
-          memory_id: id,
-          detail: "abandoned claim taken over",
+          operation_id: newOperationId(), op: "claim_reclaim", status: "reclaimed",
+          phase: "claim-reclaim", memory_id: id, detail: "abandoned claim taken over",
         });
         return token;
       }
-      // Der Reclaim ging an jemand anderen, oder der Claim war zwischendurch
-      // wieder frisch. Beides ist ein Konflikt, kein zweiter Versuch.
-      throw writeConflict(id, filePath, "another save is reclaiming this claim");
+      throw writeConflict(id, filePath, "another save is committing or reclaiming this target");
     }
-    throw writeConflict(id, filePath, "another save is committing this target");
+  });
+}
+
+/** Complete regular bytes precede publication. Helpers live only in this ID's
+ * directory, so interrupted preparations never require a lock-directory scan. */
+async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, filePath: string, run: (prepared: string) => Promise<T>): Promise<T> {
+  const directory = `${lockPath}.publish`;
+  const name = `${Date.now()}-${process.pid}-${randomUUID()}.tmp`;
+  const prepared = join(directory, name);
+  let directoryChecked = false;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const created = await ensureDirectory(directory);
+        directoryChecked = true;
+        if (!created) await cleanupPreparations(directory);
+        const handle = await open(prepared, "wx", 0o600);
+        try { await handle.writeFile(raw, "utf8"); }
+        finally { await handle.close(); }
+        break;
+      } catch (error) {
+        // Another preparation can remove the now-empty shared container.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        if (attempt > 0) throw writeConflict(id, filePath, "another save is preparing this claim");
+      }
+    }
+    return await run(prepared);
+  } finally {
+    if (directoryChecked) await removeOwnFile(prepared);
+    await rmdir(directory).catch(() => {});
+  }
+}
+
+async function ensureDirectory(path: string): Promise<boolean> {
+  try { await mkdir(path, { mode: 0o700 }); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid claim helper directory");
+  return false;
+}
+
+async function removeOwnFile(path: string): Promise<void> {
+  // Also retry an ENOENT raised before the actual deletion by a provider.
+  await unlink(path).catch(() => unlink(path).catch(() => {}));
+}
+
+function reservationOwner(name: string, suffix = ""): { ts: number; pid: number } | null {
+  const escaped = suffix.replace(/\./g, "\\.");
+  const match = new RegExp(`^(\\d+)-(\\d+)-[0-9a-f-]{36}${escaped}$`).exec(name);
+  return match ? { ts: Number(match[1]), pid: Number(match[2]) } : null;
+}
+function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): boolean {
+  try { process.kill(owner.pid, 0); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return true; }
+  return Date.now() - owner.ts > ceiling;
+}
+async function cleanupPreparations(directory: string): Promise<void> {
+  for (const name of await readdir(directory)) {
+    const owner = reservationOwner(name, ".tmp");
+    if (owner && ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) await removeOwnFile(join(directory, name));
   }
 }
 
 /**
  * Wie lange eine Reclaim-Markierung liegen darf, bevor sie selbst als
  * verwaist gilt. Bewusst das Doppelte des Claim-Fensters: Ein Reclaim dauert
- * wenige Dateisystemaufrufe, und die Markierung soll nie vor dem Claim
+ * wenige Dateioperationen, und die Markierung soll nie vor dem Claim
  * ablaufen, den sie gerade übernimmt.
  */
 const RECLAIM_MARK_STALE_MS = COMMIT_CLAIM_STALE_MS * 2;
 
-/**
- * A takeover is bound to the exact bytes whose abandonment was checked. A
- * complete atomic marker serializes ordinary takeovers. Only an expired marker
- * needs unique timestamped reservations, which expire after 60 seconds and are
- * cleaned after successful release. No permanent per-id marker or lock-directory
- * scan is part of normal acquire/release.
- *
- * Known baseline boundaries remain: a reclaimer stalled beyond its lease (LIM1),
- * release's final token-read/unlink gap (LIM2), and a live owner misclassified as
- * abandoned before takeover publication (LIM3). No heartbeat is added here.
- */
-interface RecoveryMarker { token: string; ts: number; legacy_observed?: number }
-const recoveryPath = (lock: string): string => `${lock}.recovery`;
-
-async function reclaimStaleClaim(lockPath: string, body: string, checkedGeneration: string): Promise<boolean> {
-  const digest = createHash("sha256").update(checkedGeneration).digest("hex").slice(0, 16);
-  const recovery = recoveryPath(lockPath), phase = join(recovery, digest), marker = join(phase, "marker");
-  const legacy = `${lockPath}.reclaim-${digest}`;
-  let lease: { raw: string; data: RecoveryMarker } | null = null;
-  let retainMarker = false, directoriesChecked = false;
+/** Use main's canonical marker, so both versions serialize ordinary takeovers.
+ * New markers are complete regular files, hardlinked from the prepared claim.
+ * Only marker expiry needs reservations. An unmodified main process still has
+ * its own blind stale-marker deletion race; new code cannot fence that reader. */
+async function reclaimStaleClaim(lockPath: string, prepared: string, body: string, checked: string): Promise<boolean> {
+  if (await readFile(lockPath, "utf8").catch(() => null) !== checked) return false;
+  const digest = createHash("sha256").update(checked).digest("hex").slice(0, 16);
+  const claim = JSON.parse(body) as CommitClaim;
+  const updated = JSON.stringify({ ...claim, reclaimed_from: digest });
+  await writeFile(prepared, updated, "utf8");
+  const marker = `${lockPath}.reclaim-${digest}`;
+  let owned = false;
   try {
-    if (await readClaimRaw(lockPath) !== checkedGeneration) return false;
-    let legacyAge: number | null = null;
-    try { legacyAge = Date.now() - (await stat(legacy)).mtimeMs; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false; }
-    await ensureRecoveryDirectory(recovery);
-    await ensureRecoveryDirectory(phase);directoriesChecked = true;
-    lease = await takeRecoveryMarker(phase, legacyAge);
-    if (!lease) return false;
-    // A fresh legacy marker gets one bounded grace window. The observation is
-    // content-bound, so a provider reporting mtime as "now" cannot block forever.
-    if (legacyAge !== null && legacyAge <= RECLAIM_MARK_STALE_MS
-      && Date.now() - (lease.data.legacy_observed ?? Date.now()) <= RECLAIM_MARK_STALE_MS) {
-      retainMarker = true;return false;
-    }
-    // Retire obsolete legacy artifacts while the old claim is still the durable
-    // reference. A later claimant may win the publication gap; our exclusive
-    // create then fails instead of replacing that claimant's complete record.
-    let inherited: string[] = [];
-    try { const value = (JSON.parse(checkedGeneration) as CommitClaim).legacy_marks;inherited = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; } catch { /* legacy empty */ }
-    const marks = [...new Set([digest, ...inherited])].filter(value => /^[0-9a-f]{16}$/.test(value));
-    await cleanupLegacyMarks(lockPath, marks);
-    if (await readClaimRaw(lockPath) !== checkedGeneration) return false;
+    owned = await takeReclaimMark(lockPath, marker, prepared);
+    if (!owned) return false;
+    // Recheck freshness as well as bytes: a main writer can still be between
+    // open(wx) and write, so its new empty file must not match an old empty one.
+    const current = await inspectCommitClaim(lockPath);
+    if (current.raw !== checked || !current.abandoned) return false;
     await unlink(lockPath);
-    await publishRecord(lockPath, body);
+    await link(prepared, lockPath);
+    return true;
+  } catch { return false; }
+  finally { if (owned) await removeOwnedMarker(marker, claim.token); }
+}
+
+async function removeOwnedMarker(marker: string, token: string): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if ((JSON.parse(await readFile(marker, "utf8")) as CommitClaim).token !== token) return;
+      await unlink(marker);
+      return;
+    } catch { /* One-shot errors retry; abandoned markers expire after 60s. */ }
+  }
+}
+
+async function takeReclaimMark(lockPath: string, marker: string, prepared: string): Promise<boolean> {
+  // main uses marker mtime, so refresh the private record before linking it.
+  const now = new Date(Date.now());
+  await utimes(prepared, now, now);
+  try { await link(prepared, marker); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false; }
+  let seen: string, age: number;
+  try {
+    [seen, age] = await Promise.all([readFile(marker, "utf8"), stat(marker).then(info => Date.now() - info.mtimeMs)]);
+  } catch { return false; }
+  if (age <= RECLAIM_MARK_STALE_MS) return false;
+  const recovery = `${lockPath}.recovery`;
+  const phase = join(recovery, marker.slice(marker.lastIndexOf(".reclaim-") + 9));
+  const reservation = join(phase, `${Date.now()}-${process.pid}-${randomUUID()}`);
+  let reserved = false;
+  try {
+    await ensureDirectory(recovery);
+    await ensureDirectory(phase);
+    await mkdir(reservation, { mode: 0o700 }); reserved = true;
+    for (const name of await readdir(phase)) {
+      if (join(phase, name) === reservation) continue;
+      const owner = reservationOwner(name);
+      if (!owner) return false;
+      if (!ownerExpired(owner, RECLAIM_MARK_STALE_MS)) return false;
+      await rmdir(join(phase, name));
+    }
+    // Marker bytes bind modern generations; main's empty markers are also
+    // re-aged here so a fresh main replacement is never treated as expired.
+    const [current, info] = await Promise.all([readFile(marker, "utf8"), stat(marker)]);
+    if (current !== seen || Date.now() - info.mtimeMs <= RECLAIM_MARK_STALE_MS) return false;
+    await unlink(marker);
+    await link(prepared, marker);
     return true;
   } catch { return false; }
   finally {
-    if (lease && !retainMarker) {
-      try { if (await readClaimRaw(marker) === lease.raw) await unlink(marker); } catch { /* bounded lease expiry */ }
-    }
-    if(directoriesChecked){await rmdir(phase).catch(() => {});await rmdir(recovery).catch(() => {});}
+    if (reserved) await rmdir(reservation).catch(() => rmdir(reservation).catch(() => {}));
+    await rmdir(phase).catch(() => {});
+    await rmdir(recovery).catch(() => {});
   }
 }
 
-/** A bounded migration fallback for incomplete legacy files whose mtime is
- * rewritten by a provider. The observation is cleaned by the next successful
- * modern release, and is never consulted for a complete modern generation. */
-async function legacyObservationAge(lockPath: string, raw: string): Promise<number> {
-  const recovery = recoveryPath(lockPath);
-  const phase = join(recovery, createHash("sha256").update(raw).digest("hex").slice(0, 16));
-  await ensureRecoveryDirectory(recovery);
-  await ensureRecoveryDirectory(phase);
-  const observed = join(phase, "observed");
-  try { await publishRecord(observed, JSON.stringify({ ts: Date.now() })); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-  const value = JSON.parse(await readClaimRaw(observed)) as { ts: number };
-  if (!Number.isFinite(value.ts)) throw new Error("invalid legacy observation");
-  return Date.now() - value.ts;
-}
-
-async function ensureRecoveryDirectory(path: string): Promise<void> {
-  await mkdir(path, { mode: 0o700 }).catch(error => { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; });
-  const info = await lstat(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid recovery directory");
-}
-
-/** New markers are complete atomic records. Only an expired marker needs the
- * heavier reservation path; normal uncontended commit claims never enter it. */
-async function takeRecoveryMarker(phase: string, legacyAge: number | null): Promise<{ raw: string; data: RecoveryMarker } | null> {
-  const marker = join(phase, "marker");
-  let data: RecoveryMarker = { token: randomUUID(), ts: Date.now(),
-    ...(legacyAge !== null ? { legacy_observed: Date.now() - Math.min(legacyAge, RECLAIM_MARK_STALE_MS + 1) } : {}) };
-  let raw = JSON.stringify(data);
-  try { await publishRecord(marker, raw);return { raw, data }; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-  const seen = await readClaimRaw(marker);
-  const old = JSON.parse(seen) as RecoveryMarker;
-  if (!Number.isFinite(old.ts) || Date.now() - old.ts <= RECLAIM_MARK_STALE_MS) return null;
-  data = { ...data, ...(old.legacy_observed !== undefined ? { legacy_observed: old.legacy_observed } : {}) };
-  raw = JSON.stringify(data);
-  // A reservation's complete deadline and unique generation are its name.
-  // Never delete a reused path based on a stale stat, never leave a witness.
-  const reservation = join(phase, `${Date.now()}-${randomUUID()}`);
+/** Release never deletes another claimant's marker. Only immutable, expired
+ * reservation names can be retired here; a fresh reservation remains intact. */
+async function cleanupReservations(lockPath: string): Promise<void> {
+  const recovery = `${lockPath}.recovery`;
   try {
-    await mkdir(reservation, { mode: 0o700 });
-    for (const name of await readdir(phase)) {
-      if (join(phase, name) === reservation) continue;
-      const at = leaseTime(name);
-      if (at === null) continue;
-      if (Date.now() - at <= RECLAIM_MARK_STALE_MS) return null;
-      await removeReservation(join(phase, name));
-    }
-    if ((await readdir(phase)).some(name => leaseTime(name) !== null && join(phase, name) !== reservation)) return null;
-    if (await readClaimRaw(marker) !== seen) return null;
-    // The reservation serializes expiry. Exclusive publication also handles a
-    // normal marker creator winning the gap, without replacing its generation.
-    await unlink(marker);
-    await publishRecord(marker, raw);
-    return { raw, data };
-  } finally {
-    await rmdir(reservation).catch(() => {});
-  }
-}
-
-function leaseTime(name: string): number | null {
-  const match = /^(\d+)-[0-9a-f-]{36}$/.exec(name);
-  return match && Number.isSafeInteger(Number(match[1])) ? Number(match[1]) : null;
-}
-async function removeReservation(path: string): Promise<void> {
-  const info = await lstat(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("invalid recovery reservation");
-  await unlink(join(path, "candidate")).catch(error => {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  });
-  await rmdir(path);
-}
-async function cleanupLegacyMarks(lockPath: string, marks: string[]): Promise<void> {
-  // Migration-only: old unpublished witness names. No modern operation creates
-  // them, and this parent scan is never used for normal acquire/release.
-  const names = await readdir(dirname(lockPath)).catch(() => readdir(dirname(lockPath)));
-  for (const digest of marks) {
-    const base = `${basename(lockPath)}.reclaim-${digest}`;
-    for (const name of names) if (name === base || name.startsWith(`${base}.abandoned-`))
-      await unlink(join(dirname(lockPath), name)).catch(error => {
-        // Also retry an ENOENT reported before the removal actually happened.
-        // A one-shot provider error must not strand a legacy marker permanently.
-        return unlink(join(dirname(lockPath), name)).catch(retryError => {
-          if ((retryError as NodeJS.ErrnoException).code !== "ENOENT") throw retryError;
-        });
-      });
-  }
-}
-
-/** Only this id's recovery directory is inspected in normal release, never the
- * lock directory. Obsolete generation reservations cannot publish again: each
- * modern claim has unique complete bytes and takeover checks them before unlink. */
-async function cleanupRecovery(lockPath: string, raw: string): Promise<void> {
-  const recovery = recoveryPath(lockPath);
-  try {
-    const root = await lstat(recovery);if(!root.isDirectory()||root.isSymbolicLink())return;
-    const current = createHash("sha256").update(raw).digest("hex").slice(0, 16);
+    const root = await lstat(recovery);
+    if (!root.isDirectory() || root.isSymbolicLink()) return;
     for (const generation of await readdir(recovery)) {
-      if (generation === current || !/^[0-9a-f]{16}$/.test(generation)) continue;
+      if (!/^[0-9a-f]{16}$/.test(generation)) continue;
       const phase = join(recovery, generation);
-      const info = await lstat(phase);if(!info.isDirectory()||info.isSymbolicLink())continue;
+      const info = await lstat(phase);
+      if (!info.isDirectory() || info.isSymbolicLink()) continue;
       for (const name of await readdir(phase)) {
-        if (leaseTime(name) !== null) await removeReservation(join(phase, name));
-        else if ((name === "marker" || name === "observed") || /^take-[0-9a-f-]{36}$/.test(name)) await unlink(join(phase, name));
+        const owner = reservationOwner(name);
+        if (owner && ownerExpired(owner, RECLAIM_MARK_STALE_MS)) await rmdir(join(phase, name));
       }
-      await rmdir(phase);
+      await rmdir(phase).catch(() => {});
     }
-    await rmdir(recovery);
-  } catch { /* A later successful release retries cleanup; no permanent witness. */ }
+    await rmdir(recovery).catch(() => {});
+  } catch { /* A later release can retire bounded dead reservations. */ }
 }
 
 /**
@@ -433,29 +366,19 @@ async function cleanupRecovery(lockPath: string, raw: string): Promise<void> {
  * gehört der Lock jemand anderem und bleibt stehen.
  */
 export async function releaseCommitClaim(lockPath: string, token: string): Promise<void> {
-  let raw: string;
   let claim: CommitClaim;
   try {
-    raw = await readClaimRaw(lockPath);
-    claim = JSON.parse(raw) as CommitClaim;
-    if (claim.token !== token) return; // nicht mehr unserer
-  } catch {
-    // Weg, unlesbar oder unparsebar: nichts davon ist nachweislich unser Lock.
-    // Stehen lassen — er altert aus, statt dass wir den eines anderen löschen.
-    return;
+    claim = JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim;
+    if (claim.token !== token) return;
+  } catch { return; }
+  if (claim.reclaimed_from && /^[0-9a-f]{16}$/.test(claim.reclaimed_from)) {
+    await removeOwnedMarker(`${lockPath}.reclaim-${claim.reclaimed_from}`, token);
+    // Preserve the final token-read/unlink boundary after the rare cleanup.
+    try { if ((JSON.parse(await readFile(lockPath, "utf8")) as CommitClaim).token !== token) return; }
+    catch { return; }
   }
-  if (claim.legacy_marks?.length) {
-    // Keep the claim as the durable cleanup pointer until migration cleanup
-    // completes. Recheck our token afterwards: do not widen the final release
-    // read/unlink window with a directory scan (the unchanged LIM2 boundary).
-    try {
-      await cleanupLegacyMarks(lockPath, claim.legacy_marks);
-      raw = await readClaimRaw(lockPath).catch(() => readClaimRaw(lockPath));
-      if ((JSON.parse(raw) as CommitClaim).token !== token) return;
-    } catch { return; }
-  }
-  const removed = await unlink(lockPath).then(() => true, () => false);
-  if (removed) await cleanupRecovery(lockPath, raw);
+  await unlink(lockPath).catch(() => {});
+  await cleanupReservations(lockPath);
 }
 
 export function writeConflict(id: string, filePath: string, detail: string): MemoryWriteConflictError {
