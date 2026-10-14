@@ -13,7 +13,7 @@
  * looks alive too. Details on each rule are at the function that implements it.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, access, open, link, stat, lstat, mkdir, readdir, rmdir, unlink, writeFile, utimes } from "node:fs/promises";
+import { readFile, access, open, link, lstat, mkdir, readdir, rmdir, unlink, writeFile, utimes } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { MemoryWriteConflictError } from "./save-schema.js";
@@ -231,9 +231,10 @@ async function removeOwnFile(path: string): Promise<void> {
   await unlink(path).catch(() => unlink(path).catch(() => {}));
 }
 
-function reservationOwner(name: string, suffix = ""): { ts: number; pid: number; token: string } | null {
-  const escaped = suffix.replace(/\./g, "\\.");
-  const match = new RegExp(`^(\\d+)-(\\d+)-([0-9a-f-]{36})${escaped}$`).exec(name);
+function reservationOwner(name: string, helper = false): { ts: number; pid: number; token: string } | null {
+  const match = (helper
+    ? /^(\d+)-(\d+)-([0-9a-f-]{36})\.tmp$/
+    : /^(\d+)-(\d+)-([0-9a-f-]{36})$/).exec(name);
   return match ? { ts: Number(match[1]), pid: Number(match[2]), token: match[3]! } : null;
 }
 function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): boolean {
@@ -243,7 +244,7 @@ function ownerExpired(owner: { ts: number; pid: number }, ceiling: number): bool
 }
 async function cleanupPreparations(directory: string, lockPath: string): Promise<void> {
   for (const name of await readdir(directory)) {
-    const owner = reservationOwner(name, ".tmp");
+    const owner = reservationOwner(name, true);
     if (!owner || !ownerExpired(owner, COMMIT_CLAIM_LIVE_OWNER_MAX_MS)) continue;
     const prepared = join(directory, name);
     const raw = await readFile(prepared, "utf8").catch(error => {
@@ -326,6 +327,14 @@ async function removeOwnedMarker(marker: string, token: string): Promise<void> {
   }
 }
 
+async function markerSnapshot(path: string): Promise<{ raw: string; mtimeMs: number }> {
+  const handle = await open(path, "r");
+  try {
+    const [raw, info] = await Promise.all([handle.readFile("utf8"), handle.stat()]);
+    return { raw, mtimeMs: info.mtimeMs };
+  } finally { await handle.close(); }
+}
+
 async function takeReclaimMark(lockPath: string, marker: string, prepared: string): Promise<boolean> {
   // main uses marker mtime, so refresh the private record before linking it.
   const now = new Date(Date.now());
@@ -334,7 +343,8 @@ async function takeReclaimMark(lockPath: string, marker: string, prepared: strin
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") return false; }
   let seen: string, age: number;
   try {
-    [seen, age] = await Promise.all([readFile(marker, "utf8"), stat(marker).then(info => Date.now() - info.mtimeMs)]);
+    const snapshot = await markerSnapshot(marker);
+    seen = snapshot.raw; age = Date.now() - snapshot.mtimeMs;
   } catch { return false; }
   if (age <= RECLAIM_MARK_STALE_MS) return false;
   const recovery = `${lockPath}.recovery`;
@@ -354,8 +364,8 @@ async function takeReclaimMark(lockPath: string, marker: string, prepared: strin
     }
     // Marker bytes bind modern generations; main's empty markers are also
     // re-aged here so a fresh main replacement is never treated as expired.
-    const [current, info] = await Promise.all([readFile(marker, "utf8"), stat(marker)]);
-    if (current !== seen || Date.now() - info.mtimeMs <= RECLAIM_MARK_STALE_MS) return false;
+    const current = await markerSnapshot(marker);
+    if (current.raw !== seen || Date.now() - current.mtimeMs <= RECLAIM_MARK_STALE_MS) return false;
     await unlink(marker);
     await link(prepared, marker);
     return true;
