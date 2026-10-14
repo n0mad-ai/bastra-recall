@@ -131,3 +131,13 @@ test("acted_on: two different inflected edit tokens still count separately", () 
   assert.equal(ep?.match_strength, 2);
   assert.equal(ep?.acted_on, true);
 });
+
+// marker can use mark or marks, but marked can only use mark. The first
+// assignment must be movable when the second token needs the same edit word.
+test("acted_on: augmenting paths make ambiguous word forms independent of order", () => {
+  for (const memory of ["marker marked", "marked marker", "mark marker"]) {
+    const ep = actedOn(memory, "mark marks");
+    assert.equal(ep?.match_strength, 2, memory);
+    assert.equal(ep?.acted_on, true, memory);
+  }
+});
