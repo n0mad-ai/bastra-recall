@@ -447,6 +447,8 @@ test("#565 near miss: the trace is capped and carries no memory body", async () 
   }
 });
 
+// Owner decision: Daniel revoked the exact-token-only rule on 2026-10-14;
+// supported word forms now satisfy reflex tokens (previous decision: 2026-09-21).
 test("#565 inflection: the 2026-09-15 prompt fires the convention — by the word-form rule alone, and still with the expansion", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-inflect-"));
   const mem = join(dir, "memories");
