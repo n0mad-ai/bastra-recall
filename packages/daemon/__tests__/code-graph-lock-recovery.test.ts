@@ -18,7 +18,7 @@ const ok: BuildResult = { ok: true, durationMs: 1, tookOverLock: false, manifest
 test("K1: a fifteen-minute lock recovers on the hourly attempt and normal triggers work again", async t => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
   let calls = 0;
-  const refresher = new CodeGraphRefresher({ debounceMs: 0, build: async () => {
+  const refresher = new CodeGraphRefresher({ isFresh: async () => false, debounceMs: 0, build: async () => {
     calls++; return Date.now() < 15 * 60_000 ? { ok: false, reason: "locked", detail: "invented lease" } : ok;
   } });
   try {
@@ -40,7 +40,7 @@ test("K1: a fifteen-minute lock recovers on the hourly attempt and normal trigge
 test("K1: a permanent lock costs at most one attempt per hour after the initial burst", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0;
-  const refresher = new CodeGraphRefresher({ build: async () => { calls++; return { ok: false, reason: "locked", detail: "invented lease" }; } });
+  const refresher = new CodeGraphRefresher({ isFresh: async () => false, build: async () => { calls++; return { ok: false, reason: "locked", detail: "invented lease" }; } });
   try {
     refresher.enqueue("/fixture", "git"); t.mock.timers.tick(0); await settled();
     await initialBurst(t); assert.equal(calls, 7);
@@ -58,7 +58,7 @@ test("K1: a permanent lock costs at most one attempt per hour after the initial 
 test("K1: a recovered lock followed by real build failures keeps the existing permanent stop", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0, locked = true;
-  const refresher = new CodeGraphRefresher({ backoffMs: [10, 20], build: async () => {
+  const refresher = new CodeGraphRefresher({ isFresh: async () => false, backoffMs: [10, 20], build: async () => {
     calls++; return { ok: false, reason: locked ? "locked" : "failed", detail: "invented failure" };
   } });
   try {
