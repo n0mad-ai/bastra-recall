@@ -384,3 +384,64 @@ describe("a disabled repository is not built (#585)", () => {
     assert.ok(events.some((e) => e.outcome === "skipped" && e.detail === "not enabled"));
   });
 });
+
+describe("fresh graph is not rebuilt", () => {
+  async function freshRepo(t: { after: (fn: () => Promise<void>) => void }): Promise<string> {
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    const graphDir = graphDirOf(repo);
+    await mkdir(graphDir, { recursive: true });
+    await writeManifest(graphDir, manifest({ repoRoot: repo })); // builtAt in the future, count 1 = a.ts
+    return repo;
+  }
+
+  async function runOnce(repo: string, reason: "stop-hook" | "watcher" | "git" | "manual"): Promise<number> {
+    let calls = 0;
+    const r = new CodeGraphRefresher({ debounceMs: 1, build: async () => (calls++, OK) });
+    r.enqueue(repo, reason);
+    await r.whenIdle();
+    r.stop();
+    return calls;
+  }
+
+  it("skips stop-hook and watcher triggers when nothing is newer than the graph", async (t) => {
+    const repo = await freshRepo(t);
+    assert.equal(await runOnce(repo, "stop-hook"), 0);
+    assert.equal(await runOnce(repo, "watcher"), 0);
+  });
+
+  it("still builds git and manual triggers on a fresh graph", async (t) => {
+    const repo = await freshRepo(t);
+    assert.equal(await runOnce(repo, "git"), 1);
+    assert.equal(await runOnce(repo, "manual"), 1);
+  });
+
+  it("builds a stop-hook trigger when a code file is newer than the build", async (t) => {
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    const graphDir = graphDirOf(repo);
+    await mkdir(graphDir, { recursive: true });
+    await writeManifest(graphDir, manifest({ repoRoot: repo, builtAt: new Date(Date.now() - 60_000).toISOString() }));
+    assert.equal(await runOnce(repo, "stop-hook"), 1);
+  });
+
+  it("builds a stop-hook trigger when the code-file count changed (a deleted file keeps the newest mtime)", async (t) => {
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    const graphDir = graphDirOf(repo);
+    await mkdir(graphDir, { recursive: true });
+    await writeManifest(graphDir, manifest({ repoRoot: repo, fileState: { count: 2, newestMtimeMs: 1 } }));
+    assert.equal(await runOnce(repo, "stop-hook"), 1);
+  });
+
+  it("builds a stop-hook trigger when the manifest is dirty or missing", async (t) => {
+    const missing = await tempRepo();
+    t.after(() => rm(missing, { recursive: true, force: true }));
+    assert.equal(await runOnce(missing, "stop-hook"), 1);
+    const dirty = await tempRepo();
+    t.after(() => rm(dirty, { recursive: true, force: true }));
+    await mkdir(graphDirOf(dirty), { recursive: true });
+    await writeManifest(graphDirOf(dirty), manifest({ repoRoot: dirty, dirty: true }));
+    assert.equal(await runOnce(dirty, "stop-hook"), 1);
+  });
+});
