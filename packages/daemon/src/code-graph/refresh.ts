@@ -66,6 +66,13 @@ export const DEFAULT_DEBOUNCE_MS = 3_000;
 /** Git events are discrete, so they run at once. */
 const IMMEDIATE_REASONS: ReadonlySet<RefreshReason> = new Set(["git", "manual", "retry"]);
 
+/**
+ * Triggers that carry no information about WHAT changed (a turn ended, a watcher fired on any
+ * file, a scheduled follow-up), so they are worth a build only when the tree really moved. Git
+ * events, `manual` and `startup` always build.
+ */
+const SKIPPABLE_WHEN_FRESH: ReadonlySet<RefreshReason> = new Set(["stop-hook", "watcher", "retry"]);
+
 /** Waits after consecutive failures, then the repo is given up on. */
 export const DEFAULT_BACKOFF_MS: readonly number[] = [30_000, 120_000, 600_000];
 
@@ -120,6 +127,11 @@ export interface RefresherOptions {
    * skipped instead of built. Defaults to always.
    */
   allow?: (repoRoot: string) => boolean;
+  /**
+   * Is the graph already current for this tree? Checked before a stop-hook, watcher or retry
+   * build; true skips it. Defaults to {@link graphIsFresh}; an error counts as "not fresh".
+   */
+  isFresh?: (repoRoot: string) => Promise<boolean>;
 }
 
 export interface RefreshEvent {
@@ -153,6 +165,7 @@ export class CodeGraphRefresher {
   private readonly onEvent: (event: RefreshEvent) => void;
   private readonly onBuilt: (repoRoot: string) => Promise<unknown> | void;
   private readonly allow: (repoRoot: string) => boolean;
+  private readonly isFresh: (repoRoot: string) => Promise<boolean>;
   private stopped = false;
 
   constructor(opts: RefresherOptions = {}) {
@@ -164,6 +177,7 @@ export class CodeGraphRefresher {
     this.onEvent = opts.onEvent ?? (() => {});
     this.onBuilt = opts.onBuilt ?? (() => {});
     this.allow = opts.allow ?? (() => true);
+    this.isFresh = opts.isFresh ?? graphIsFresh;
   }
 
   /**
@@ -289,6 +303,15 @@ export class CodeGraphRefresher {
     }
     entry.running = true;
     const reason = entry.reason;
+    if (SKIPPABLE_WHEN_FRESH.has(reason) && (await this.isFresh(repoRoot))) {
+      // Nothing in the tree is newer than the graph: a build would re-read every file, re-cluster
+      // and rewrite the same graph. The Stop hook fires at the end of every turn of every session,
+      // so on a busy host this is most of the daemon's graph CPU.
+      entry.running = false;
+      entry.pending = false;
+      this.emit({ repoRoot, reason, outcome: "skipped", detail: "graph fresh" });
+      return this.settle();
+    }
     this.emit({ repoRoot, reason, outcome: "started" });
 
     let result: BuildResult;
@@ -411,6 +434,25 @@ export class CodeGraphRefresher {
     } catch {
       // A listener must never be able to take a build down with it.
     }
+  }
+}
+
+/**
+ * Is the graph on disk current for the tree as it is now? The same staleness test the reader
+ * uses (#577) — no code file newer than `builtAt` — plus the code-file COUNT, so a deleted file
+ * (which leaves the newest mtime alone) still triggers a build. A walk of the tree costs tens of
+ * milliseconds; a build costs seconds of one to two cores. Anything unknown is "not fresh".
+ */
+export async function graphIsFresh(repoRoot: string): Promise<boolean> {
+  try {
+    const manifest = await readManifest(graphDirOf(repoRoot));
+    if (manifest === null || manifest.dirty || manifest.builtAt === null) return false;
+    const builtMs = Date.parse(manifest.builtAt);
+    if (!Number.isFinite(builtMs)) return false;
+    const { count, newestMtimeMs } = await scanFileState(repoRoot);
+    return newestMtimeMs <= builtMs && count === manifest.fileState.count;
+  } catch {
+    return false;
   }
 }
 
