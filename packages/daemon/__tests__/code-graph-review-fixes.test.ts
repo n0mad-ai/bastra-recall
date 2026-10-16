@@ -19,7 +19,7 @@ const ok: BuildResult = { ok: true, durationMs: 1, tookOverLock: false, manifest
 test("#670: lock waits double, automatic bursts cannot accelerate them, and initial retries pause", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0, locked = true;
-  const refresher = new CodeGraphRefresher({ lockRetryMs: 10, build: async () => {
+  const refresher = new CodeGraphRefresher({ isFresh: async () => false, lockRetryMs: 10, build: async () => {
     calls++; return locked ? { ok: false, reason: "locked", detail: "invented lease" } : ok;
   } });
   try {
