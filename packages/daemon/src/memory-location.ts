@@ -73,10 +73,15 @@ export async function memoryLocationNote(
   const typeMatch = head ? /^type:\s*["']?([\w-]+)["']?\s*$/m.exec(head) : null;
   const noteType = typeMatch?.[1] ?? "memory";
   return (
-    `<vault-location-check file="${path.basename(filePath)}" type="${noteType}">` +
+    `<vault-location-check file="${escapeAttr(path.basename(filePath))}" type="${noteType}">` +
     `this file carries memory frontmatter but lives OUTSIDE the configured vault ` +
     `(${vaultRoot}) — it will never be indexed or recalled from here. If it is meant ` +
     `as a bastra memory, save it via save_memory (or move it under the vault root); ` +
     `if it is a plain document, ignore this note.</vault-location-check>`
   );
+}
+
+// External names must remain inside their quoted wrapper attributes (#1232).
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

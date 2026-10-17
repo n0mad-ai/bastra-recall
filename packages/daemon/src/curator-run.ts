@@ -417,7 +417,7 @@ export async function collectReflexCandidates(
 
 export function formatReflexCandidateBlock(c: { id: string; title: string; count: number }): string {
   return [
-    `<reflex-candidate memory-id="${c.id}" evidence="${c.count} acted-on recalls in 30d">`,
+    `<reflex-candidate memory-id="${escapeAttr(c.id)}" evidence="${c.count} acted-on recalls in 30d">`,
     `Ask the user whether to promote "${c.title}" to reflex recall — it would ` +
       `then self-inject (budgeted, max 2/turn) whenever one of its recall_when ` +
       `triggers hard-matches a prompt. ONLY on an explicit yes: load_memory` +
@@ -509,7 +509,7 @@ export async function collectAdoptionCandidates(
 
 export function formatAdoptionCandidateBlock(c: { id: string; title: string; count: number }): string {
   return [
-    `<adoption-candidate memory-id="${c.id}" evidence="${c.count} acted-on recalls in 30d">`,
+    `<adoption-candidate memory-id="${escapeAttr(c.id)}" evidence="${c.count} acted-on recalls in 30d">`,
     `The imported intake memory "${c.title}" keeps proving useful. With the ` +
       `user's ok, adopt it into the real vault: load_memory("${c.id}") and READ ` +
       `it, then save_memory a full-format version (real type, the scope it ` +
@@ -526,7 +526,7 @@ export function formatAdoptionCandidateBlock(c: { id: string; title: string; cou
 
 export function formatConsolidationBlock(c: { label: string; scope: string; ids: string[] }): string {
   return [
-    `<consolidation-candidate scope="${c.scope}" ids="${c.ids.join(",")}">`,
+    `<consolidation-candidate scope="${escapeAttr(c.scope)}" ids="${escapeAttr(c.ids.join(","))}">`,
     `These ${c.ids.length} project-facts share the topic "${c.label}" and are ` +
       `all older than ${CONSOLIDATION_MIN_AGE_DAYS} days — episodic memory ready for semantic ` +
       `consolidation. With the user: load the members, distill ONE lesson ` +
@@ -718,4 +718,9 @@ export function handleCuratorRun(req: IncomingMessage, res: ServerResponse, deps
         sendJson(res, 500, { error: "curator run failed — see daemon log" });
       });
   });
+}
+
+// External names must remain inside their quoted wrapper attributes (#1232).
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
