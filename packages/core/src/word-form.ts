@@ -100,6 +100,10 @@ export function sameWordForm(a: string, b: string): boolean {
   if (!LETTERS_ONLY_RE.test(a) || !LETTERS_ONLY_RE.test(b)) return false;
   a = a.normalize("NFC");
   b = b.normalize("NFC");
+  return sameNormalizedWordForm(a, b);
+}
+
+function sameNormalizedWordForm(a: string, b: string): boolean {
   if (a === b) return true;
   if (ARABIC_RE.test(a) && ARABIC_RE.test(b)) {
     return prefixedMatch(a, b, ["", "ال", "بال", "لل", "وال"], BARE);
@@ -120,6 +124,21 @@ export function sameWordForm(a: string, b: string): boolean {
   return false;
 }
 
+// Trigger checks reuse the same context thousands of times. Cache by immutable
+// string, never by mutable Set identity. Bound both entry count and token length.
+const normalizedTokens = new Map<string, string>();
+function normalizedToken(token: string): string {
+  if (ASCII_RE.test(token)) return token;
+  const cached = normalizedTokens.get(token);
+  if (cached !== undefined) return cached;
+  const normalized = token.normalize("NFC");
+  if (token.length <= 256) {
+    if (normalizedTokens.size >= 8192) normalizedTokens.clear();
+    normalizedTokens.set(token, normalized);
+  }
+  return normalized;
+}
+
 /**
  * Does `tokens` contain a form of `word`? Exact lookup first (O(1)); the
  * word-form scan only runs when the exact lookup misses.
@@ -132,10 +151,10 @@ export function hasWordForm(tokens: ReadonlySet<string>, word: string): boolean 
   for (const t of tokens) {
     // Suffix families preserve at least two initial code units. Canonical
     // spelling and the fixed ar/he/sw prefixes are the only exceptions.
-    const candidate = ASCII_RE.test(t) ? t : t.normalize("NFC");
+    const candidate = normalizedToken(t);
     if (!prefixed && (candidate.charCodeAt(0) !== w.charCodeAt(0) ||
       candidate.charCodeAt(1) !== w.charCodeAt(1)) && !PREFIXED_RE.test(candidate)) continue;
-    if (sameWordForm(w, candidate)) return true;
+    if (LETTERS_ONLY_RE.test(w) && LETTERS_ONLY_RE.test(candidate) && sameNormalizedWordForm(w, candidate)) return true;
   }
   return false;
 }
