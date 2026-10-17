@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
 import { isSystemInjectedTurn, ownerPromptText } from "../system-turn.js";
-import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
+import { bridgeId, isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
 import type { RerankVerdict } from "../training-signal.js"; // #1128-capture
@@ -445,24 +445,48 @@ export async function harvestFarBridges(
  *  log", not "bridge disproven" — a confirmed bridge stays confirmed. */
 export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date = new Date()): Promise<number> {
   let written = 0;
+  // IDs minted before the shared Unicode fold can differ for the same terms.
+  // Index each language once per mint pass; keep legacy filenames/IDs so
+  // archive references, expiry and demotion history remain stable.
+  const indexes = new Map<string, Map<string, { path: string; archived: boolean }>>();
   for (const b of bridges) {
+    let index = indexes.get(b.lang);
+    if (!index) {
+      index = new Map(); indexes.set(b.lang, index);
+      for (const archived of [false, true]) {
+        const dir = join(rootDir, "bridges", ...(archived ? ["archive"] : []), b.lang);
+        for (const file of (await readdir(dir).catch(() => [] as string[])).sort()) {
+          if (!file.endsWith(".json")) continue;
+          const path = join(dir, file), stored = await readBridgeFile(path);
+          if (stored?.lang !== b.lang || !Array.isArray(stored.trigger_terms) || !Array.isArray(stored.expansion_terms)
+            || !stored.trigger_terms.every(t => typeof t === "string") || !stored.expansion_terms.every(t => typeof t === "string")) continue;
+          index.set(bridgeId(b.lang, stored.trigger_terms, stored.expansion_terms), { path, archived });
+        }
+      }
+    }
+    const canonicalId = bridgeId(b.lang, b.trigger_terms, b.expansion_terms);
+    const equivalent = index.get(canonicalId);
+    if (equivalent?.archived) continue;
     // #129: an archived bridge is retired. Its reaches can still sit in the
     // log; recounting them must not bring it back — moving the file does.
     if (existsSync(archivedBridgePath(rootDir, b.lang, b.id))) continue;
     const dir = join(rootDir, "bridges", b.lang);
     await mkdir(dir, { recursive: true });
-    const path = join(dir, `${b.id}.json`);
+    const exactPath = join(dir, `${b.id}.json`);
+    const path = existsSync(exactPath) ? exactPath : equivalent?.path ?? exactPath;
     const prior = await readBridgeFile(path);
     const stamps = [prior?.first_seen, b.first_seen].filter((s): s is string => typeof s === "string" && Number.isFinite(Date.parse(s)));
     stamps.sort((x, y) => Date.parse(x) - Date.parse(y));
     const merged: Bridge = {
       ...b,
+      id: typeof prior?.id === "string" ? prior.id : b.id,
       evidence: Math.max(b.evidence, typeof prior?.evidence === "number" ? prior.evidence : 0),
       first_seen: stamps[0] ?? now.toISOString(),
       // #129: a fresh recount is not an outcome — a demotion survives the rewrite.
       ...(typeof prior?.demoted_at === "string" ? { demoted_at: prior.demoted_at } : {}),
     };
     await writeBridgeFileAtomic(path, merged);
+    index.set(canonicalId, { path, archived: false });
     written++;
   }
   return written;
