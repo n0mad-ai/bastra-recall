@@ -63,9 +63,38 @@ export function applyStaleness(
   }
   const direct = hits.filter((h) => h.hop !== "1-hop");
   const hops = hits.filter((h) => h.hop === "1-hop");
+  capSupersededScores(vault, direct);
+  capSupersededScores(vault, hops);
   direct.sort((a, b) => b.score - a.score);
   hops.sort((a, b) => b.score - a.score);
   return [...direct, ...hops];
+}
+
+/** #1206: cap a predecessor below its successor AFTER fusion and all other
+ * multipliers, BEFORE top-k. Only compare retrieved candidates in the same
+ * lane: a targeted old-value search must still find the predecessor, and a
+ * missing/filtered successor must not cause a penalty into the void. No
+ * extra retrieval, disk access or model calls. Each pool edge is visited once.
+ */
+function capSupersededScores(vault: Vault, hits: RecallHit[]): void {
+  const byId = new Map(hits.map(h => [h.id, h]));
+  // visiting -> cycle; false propagates to callers so cycles (including
+  // self-links) and paths into them keep their original scores.
+  const state = new Map<string, "visiting" | boolean>();
+  const visit = (hit: RecallHit): boolean => {
+    const seen = state.get(hit.id);
+    if (seen !== undefined) return seen === true;
+    state.set(hit.id, "visiting");
+    const successorId = vault.get(hit.id)?.fm.superseded_by;
+    const successor = typeof successorId === "string" ? byId.get(successorId) : undefined;
+    const valid = !successor || visit(successor);
+    if (successor && valid) {
+      hit.score = Math.min(hit.score, Math.max(0, round(successor.score - 0.001)));
+    }
+    state.set(hit.id, valid);
+    return valid;
+  };
+  for (const hit of hits) visit(hit);
 }
 
 // MARK: - Lifecycle-Reranking (#74)

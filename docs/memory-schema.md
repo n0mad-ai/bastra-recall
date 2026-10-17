@@ -296,12 +296,15 @@ retires a memory and removes it from the active index. Per the V1→V2 architect
 contract (C-059), historicity comes from the version status, never from a change
 of location: a predecessor that gets moved away is not historical, it is gone.
 
-The edge currently carries **no ranking effect**. A superseded memory ranks
-exactly as it did before. The accessibility projection that will read this edge —
-and the Historical zone it feeds — begins as a read-only projection in V1.x, and
-its weights are an M3 decision (§7.1 of the evolution contract). This stage
-produces the data so that the projection has something to read when it arrives;
-it does not pre-empt the decision about what to do with it.
+In `recall`, when both versions are retrieved into the same candidate lane,
+the predecessor's score is capped just below its successor's after fusion and
+the other ranking multipliers, before the top-k cut. Chains are processed
+newest first. This also applies to BM25-only recall. Other candidates keep
+their scores. A targeted search matching only the predecessor still finds it;
+successors are never injected into unrelated queries or across filters.
+Missing successors, self-links and cycles do not cause a demotion. This narrow
+ordering correction (#1206) does not implement the future Historical zone or
+the broader accessibility projection (§7.1 of the evolution contract).
 
 Save refuses a `replaces` that points at a nonexistent memory, or at the memory
 being saved, before writing anything.
@@ -931,12 +934,16 @@ setzt eine Erinnerung zur Ruhe und entfernt sie aus dem aktiven Index. Nach dem 
 (C-059) ergibt sich Historizität aus dem Versionsstatus, nie aus einem
 Ortswechsel: Ein Vorgänger, der wegverschoben wird, ist nicht historisch, er ist weg.
 
-Die Kante hat derzeit **keine Ranking-Wirkung**. Eine abgelöste Erinnerung rankt
-genau wie vorher. Die Erreichbarkeitsprojektion, die diese Kante lesen wird –
-und die Historical-Zone, die sie speist –, beginnt in V1.x als reine Lese-Projektion, und
-ihre Gewichte sind eine M3-Entscheidung (§7.1 des Evolutionsvertrags). Diese Stufe
-erzeugt die Daten, damit die Projektion bei ihrer Ankunft etwas zu lesen hat;
-sie nimmt die Entscheidung, was damit geschieht, nicht vorweg.
+Wenn `recall` beide Versionen in derselben Kandidatengruppe findet, wird der
+Score des Vorgängers nach der Fusion und den übrigen Ranking-Faktoren knapp
+unter dem des Nachfolgers begrenzt, vor dem Top-k-Schnitt. Ketten werden von
+der neuesten Version aus verarbeitet. Das gilt auch für reinen BM25-Recall.
+Andere Kandidaten behalten ihre Scores. Eine gezielte Suche, die nur den
+Vorgänger trifft, findet ihn weiterhin; Nachfolger werden nicht in unpassende
+Suchanfragen oder über Filtergrenzen hinweg eingefügt. Fehlende Nachfolger,
+Selbstverweise und Zyklen bewirken keine Herabstufung. Diese begrenzte
+Reihenfolgekorrektur (#1206) implementiert weder die künftige Historical-Zone
+noch die umfassendere Erreichbarkeitsprojektion (§7.1 des Evolutionsvertrags).
 
 Das Speichern lehnt ein `replaces` ab, das auf eine nicht existierende Erinnerung oder auf die
 gerade gespeicherte Erinnerung zeigt, bevor irgendetwas geschrieben wird.

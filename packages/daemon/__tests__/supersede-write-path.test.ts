@@ -13,8 +13,8 @@
  * at its successor in the mindspace — is V2 and deliberately absent here.
  *
  * These tests are therefore mostly about what does NOT happen: no trash, no
- * de-indexing, no `obsolete`, no ranking effect. That is the part a later
- * change could break without noticing.
+ * de-indexing, no `obsolete`. #1206 adds ranking below a retrieved successor
+ * while preserving the predecessor's reachability.
  *
  * Runner: `tsx --test __tests__/supersede-write-path.test.ts`
  */
@@ -131,7 +131,7 @@ test("#164: an old version still resolves by id — old citations keep working",
   }
 });
 
-test("#164: no ranking effect yet — the successor does not displace the predecessor", async () => {
+test("#1206: the successor ranks ahead while the predecessor stays retrievable", async () => {
   const { deps, cleanup } = await makeDeps();
   try {
     const old = await saveMemoryHandler(deps, memo("Rangfrage"));
@@ -145,15 +145,17 @@ test("#164: no ranking effect yet — the successor does not displace the predec
     const predecessor = hits.find((h) => h.id === old.id);
     assert.ok(
       predecessor,
-      "the predecessor must still be retrievable — the accessibility projection is an M3 decision (§7.1), " +
-        "so this stage carries data only. If this test starts failing, the ranking half arrived and needs its own gate.",
+      "the predecessor must still be retrievable after the ranking correction",
     );
     const successor = hits.find((h) => h.id === fresh.id);
     assert.ok(successor, "sanity: the successor is in the index too");
     assert.ok(
-      predecessor!.score >= successor!.score,
-      `no penalty may be applied yet — predecessor ${predecessor!.score} vs successor ${successor!.score}`,
+      predecessor!.score < successor!.score,
+      `predecessor ${predecessor!.score} must rank below successor ${successor!.score}`,
     );
+    assert.ok(hits.indexOf(successor!) < hits.indexOf(predecessor!));
+    const loaded = await loadMemoryHandler(deps, { id: old.id });
+    assert.equal(loaded.frontmatter.id, old.id);
   } finally {
     await cleanup();
   }
