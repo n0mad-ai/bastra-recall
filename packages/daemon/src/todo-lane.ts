@@ -40,6 +40,7 @@ import {
   mutateSessionState,
   wasEmitConsumed,
 } from "./session-state.js";
+import { escapeAttr } from "./escape-attr.js";
 
 // 600ms — same recall path, same reasoning as hook.ts.
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
@@ -518,10 +519,6 @@ export function formatHintBlock(
   }
 
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 interface RecallRequestBody extends HookCaller {

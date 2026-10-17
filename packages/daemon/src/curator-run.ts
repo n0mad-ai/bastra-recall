@@ -42,6 +42,7 @@ import {
   type ReportStaleCandidate,
   type VaultHealthData,
 } from "./vault-report.js";
+import { escapeAttr } from "./escape-attr.js";
 
 /** Floors older than this without a real affirm land in the report. */
 const FLOOR_REVIEW_WEEKS = 4;
@@ -718,9 +719,4 @@ export function handleCuratorRun(req: IncomingMessage, res: ServerResponse, deps
         sendJson(res, 500, { error: "curator run failed — see daemon log" });
       });
   });
-}
-
-// External names must remain inside their quoted wrapper attributes (#1232).
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

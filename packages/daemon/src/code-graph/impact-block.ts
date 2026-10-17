@@ -63,6 +63,7 @@ import { isStale, readManifest } from "./manifest.js";
 import { applyPatchBody, MAX_DIFF_SOURCE_BYTES, pendingText, unifiedDiff } from "./pending-diff.js";
 import { graphDirOf, type CodeSymbol, type LoadedGraph } from "./reader.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
+import { escapeAttr } from "../escape-attr.js";
 
 /** Tools whose input this module can turn into a pending change. */
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "apply_patch"]);
@@ -494,8 +495,4 @@ export function renderImpactBlock(input: ImpactBlockInput): string {
 /** Last line of defence for the token cap — a symbol name may be 512 bytes. */
 function clip(body: string): string {
   return body.length <= MAX_BLOCK_CHARS ? body : `${body.slice(0, MAX_BLOCK_CHARS - 1)}…`;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

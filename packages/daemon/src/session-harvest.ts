@@ -48,6 +48,7 @@ import { writePendingSuggestion } from "./pending-suggestions.js";
 import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS } from "./draft-capture.js";
 import { normalizeOwnerTurn, type TranscriptTurn } from "./stop-transcript.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
+import { escapeAttr } from "./escape-attr.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
 export const HARVEST_IDLE_MS = 30 * 60 * 1000;
@@ -407,9 +408,4 @@ async function writeHarvestTelemetry(
   } catch {
     /* telemetry must never break the job */
   }
-}
-
-// External names must remain inside their quoted wrapper attributes (#1232).
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

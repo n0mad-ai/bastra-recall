@@ -6,6 +6,7 @@ import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { MUST_LOAD_SCORE, SCORE_FLOOR, type DetectedMode } from "./prompt-classify.js";
+import { escapeAttr } from "./escape-attr.js";
 
 export interface RecallHit {
   id: string;
@@ -153,8 +154,4 @@ export function formatReflexBlock(hits: PromptReflexHit[], project: string | nul
     sections.push(`- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}`);
   }
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), `</recall-hints>`].join("\n");
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
