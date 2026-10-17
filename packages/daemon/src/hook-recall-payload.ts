@@ -10,6 +10,7 @@ import { toLeanHit } from "./tool-handlers.js";
 import { armsOf, currentScoreVersion } from "./score-space.js";
 import { collectPoolReflexHits } from "./recall-pipeline.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
+import { withSupersession } from "./recall-batch.js";
 
 export interface HookRecallPayloadInput {
   hits: RecallHit[];
@@ -53,7 +54,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // recall_mode rides along only when the user wired the memory as
   // reflex: the prompt lane's mode-"none" semantic filter keys on it
   // (19.08. incident — see prompt-lane.ts).
-  const leanHits = hits.map((h) => ({
+  const leanHits = hits.map((h) => withSupersession({
     ...toLeanHit(h),
     matched_recall_when: h.matched_recall_when ?? false,
     // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
@@ -61,7 +62,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
     ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
     ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-  }));
+  }, vault));
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
   // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
   // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr

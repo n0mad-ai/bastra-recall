@@ -14,7 +14,7 @@
  *    arms — a new audited export without a pin goes red here.
  *  - Score mutations all pass through ONE gateway: `applyStaleness` in
  *    search-staleness.ts (staleness, curator-demote, doc-damping, salience-live in a
- *    single multiplier). A static source scan counts every `.score`
+ *    single multiplier, plus the supersession cap). A static source scan counts every `.score`
  *    assignment in core and daemon src — a new assignment anywhere goes red
  *    here until it is routed through the gateway or pinned with its own arm.
  *    (#142 floors stay invisible to this scan by construction: the floor is
@@ -63,7 +63,8 @@ test("#194: every audited cell-mutation export carries a pinned survival arm", (
  *  sites and the CLASS of each:
  *  - search-staleness.ts (split out of search.ts, #1039): the mutation
  *    gateway (`applyStaleness` — all multiplier
- *    sources in one place) plus the freestanding `applyStalenessMultiplier`
+ *    sources in one place), the supersession cap (superseded-ranking.test.ts
+ *    pins survival), plus the freestanding `applyStalenessMultiplier`
  *    kept as the bench baseline (scripts/bench-cache compares against it;
  *    nothing in src imports it — pinned below).
  *  - embeddings.ts: RRF fusion — score CONSTRUCTION while the rank list is
@@ -71,7 +72,7 @@ test("#194: every audited cell-mutation export carries a pinned survival arm", (
  *    existing hit. Listed so the scan stays exhaustive instead of quietly
  *    pattern-excluding it. */
 const PINNED_SCORE_SITES: Record<string, number> = {
-  "core/src/search-staleness.ts": 2,
+  "core/src/search-staleness.ts": 3,
   "core/src/embeddings.ts": 2,
 };
 

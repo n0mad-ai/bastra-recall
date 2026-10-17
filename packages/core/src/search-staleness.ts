@@ -8,6 +8,7 @@
 import type { Vault } from "./vault.js";
 import type { RecallHit, RecallOptions } from "./search-types.js";
 import { round } from "./search-pipeline.js";
+import { visitSupersession } from "./supersession.js";
 
 /** 12h-TTL des Staleness-Caches gegen Tageswechsel (`aging → stale` ohne
  *  Vault-Change) — der Cache selbst lebt in `SearchIndex`. */
@@ -63,9 +64,24 @@ export function applyStaleness(
   }
   const direct = hits.filter((h) => h.hop !== "1-hop");
   const hops = hits.filter((h) => h.hop === "1-hop");
+  capSupersededScores(vault, direct);
+  capSupersededScores(vault, hops);
   direct.sort((a, b) => b.score - a.score);
   hops.sort((a, b) => b.score - a.score);
   return [...direct, ...hops];
+}
+
+/** #1206: cap a predecessor below its successor AFTER fusion and all other
+ * multipliers, BEFORE top-k. Only compare retrieved candidates in the same
+ * lane: a targeted old-value search must still find the predecessor, and a
+ * missing/filtered successor must not cause a penalty into the void. No
+ * extra retrieval, disk access or model calls. Each pool edge is visited once.
+ */
+function capSupersededScores(vault: Vault, hits: RecallHit[]): void {
+  visitSupersession(hits, hit => vault.get(hit.id)?.fm.superseded_by,
+    (hit, successor) => {
+      hit.score = Math.min(hit.score, Math.max(0, round(successor.score - 0.001)));
+    });
 }
 
 // MARK: - Lifecycle-Reranking (#74)
