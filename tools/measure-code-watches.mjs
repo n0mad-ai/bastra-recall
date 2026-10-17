@@ -25,6 +25,7 @@ if (process.argv[2] === "--child") {
   const [, , , modulePath, ignoredFiles] = process.argv;
   const svc = await import(pathToFileURL(modulePath).href);
   const { CodeGraphRefresher } = await import(pathToFileURL(path.join(path.dirname(service), "refresh.js")).href);
+  const { GRAPH_DIR_NAME } = await import(pathToFileURL(path.join(path.dirname(service), "reader.js")).href);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "bastra-watch-measure-"));
   let handle;
   let builds = 0;
@@ -38,7 +39,7 @@ if (process.argv[2] === "--child") {
   try {
     fs.mkdirSync(path.join(root, "src/nested"), { recursive: true });
     fs.writeFileSync(path.join(root, "src/nested/main.ts"), "export {};\n");
-    for (const name of ["node_modules", "dist", "build", ".git", ".ruff_cache", ".bastra-code"]) {
+    for (const name of ["node_modules", "dist", "build", ".git", ".ruff_cache", GRAPH_DIR_NAME]) {
       fs.mkdirSync(path.join(root, name, "deep"), { recursive: true });
       for (let i = 0; i < Number(ignoredFiles) / 6; i++) fs.writeFileSync(path.join(root, name, "deep", `${i}.ts`), "ignored");
     }

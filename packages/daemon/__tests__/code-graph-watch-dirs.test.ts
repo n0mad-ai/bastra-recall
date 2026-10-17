@@ -19,10 +19,9 @@ async function until(check: () => boolean): Promise<void> {
   }
 }
 
-// Exercise the Linux branch on macOS too; real /proc counts below remain Linux-only.
-test("#1079: watch only eligible directories, discover new trees and release removed watches", async t => {
-  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
-  Object.defineProperty(process, "platform", { value: "linux" });
+// Real directory-only event behavior is Linux-specific: FSEvents coalesces
+// transient trees differently. Error handling is exercised on every OS below.
+test("#1079: watch only eligible directories, discover new trees and release removed watches", { skip: process.platform !== "linux" }, async t => {
   const root = await mkdtemp(join(tmpdir(), "code-watch-dirs-"));
   const outside = await mkdtemp(join(tmpdir(), "code-watch-outside-"));
   let handle: Awaited<ReturnType<typeof startCodeAwareness>> | undefined;
@@ -73,7 +72,6 @@ test("#1079: watch only eligible directories, discover new trees and release rem
   } finally {
     handle?.stop();
     t.mock.restoreAll(); syncBuiltinESMExports();
-    Object.defineProperty(process, "platform", platform);
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
   }
