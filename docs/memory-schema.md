@@ -306,6 +306,12 @@ Missing successors, self-links and cycles do not cause a demotion. This narrow
 ordering correction (#1206) does not implement the future Historical zone or
 the broader accessibility projection (§7.1 of the evolution contract).
 
+Batch recall (`queries`) enforces the same successor ordering after merging
+the full result union and before top-k. It preserves the selected single-query
+scores, so the final batch order can differ from descending score order.
+The optional `superseded_by` hit field carries the edge through MCP and the
+HTTP forwarder; it does not add successor hits to a query.
+
 Save refuses a `replaces` that points at a nonexistent memory, or at the memory
 being saved, before writing anything.
 
@@ -944,6 +950,12 @@ Suchanfragen oder über Filtergrenzen hinweg eingefügt. Fehlende Nachfolger,
 Selbstverweise und Zyklen bewirken keine Herabstufung. Diese begrenzte
 Reihenfolgekorrektur (#1206) implementiert weder die künftige Historical-Zone
 noch die umfassendere Erreichbarkeitsprojektion (§7.1 des Evolutionsvertrags).
+
+Batch-Recall (`queries`) stellt die Nachfolger-Reihenfolge nach dem Zusammenführen
+aller Treffer und vor Top-k wieder her. Die ausgewählten Einzelquery-Scores
+bleiben unverändert; die Batch-Reihenfolge kann deshalb von absteigenden Scores
+abweichen. Das optionale Trefferfeld `superseded_by` transportiert die Kante
+über MCP und den HTTP-Forwarder, ohne Nachfolger-Treffer zur Suche hinzuzufügen.
 
 Das Speichern lehnt ein `replaces` ab, das auf eine nicht existierende Erinnerung oder auf die
 gerade gespeicherte Erinnerung zeigt, bevor irgendetwas geschrieben wird.

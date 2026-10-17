@@ -14,8 +14,11 @@
  * nicht (eine degradiert, die andere fusioniert), ist ein Score-Vergleich
  * bedeutungslos; dann bestimmen die Ränge die Reihenfolge und der Response sagt
  * das ausdrücklich — siehe `mergeBatchResults`.
+ * After either merge, supersession orders retrieved successors before their
+ * predecessors without changing the selected single-query scores (#1206).
  */
 import type { DraftHit } from "./draft-search.js";
+import { visitSupersession, type Vault } from "@bastra-recall/core";
 
 import { RRF_K } from "@bastra-recall/core/rrf";
 
@@ -225,7 +228,9 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
   // anderes bedeutet als in der anderen.
   const scoreKind: "rrf" | "bm25" = !mixed && spaces.size === 1 ? [...spaces][0]! : "bm25";
 
-  const hits = mixed ? fuseByQueryRank(subs, k) : mergeByScore(subs, k);
+  // Merge the full union before enforcing supersession and cutting to k.
+  // Keep actual single-query scores, including when rank fusion selected them.
+  const hits = orderSuperseded(mixed ? fuseByQueryRank(subs, Infinity) : mergeByScore(subs, Infinity)).slice(0, k);
   const hitIds = new Set(hits.map((h) => h.id));
   const reflexHits = mergeByScore(subs.map((s) => ({ hits: s.reflex_hits })), Infinity)
     .filter((h) => !hitIds.has(h.id));
@@ -247,6 +252,28 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
     ...(draftHits.length > 0 ? { draft_hits: draftHits } : {}),
     merged_by: mixed ? "query-rank-fusion" : "score",
   };
+}
+
+/** The forwarder has no vault: carry this edge through both wire projections.
+ * Only an already retrieved target can affect the eventual merged ordering.
+ */
+export function withSupersession<T extends { id: string }>(hit: T, vault: Vault): T & { superseded_by?: string } {
+  const successor = vault.get(hit.id)?.fm.superseded_by;
+  return successor ? { ...hit, superseded_by: successor } : hit;
+}
+
+function orderSuperseded(hits: BatchHit[]): BatchHit[] {
+  const ordered = [...hits];
+  visitSupersession(hits,
+    hit => typeof hit.superseded_by === "string" ? hit.superseded_by : undefined,
+    (predecessor, successor) => {
+      const a = ordered.indexOf(predecessor), b = ordered.indexOf(successor);
+      if (a < b) {
+        ordered.splice(a, 1);
+        ordered.splice(b, 0, predecessor);
+      }
+    });
+  return ordered;
 }
 
 /** Ein Raum: dedupe by id, bester Score gewinnt, resort, auf k schneiden. */

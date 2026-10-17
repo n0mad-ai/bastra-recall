@@ -8,6 +8,7 @@
 import type { Vault } from "./vault.js";
 import type { RecallHit, RecallOptions } from "./search-types.js";
 import { round } from "./search-pipeline.js";
+import { visitSupersession } from "./supersession.js";
 
 /** 12h-TTL des Staleness-Caches gegen Tageswechsel (`aging → stale` ohne
  *  Vault-Change) — der Cache selbst lebt in `SearchIndex`. */
@@ -77,24 +78,10 @@ export function applyStaleness(
  * extra retrieval, disk access or model calls. Each pool edge is visited once.
  */
 function capSupersededScores(vault: Vault, hits: RecallHit[]): void {
-  const byId = new Map(hits.map(h => [h.id, h]));
-  // visiting -> cycle; false propagates to callers so cycles (including
-  // self-links) and paths into them keep their original scores.
-  const state = new Map<string, "visiting" | boolean>();
-  const visit = (hit: RecallHit): boolean => {
-    const seen = state.get(hit.id);
-    if (seen !== undefined) return seen === true;
-    state.set(hit.id, "visiting");
-    const successorId = vault.get(hit.id)?.fm.superseded_by;
-    const successor = typeof successorId === "string" ? byId.get(successorId) : undefined;
-    const valid = !successor || visit(successor);
-    if (successor && valid) {
+  visitSupersession(hits, hit => vault.get(hit.id)?.fm.superseded_by,
+    (hit, successor) => {
       hit.score = Math.min(hit.score, Math.max(0, round(successor.score - 0.001)));
-    }
-    state.set(hit.id, valid);
-    return valid;
-  };
-  for (const hit of hits) visit(hit);
+    });
 }
 
 // MARK: - Lifecycle-Reranking (#74)

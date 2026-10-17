@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Recall ranks a superseded memory below its retrieved successor, including replacement chains, while preserving direct lookup and targeted searches for older versions (#1206).
+- Recall ranks a superseded memory below its retrieved successor, including replacement chains and batch queries, while preserving direct lookup and targeted searches for older versions (#1206).
 - Reflex triggers and `acted_on` recognize supported inflected word forms using closed affix families; unrelated lookalikes such as `delete`/`delegate` and `backup`/`backdoor` stay distinct. Original implementation by @zzallirog, with conservative matching follow-up (Refs #1190, #1191).
 - Word search segments supported spaceless scripts through Node/ICU on both index and query sides; mixed identifiers retain their whole term and components with additional segments (#1214 follow-up); thanks @zzallirog (#1189).
 - Lexical comparisons share Unicode/case folding, with non-Latin in-word apostrophe boundaries aligned and folded bridge aliases counted once before overlap checks and expansion caps (#1215 follow-up); thanks @zzallirog (#1193).

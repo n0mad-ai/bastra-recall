@@ -22,7 +22,7 @@ import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shado
 import { commonsRankFactor } from "./cli/commons.js";
 import { fuseCommonsHits } from "./commons-fusion.js";
 import { expandQuery } from "./learned-recall/bridges.js";
-import { mergeBatchResults, dedupeQueries, batchDuplicateNote } from "./recall-batch.js";
+import { mergeBatchResults, dedupeQueries, batchDuplicateNote, withSupersession } from "./recall-batch.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 import { applyCallerScopeFilter, collectPoolReflexHits } from "./recall-pipeline.js";
 import type { ToolDeps } from "./tool-deps.js";
@@ -539,7 +539,8 @@ async function recallAgainstVault(
     hasUnresolvedConflict(deps.vault.get(h.id)?.body) ? { ...h, conflict: true } : h;
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
-  const projected = (full ? hits : hits.map(toLeanHit)).map(flagConflict);
+  const projected = (full ? hits : hits.map(toLeanHit))
+    .map(hit => withSupersession(hit, deps.vault)).map(flagConflict);
   const budgeted = fitRecallWithReflexToBudget(projected, reflexHits, parsed.data.max_tokens, (emitted, emittedReflex, dropped) => ({
     query: query,
     vault_size: deps.vault.size(),
