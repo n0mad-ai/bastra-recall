@@ -269,8 +269,8 @@ function orderSuperseded(hits: BatchHit[]): BatchHit[] {
     (predecessor, successor) => {
       const a = ordered.indexOf(predecessor), b = ordered.indexOf(successor);
       if (a < b) {
-        ordered.splice(a, 1);
-        ordered.splice(b, 0, predecessor);
+        ordered.splice(b, 1);
+        ordered.splice(a, 0, successor);
       }
     });
   return ordered;

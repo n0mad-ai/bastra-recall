@@ -59,3 +59,9 @@ test("direct MCP and hook-to-forwarder projections carry supersession into batch
   const merged = mergeBatchResults(queries, subs, 2);
   assert.deepEqual(merged.hits.map(h => h.id), ["new", "old"]);
 });
+
+test("batch promotes a weak successor ahead of the strong predecessor and fillers", () => {
+  const hits = [{ id: "old", score: 170, superseded_by: "new" },
+    ...Array.from({ length: 8 }, (_, i) => ({ id: `f${i}`, score: 15 })), { id: "new", score: 0.074 }];
+  assert.deepEqual(mergeBatchResults(["q"], [{ hits }], 2).hits.map(h => h.id), ["new", "old"]);
+});
