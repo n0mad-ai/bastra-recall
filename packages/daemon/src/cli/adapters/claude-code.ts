@@ -102,8 +102,7 @@ function statuslineMatches(sl: unknown, command: string): boolean {
   const s = sl as Record<string, unknown>;
   return (
     s.command === command &&
-    s.type === "command" &&
-    s.refreshInterval === 1
+    s.type === "command"
   );
 }
 
@@ -145,7 +144,11 @@ async function patchClaudeCodeStatusline(
     }
 
     const backupPath = await backupConfig(CLAUDE_CODE_SETTINGS);
-    data.statusLine = buildStatuslineBlock(command);
+    // An update owns the command, but the user owns their refresh cadence.
+    // Also preserve an omitted interval (event-driven rendering).
+    data.statusLine = present && isOurStatusline(existing)
+      ? { ...(existing as Record<string, unknown>), type: "command", command, __bastraRecall: true }
+      : buildStatuslineBlock(command);
     await atomicWriteJson(CLAUDE_CODE_SETTINGS, data);
     const how = !present ? "powerline, refreshInterval 1s" : isOurStatusline(existing) ? "path updated" : "replaced foreign";
     return { status: "installed", detail: `statusLine registered (${how})`, backupPath: backupPath ?? undefined };

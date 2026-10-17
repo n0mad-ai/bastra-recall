@@ -2,7 +2,10 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { debug } from "../utils/logger";
+import { readTickCache, writeTickCache } from "../utils/tick-cache";
+import { createHash } from "node:crypto";
 
 const execAsync = promisify(exec);
 
@@ -92,9 +95,9 @@ export class GitService {
       gitDir = foundGitRoot;
     }
 
+    gitDir = path.resolve(gitDir);
     try {
-      const statusWithBranch = await this.getStatusWithBranchAsync(gitDir);
-      const aheadBehind = await this.getAheadBehindAsync(gitDir);
+      const { status: statusWithBranch, aheadBehind } = await this.getCachedState(gitDir);
 
       const result: GitInfo = {
         branch: statusWithBranch.branch || "detached",
@@ -196,6 +199,98 @@ export class GitService {
     } catch {
       return null;
     }
+  }
+
+  /** Metadata alone misses unstaged edits. The cold path asks Git for visible
+   * files and empty/untracked directories; warm ticks stat that watch set.
+   * Parent-directory mtimes detect additions/deletions without walking ignored
+   * trees (node_modules, build output, etc.) every second. */
+  private async getCachedState(cwd: string) {
+    const cached = readTickCache().git;
+    if (cached?.cwd === cwd && Array.isArray(cached.paths) &&
+        cached.signature === this.gitSignature(cwd, cached.paths)) {
+      return cached;
+    }
+    try {
+      const options = { cwd, encoding: "utf8", timeout: 2000 };
+      const [files, directories] = await Promise.all([
+        this.execGitAsync("git ls-files --cached --others --exclude-standard -z", options),
+        this.execGitAsync("git ls-files --others --exclude-standard --directory -z", options),
+      ]);
+      const paths = new Set<string>([cwd, path.join(cwd, ".gitignore")]);
+      for (const name of (files.stdout + directories.stdout).split("\0")) {
+        if (!name) continue;
+        const full = path.resolve(cwd, name);
+        // Keep the watch set within this checkout.
+        if (!full.startsWith(cwd + path.sep)) continue;
+        paths.add(full);
+        let parent = path.dirname(full);
+        while (parent !== cwd && parent.startsWith(cwd + path.sep)) {
+          paths.add(parent);
+          paths.add(path.join(parent, ".gitignore"));
+          parent = path.dirname(parent);
+        }
+      }
+      const watched = [...paths].sort();
+      // Gitlinks have their own index and working tree. Keep Git authoritative
+      // for these rather than serving a snapshot that misses submodule edits.
+      const hasSubmodule = watched.some((name) => name !== cwd &&
+        fs.existsSync(path.join(name, ".git")));
+      const signature = this.gitSignature(cwd, watched);
+      const status = await this.getStatusWithBranchAsync(cwd);
+      const aheadBehind = await this.getAheadBehindAsync(cwd);
+      // Do not persist a snapshot if the tree moved while Git was reading it.
+      if (!hasSubmodule && status.status !== "unknown" && signature === this.gitSignature(cwd, watched)) {
+        writeTickCache({ git: { cwd, paths: watched, signature, status, aheadBehind } });
+      }
+      return { status, aheadBehind };
+    } catch {
+      // A failed watch-list read must not turn into a permanently stale cache.
+    }
+    return {
+      status: await this.getStatusWithBranchAsync(cwd),
+      aheadBehind: await this.getAheadBehindAsync(cwd),
+    };
+  }
+
+  private gitSignature(cwd: string, paths: string[]): string {
+    const hash = createHash("sha256");
+    const stamp = (name: string) => {
+      hash.update(name + "\0");
+      try {
+        const st = fs.lstatSync(name, { bigint: true });
+        hash.update(`${st.mtimeNs}:${st.ctimeNs}:${st.size}:${st.ino};`);
+      } catch {
+        hash.update("missing;");
+      }
+    };
+    const refs = (dir: string) => {
+      stamp(dir);
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+          const name = path.join(dir, entry.name);
+          if (entry.isDirectory()) refs(name);
+          else stamp(name);
+        }
+      } catch { /* a repository may have no loose refs */ }
+    };
+    const gitDir = this.resolveGitDir(cwd);
+    let common = gitDir;
+    try {
+      common = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim());
+    } catch { /* ordinary checkout */ }
+    for (const name of new Set([
+      path.join(cwd, ".git"), path.join(gitDir, "HEAD"), path.join(gitDir, "index"),
+      path.join(gitDir, "commondir"), path.join(gitDir, "config.worktree"),
+      path.join(common, "config"), path.join(common, "packed-refs"),
+      path.join(common, "info", "exclude"), path.join(common, "shallow"),
+      path.join(os.homedir(), ".gitconfig"),
+      path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "git", "ignore"),
+      path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "git", "config"),
+    ])) stamp(name);
+    refs(path.join(common, "refs"));
+    for (const name of paths) stamp(name);
+    return hash.digest("hex");
   }
 
   private async getShaAsync(workingDir: string): Promise<string | null> {
