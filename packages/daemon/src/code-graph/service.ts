@@ -1,4 +1,3 @@
-import { SKIP_DIRS } from "./build.js";
 /**
  * The daemon-side code-awareness service: preload, startup reconciliation and
  * the file and git watchers (#581).
@@ -33,6 +32,7 @@ import { SKIP_DIRS } from "./build.js";
  * `.git`, `node_modules` and dot-directories.
  */
 
+import { SKIP_DIRS } from "./build.js";
 import { watch, readdirSync, lstatSync, type FSWatcher } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { CodeGraphRefresher, needsReconcile, type RefreshEvent } from "./refresh.js";

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 /**
  * Building the code graph with the pinned Graphify binary (#574).
  *
@@ -50,6 +49,7 @@ import { createHash } from "node:crypto";
  * marker (#577), which is strictly better than having no graph at all.
  */
 
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { access, readdir, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
