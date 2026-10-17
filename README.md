@@ -23,7 +23,7 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
-Proactive tasks (opt-in preview, off by default until v1.2.0; set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them): notify reminders can be added and controlled in conversation; local hooks/MCP receive Agent access automatically. Due cards arrive at next contact, with acknowledgement and completion kept separate. The Recall UI Tasks tab lists active, completed and failed/cancelled work. The existing action path uses exact Owner signatures for one registered reversible local UTF-8 adapter; that approval policy remains open for later discussion. Email, Slack, GitHub, cloud and provider actions are unsupported. [Instructions](./docs/Proactive%20Tasks.md) · [disposable demo](./docs/design/proactive-tasks-demo.md).
+Proactive tasks remain an **opt-in preview, off by default until v1.2.0**. To try them, set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them. [Preview instructions and limits](./docs/Proactive%20Tasks.md).
 
 
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
@@ -40,7 +40,7 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Version 1.1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Version 1.1.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="A terminal session: two questions, and Bastra Recall surfaces the matching decisions on its own. The status line at the bottom counts the calls, hits and milliseconds." width="100%" />
@@ -48,7 +48,7 @@ Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every sess
 
 <p align="center"><sub>Two questions, answered from a vault the assistant was never told to search. The bar at the bottom is Claude Code's status line.</sub></p>
 
-1.1.0 adds secret-redacted local draft review (confirmation saves nothing; automatic promotion stays off), save notices for Claude Code/Codex, and optional terminal panels. [Drafts and relay](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Drafts) · [controls and redaction limits](https://github.com/n0mad-ai/bastra-recall/wiki/Secret-Redaction) · [panels](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
+1.1.1 fixes successor ranking, reflex word forms, concurrent saves and locks, code-graph refresh costs, Linux watches, statusline updates and hint-block boundaries. Node 22–26 are supported. [Changelog](./CHANGELOG.md) · [statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
 ### Install
 
@@ -60,7 +60,7 @@ curl -fsSL https://bastra.io/install | bash
 
 The script installs Homebrew if needed, installs Bastra Recall and starts setup. Choose a folder for your memories and the AI clients you want to connect. [Read the installer](./distribution/install.sh) before running it if you prefer.
 
-**macOS or Linux — with Node 22+:**
+**macOS or Linux — with Node 22–26:**
 
 ```bash
 npx bastra-recall install
@@ -170,7 +170,7 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
 
-Proaktive Aufgaben (Opt-in-Vorschau, bis v1.2.0 standardmäßig aus; `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen, dann neu starten): notify-Erinnerungen entstehen und werden im Gespräch bedient; lokale Hooks/MCP erhalten ihren Agent-Zugang automatisch. Fällige Karten erscheinen beim nächsten Kontakt, Quittieren und Erledigen bleiben getrennt. Der Aufgaben-Tab der Recall-UI zeigt aktive, erledigte und fehlgeschlagene/abgebrochene Arbeit. Der bestehende Aktionsweg verlangt exakte Owner-Signaturen für eine registrierte rückrollbare lokale UTF-8-Datei; die Freigabepolitik bleibt für spätere Diskussion offen. E-Mail, Slack, GitHub, Cloud und Anbieter-Aktionen sind nicht unterstützt. [Anleitung](./docs/Proaktive%20Aufgaben.md) · [Wegwerf-Demo](./docs/design/proactive-tasks-demo.md).
+Proaktive Aufgaben bleiben eine **Opt-in-Vorschau, bis v1.2.0 standardmäßig aus**. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten. [Vorschau-Anleitung und Grenzen](./docs/Proaktive%20Aufgaben.md).
 
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
@@ -187,7 +187,7 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Version 1.1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Version 1.1.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="Eine Terminal-Sitzung: zwei Fragen, und Bastra Recall legt die passenden Entscheidungen von selbst vor. Die Statusleiste unten zählt Aufrufe, Treffer und Millisekunden." width="100%" />
@@ -195,7 +195,7 @@ Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in je
 
 <p align="center"><sub>Zwei Fragen, beantwortet aus einem Vault, das der Assistent nicht durchsuchen sollte. Die Leiste unten ist die Statusleiste von Claude Code.</sub></p>
 
-1.1.0 ergänzt die Prüfung lokaler Entwürfe mit geschwärzten Zugangsdaten (Bestätigung speichert nichts; automatische Beförderung bleibt aus), Speicherhinweise für Claude Code/Codex und optionale Terminal-Panels. [Entwürfe und Relay](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Drafts) · [Steuerung und Schwärzungsgrenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Secret-Redaction) · [Panels](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
+1.1.1 korrigiert die Suchreihenfolge abgelöster Notizen, Wortformen im Reflex, gleichzeitiges Speichern und Sperren, Code-Graph-Kosten, Linux-Watches, Statusline und Hinweisblock-Grenzen. Node 22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
 ### Installation
 
@@ -207,7 +207,7 @@ curl -fsSL https://bastra.io/install | bash
 
 Das Skript installiert bei Bedarf Homebrew, installiert Bastra Recall und startet die Einrichtung. Wähle einen Ordner für deine Erinnerungen und die KI-Clients, die du verbinden möchtest. Du kannst das [Installationsskript vorher lesen](./distribution/install.sh).
 
-**macOS oder Linux – mit Node 22+:**
+**macOS oder Linux – mit Node 22–26:**
 
 ```bash
 npx bastra-recall install
