@@ -40,4 +40,3 @@ test("an event arriving during a fresh scan promises a follow-up", async t => {
   ref.enqueue("/fixture", "watcher"); release(true); await idle;
   assert.equal(builds, 1);
 });
-
