@@ -33,7 +33,7 @@
  * gap the counter-review named, and the reason `dirty` is a field in an
  * on-disk manifest rather than a variable. On start, each enabled repo is
  * checked against its manifest: no manifest, `dirty` still set (a build was
- * killed mid-flight), or a file newer than `builtAt` → exactly one refresh is
+ * killed mid-flight), or a changed source-file signature/newer file → exactly one refresh is
  * enqueued. A stale lock from the killed daemon is taken over by lock.ts, not
  * waited on.
  *
@@ -70,8 +70,7 @@ const IMMEDIATE_REASONS: ReadonlySet<RefreshReason> = new Set(["git", "manual", 
  * Triggers that carry no information about WHAT changed (a turn ended, a watcher fired on any
  * file), so they are worth a build only when the tree really moved. Git events, `manual` and
  * `startup` always build, and so does `retry`: it is also the follow-up for a change that landed
- * DURING a build, and `builtAt` is stamped when that build completes, so the change looks older
- * than the graph and the freshness test would wrongly skip it.
+ * DURING a build. The promised follow-up must run even when a subsequent scan looks fresh.
  */
 const SKIPPABLE_WHEN_FRESH: ReadonlySet<RefreshReason> = new Set(["stop-hook", "watcher"]);
 
@@ -227,7 +226,7 @@ export class CodeGraphRefresher {
   /**
    * Startup reconciliation (#581). For each enabled repo: enqueue exactly one
    * refresh when there is no manifest, when `dirty` survived a restart, or
-   * when a file is newer than the completed build. Returns the repos it
+   * when source paths or metadata changed since the last successful build. Returns the repos it
    * enqueued, so the daemon can log what it found rather than guess.
    */
   async reconcile(repoRoots: readonly string[]): Promise<string[]> {
@@ -310,8 +309,12 @@ export class CodeGraphRefresher {
       // and rewrite the same graph. The Stop hook fires at the end of every turn of every session,
       // so on a busy host this is most of the daemon's graph CPU.
       entry.running = false;
-      entry.pending = false;
       this.emit({ repoRoot, reason, outcome: "skipped", detail: "graph fresh" });
+      if (entry.pending) {
+        entry.pending = false;
+        this.schedule(repoRoot, entry, this.debounceMs);
+        return;
+      }
       return this.settle();
     }
     this.emit({ repoRoot, reason, outcome: "started" });
@@ -440,10 +443,10 @@ export class CodeGraphRefresher {
 }
 
 /**
- * Is the graph on disk current for the tree as it is now? The same staleness test the reader
- * uses (#577) — no code file newer than `builtAt` — plus the code-file COUNT, so a deleted file
- * (which leaves the newest mtime alone) still triggers a build. A walk of the tree costs tens of
- * milliseconds; a build costs seconds of one to two cores. Anything unknown is "not fresh".
+ * Is the graph on disk current for this tree? Compare sorted path/mtime/size
+ * signatures as well as the build-start stamp, so renames, preserved-mtime
+ * replacements and edits during a build remain stale. Old manifests without
+ * a signature rebuild once. Unknown state is never considered fresh.
  */
 export async function graphIsFresh(repoRoot: string): Promise<boolean> {
   try {
@@ -451,8 +454,9 @@ export async function graphIsFresh(repoRoot: string): Promise<boolean> {
     if (manifest === null || manifest.dirty || manifest.builtAt === null) return false;
     const builtMs = Date.parse(manifest.builtAt);
     if (!Number.isFinite(builtMs)) return false;
-    const { count, newestMtimeMs } = await scanFileState(repoRoot);
-    return newestMtimeMs <= builtMs && count === manifest.fileState.count;
+    const { count, newestMtimeMs, signature } = await scanFileState(repoRoot);
+    return newestMtimeMs <= builtMs && count === manifest.fileState.count
+      && signature === manifest.fileState.signature;
   } catch {
     return false;
   }
@@ -467,12 +471,5 @@ export async function graphIsFresh(repoRoot: string): Promise<boolean> {
  * dependency list that no longer holds.
  */
 export async function needsReconcile(repoRoot: string): Promise<boolean> {
-  const manifest = await readManifest(graphDirOf(repoRoot));
-  if (manifest === null) return true;
-  if (manifest.dirty) return true;
-  if (manifest.builtAt === null) return true;
-  const builtMs = Date.parse(manifest.builtAt);
-  if (!Number.isFinite(builtMs)) return true;
-  const { newestMtimeMs } = await scanFileState(repoRoot);
-  return newestMtimeMs > builtMs;
+  return !(await graphIsFresh(repoRoot));
 }

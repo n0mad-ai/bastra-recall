@@ -1,4 +1,4 @@
-import { tasksEnabled } from "./tasks-enabled.js";
+import { tasksEnabled, TASKS_PREVIEW_HINT } from "./tasks-enabled.js";
 /**
  * The canonical list of MCP tool definitions the daemon exposes — the single
  * source of truth for both the embedded server (index.ts), the stdio forwarder
@@ -124,6 +124,9 @@ export function filterToolDefsForSurface<T extends { name: string }>(
  * retrying the same call.
  */
 export function toolSurfaceDenial(name: string, surface: ToolSurface): string {
+  // #1238: a task tool on a full surface is hidden by the preview switch, not
+  // by the surface; widening the surface would not help.
+  if (name.startsWith("task_") && !tasksEnabled()) return `${name}: ${TASKS_PREVIEW_HINT}`;
   const allowed = toolNamesForSurface(surface) ?? [];
   return (
     `${name} is not available on the "${surface}" tool surface of bastra-recall ` +

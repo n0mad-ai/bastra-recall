@@ -173,6 +173,9 @@ export async function acquireCommitClaim(
       await publishPrepared(prepared, lockPath, body);
       return token;
     } catch (error) {
+      // Same shared-container race as in withPreparedClaim: the preparation
+      // can vanish before link(). Report it as the conflict it is.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw writeConflict(id, filePath, "another save is preparing this claim");
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const checked = await inspectCommitClaim(lockPath);
       if (checked.abandoned && checked.raw !== null
@@ -221,7 +224,8 @@ async function withPreparedClaim<T>(lockPath: string, raw: string, id: string, f
         break;
       } catch (error) {
         // Another preparation can remove the now-empty shared container.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        // macOS may report EINVAL rather than ENOENT when opening inside it.
+        if (!["ENOENT", "EINVAL"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
         if (attempt > 0) throw writeConflict(id, filePath, "another save is preparing this claim");
       }
     }

@@ -31,3 +31,30 @@ test("a live-owner claim past the ceiling ages out (reused pid)", async (t) => {
   const lock = await claimFile(t, 60 * 60_000);
   assert.equal(await claimIsAbandoned(lock), true);
 });
+
+for (const failures of [1, 2]) {
+  test(`claim preparation tolerates EINVAL (${failures} failures)`, async t => {
+    const fs = await import("node:fs/promises");
+    const { syncBuiltinESMExports } = await import("node:module");
+    const { acquireCommitClaim, releaseCommitClaim } = await import("../src/save-commit.js");
+    const root = await mkdtemp(join(tmpdir(), "claim-einval-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const original = fs.default.open;
+    let attempts = 0;
+    t.mock.method(fs.default, "open", async (...args: Parameters<typeof fs.open>) => {
+      if (String(args[0]).includes(".publish/") && attempts++ < failures) {
+        throw Object.assign(new Error("removed preparation directory"), { code: "EINVAL" });
+      }
+      return original(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      const lock = join(root, "id.lock");
+      if (failures === 1) {
+        const token = await acquireCommitClaim(lock, "id", join(root, "id.md"));
+        await releaseCommitClaim(lock, token);
+      } else await assert.rejects(acquireCommitClaim(lock, "id", join(root, "id.md")), { name: "MemoryWriteConflictError" });
+      assert.equal(attempts, 2);
+    } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  });
+}

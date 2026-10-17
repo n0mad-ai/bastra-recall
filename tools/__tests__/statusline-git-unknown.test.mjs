@@ -51,3 +51,18 @@ test("a verified clean tree is still clean", async () => {
   assert.equal(info.status, "clean");
   assert.ok(!renderGit(info).endsWith("?"));
 });
+
+test("old Git retries porcelain without --ahead-behind, preserving dirty counts", async t => {
+  const git = new GitService();
+  const commands = [];
+  t.mock.method(git, "execGitAsync", async (command) => {
+    commands.push(command);
+    if (command.includes("--ahead-behind")) throw new Error("unknown option ahead-behind");
+    if (command.startsWith("git status")) return { stdout: "## main...origin/main [ahead 2, behind 1]\n M changed.ts\n" };
+    return { stdout: "main\n" };
+  });
+  const info = await git.getGitInfo(process.cwd(), { showWorkingTree: true });
+  assert.equal(info?.status, "dirty"); assert.equal(info?.unstaged, 1);
+  assert.equal(info?.ahead, 2); assert.equal(info?.behind, 1);
+  assert.deepEqual(commands.filter(c => c.startsWith("git status")), ["git status --porcelain -b --ahead-behind", "git status --porcelain -b"]);
+});

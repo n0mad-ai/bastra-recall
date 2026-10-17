@@ -369,11 +369,14 @@ export class GitService {
     try {
       debug(`[GIT-EXEC] Running git status in ${workingDir}`);
       // Include counts even if status.aheadBehind is disabled in Git config.
-      const result = await this.execGitAsync("git status --porcelain -b --ahead-behind", {
-        cwd: workingDir,
-        encoding: "utf8",
-        timeout: 2000,
-      });
+      const options = { cwd: workingDir, encoding: "utf8", timeout: 2000 };
+      let result: { stdout: string };
+      try {
+        result = await this.execGitAsync("git status --porcelain -b --ahead-behind", options);
+      } catch {
+        // Git before 2.17 does not understand --ahead-behind.
+        result = await this.execGitAsync("git status --porcelain -b", options);
+      }
       const output = result.stdout;
       const lines = output.split("\n");
 

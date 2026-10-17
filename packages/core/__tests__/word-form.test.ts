@@ -135,3 +135,23 @@ test("hasWordForm miss scan avoids expensive comparisons across a long prompt", 
     measure(() => hasWordForm(tokens, word))));
   assert.ok(filtered < 500, `77 misses took ${filtered}ms (best of 5)`);
 });
+
+test("reused Cyrillic context tokens normalize once and mutable Sets remain correct", t => {
+  const token = "неповторимыйконтекст";
+  const normalize = String.prototype.normalize;
+  let calls = 0;
+  t.mock.method(String.prototype, "normalize", function(this: string, form?: string) {
+    if (String(this) === token) calls++;
+    return normalize.call(this, form);
+  });
+  const tokens = new Set([token]);
+  for (const word of ["сервера", "портала", "токены"]) assert.equal(hasWordForm(tokens, word), false);
+  assert.equal(calls, 1);
+  tokens.delete(token); tokens.add("сервера");
+  assert.equal(hasWordForm(tokens, "серверы"), true);
+});
+
+test("canonical exact lookup keeps mixed letter/digit tokens", () => {
+  assert.equal(hasWordForm(new Set(["cafe\u0301123"]), "café123"), true);
+  assert.equal(hasWordForm(new Set(["café123"]), "cafe\u0301123"), true);
+});

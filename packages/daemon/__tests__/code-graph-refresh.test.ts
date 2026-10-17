@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CodeGraphRefresher, needsReconcile, type RefreshEvent } from "../src/code-graph/refresh.js";
+import { scanFileState } from "../src/code-graph/build.js";
 import type { BuildResult } from "../src/code-graph/build.js";
 import { graphDirOf } from "../src/code-graph/reader.js";
 import { writeManifest, type CodeGraphManifest } from "../src/code-graph/manifest.js";
@@ -280,7 +281,7 @@ describe("startup reconciliation", () => {
     t.after(() => rm(repo, { recursive: true, force: true }));
     const graphDir = graphDirOf(repo);
     await mkdir(graphDir, { recursive: true });
-    await writeManifest(graphDir, manifest({ repoRoot: repo }));
+    await writeManifest(graphDir, manifest({ repoRoot: repo, fileState: await scanFileState(repo) }));
 
     assert.equal(await needsReconcile(repo), false);
 
@@ -391,7 +392,7 @@ describe("fresh graph is not rebuilt", () => {
     t.after(() => rm(repo, { recursive: true, force: true }));
     const graphDir = graphDirOf(repo);
     await mkdir(graphDir, { recursive: true });
-    await writeManifest(graphDir, manifest({ repoRoot: repo })); // builtAt in the future, count 1 = a.ts
+    await writeManifest(graphDir, manifest({ repoRoot: repo, fileState: await scanFileState(repo) })); // builtAt in the future, count 1 = a.ts
     return repo;
   }
 

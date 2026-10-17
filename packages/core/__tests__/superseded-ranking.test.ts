@@ -49,20 +49,20 @@ test("replacement chains rank newest first", async (t) => {
   assert.deepEqual(search.recall("zebra migration", { k: 3 }).map(h => h.id), ["c", "b", "a"]);
 });
 
-test("cap follows other multipliers, keeps unrelated scores and exposes the corrected pool", async (t) => {
+test("promotion follows other multipliers, keeps unrelated scores and exposes the corrected pool", async (t) => {
   const { search } = await fixture(t, { a: "superseded_by: b", b: "superseded_by: c", c: "", d: "" });
   search.setDemotions(["c"]);
   const isolated = search.recall("quartzlegacy", { k: 1, bm25_no_fuzzy: true });
   assert.equal(isolated[0]?.id, "a", "a successor outside the pool cannot penalize a targeted search");
   let pool: { id: string; score: number }[] = [];
   const hits = search.recall("zebra migration", { k: 4, onCandidatePool: hits => { pool = hits; } });
-  assert.deepEqual(hits.map(h => h.id), ["d", "c", "b", "a"]);
+  assert.deepEqual(hits.map(h => h.id), ["c", "b", "a", "d"]);
   assert.deepEqual(pool.map(h => h.id), hits.map(h => h.id));
-  assert.ok(hits[2].score < hits[1].score && hits[3].score < hits[2].score);
+  assert.ok(hits[1].score < hits[0].score && hits[2].score < hits[1].score);
   const { search: control } = await fixture(t, { a: "", b: "", c: "", d: "" });
   control.setDemotions(["c"]);
   const original = control.recall("zebra migration", { k: 4 });
-  for (const id of ["c", "d"]) {
+  for (const id of ["a", "d"]) {
     assert.equal(hits.find(h => h.id === id)?.score, original.find(h => h.id === id)?.score);
   }
   assert.equal(isolated[0].score, control.recall("quartzlegacy", { k: 1, bm25_no_fuzzy: true })[0].score);
@@ -75,4 +75,16 @@ test("dangling, self and cyclic references leave the original ranking intact", a
     assert.deepEqual(hits.map(h => h.id), ["a", "b"]);
     assert.equal(hits[0].score, hits[1].score);
   }
+});
+
+test("targeted old value keeps both versions ahead of unrelated fillers", async (t) => {
+  const { search, dir } = await fixture(t, { a: "superseded_by: b", b: "", ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`f${i}`, ""])) });
+  await writeFile(join(dir, "a.md"), `---\nid: a\ntitle: Staging server port\ntype: reference\nsummary: Staging server port\nscope: test\ntopic_path: [test]\ntags: []\nrecall_when: []\nsuperseded_by: b\n---\nThe staging server listens on port 8080 legacyvalue.\n`);
+  await writeFile(join(dir, "b.md"), `---\nid: b\ntitle: Update\ntype: reference\nsummary: Update\nscope: test\ntopic_path: [test]\ntags: []\nrecall_when: []\n---\nStaging moved to 9090.\n`);
+  for (let i = 0; i < 8; i++) await writeFile(join(dir, `f${i}.md`), `---\nid: f${i}\ntitle: Staging server notes\ntype: reference\nsummary: Staging server notes\nscope: test\ntopic_path: [test]\ntags: []\nrecall_when: []\n---\nstaging server staging server port details\n`);
+  // Explicit reload avoids timing assertions about the filesystem watcher.
+  search.stop();
+  const vault = new Vault(dir); await vault.init();
+  const index = new SearchIndex(vault); index.start(); t.after(() => index.stop());
+  assert.deepEqual(index.recall("8080 staging server port", { k: 2 }).map(h => h.id), ["b", "a"]);
 });

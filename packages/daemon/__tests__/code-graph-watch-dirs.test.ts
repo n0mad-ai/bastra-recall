@@ -39,7 +39,7 @@ test("#1079: watch only eligible directories, discover new trees and release rem
   });
   syncBuiltinESMExports();
   try {
-    for (const dir of ["src/nested", "node_modules/pkg", "dist/x", "build/x", ".git/x", ".ruff_cache/x", "src/.cache/x", `${GRAPH_DIR_NAME}/x`]) {
+    for (const dir of ["src/nested", "node_modules/pkg", "dist/x", "build/x", "venv/lib/pkg", "vendor/x", "target/debug", "coverage/lcov", "out/x", "__pycache__/x", ".git/x", ".ruff_cache/x", "src/.cache/x", `${GRAPH_DIR_NAME}/x`]) {
       await mkdir(join(root, dir), { recursive: true });
       await writeFile(join(root, dir, "file.ts"), "export {};\n");
     }
@@ -175,5 +175,45 @@ test("#1079: macOS retains the recursive FSEvents watcher", async t => {
     handle?.stop(); t.mock.restoreAll(); syncBuiltinESMExports();
     Object.defineProperty(process, "platform", platform);
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Linux watch budget recovers when a removed directory frees a handle", async t => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const root = await mkdtemp(join(tmpdir(), "watch-budget-"));
+  const watchers = new Map<string, { callback: (event: string, name: string) => void }>();
+  const originalStat = fs.lstatSync, originalRead = fs.readdirSync;
+  let removed = false;
+  t.mock.method(fs, "watch", (path: fs.PathLike, _opts: unknown, callback: (event: string, name: string) => void) => {
+    const key = String(path); watchers.set(key, { callback });
+    const watcher = new EventEmitter() as fs.FSWatcher;
+    watcher.close = () => { watchers.delete(key); }; return watcher;
+  });
+  t.mock.method(fs, "lstatSync", ((path: fs.PathLike) => {
+    if (String(path).startsWith(root + "/")) {
+      if (removed && String(path) === join(root, "d0")) throw Object.assign(new Error(), { code: "ENOENT" });
+      return { isDirectory: () => true };
+    }
+    return originalStat(path);
+  }) as typeof fs.lstatSync);
+  t.mock.method(fs, "readdirSync", ((path: fs.PathLike, opts: unknown) => {
+    if (String(path) === root) return Array.from({ length: 8193 }, (_, i) => ({ name: `d${i}`, isDirectory: () => true }));
+    if (String(path).startsWith(root + "/")) return [];
+    return originalRead(path, opts as any);
+  }) as typeof fs.readdirSync);
+  syncBuiltinESMExports();
+  t.mock.method(codeGraphRefresher(), "enqueue", () => {});
+  let handle: Awaited<ReturnType<typeof startCodeAwareness>> | undefined;
+  try {
+    handle = await startCodeAwareness(undefined, async () => [root], 600_000);
+    assert.equal(watchers.size, 8192);
+    removed = true; watchers.get(root)!.callback("rename", "d0");
+    watchers.get(root)!.callback("rename", "new");
+    assert.ok(watchers.has(join(root, "new")));
+    assert.equal(watchers.size, 8192);
+  } finally {
+    handle?.stop(); t.mock.restoreAll(); syncBuiltinESMExports();
+    Object.defineProperty(process, "platform", platform); await rm(root, { recursive: true, force: true });
   }
 });

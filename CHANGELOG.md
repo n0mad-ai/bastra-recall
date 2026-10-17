@@ -38,14 +38,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Targeted searches for an old value keep both versions visible: retrieved successors inherit the predecessor's relevance and rank immediately ahead, including chains and batch merges. Predecessors retain their scores; direct and hop lanes remain separate (#1206, #1229).
+- Saving retries a vanished claim-preparation directory on macOS EINVAL once, then reports a write conflict instead of leaking a filesystem error.
+- Code graphs detect renamed/replaced source paths and preserved-mtime size changes through a file-state signature. Successful builds record their start time, and events arriving during freshness checks retain their promised follow-up. Old manifests rebuild once.
+- Linux code watches share the source scanner's ignored-directory list, including virtual environments, Rust targets, vendor and coverage trees. Freed watch handles allow registration again after the watch limit is reached.
+- Resumed Claude sessions resolve terminal width, tty and feed PID independently for each parent process. Git versions before 2.17 retry status without `--ahead-behind`.
+- Repeated word-form checks reuse bounded Unicode normalization results without changing the accepted affix families.
+- Bridge minting recognizes legacy Unicode IDs and preserves their evidence, age, demotion and archive state instead of creating duplicates after an upgrade.
+- Path-lock takeover preserves successor leases and bounds stale-owner recovery (#1223). Saving publishes complete commit claims and recovers abandoned claims without letting concurrent writers commit the same target (#1221, #1203).
+- Stop-hook and watcher triggers skip code-graph extraction when the tree is already covered; changes during a build still receive one follow-up (#1228).
+
 - On Linux, code-awareness watches only eligible directories, skipping ignored trees before allocating inotify watches. New directories are discovered, removed trees release their watches, and watch-limit exhaustion degrades without stopping other refresh triggers. macOS keeps FSEvents; thanks @zzallirog (#1079).
 
-- Recall ranks a superseded memory below its retrieved successor, including replacement chains and batch queries, while preserving direct lookup and targeted searches for older versions (#1206).
 - Reflex triggers and `acted_on` recognize supported inflected word forms using closed affix families; unrelated lookalikes such as `delete`/`delegate` and `backup`/`backdoor` stay distinct. Original implementation by @zzallirog, with conservative matching follow-up (Refs #1190, #1191).
 - Word search segments supported spaceless scripts through Node/ICU on both index and query sides; mixed identifiers retain their whole term and components with additional segments (#1214 follow-up); thanks @zzallirog (#1189).
 - Lexical comparisons share Unicode/case folding, with non-Latin in-word apostrophe boundaries aligned and folded bridge aliases counted once before overlap checks and expansion caps (#1215 follow-up); thanks @zzallirog (#1193).
 - Bash-fail reads status only from structured fields or the official error/Codex header, caps repeated memory hints per session and skips leading `cd`/`pushd` in the recall query; thanks @zzallirog (#1152).
-- Statusline installation and updates preserve a user-chosen refresh interval (default remains 1s). Each tick gets Git status and ahead/behind counts from one fresh status query, while the session/parent PID is reused across processes, including changing wrapper shells. Thanks @zzallirog for the measurements and analysis (#1227).
+- Statusline installation and updates preserve a user-chosen refresh interval (default remains 1s). Each tick gets Git status and ahead/behind counts from one fresh status query, while the parent PID is reused across ticks of the same process ancestry. Thanks @zzallirog for the measurements and analysis (#1227).
 - Without fusion, wired prompt-recall hits outside recognized lookups require a strong trigger anchor; fused recall and literal reflex remain unchanged; thanks @zzallirog (#1188).
 
 
