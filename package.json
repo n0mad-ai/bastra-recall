@@ -20,6 +20,8 @@
     "check:types": "npm run check:types --workspaces --if-present",
     "pretest": "npm run build --workspace=@bastra-recall/core && npm run build --workspace=@bastra-recall/daemon",
     "test": "node --import tsx --import ./scripts/test-env.mjs --test packages/core/__tests__/*.test.ts packages/daemon/__tests__/*.test.ts packages/eval/__tests__/*.test.ts tools/__tests__/*.test.mjs",
+    "test:map": "node tools/test-map.mjs build",
+    "test:changed": "echo 'Missing/stale map or NOT VOUCHED? Run npm test for the full suite, or npm run test:map on a clean tree to rebuild the map.' && node tools/test-map.mjs select --run",
     "eval:lift": "npm run lift --workspace=@bastra-recall/eval",
     "test:update": "npm run test:update --workspace=@bastra-recall/daemon",
     "test:stub": "npm run test:stub --workspace=@bastra-recall/daemon",
