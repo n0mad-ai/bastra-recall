@@ -1,3 +1,4 @@
+import { tasksEnabled } from "../tasks-enabled.js";
 import { taskAgentAccessStatus } from "../task-auto-setup.js";
 /**
  * The doctor's "features" block: which Recall features are switched on for
@@ -239,7 +240,7 @@ export async function collectFeatureState(
   const live = await probeDaemon().catch(() => null);
   const semanticRecall = await semanticState(live);
   return {
-    proactive: await taskAgentAccessStatus().then(s => ({ clientConfigured: s.authorized, accessHint: s.hint })),
+    proactive: tasksEnabled(env) ? await taskAgentAccessStatus().then(s => ({ clientConfigured: s.authorized, accessHint: s.hint })) : undefined,
     clients,
     primaryLanguage: settings.language?.primary,
     onboardingDone: "error" in vault ? null : await isOnboardingDone(vault.path),

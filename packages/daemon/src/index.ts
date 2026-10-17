@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * bastra-recall daemon — MCP server over a markdown memory vault.
  *
@@ -104,7 +105,7 @@ async function main(): Promise<void> {
     }
   }
 
-  await ensureLocalTaskAgent().then(result => {
+  if (tasksEnabled()) await ensureLocalTaskAgent().then(result => {
     console.error(`[bastra-recall] task agent access: ${result.reason}${!result.configured && result.reason !== "disabled" ? "; reminder cards unavailable — check bastra tasks client-status / setup-hooks" : ""}`);
   }).catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
 

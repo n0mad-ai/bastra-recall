@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 import { isLoopbackHost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
 import { approvalRegistryPath, pinnedApprovalRegistry } from "./task-approval-keys.js";
@@ -30,7 +31,7 @@ export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal", destructiveHint: false },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
-export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">, executionHost = false): TaskServiceContext { return { executionHost, path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: pinnedApprovalRegistry(), approvalRegistryPath: approvalRegistryPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
+export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">, executionHost = false): TaskServiceContext { return { executionHost, path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: tasksEnabled() ? pinnedApprovalRegistry() : undefined, approvalRegistryPath: approvalRegistryPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
 export function taskFailure(error: unknown): { status: number; body: { error: string; code: string; retryable: boolean; status: number; reason?: string } } {
   const reported = error instanceof z.ZodError ? "validation" : error instanceof PathLockUnavailableError ? "lock_unavailable"
     : (error as { code?: string })?.code ?? "unavailable";
@@ -46,6 +47,7 @@ export function taskFailure(error: unknown): { status: number; body: { error: st
 export async function callTaskMcp(name: TaskCrudOperation, input: unknown,
   authorization: string | undefined, ctx = defaultTaskContext()) {
   try {
+    if (!tasksEnabled()) throw Object.assign(new Error("Tasks preview disabled"), { code: "feature_disabled" });
     const result = await callTaskCrud(ctx, authorization, name, input);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   } catch (error) {
@@ -61,6 +63,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
   ctx = defaultTaskContext()): boolean {
   const pathname = new URL(url, "http://127.0.0.1").pathname;
   if (!pathname.startsWith("/api/v1/tasks") && !pathname.startsWith("/api/v1/task_")) return false;
+  if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks preview disabled; opt in with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
   void (async () => {
     try {
       if (!isLoopbackHost(req.headers.host,[])) throw Object.assign(new Error("Local task Host required"),{code:"forbidden"});

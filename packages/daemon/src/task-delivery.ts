@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /** Passive presentation is authenticated, cached and never a human receipt. */
 import { cachedTaskAccessWarning } from "./task-auto-setup.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -12,6 +13,7 @@ export function taskRequestAuth(req: IncomingMessage): string | undefined {
 }
 const passiveQuiet = new Map<string, number>();
 export async function taskAttachment(ctx: TaskServiceContext, authorization: string | undefined, session: string, channel: "mcp" | "http" | "session" | "prompt") {
+  if (!tasksEnabled()) return undefined;
   requestTaskReconciliation(ctx.path);
   try {
     const principal = await authenticateTask(authorization, ctx.authPath);
@@ -42,6 +44,7 @@ export async function taskAttachment(ctx: TaskServiceContext, authorization: str
 }
 /** Success-only JSON finalizer. Streaming responses retain their existing framing. */
 export function installTaskHttpProjection(req: IncomingMessage, res: ServerResponse, ctx: TaskServiceContext): void {
+  if (!tasksEnabled()) return;
   const path = (req.url ?? "").split("?")[0];
   if (!path.startsWith("/api/v1/") || path.startsWith("/api/v1/tasks") || path.startsWith("/api/v1/task_")) return;
   const end = res.end.bind(res); const head = res.writeHead.bind(res); const write = res.write.bind(res);

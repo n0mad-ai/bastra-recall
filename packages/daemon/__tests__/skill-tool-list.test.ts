@@ -35,3 +35,12 @@ test("the SKILL.md tool list follows every registered tool and its minimum surfa
   assert.deepEqual(sorted(listed.full), sorted(registered.filter((name) => !write.includes(name))));
   assert.equal(new Set([...listed.search, ...listed.write, ...listed.full]).size, registered.length);
 });
+
+test("the skill lists the preview tools conditionally, matching the enabled registry", async () => {
+  const { taskTools } = await import("../src/task-transport.js");
+  const body = await readFile(join(REPO, "packages/skill/SKILL.md"), "utf8");
+  const optional = body.match(/additional write tools available: ([^.]+)\./);
+  assert.ok(optional, "preview tools must be distinguished from the default tool list");
+  assert.deepEqual(optional[1].split(", ").sort(), taskTools.map(t => t.name).sort());
+  assert.match(body, /Only when the server lists `task_\*` tools/);
+});

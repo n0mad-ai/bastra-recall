@@ -1,3 +1,4 @@
+import "./tasks-opt-in.js";
 /** Final-stack real-process smoke, entirely synthetic; no human consent evidence claimed. */
 import {test} from "node:test";
 import assert from "node:assert/strict";

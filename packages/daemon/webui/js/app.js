@@ -177,7 +177,8 @@ async function main() {
   // Telemetry tab (#463): a scroll page over the stage, not a canvas view.
   // The canvas keeps its view underneath and comes back untouched.
   const telemetryView = createTelemetryView();
-  const tasksView = createTasksView();
+  const tasksEnabled = root.dataset.tasksEnabled === "true";
+  const tasksView = tasksEnabled ? createTasksView() : { open() {}, close() {} };
   const markViewButton = (v) =>
     $("#view-switch")
       .querySelectorAll("button")
@@ -185,6 +186,7 @@ async function main() {
 
   let viewLoading = false; // semantic layout fetch in flight — don't re-enter
   async function switchView(v) {
+    if (v === "tasks" && !tasksEnabled) v = "orbit";
     if (v === "tasks") { telemetryView.close(); tasksView.open(); markViewButton(v); $('#view-switch [data-view="tasks"]').scrollIntoView({block:"nearest",inline:"nearest"}); return; }
     tasksView.close();
     markViewButton(currentView);

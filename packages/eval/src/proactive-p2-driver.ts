@@ -42,7 +42,7 @@ const driver: FeatureDriver = {
     mkdirSync(vault, { recursive: true, mode: 0o700 }); mkdirSync(join(root, "home"), { mode: 0o700 });
     const base = `http://127.0.0.1:${port}`;
     const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: join(root, "home"), USERPROFILE: join(root, "home"), TMPDIR: root,
-      BASTRA_MEASUREMENT_ROOT: root, BASTRA_TASKS_PATH: taskPath, BASTRA_VAULT_PATH: vault,
+      BASTRA_MEASUREMENT_ROOT: root, BASTRA_TASKS:"1",BASTRA_TASKS_PATH: taskPath, BASTRA_VAULT_PATH: vault,
       BASTRA_HTTP_PORT: String(port), BASTRA_DAEMON_URL: base, BASTRA_FORWARDER_SPAWN: "0",
       BASTRA_EMBEDDING_PROVIDER: "none", BASTRA_UPDATE_CHECK: "off", BASTRA_CODE_AWARENESS: "0", BASTRA_TELEMETRY: "0",
       BASTRA_LOG_PATH: join(root, "logs"), BASTRA_API_TOKEN: "legacy-fixture", BASTRA_RM_ARCHIVES: "0",

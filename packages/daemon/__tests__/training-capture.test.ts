@@ -23,6 +23,7 @@ import {
   TRAINING_CAPTURE_FILE, type TrainingItem, type TrainingVerdict,
 } from "../src/training-capture.js";
 
+// Every fixture operation uses this clock: wall time must not age drafts out.
 const now = Date.UTC(2026, 9, 10, 9);
 const local = { baseURL: "http://127.0.0.1:11434", model: "fixture" };
 const amber = "Fixture deployments require an isolated amber database before the release starts.";
@@ -205,7 +206,7 @@ test("a private note never reaches the store: not from the shadow pair, not from
     assert.ok(judge.prompts.some(prompt => prompt.includes("amber storage separate")));
   } finally { await vault.stop(); }
   assert.doesNotMatch(JSON.stringify([pairs, verdicts]), /amber storage separate|private-fixture-note/);
-  await captureTrainingItems(pairs); await recordTrainingVerdicts(verdicts);
+  await captureTrainingItems(pairs, now); await recordTrainingVerdicts(verdicts, now);
   assert.doesNotMatch(await readFile(trainingCapturePath(), "utf8").catch(() => ""), /amber storage separate|private-fixture-note/);
 }));
 

@@ -1,5 +1,17 @@
 # Tasks and reminders
 
+## Opt-in preview (v1.1.1)
+
+Tasks are **off by default until v1.2.0**, on fresh installs and upgrades. Enable the preview with `BASTRA_TASKS=1` in the environment of the daemon **and** every MCP client/hook/CLI process, then restart those processes. For a shell-launched installation, export it before starting the daemon and clients:
+
+```sh
+export BASTRA_TASKS=1
+```
+
+For service-managed daemons, add the same environment variable to the service configuration and to clients/hooks. All instructions below require this opt-in. Remove the variable (or set `BASTRA_TASKS=0`) and restart to disable the preview. Existing task data and credentials remain untouched; no migration or deletion happens. Disabling does not cancel tasks: enabling again restores the existing behaviour, including catch-up for due work.
+
+While disabled there is no task runtime, polling, delivery, source checking or automatic Agent credential setup. The Tasks tab and `task_*` MCP tools are hidden; task HTTP routes, including UI session routes, return 404 with `feature_disabled`. `bastra tasks …` only explains how to enable the preview. `BASTRA_CONVERSATIONAL_REMINDERS=0` is a separate, narrower switch inside the enabled preview; it does not enable tasks.
+
 ## Owner decision 2026-10-11: notify in conversation
 
 Say “remind me …”: the agent first confirms what, weekday/date/time/timezone and recurrence with “Yes, add” / “No” or free-text refinement. Ambiguous time is clarified. It then creates an armed notify reminder directly. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges in one line: `→ Erinnerung eingetragen: <was> – <wann>`.

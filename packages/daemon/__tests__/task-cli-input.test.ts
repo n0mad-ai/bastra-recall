@@ -1,3 +1,4 @@
+import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";

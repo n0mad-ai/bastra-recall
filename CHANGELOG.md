@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - CI now builds and tests on Node 22, 24 and 26. Node 22 to 26 are supported; Homebrew installs, which follow the newest Node, already run on 26. Support for Node 22 is planned to end in early 2027 with the next major release, before its upstream end of life on 2027-04-30.
 - Release documentation guard: stable version bumps update both README release lines; tests and publishing verify README/package/changelog agreement. Prereleases retain the stable README announcement and do not require a matching changelog section. Real publishing requires an explicit EN/DE Wiki-update confirmation. README, user guides and the separate Wiki are refreshed for 1.1.0.
 
-- Proactive notify reminders can be added and controlled in conversation, with automatic local Agent access and a Tasks tab in the Recall UI. Existing prepare/execute approval remains unchanged pending further Owner discussion.
+- Proactive tasks ship as an **opt-in preview, off by default until v1.2.0** (#1238). Set `BASTRA_TASKS=1` in daemon and clients/hooks and restart them to restore notify reminders, automatic local Agent access and the Recall UI Tasks tab. Without opt-in there is no task runtime, task I/O, task tools or task UI/session API; existing data stays untouched. Existing prepare/execute approval remains unchanged pending further Owner discussion.
 
 ### Security
 
