@@ -10,8 +10,12 @@
  * dependency lives in `@bastra-recall/core`, not here, and adding a runtime
  * dependency to the daemon is a decision with a blast radius (package size,
  * audit surface) that this change has no mandate to take. `fs.watch` with
- * `recursive: true` covers macOS and Linux, which is this sub-release's entire
- * scope (C-094), and Node >= 22 is already required.
+ * `recursive: true` uses FSEvents on macOS. On Linux it consumes an inotify
+ * slot per entry, even inside ignored trees (#1079): instead, register one
+ * non-recursive watch per eligible directory, pruning before registration.
+ * Kernel watch slots and memory are shared with the user's other processes.
+ * No file-level watches are needed: directory watches report entry changes.
+ * Node >= 22 is already required.
  *
  * The reliability gap that buys is affordable HERE, and only here, because the
  * watcher is not the only trigger: git events, the Stop hook and startup
@@ -28,8 +32,8 @@
  * `.git`, `node_modules` and dot-directories.
  */
 
-import { watch, type FSWatcher } from "node:fs";
-import { relative, sep } from "node:path";
+import { watch, readdirSync, lstatSync, type FSWatcher } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { CodeGraphRefresher, needsReconcile, type RefreshEvent } from "./refresh.js";
 import { shortRepo } from "./unavailable-note.js";
 import { gitWatchPaths } from "./git-paths.js";
@@ -177,7 +181,8 @@ function reportRefresh(event: RefreshEvent): void {
 export const SYNC_INTERVAL_MS = 5_000;
 
 /** Watchers per repository, so one repository can be stopped on its own. */
-const watchers = new Map<string, FSWatcher[]>();
+type WatchHandle = Pick<FSWatcher, "close">;
+const watchers = new Map<string, WatchHandle[]>();
 
 export interface CodeAwarenessHandle {
   /** Repositories the service took on at start. */
@@ -285,7 +290,7 @@ function closeWatchers(repoRoot: string): void {
   watchers.delete(repoRoot);
 }
 
-function track(repoRoot: string, w: FSWatcher): void {
+function track(repoRoot: string, w: WatchHandle): void {
   const list = watchers.get(repoRoot);
   // Stopped while an async watch was being set up: close it right away.
   if (list === undefined) w.close();
@@ -301,6 +306,10 @@ function watchRepo(
   refresh: CodeGraphRefresher,
   onEvent?: (line: string) => void,
 ): void {
+  if (process.platform === "linux") {
+    track(repoRoot, watchRepoDirectories(repoRoot, () => refresh.enqueue(repoRoot, "watcher"), onEvent));
+    return;
+  }
   try {
     const w = watch(repoRoot, { recursive: true, persistent: false }, (_event, filename) => {
       if (filename !== null && isIgnored(filename.toString())) return;
@@ -315,6 +324,96 @@ function watchRepo(
   } catch {
     onEvent?.(`code-graph: could not watch ${repoRoot}`);
   }
+}
+
+/** Bound this optional trigger's share of the per-user kernel watch budget. */
+const MAX_REPO_DIRECTORY_WATCHES = 8_192;
+
+/** Linux: never descend into an ignored tree or follow a directory symlink. */
+function watchRepoDirectories(
+  repoRoot: string,
+  changed: () => void,
+  onEvent?: (line: string) => void,
+): WatchHandle {
+  const dirs = new Map<string, FSWatcher>();
+  let closed = false;
+  let limited = false;
+  let warned = false;
+  const warn = (code: "watch_limit" | "watch_unavailable"): void => {
+    if (warned) return;
+    warned = true;
+    // Bounded code only: no repository path or OS error text in this warning.
+    onEvent?.(`code-graph: ${code}`);
+  };
+  const failed = (error: unknown): void => {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOSPC") {
+      limited = true;
+      warn("watch_limit");
+    } else warn("watch_unavailable");
+  };
+  const remove = (dir: string): void => {
+    for (const [path, watcher] of dirs) {
+      if (path === dir || path.startsWith(dir + sep)) {
+        dirs.delete(path);
+        watcher.close();
+      }
+    }
+  };
+  const ignoredDirectory = (dir: string): boolean =>
+    dir !== repoRoot && isIgnored(join(relative(repoRoot, dir), "_"));
+
+  const walk = (dir: string): void => {
+    if (closed || limited || ignoredDirectory(dir)) return;
+    try {
+      // lstat deliberately refuses symlinks, including newly moved-in ones.
+      if (!lstatSync(dir).isDirectory()) return;
+      if (!dirs.has(dir)) {
+        if (dirs.size >= MAX_REPO_DIRECTORY_WATCHES) {
+          limited = true;
+          warn("watch_limit");
+          return;
+        }
+        const watcher = watch(dir, { persistent: false }, (event, filename) => {
+          if (closed || dirs.get(dir) !== watcher) return;
+          if (filename === null) {
+            // No name: rebuild this subtree's registrations and refresh once.
+            remove(dir);
+            walk(dir);
+            changed();
+            return;
+          }
+          const path = join(dir, filename.toString());
+          const rel = relative(repoRoot, path);
+          if (isIgnored(rel)) return;
+          let directory = false;
+          try { directory = lstatSync(path).isDirectory(); } catch { /* removed */ }
+          if (directory && ignoredDirectory(path)) return;
+          if (event === "rename") {
+            // A moved/deleted tree keeps its inotify handles until we close it.
+            // Re-scan also handles populated trees moved in and path replacement.
+            remove(path);
+            walk(path);
+          }
+          changed();
+        });
+        dirs.set(dir, watcher);
+        watcher.on("error", error => {
+          if (closed || dirs.get(dir) !== watcher) return;
+          remove(dir);
+          failed(error);
+        });
+      }
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (limited || closed) break;
+        if (entry.isDirectory()) walk(join(dir, entry.name));
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") failed(error);
+    }
+  };
+  walk(repoRoot);
+  return { close: () => { closed = true; remove(repoRoot); } };
 }
 
 /**
