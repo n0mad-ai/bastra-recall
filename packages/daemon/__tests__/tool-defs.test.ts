@@ -146,3 +146,17 @@ test("the refusal names the surface and how to widen it", () => {
   assert.match(msg, /"write"/, "the agent must be able to name the active surface to the user");
   assert.match(msg, /BASTRA_TOOL_SURFACE/, "and how to widen it");
 });
+
+test("#1238: a task tool denied by the preview switch says how to opt in, not to widen the surface", async () => {
+  const { toolSurfaceDenial } = await import("../src/tool-defs.js");
+  const prev = process.env.BASTRA_TASKS;
+  delete process.env.BASTRA_TASKS;
+  try {
+    const text = toolSurfaceDenial("task_list", "full");
+    assert.match(text, /BASTRA_TASKS=1/);
+    assert.doesNotMatch(text, /BASTRA_TOOL_SURFACE/);
+    assert.match(toolSurfaceDenial("save_memory", "search"), /BASTRA_TOOL_SURFACE/);
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_TASKS; else process.env.BASTRA_TASKS = prev;
+  }
+});

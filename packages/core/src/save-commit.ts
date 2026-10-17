@@ -173,6 +173,9 @@ export async function acquireCommitClaim(
       await publishPrepared(prepared, lockPath, body);
       return token;
     } catch (error) {
+      // Same shared-container race as in withPreparedClaim: the preparation
+      // can vanish before link(). Report it as the conflict it is.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw writeConflict(id, filePath, "another save is preparing this claim");
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const checked = await inspectCommitClaim(lockPath);
       if (checked.abandoned && checked.raw !== null
