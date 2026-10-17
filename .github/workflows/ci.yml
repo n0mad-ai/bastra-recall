@@ -63,14 +63,6 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Linux inotify before/after measurement (#1079)
-        if: github.event_name == 'pull_request' && matrix.node == '22'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          git fetch --depth=1 origin "$BASE_SHA"
-          node tools/measure-code-watches.mjs "$BASE_SHA"
-
       - name: Update-check tests
         run: npm run test:update
 
