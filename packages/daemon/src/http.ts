@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * Local HTTP endpoint for Claude Code hooks (PreToolUse / SessionStart / …)
  * UND REST-API für externe Caller (ChatGPT Custom GPT Actions via Cloudflare
@@ -205,7 +206,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   const ctx = await createHttpServerContext(opts);
 
   const server = createServer((req, res) => {
-    installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
+    if (tasksEnabled()) installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
     const t0 = Date.now();
     const url = req.url ?? "";
     const method = req.method ?? "GET";
@@ -213,7 +214,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // Activity signal for idle self-shutdown — count real work, not the cheap
     // liveness pings (else a monitor, or bastra.io's admin bridge probing every
     // 60s, would keep us alive forever).
-    if (!ctx.isHealthProbe(url)) { onActivity?.(); requestTaskReconciliation(tasksPath()); }
+    if (!ctx.isHealthProbe(url)) { onActivity?.(); if (tasksEnabled()) requestTaskReconciliation(tasksPath()); }
 
     // DNS-Rebinding-Gate für alles außer /api/v1/* (dort schützt das Token):
     // die offenen Endpoints sind loopback-only by design — ein nicht-loopback

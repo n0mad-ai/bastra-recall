@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 import { isTaskExecution } from "./task-execution.js";
 import { forwardTaskExecutionMcp } from "./task-execution-client.js";
 /**
@@ -82,7 +83,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
-      ...taskTools,
+      ...(tasksEnabled() ? taskTools : []),
       ...draftReviewTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
@@ -108,6 +109,7 @@ export async function startStdioServer(opts: {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
 
+    if (isTaskTool(name) && !tasksEnabled()) return { isError: true, content: [{ type: "text" as const, text: "Tasks preview disabled; opt in with BASTRA_TASKS=1" }] };
     if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
     if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
 

@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * The canonical list of MCP tool definitions the daemon exposes — the single
  * source of truth for both the embedded server (index.ts), the stdio forwarder
@@ -25,7 +26,7 @@ import { affectedTools } from "./code-graph/find-affected-files.js";
 
 export const ALL_TOOL_DEFS = [
   ...MEMORY_TOOL_DEFS,
-  ...taskTools,
+  ...(tasksEnabled() ? taskTools : []),
   ...documentTools,
   ...documentWriteTools,
   ...productDocTools,
@@ -89,7 +90,7 @@ const WRITE_SURFACE_TOOLS = [
   "save_document",
   "save_product_doc",
   "review_draft",
-  ...taskTools.map(t => t.name),
+  ...(tasksEnabled() ? taskTools.map(t => t.name) : []),
 ] as const;
 
 export function toolSurfaceFrom(raw: string | undefined): ToolSurface {
@@ -105,6 +106,7 @@ export function toolNamesForSurface(surface: ToolSurface): readonly string[] | n
 }
 
 export function isToolAllowed(name: string, surface: ToolSurface): boolean {
+  if (name.startsWith("task_") && !tasksEnabled()) return false;
   const allowed = toolNamesForSurface(surface);
   return allowed === null || allowed.includes(name);
 }
@@ -113,8 +115,7 @@ export function filterToolDefsForSurface<T extends { name: string }>(
   defs: readonly T[],
   surface: ToolSurface,
 ): T[] {
-  const allowed = toolNamesForSurface(surface);
-  return allowed === null ? [...defs] : defs.filter((d) => allowed.includes(d.name));
+  return defs.filter((d) => isToolAllowed(d.name, surface));
 }
 
 /**

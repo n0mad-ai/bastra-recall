@@ -1,3 +1,4 @@
+import "./tasks-opt-in.js";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";

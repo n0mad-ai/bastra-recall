@@ -1,3 +1,4 @@
+import { tasksEnabled, TASKS_PREVIEW_HINT } from "../tasks-enabled.js";
 import { ownerTaskMaintenance } from "./task-maintenance-cmd.js";
 import { ownerTaskTargets } from "./task-targets.js";
 import { loginOwnerTaskAccess, ownerTaskAuthorization } from "./task-owner-access.js";
@@ -36,6 +37,7 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
   return body;
 }
 export async function cmdTasks(args: { sub: string | null; positional: string[]; argv?: string[]; json?: boolean }): Promise<number> {
+  if (!tasksEnabled()) { process.stdout.write((args.json ? JSON.stringify({ code: "feature_disabled", preview: true, hint: TASKS_PREVIEW_HINT }) : TASKS_PREVIEW_HINT) + "\n"); return 0; }
   try {
     const parsed = parseTaskOptions(args.argv ?? args.positional);
     const words = parsed.words, options = parsed.options;

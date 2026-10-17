@@ -1,3 +1,4 @@
+import "./tasks-opt-in.js";
 /** Deterministic DOM fixture: no browser, no real credentials, all task strings are data. */
 import {test} from "node:test";
 import assert from "node:assert/strict";

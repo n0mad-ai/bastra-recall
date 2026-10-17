@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * Vault map web UI (#207) — static file serving for /ui.
  *
@@ -404,16 +405,25 @@ export async function handleWebUi(
       sendPlain(res, 404, "not found");
       return;
     }
+    // Resolve the preview before the first paint; disabled clients never wire
+    // the Tasks view (including a remembered view or a direct #tasks link).
+    const enabled = tasksEnabled();
+    const html = rel === "index.html"
+      ? (await readFile(target, "utf8"))
+        .replace('<html', `<html data-tasks-enabled="${enabled}"`)
+        .replace('data-view="tasks" hidden', enabled ? 'data-view="tasks"' : 'data-view="tasks" hidden')
+      : undefined;
     res.writeHead(200, {
       "Content-Type": type,
-      "Content-Length": st.size,
+      "Content-Length": html === undefined ? st.size : Buffer.byteLength(html),
       // Short-lived cache: assets change with daemon updates, not per request.
-      "Cache-Control": "max-age=60",
+      "Cache-Control": html === undefined ? "max-age=60" : "no-store",
       // CSP governs a DOCUMENT, so it rides on the html only — on a stylesheet
       // or a script response the browser ignores it, and shipping it there
       // would just suggest a protection that isn't happening.
       ...(type.startsWith("text/html") ? { "Content-Security-Policy": CSP } : {}),
     });
+    if (html !== undefined) { res.end(html); return; }
     createReadStream(target)
       .on("error", () => res.destroy())
       .pipe(res);

@@ -1,3 +1,4 @@
+import "./tasks-opt-in.js";
 import { test } from "node:test";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";

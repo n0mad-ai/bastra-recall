@@ -44,6 +44,7 @@ Commands:
                              down after 30 min idle). 'on' writes a LaunchAgent;
                              a hand-written one is never replaced without --force
   tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm>
+                             Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
   drafts <list|purge|undo>         Inspect or clear local session drafts
@@ -205,7 +206,9 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
-  tasks: `bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
+  tasks: `Vorschau: standardmäßig aus. BASTRA_TASKS=1 im Daemon und in Clients/Hooks setzen; Prozesse neu starten.
+
+bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
 Usage: bastra tasks <create|list|due|status|setup-hooks|client-status|ui> [options]
 Erster Zugang: tasks auth mint owner ich personal ~/.bastra/owner-task.token.
 Token im lokalen Editor kopieren, nur verborgen im Terminal/Browser eingeben.
