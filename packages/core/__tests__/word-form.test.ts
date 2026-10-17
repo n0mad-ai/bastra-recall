@@ -150,3 +150,8 @@ test("reused Cyrillic context tokens normalize once and mutable Sets remain corr
   tokens.delete(token); tokens.add("сервера");
   assert.equal(hasWordForm(tokens, "серверы"), true);
 });
+
+test("canonical exact lookup keeps mixed letter/digit tokens", () => {
+  assert.equal(hasWordForm(new Set(["cafe\u0301123"]), "café123"), true);
+  assert.equal(hasWordForm(new Set(["café123"]), "cafe\u0301123"), true);
+});

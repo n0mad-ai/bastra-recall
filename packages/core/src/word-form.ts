@@ -154,7 +154,7 @@ export function hasWordForm(tokens: ReadonlySet<string>, word: string): boolean 
     const candidate = normalizedToken(t);
     if (!prefixed && (candidate.charCodeAt(0) !== w.charCodeAt(0) ||
       candidate.charCodeAt(1) !== w.charCodeAt(1)) && !PREFIXED_RE.test(candidate)) continue;
-    if (LETTERS_ONLY_RE.test(w) && LETTERS_ONLY_RE.test(candidate) && sameNormalizedWordForm(w, candidate)) return true;
+    if (w === candidate || (LETTERS_ONLY_RE.test(w) && LETTERS_ONLY_RE.test(candidate) && sameNormalizedWordForm(w, candidate))) return true;
   }
   return false;
 }
