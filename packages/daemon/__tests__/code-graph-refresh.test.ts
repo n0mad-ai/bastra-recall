@@ -445,3 +445,47 @@ describe("fresh graph is not rebuilt", () => {
     assert.equal(await runOnce(dirty, "stop-hook"), 1);
   });
 });
+
+describe("a change during a build is not skipped as fresh", () => {
+  it("the follow-up rebuilds even though builtAt is stamped after the edit", async (t) => {
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    await mkdir(graphDirOf(repo), { recursive: true });
+    let calls = 0;
+    const r: CodeGraphRefresher = new CodeGraphRefresher({
+      debounceMs: 1,
+      build: async () => {
+        calls++;
+        if (calls === 1) {
+          // graphify has read the tree; now a file is saved (or git checks out a branch)
+          await tick(20);
+          await writeFile(join(repo, "a.ts"), "export const a = 2;\n", "utf8");
+          r.enqueue(repo, "git");
+          await tick(20);
+        }
+        // like build.ts: builtAt is stamped when the build COMPLETES
+        await writeManifest(graphDirOf(repo), manifest({ repoRoot: repo, builtAt: new Date().toISOString() }));
+        return OK;
+      },
+    });
+    r.enqueue(repo, "manual");
+    await r.whenIdle();
+    r.stop();
+    assert.equal(calls, 2, "the follow-up must rebuild: the first build never saw the edit");
+  });
+
+  it("an isFresh that rejects counts as not fresh and does not wedge the repo", async (t) => {
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    let calls = 0;
+    const r = new CodeGraphRefresher({
+      debounceMs: 1,
+      isFresh: async () => { throw new Error("boom"); },
+      build: async () => (calls++, OK),
+    });
+    r.enqueue(repo, "stop-hook");
+    await r.whenIdle();
+    r.stop();
+    assert.equal(calls, 1);
+  });
+});
