@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- Hook hint wrappers escape external attribute values and protect header boundaries, so injected metadata cannot break out of the hint block (#1230, #1232).
+- Hook hint wrappers escape external attribute values and protect header boundaries, so injected metadata cannot break out of the hint block (#1232, #1233, #1235).
 - Task file-source and evidence reads reject non-regular files without blocking and bind the opened source on macOS/Linux, preventing parent-symlink swaps from reading outside a registered root (CodeQL #109). File-source observation deliberately rejects multiple hardlinks; own rollback backups retain hardlink support and work through symlinked data-directory aliases. Windows and other POSIX platforms retain their available nonblocking/regular-file and path checks without equivalent descriptor containment.
 
 ### Added
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Proactive tasks ship as an **opt-in preview, off by default until v1.2.0** (#1238). Set `BASTRA_TASKS=1` in daemon and clients/hooks and restart them to restore notify reminders, automatic local Agent access and the Recall UI Tasks tab. Without opt-in there is no task runtime, task I/O, task tools or task UI/session API; existing data stays untouched. Existing prepare/execute approval remains unchanged pending further Owner discussion.
 - Targeted searches for an old value keep both versions visible: retrieved successors inherit the predecessor's relevance and rank immediately ahead, including chains and batch merges. Predecessors retain their scores; direct and hop lanes remain separate (#1206, #1229).
 - Saving retries a vanished claim-preparation directory on macOS EINVAL once, then reports a write conflict instead of leaking a filesystem error.
-- Stop-hook and watcher triggers skip code-graph extraction when the source tree is already covered (#1228). Freshness checks detect renamed/replaced source paths and preserved-mtime size changes through a file-state signature. Successful builds record their start time; changes during a build or freshness check retain their promised follow-up. Old manifests rebuild once.
+- Stop-hook and watcher triggers skip code-graph extraction when the source tree is already covered; thanks @zzallirog (#1228). Freshness checks detect renamed/replaced source paths and preserved-mtime size changes through a file-state signature. Successful builds record their start time; changes during a build or freshness check retain their promised follow-up. Old manifests rebuild once.
 - Resumed Claude sessions resolve terminal width, tty and feed PID independently for each parent process. Git versions before 2.17 retry status without `--ahead-behind`.
 - Repeated word-form checks reuse bounded Unicode normalization results without changing the accepted affix families.
 - Bridge minting recognizes legacy Unicode IDs and preserves their evidence, age, demotion and archive state instead of creating duplicates after an upgrade.
