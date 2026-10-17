@@ -27,6 +27,8 @@ set your Claude Code `statusLine` command to run the Node.js script:
 }
 ```
 
+Installation and updates preserve an existing `refreshInterval`; the default is one second. Each tick reads Git status and ahead/behind counts together, with a fallback for Git before 2.17. Resumed Claude sessions resolve terminal width, tty and feed PID per parent process.
+
 ### Codex Powerline panel
 
 `bastra-codex-statusline --cmux` opens a compact live Powerline panel below the
@@ -145,7 +147,7 @@ This wrapper receives Claude's JSON on stdin, writes only the small session
 metadata snapshot under `~/.bastra/panels/claude/`, and delegates to the original
 renderer so the existing footer stays intact. Without `--renderer` it only publishes the snapshot and prints nothing, for
 setups where the panel replaces the footer. It is configured as Claude's
-`statusLine.command`, with `refreshInterval: 1`; back up settings before changing
+`statusLine.command`, with your chosen `refreshInterval` (default `1`); back up settings before changing
 that command. Claude reloads it automatically. Replacing that command later
 also removes the feed, which the panel reports as stale instead of keeping old values.
 
@@ -229,6 +231,8 @@ Einrichtung setzt du Claudes `statusLine`-Befehl auf den Aufruf des Node.js-Skri
   }
 }
 ```
+
+Installation und Updates behalten ein vorhandenes `refreshInterval`; der Standard ist eine Sekunde. Jeder Tick liest Git-Status und voraus/zurück gemeinsam, mit einem Fallback für Git vor 2.17. Fortgesetzte Claude-Sitzungen bestimmen Terminalbreite, tty und Feed-PID je Elternprozess neu.
 
 ### Codex-Powerline-Panel
 
@@ -360,7 +364,7 @@ Snapshot der Sitzungsmetadaten unter `~/.bastra/panels/claude/` und ruft den
 ursprünglichen Renderer auf, damit die bestehende Fußzeile erhalten bleibt.
 Ohne `--renderer` schreibt er nur den Snapshot und gibt nichts aus, für Setups,
 in denen das Panel die Fußzeile ersetzt. Trage ihn als Claudes
-`statusLine.command` mit `refreshInterval: 1` ein; sichere die Einstellungen,
+`statusLine.command` mit deinem gewählten `refreshInterval` (Standard `1`) ein; sichere die Einstellungen,
 bevor du diesen Befehl änderst. Claude lädt ihn automatisch neu. Ersetzt du den
 Befehl später, entfällt auch der Feed; das Panel meldet ihn als veraltet, statt
 alte Werte weiterzuzeigen.

@@ -6,16 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- CI now builds and tests on Node 22, 24 and 26. Node 22 to 26 are supported; Homebrew installs, which follow the newest Node, already run on 26. Support for Node 22 is planned to end in early 2027 with the next major release, before its upstream end of life on 2027-04-30.
-- Release documentation guard: stable version bumps update both README release lines; tests and publishing verify README/package/changelog agreement. Prereleases retain the stable README announcement and do not require a matching changelog section. Real publishing requires an explicit EN/DE Wiki-update confirmation. README, user guides and the separate Wiki are refreshed for 1.1.0.
-
-- Proactive tasks ship as an **opt-in preview, off by default until v1.2.0** (#1238). Set `BASTRA_TASKS=1` in daemon and clients/hooks and restart them to restore notify reminders, automatic local Agent access and the Recall UI Tasks tab. Without opt-in there is no task runtime, task I/O, task tools or task UI/session API; existing data stays untouched. Existing prepare/execute approval remains unchanged pending further Owner discussion.
+## [1.1.1] — 2026-10-17
 
 ### Security
 
+- Hook hint wrappers escape external attribute values and protect header boundaries, so injected metadata cannot break out of the hint block (#1230, #1232).
 - Task file-source and evidence reads reject non-regular files without blocking and bind the opened source on macOS/Linux, preventing parent-symlink swaps from reading outside a registered root (CodeQL #109). File-source observation deliberately rejects multiple hardlinks; own rollback backups retain hardlink support and work through symlinked data-directory aliases. Windows and other POSIX platforms retain their available nonblocking/regular-file and path checks without equivalent descriptor containment.
 
 ### Added
+
+**Opt-in preview only, off by default until v1.2.0.** The task capabilities below require `BASTRA_TASKS=1`; they are not enabled by this upgrade.
 
 - Explicit persisted tasks with one MCP/HTTP/CLI/UI contract, owner review,
   calendar/duration/recurrence, authenticated versioned source events, startup/contact
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Optional task UI, readable German CLI with explicit `--json`, owner hook setup,
   source/budget/unknown-outcome status, mute/off/execute-stop, guarded target management,
   private cold archives and explicit fail-closed backup/lock recovery. Ordinary memory
-  schema and release version remain unchanged.
+  schema remains unchanged.
 - One reversible local-artifact UTF-8 replacement adapter: separate exact Ed25519
   owner signatures for every required domain, revision/expiry/revocation checks,
   local leases/fencing, durable approval spending and intent before effects,
@@ -38,17 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- CI now builds and tests on Node 22, 24 and 26. Node 22 to 26 are supported; Homebrew installs, which follow the newest Node, already run on 26. Support for Node 22 is planned to end in early 2027 with the next major release, before its upstream end of life on 2027-04-30.
+- Release documentation guard: stable version bumps update both README release lines; tests and publishing verify README/package/changelog agreement. Prereleases retain the stable README announcement and do not require a matching changelog section. Real publishing requires an explicit EN/DE Wiki-update confirmation. README and user guides are refreshed for 1.1.1; the EN/DE Wiki update is prepared separately for publication after review.
+- Proactive tasks ship as an **opt-in preview, off by default until v1.2.0** (#1238). Set `BASTRA_TASKS=1` in daemon and clients/hooks and restart them to restore notify reminders, automatic local Agent access and the Recall UI Tasks tab. Without opt-in there is no task runtime, task I/O, task tools or task UI/session API; existing data stays untouched. Existing prepare/execute approval remains unchanged pending further Owner discussion.
 - Targeted searches for an old value keep both versions visible: retrieved successors inherit the predecessor's relevance and rank immediately ahead, including chains and batch merges. Predecessors retain their scores; direct and hop lanes remain separate (#1206, #1229).
 - Saving retries a vanished claim-preparation directory on macOS EINVAL once, then reports a write conflict instead of leaking a filesystem error.
-- Code graphs detect renamed/replaced source paths and preserved-mtime size changes through a file-state signature. Successful builds record their start time, and events arriving during freshness checks retain their promised follow-up. Old manifests rebuild once.
-- Linux code watches share the source scanner's ignored-directory list, including virtual environments, Rust targets, vendor and coverage trees. Freed watch handles allow registration again after the watch limit is reached.
+- Stop-hook and watcher triggers skip code-graph extraction when the source tree is already covered (#1228). Freshness checks detect renamed/replaced source paths and preserved-mtime size changes through a file-state signature. Successful builds record their start time; changes during a build or freshness check retain their promised follow-up. Old manifests rebuild once.
 - Resumed Claude sessions resolve terminal width, tty and feed PID independently for each parent process. Git versions before 2.17 retry status without `--ahead-behind`.
 - Repeated word-form checks reuse bounded Unicode normalization results without changing the accepted affix families.
 - Bridge minting recognizes legacy Unicode IDs and preserves their evidence, age, demotion and archive state instead of creating duplicates after an upgrade.
 - Path-lock takeover preserves successor leases and bounds stale-owner recovery (#1223). Saving publishes complete commit claims and recovers abandoned claims without letting concurrent writers commit the same target (#1221, #1203).
-- Stop-hook and watcher triggers skip code-graph extraction when the tree is already covered; changes during a build still receive one follow-up (#1228).
 
-- On Linux, code-awareness watches only eligible directories, skipping ignored trees before allocating inotify watches. New directories are discovered, removed trees release their watches, and watch-limit exhaustion degrades without stopping other refresh triggers. macOS keeps FSEvents; thanks @zzallirog (#1079).
+- On Linux, code-awareness watches only eligible directories, skipping ignored trees before allocating inotify watches. The ignored-directory list is shared with the source scanner, including virtual environments, Rust targets, vendor and coverage trees. New directories are discovered, removed trees release their watches, and freed capacity allows registration again after watch-limit exhaustion without stopping other refresh triggers. macOS keeps FSEvents; thanks @zzallirog (#1079).
 
 - Reflex triggers and `acted_on` recognize supported inflected word forms using closed affix families; unrelated lookalikes such as `delete`/`delegate` and `backup`/`backdoor` stay distinct. Original implementation by @zzallirog, with conservative matching follow-up (Refs #1190, #1191).
 - Word search segments supported spaceless scripts through Node/ICU on both index and query sides; mixed identifiers retain their whole term and components with additional segments (#1214 follow-up); thanks @zzallirog (#1189).
@@ -3371,7 +3372,8 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
-[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.1
 [1.0.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.0

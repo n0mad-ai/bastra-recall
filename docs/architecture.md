@@ -131,7 +131,7 @@ The current index is in-memory MiniSearch BM25, not SQLite/FTS5. The searched fi
 - optional exact `type`
 - `sensitivity !== private` unless the call arrives over a trusted local transport (#464)
 
-It then applies staleness reranking based on lifecycle fields such as `valid_until`, `expires_after_days`, and `last_reviewed_at`.
+It then applies staleness reranking based on lifecycle fields such as `valid_until`, `expires_after_days`, and `last_reviewed_at`. Retrieved successors inherit predecessor relevance and rank immediately ahead of them, including replacement chains and batch merges. Predecessors keep their scores, so a targeted old-value search retains the old evidence; direct and hop lanes stay separate.
 
 The index and query share word tokenization. Runs in scripts commonly written without spaces (including Chinese, Japanese and Thai) use Node's ICU word segmentation via `Intl.Segmenter`. Word boundaries depend on the Node/ICU build; if segmentation is unavailable or produces no word-like pieces, the original run is kept. Mixed identifiers such as `服务器.password` retain their whole term and existing `.`, `_`, `-` components, with word segments added alongside them. This improves lexical matching opportunities, not a guarantee about ranks or scores.
 
@@ -520,7 +520,7 @@ Der aktuelle Index ist ein In-Memory-MiniSearch-BM25-Index, nicht SQLite/FTS5. D
 - optional exaktem `type`
 - `sensitivity !== private`, außer der Aufruf kommt über einen vertrauenswürdigen lokalen Transport (#464)
 
-Danach wird nach Aktualität neu gewichtet, anhand von Lebenszyklus-Feldern wie `valid_until`, `expires_after_days` und `last_reviewed_at`.
+Danach wird nach Aktualität neu gewichtet, anhand von Lebenszyklus-Feldern wie `valid_until`, `expires_after_days` und `last_reviewed_at`. Gefundene Nachfolger übernehmen die Relevanz ihrer Vorgänger und stehen direkt davor, auch bei Ablösungsketten und Batch-Zusammenführungen. Vorgänger behalten ihre Scores, damit eine gezielte Suche nach alten Werten deren Belege sichtbar lässt; direkte Treffer und Hop-Treffer bleiben getrennt.
 
 Index und Anfrage verwenden dieselbe Worttokenisierung. Zeichenläufe in Schriften, die häufig ohne Leerzeichen geschrieben werden (etwa Chinesisch, Japanisch und Thai), nutzen Nodes ICU-Wortsegmentierung über `Intl.Segmenter`. Wortgrenzen hängen vom Node-/ICU-Build ab; ist Segmentierung nicht verfügbar oder liefert sie keine wortartigen Teile, bleibt der ursprüngliche Lauf erhalten. Gemischte Bezeichner wie `服务器.password` behalten ihren Ganzterm und die bisherigen `.`, `_`, `-`-Teile; Wortsegmente kommen zusätzlich dazu. Das eröffnet weitere Stichworttreffer, garantiert aber keine Ränge oder Scores.
 

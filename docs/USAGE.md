@@ -11,6 +11,16 @@ Set up your clients, bring in existing memories and use Bastra Recall in everyda
 For the Claude Code statusline and Claude/Codex terminal panels, see the
 [setup, controls and data limits](../packages/statusline/README.md#english).
 
+### Changes in 1.1.1
+
+- Searches for an old value keep that note visible and place its retrieved successor immediately ahead, including replacement chains. The older note keeps its relevance score.
+- Reflex triggers and `acted_on` accept supported word forms from closed affix families; this is not arbitrary prefix or fuzzy matching. For example, `delete` and `delegate` remain distinct.
+- Code awareness skips extraction when the graph already covers the source tree. Renames, replaced paths and size changes with preserved modification times invalidate it; edits during a build still get a follow-up. Older graph manifests rebuild once after upgrading. On Linux, ignored directories do not consume watches, and removed watches free capacity again.
+- Statusline installation and updates preserve your chosen `refreshInterval`; the default stays one second. Each tick reads Git status and ahead/behind together. Resumed Claude sessions resolve terminal/feed information per parent process.
+- Concurrent saves recover abandoned claims without allowing two writers to commit the same target. A write conflict can be retried after rereading the note.
+- Hint-block attributes are escaped so external metadata cannot break the wrapper boundaries.
+- Proactive tasks are an opt-in preview, off by default until v1.2.0. Set `BASTRA_TASKS=1` in both daemon and clients/hooks and restart them to try it; existing task data is retained. See the [preview guide](./Proactive%20Tasks.md).
+
 ### Agent review of local candidates (#157, steps 1–2)
 
 At SessionStart, Claude Code and Codex can receive a separate `<draft-review>`
@@ -502,6 +512,16 @@ Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recal
 Für die Claude-Code-Statusline und die Claude-/Codex-Terminal-Panels findest du
 [Einrichtung, Bedienung und Datengrenzen](../packages/statusline/README.md#deutsch)
 in der Panel-Anleitung.
+
+### Änderungen in 1.1.1
+
+- Suchen nach einem alten Wert lassen die alte Notiz sichtbar und setzen ihren gefundenen Nachfolger direkt davor, auch bei Ablösungsketten. Die alte Notiz behält ihren Relevanzscore.
+- Reflex-Trigger und `acted_on` erkennen unterstützte Wortformen aus festen Affixfamilien; beliebige Präfixe oder unscharfe Ähnlichkeit reichen nicht. `delete` und `delegate` bleiben beispielsweise getrennt.
+- Code-Awareness überspringt die Extraktion, wenn der Graph den Quellbaum bereits abdeckt. Umbenannte oder ersetzte Pfade sowie Größenänderungen bei unveränderter Änderungszeit machen ihn ungültig; Änderungen während eines Builds erhalten einen Folgelauf. Alte Graph-Manifeste werden nach dem Upgrade einmal neu gebaut. Unter Linux verbrauchen ignorierte Verzeichnisse keine Watches; entfernte Watches geben wieder Kapazität frei.
+- Statusline-Installation und Updates behalten dein gewähltes `refreshInterval`; der Standard bleibt eine Sekunde. Jeder Tick liest Git-Status und voraus/zurück gemeinsam. Fortgesetzte Claude-Sitzungen bestimmen Terminal-/Feed-Daten je Elternprozess neu.
+- Gleichzeitiges Speichern räumt verwaiste Claims auf, ohne zwei Schreibern denselben Ziel-Commit zu erlauben. Nach einem Schreibkonflikt die Notiz erneut lesen und den Aufruf wiederholen.
+- Attribute der Hinweisblöcke werden maskiert, damit externe Metadaten ihre Grenzen nicht aufbrechen.
+- Proaktive Aufgaben sind eine Opt-in-Vorschau, bis v1.2.0 standardmäßig aus. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten; vorhandene Aufgabendaten bleiben erhalten. Siehe die [Vorschau-Anleitung](./Proaktive%20Aufgaben.md).
 
 ### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
 

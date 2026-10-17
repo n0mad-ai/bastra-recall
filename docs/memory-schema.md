@@ -297,14 +297,17 @@ contract (C-059), historicity comes from the version status, never from a change
 of location: a predecessor that gets moved away is not historical, it is gone.
 
 In `recall`, when both versions are retrieved into the same candidate lane,
-the predecessor's score is capped just below its successor's after fusion and
-the other ranking multipliers, before the top-k cut. Chains are processed
-newest first. This also applies to BM25-only recall. Other candidates keep
-their scores. A targeted search matching only the predecessor still finds it;
-successors are never injected into unrelated queries or across filters.
-Missing successors, self-links and cycles do not cause a demotion. This narrow
-ordering correction (#1206) does not implement the future Historical zone or
-the broader accessibility projection (§7.1 of the evolution contract).
+the successor's score is raised to at least the predecessor's score plus 0.001
+after fusion and the other ranking multipliers, before the top-k cut. Chains
+propagate relevance from oldest to newest. This also applies to BM25-only
+recall. Predecessors and unrelated candidates keep their scores, so a strong
+old-value match is not buried beneath unrelated results. A targeted search
+matching only the predecessor still finds it; successors are never injected
+into unrelated queries or across filters. Missing successors, self-links and
+cycles leave scores unchanged. Direct and hop lanes remain separate. This
+ordering correction (#1206, #1229, #1240) does not implement the future
+Historical zone or the broader accessibility projection (§7.1 of the evolution
+contract).
 
 Batch recall (`queries`) enforces the same successor ordering after merging
 the full result union and before top-k. It preserves the selected single-query
@@ -941,15 +944,18 @@ setzt eine Erinnerung zur Ruhe und entfernt sie aus dem aktiven Index. Nach dem 
 Ortswechsel: Ein Vorgänger, der wegverschoben wird, ist nicht historisch, er ist weg.
 
 Wenn `recall` beide Versionen in derselben Kandidatengruppe findet, wird der
-Score des Vorgängers nach der Fusion und den übrigen Ranking-Faktoren knapp
-unter dem des Nachfolgers begrenzt, vor dem Top-k-Schnitt. Ketten werden von
-der neuesten Version aus verarbeitet. Das gilt auch für reinen BM25-Recall.
-Andere Kandidaten behalten ihre Scores. Eine gezielte Suche, die nur den
-Vorgänger trifft, findet ihn weiterhin; Nachfolger werden nicht in unpassende
-Suchanfragen oder über Filtergrenzen hinweg eingefügt. Fehlende Nachfolger,
-Selbstverweise und Zyklen bewirken keine Herabstufung. Diese begrenzte
-Reihenfolgekorrektur (#1206) implementiert weder die künftige Historical-Zone
-noch die umfassendere Erreichbarkeitsprojektion (§7.1 des Evolutionsvertrags).
+Score des Nachfolgers nach der Fusion und den übrigen Ranking-Faktoren auf
+mindestens den Vorgänger-Score plus 0.001 angehoben, vor dem Top-k-Schnitt.
+Ketten reichen Relevanz von der ältesten zur neuesten Version weiter. Das gilt
+auch für reinen BM25-Recall. Vorgänger und unbeteiligte Kandidaten behalten ihre
+Scores; ein starker Treffer auf einen alten Wert wird dadurch nicht unter
+unpassenden Ergebnissen begraben. Eine gezielte Suche, die nur den Vorgänger
+trifft, findet ihn weiterhin; Nachfolger werden nicht in unpassende Suchanfragen
+oder über Filtergrenzen hinweg eingefügt. Fehlende Nachfolger, Selbstverweise
+und Zyklen lassen Scores unverändert. Direkte Treffer und Hop-Treffer bleiben
+getrennt. Diese Reihenfolgekorrektur (#1206, #1229, #1240) implementiert weder
+die künftige Historical-Zone noch die umfassendere Erreichbarkeitsprojektion
+(§7.1 des Evolutionsvertrags).
 
 Batch-Recall (`queries`) stellt die Nachfolger-Reihenfolge nach dem Zusammenführen
 aller Treffer und vor Top-k wieder her. Die ausgewählten Einzelquery-Scores
