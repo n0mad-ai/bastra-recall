@@ -9,10 +9,9 @@ import path from "node:path";
  * anything resolved via fork/exec — the claude session pid, the parent tty,
  * the terminal width — is re-paid on every tick unless it is parked on disk.
  *
- * One JSON file in the feed dir, keyed by this process's ppid: the ancestor
- * every tick of one session shares. If the spawn chain puts a fresh
- * intermediate between claude and us, the key misses and we fall back to the
- * fork path — no worse than before. reapStaleFeeds only deletes `<pid>.json`,
+ * One JSON file in the feed dir, keyed by Claude's session id when supplied,
+ * otherwise by this process's ppid. The session id survives a fresh wrapper
+ * shell on every tick. reapStaleFeeds only deletes `<pid>.json`,
  * so this file survives feed reaping; entries of dead sessions are pruned on
  * write instead. Writes are last-writer-wins across concurrent sessions: a
  * clobbered entry just re-resolves on that session's next tick.
@@ -25,7 +24,21 @@ const CACHE_FILE = path.join(
   "tick-cache.json",
 );
 
+let sessionKey: string | undefined;
+
+/** Set after reading Claude's stdin, before any segment/cache lookup. */
+export function setTickCacheSession(sessionId: unknown): void {
+  sessionKey = typeof sessionId === "string" && sessionId.length > 0
+    ? `session:${sessionId}`
+    : undefined;
+}
+
+function cacheKey(): string {
+  return sessionKey ?? String(process.ppid);
+}
+
 export interface TickCacheEntry {
+  parentPid?: number;
   claudePid?: number;
   fallbackPid?: number;
   git?: {
@@ -67,18 +80,22 @@ function readAll(): Record<string, TickCacheEntry> {
 }
 
 export function readTickCache(): TickCacheEntry {
-  const entry = readAll()[String(process.ppid)];
+  const entry = readAll()[cacheKey()];
   return typeof entry === "object" && entry !== null ? entry : {};
 }
 
 export function writeTickCache(patch: TickCacheEntry): void {
   try {
     const all = readAll();
-    const key = String(process.ppid);
-    all[key] = { ...all[key], ...patch };
+    const key = cacheKey();
+    all[key] = { ...all[key], ...patch, parentPid: process.ppid };
     for (const k of Object.keys(all)) {
-      const pid = parseInt(k, 10);
-      if (!Number.isFinite(pid) || (k !== key && !pidAlive(pid))) delete all[k];
+      if (k === key) continue;
+      const entry = all[k];
+      const pid = k.startsWith("session:")
+        ? entry?.claudePid ?? entry?.fallbackPid ?? entry?.parentPid
+        : parseInt(k, 10);
+      if (typeof pid !== "number" || !Number.isFinite(pid) || !pidAlive(pid)) delete all[k];
     }
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
     fs.writeFileSync(CACHE_FILE, JSON.stringify(all), "utf8");

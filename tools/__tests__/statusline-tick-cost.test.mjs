@@ -149,3 +149,45 @@ test("#1227: install and path updates retain a chosen or omitted interval; new b
     child(code, home);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test("#1227: stdin session id reuses Git and Claude PID behind a fresh wrapper shell per tick", () => {
+  const dir = temporary();
+  try {
+    const repo = path.join(dir, "repo");
+    fs.mkdirSync(repo);
+    git(repo, "init", "-b", "main");
+    fs.writeFileSync(path.join(repo, "file"), "one\n");
+    git(repo, "add", "."); git(repo, "commit", "-m", "initial");
+    const preload = path.join(dir, "count.mjs");
+    fs.writeFileSync(preload, `
+      import cp from 'node:child_process';
+      import { syncBuiltinESMExports } from 'node:module';
+      let calls = 0;
+      const original = cp.execFile;
+      cp.execFile = function(...args) { calls++; return Reflect.apply(original, this, args); };
+      cp.execFileSync = () => { calls++; return process.ppid + ' ${process.pid} sh\\n${process.pid} 1 claude\\n'; };
+      syncBuiltinESMExports();
+      process.on('exit', () => console.error('CALLS=' + calls));
+    `);
+    const config = path.join(dir, "config.json");
+    fs.writeFileSync(config, JSON.stringify({ display: { lines: [{ segments: {
+      git: { enabled: true }, bastra: { enabled: true },
+    } }] } }));
+    const payload = JSON.stringify({ session_id: "wrapper-session", workspace: { project_dir: repo, current_dir: repo }, cwd: repo });
+    const code = `
+      import { spawnSync } from 'node:child_process';
+      const result = spawnSync(process.execPath, ['--import', ${JSON.stringify(preload)},
+        './packages/statusline/dist/index.mjs', '--config=' + ${JSON.stringify(config)}],
+        { input: ${JSON.stringify(payload)}, encoding: 'utf8', env: {...process.env, COLUMNS:'160'} });
+      if (result.status !== 0) throw new Error(result.stderr);
+      console.log(JSON.stringify({ parent: process.pid, output: result.stdout,
+        calls: Number(result.stderr.match(/CALLS=(\\d+)/)?.[1]) }));
+    `;
+    const cold = JSON.parse(child(code, dir));
+    const warm = JSON.parse(child(code, dir));
+    assert.notEqual(cold.parent, warm.parent, "each tick really has a new intermediate parent");
+    assert.equal(cold.calls, 6, "five Git queries and one parent walk populate the session cache");
+    assert.equal(warm.calls, 0, "session id must bridge changing parent PIDs");
+    assert.equal(warm.output, cold.output);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
