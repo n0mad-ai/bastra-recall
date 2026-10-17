@@ -6,6 +6,7 @@ import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { envInt } from "./env.js";
+import { escapeAttr } from "./escape-attr.js";
 
 // Hits at/above this are non-negotiable loads. #9 Stage C: env-tunable so we
 // can lift the REQUIRED band from telemetry without a rebuild.
@@ -101,8 +102,4 @@ export function formatHintBlock(
   // #152: reference-only frame + anti-spoof — vault-derived text (titles,
   // summaries) must not carry marker fragments that break out of the block.
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

@@ -58,6 +58,7 @@ import { codeAwarenessDisabledByEnv, isRepoEnabledSync } from "./enabled-repos.j
 import { dependentFilesOf, symbolsOfFile, graphDirOf, type CodeSymbol } from "./reader.js";
 import { isStale, readManifest } from "./manifest.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
+import { escapeAttr } from "../escape-attr.js";
 
 /** Dependent files listed by name before the rest becomes a count. */
 const MAX_DEPENDENTS = 12;
@@ -289,8 +290,4 @@ function format(rel: string, symbols: CodeSymbol[], dependents: string[], stale:
  *  this bounds the strings inside it (a symbol name may be 512 bytes). */
 function clip(body: string): string {
   return body.length <= MAX_BLOCK_CHARS ? body : `${body.slice(0, MAX_BLOCK_CHARS - 1)}…`;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

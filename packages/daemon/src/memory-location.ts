@@ -13,6 +13,7 @@
 import { open, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import { isMemoryShapedMarkdown } from "./hook-skip.js";
+import { escapeAttr } from "./escape-attr.js";
 
 /** Head of the pending write: `Write` carries content inline, edits read the
  *  existing file's first 2KB. Fail-open: unreadable → null. */
@@ -79,9 +80,4 @@ export async function memoryLocationNote(
     `as a bastra memory, save it via save_memory (or move it under the vault root); ` +
     `if it is a plain document, ignore this note.</vault-location-check>`
   );
-}
-
-// External names must remain inside their quoted wrapper attributes (#1232).
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

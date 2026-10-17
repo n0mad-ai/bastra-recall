@@ -21,6 +21,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { envOff } from "./env.js";
+import { escapeAttr } from "./escape-attr.js";
 
 const CODE_EXTS = new Set([
   ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
@@ -185,9 +186,4 @@ export async function fileSizeNote(
   } catch {
     return null;
   }
-}
-
-// External names must remain inside their quoted wrapper attributes (#1232).
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

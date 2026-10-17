@@ -6,6 +6,7 @@ import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
 import type { ConventionLean, RecallHit } from "./session-hook-http.js";
+import { escapeAttr } from "./escape-attr.js";
 
 export const SCORE_FLOOR = 30;
 
@@ -119,10 +120,6 @@ function formatHintLine(h: RecallHit, hideScore = false): string {
   return hideScore
     ? `- ${h.id} (${h.type}/${h.scope}): ${summary}`
     : `- ${h.id} (${h.type}/${h.scope}, score ${Math.round(h.score)}): ${summary}`;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**

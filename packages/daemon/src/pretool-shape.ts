@@ -22,6 +22,7 @@
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { repoRelative } from "./code-graph/dependents-block.js";
 import { envFirst } from "./env.js";
+import { escapeAttr } from "./escape-attr.js";
 
 /** At most this many candidates in the default document. */
 export const PRETOOL_MAX_CANDIDATES = 1;
@@ -78,10 +79,6 @@ function ruleLine(summary: string, max: number): string {
   const cut = flat.search(/[.!?](\s|$)/);
   const first = cut >= 0 ? flat.slice(0, cut + 1) : flat;
   return first.length > max ? first.slice(0, max - 1) + "…" : first;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
