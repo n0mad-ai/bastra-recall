@@ -181,9 +181,9 @@ export function formatHarvestBlock(
   entry: { session_id: string; cwd?: string },
   candidates: HarvestCandidate[],
 ): string {
-  const where = entry.cwd ? ` project="${basename(entry.cwd)}"` : "";
+  const where = entry.cwd ? ` project="${escapeAttr(basename(entry.cwd))}"` : "";
   const lines = [
-    `<session-harvest session="${entry.session_id.slice(0, 8)}"${where}>`,
+    `<session-harvest session="${escapeAttr(entry.session_id.slice(0, 8))}"${where}>`,
     `From a finished session — the user said this verbatim and the session did not save it. ` +
       `Recall first; save or append only what is durable (a rule, a correction, a decision, a fact ` +
       `that holds beyond that session), keep the user's words, and do not invent beyond the quote:`,
@@ -407,4 +407,9 @@ async function writeHarvestTelemetry(
   } catch {
     /* telemetry must never break the job */
   }
+}
+
+// External names must remain inside their quoted wrapper attributes (#1232).
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

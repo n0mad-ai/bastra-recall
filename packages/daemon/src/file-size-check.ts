@@ -165,7 +165,7 @@ export function formatSizeNote(filePath: string, lines: number, t: SizeThreshold
     level === "critical"
       ? `over the ${t.critical}-line ceiling — do NOT grow this file further; propose a coherent module split FIRST (file-size convention: cut responsibilities, not line counts).`
       : `at/near the ~${t.guide}-line guide value — if this edit adds noticeable growth, propose a module split BEFORE writing (file-size convention; a justified ${t.guide + 200}-line file is fine, silent growth is not).`;
-  return `<file-size-check file="${basename(filePath)}" lines="${lines}" level="${level}">${msg}</file-size-check>`;
+  return `<file-size-check file="${escapeAttr(basename(filePath))}" lines="${lines}" level="${level}">${msg}</file-size-check>`;
 }
 
 /** Measure + format in one step — the hook's entry point. Never throws:
@@ -185,4 +185,9 @@ export async function fileSizeNote(
   } catch {
     return null;
   }
+}
+
+// External names must remain inside their quoted wrapper attributes (#1232).
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
