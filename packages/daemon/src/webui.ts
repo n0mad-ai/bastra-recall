@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * Vault map web UI (#207) — static file serving for /ui.
  *
@@ -9,7 +10,7 @@
  * so http.ts's DNS-rebinding host gate already covers it.
  */
 import { createReadStream } from "node:fs";
-import { appendFile, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -399,21 +400,36 @@ export async function handleWebUi(
   }
 
   try {
-    const st = await stat(target);
-    if (!st.isFile()) {
-      sendPlain(res, 404, "not found");
-      return;
+    let html: string | undefined;
+    let contentLength: number;
+    if (rel === "index.html") {
+      // Bind validation and reading to one descriptor (#1238, CodeQL).
+      const file = await open(target, "r");
+      try {
+        if (!(await file.stat()).isFile()) { sendPlain(res, 404, "not found"); return; }
+        // Resolve before first paint; disabled clients never wire the Tasks view.
+        const enabled = tasksEnabled();
+        html = (await file.readFile("utf8"))
+          .replace('<html', `<html data-tasks-enabled="${enabled}"`)
+          .replace('data-view="tasks" hidden', enabled ? 'data-view="tasks"' : 'data-view="tasks" hidden');
+        contentLength = Buffer.byteLength(html);
+      } finally { await file.close(); }
+    } else {
+      const st = await stat(target);
+      if (!st.isFile()) { sendPlain(res, 404, "not found"); return; }
+      contentLength = st.size;
     }
     res.writeHead(200, {
       "Content-Type": type,
-      "Content-Length": st.size,
+      "Content-Length": contentLength,
       // Short-lived cache: assets change with daemon updates, not per request.
-      "Cache-Control": "max-age=60",
+      "Cache-Control": html === undefined ? "max-age=60" : "no-store",
       // CSP governs a DOCUMENT, so it rides on the html only — on a stylesheet
       // or a script response the browser ignores it, and shipping it there
       // would just suggest a protection that isn't happening.
       ...(type.startsWith("text/html") ? { "Content-Security-Policy": CSP } : {}),
     });
+    if (html !== undefined) { res.end(html); return; }
     createReadStream(target)
       .on("error", () => res.destroy())
       .pipe(res);

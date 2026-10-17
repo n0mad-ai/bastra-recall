@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 /** Local single-user upgrade: shared private Agent credential, no client-config rewrite. */
 import { lstat, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -7,7 +8,7 @@ import { taskHookConfigPath, taskClientToken } from "./task-client-auth.js";
 import { atomicWrite, tasksPath } from "./task-store.js";
 import { withPathLock } from "./path-lock.js";
 async function ensureLocalTaskAgentInner(): Promise<{ configured: boolean; reason: string }> {
-  if (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, reason: "disabled" };
+  if (!tasksEnabled() || process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, reason: "disabled" };
   if (process.env.BASTRA_TASK_TOKEN !== undefined) return { configured: !!taskClientToken(), reason: "explicit-override" };
   const path = taskHookConfigPath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -29,7 +30,7 @@ async function ensureLocalTaskAgentInner(): Promise<{ configured: boolean; reaso
 
 /** Explicit diagnostics: no repair/reissue and no raw token/path in the result. */
 export async function taskAgentAccessStatus(path = tasksPath(), authPath = taskAuthPath()) {
-  if (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, authorized: false, reason: "disabled", hint: "Gesprächserinnerungen sind ausgeschaltet." };
+  if (!tasksEnabled() || process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0") return { configured: false, authorized: false, reason: "disabled", hint: "Gesprächserinnerungen sind ausgeschaltet." };
   const config = join(dirname(path), "task-hook-token.json"), token = taskClientToken(config);
   if (!token) {
     let present = false; try { await lstat(config); present = true; } catch {}

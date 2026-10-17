@@ -30,6 +30,7 @@
  *   docs_settings_get()                  -> { mode, language }
  *   docs_settings_set({ mode?, language? }) -> { mode, language }
  */
+import { tasksEnabled } from "./tasks-enabled.js";
 import { isTaskExecution } from "./task-execution.js";
 import { forwardTaskExecution } from "./task-execution-client.js";
 import { isTaskTool, defaultTaskContext, taskClientAuthorization, taskFailure } from "./task-transport.js";
@@ -303,6 +304,7 @@ async function main(): Promise<void> {
     try {
       let result: unknown;
       if (isTaskTool(method)) {
+        if (!tasksEnabled()) throw Object.assign(new Error("Tasks preview disabled; opt in with BASTRA_TASKS=1"), { code: "feature_disabled" });
         const result = isTaskExecution(method) ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization()) : await callTaskCrud(defaultTaskContext({ vault, vaultPath: VAULT_PATH! }), await taskClientAuthorization(), method, params ?? {});
         process.stdout.write(JSON.stringify({ id, result }) + "\n");
         return;

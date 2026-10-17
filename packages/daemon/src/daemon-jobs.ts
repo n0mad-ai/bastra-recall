@@ -1,3 +1,4 @@
+import { tasksEnabled } from "./tasks-enabled.js";
 import { startTaskRuntime, type TaskRuntime } from "./task-runtime.js";
 import { defaultTaskContext } from "./task-transport.js";
 import type { TaskServiceContext } from "./task-service.js";
@@ -71,7 +72,7 @@ export interface BackgroundJobDeps {
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
-  startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
+  if (tasksEnabled()) startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
   startVaultReconcile(deps.vault);
   startForwarderSweep();
   startMintSchedule(deps);

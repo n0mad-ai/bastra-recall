@@ -234,6 +234,8 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   });
 
   const empty = await collectFeatureState([], vault, {});
+  assert.equal(empty.proactive, undefined, "disabled preview must not suggest missing task setup");
+  assert.ok(!featureLines(empty).join("\n").includes("proactive task cards"));
   assert.equal(empty.primaryLanguage, undefined);
   assert.equal(empty.onboardingDone, false);
   assert.equal(empty.semanticRecall.state, "off");
