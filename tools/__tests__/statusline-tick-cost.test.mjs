@@ -150,7 +150,7 @@ test("#1227: install and path updates retain a chosen or omitted interval; new b
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-test("#1227: stdin session id reuses Claude PID behind a fresh wrapper shell per tick", () => {
+test("#1227: a fresh wrapper shell re-resolves its own Claude feed PID", () => {
   const dir = temporary();
   try {
     const repo = path.join(dir, "repo");
@@ -187,7 +187,7 @@ test("#1227: stdin session id reuses Claude PID behind a fresh wrapper shell per
     const warm = JSON.parse(child(code, dir));
     assert.notEqual(cold.parent, warm.parent, "each tick really has a new intermediate parent");
     assert.equal(cold.calls, 2, "one status query and one parent walk on the first tick");
-    assert.equal(warm.calls, 1, "session id skips ps across changing parent PIDs; status stays fresh");
+    assert.equal(warm.calls, 2, "a new parent must resolve its own ancestry, even for the same session id");
     assert.equal(warm.output, cold.output);
     const cache = JSON.parse(fs.readFileSync(path.join(dir, ".bastra/statusline/tick-cache.json"), "utf8"));
     for (const entry of Object.values(cache)) assert.equal("git" in entry, false, "PID cache contains no Git snapshot or file list");

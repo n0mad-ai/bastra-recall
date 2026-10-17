@@ -9,12 +9,11 @@ import path from "node:path";
  * anything resolved via fork/exec — the claude session pid, the parent tty,
  * the terminal width — is re-paid on every tick unless it is parked on disk.
  *
- * One JSON file in the feed dir, keyed by Claude's session id when supplied,
- * otherwise by this process's ppid. The session id survives a fresh wrapper
- * shell on every tick. reapStaleFeeds only deletes `<pid>.json`,
- * so this file survives feed reaping; entries of dead sessions are pruned on
- * write instead. Writes are last-writer-wins across concurrent sessions: a
- * clobbered entry just re-resolves on that session's next tick.
+ * One JSON file in the feed dir, keyed by the parent process. Width and tty
+ * belong to that terminal; the feed PID belongs to its process ancestry. A
+ * resumed session in a second terminal must resolve all three independently.
+ * reapStaleFeeds only deletes `<pid>.json`, so this file survives feed reaping.
+ * Concurrent writes are best-effort: a lost entry re-resolves on the next tick.
  */
 
 const CACHE_FILE = path.join(
@@ -24,17 +23,11 @@ const CACHE_FILE = path.join(
   "tick-cache.json",
 );
 
-let sessionKey: string | undefined;
-
-/** Set after reading Claude's stdin, before any segment/cache lookup. */
-export function setTickCacheSession(sessionId: unknown): void {
-  sessionKey = typeof sessionId === "string" && sessionId.length > 0
-    ? `session:${sessionId}`
-    : undefined;
-}
+/** Reserved for session-only data. All current fields depend on the parent. */
+export function setTickCacheSession(_sessionId: unknown): void {}
 
 function cacheKey(): string {
-  return sessionKey ?? String(process.ppid);
+  return String(process.ppid);
 }
 
 export interface TickCacheEntry {
