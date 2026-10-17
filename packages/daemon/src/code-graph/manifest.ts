@@ -34,8 +34,7 @@ export const GRAPHIFY_MANIFEST_NAME = "manifest.json";
 export interface CodeGraphManifest {
   /** Version the pinned Graphify binary reported when this graph was built. */
   graphifyVersion: string;
-  /** COMPLETION time of the build, ISO. Not its start: a start time would
-   *  make a build that crashed halfway look newer than the files it missed. */
+  /** Start time of the last successful build, ISO. Failed builds stay dirty. */
   builtAt: string | null;
   /** `git rev-parse HEAD` at build time, or null outside a git repo. */
   commit: string | null;
@@ -44,7 +43,7 @@ export interface CodeGraphManifest {
   /** Exactly what was run, so a stale graph can be explained, not guessed. */
   command: string;
   /** File state at build time, for the staleness comparison in #577. */
-  fileState: { count: number; newestMtimeMs: number };
+  fileState: { count: number; newestMtimeMs: number; signature?: string };
   /** The last failed build, or null. Survives restarts on purpose. */
   lastError: string | null;
   /** Set before a build starts, cleared only on success. On-disk so that a
@@ -86,7 +85,7 @@ export async function writeManifest(graphDir: string, m: CodeGraphManifest): Pro
 
 /**
  * True when the graph cannot be trusted as current: no manifest, a build that
- * never completed, or a file touched after the build finished. Deliberately
+ * never completed, or a file touched after the successful build started. Deliberately
  * conservative — "unknown" counts as stale, since the cost of a stale marker
  * is a line of wording and the cost of a wrong "current" is an agent acting on
  * a dependency list that no longer holds.

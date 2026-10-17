@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile, chmod, stat } from "node:fs/promises";
@@ -491,4 +491,15 @@ describe("synchronous repo-root lookup for the hook lanes", () => {
     clearRepoRootCache();
     assert.equal(repoRootSync(plain), join(root, "plain"));
   });
+});
+
+test("successful build stamps its start so edits made during extraction stay stale", async t => {
+  const { graphIsFresh } = await import("../src/code-graph/refresh.js");
+  const repo = await tempRepo(); t.after(() => rm(repo, { recursive: true, force: true }));
+  const bin = join(repo, "late-edit-graphify");
+  await writeFile(bin, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 0.9.63; exit 0; fi\nsleep 0.1\necho 'export const changed = true;' > "$2/a.ts"\n`);
+  await chmod(bin, 0o755);
+  const result = await buildCodeGraph({ repoRoot: repo, bin, lowPriority: false });
+  assert.equal(result.ok, true);
+  assert.equal(await graphIsFresh(repo), false);
 });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * Building the code graph with the pinned Graphify binary (#574).
  *
@@ -228,6 +229,7 @@ interface RunOutcome {
 
 async function runBuild(ctx: RunContext): Promise<RunOutcome> {
   const { repoRoot, bin, args, graphDir, lock } = ctx;
+  const buildStarted = new Date().toISOString();
   const command = commandString(bin, args);
   const version = await graphifyVersion(bin);
 
@@ -263,13 +265,12 @@ async function runBuild(ctx: RunContext): Promise<RunOutcome> {
     };
   }
 
-  // Everything below describes a build that COMPLETED, so `builtAt` is taken
-  // here and not at the start: a start time would make a build that died
-  // halfway look newer than the files it never read.
+  // Publish only on success, using the start stamp so edits made while Graphify
+  // was reading cannot be mistaken for input already covered by this graph.
   const [commit, fileState] = await Promise.all([headCommit(repoRoot), scanFileState(repoRoot)]);
   const manifest: CodeGraphManifest = {
     graphifyVersion: version,
-    builtAt: new Date().toISOString(),
+    builtAt: buildStarted,
     commit,
     repoRoot,
     command,
@@ -440,7 +441,7 @@ export async function graphifyVersion(bin: string): Promise<string> {
 const GIT_LIKE_TIMEOUT_MS = 10_000;
 
 /** Directories that are never source and are expensive to walk. */
-const SKIP_DIRS = new Set([
+export const SKIP_DIRS: ReadonlySet<string> = new Set([
   ".git",
   "graphify-out",
   "node_modules",
@@ -477,7 +478,7 @@ export function isIndexableCodePath(file: string): boolean {
 const MAX_SCAN_FILES = 200_000;
 
 /**
- * Count and newest mtime of the repository's source files.
+ * Count, newest mtime and sorted path/mtime/size signature of source files.
  *
  * This is the manifest's `fileState` and the input to the read-time staleness
  * check (#577): a file whose mtime is newer than `builtAt` means the graph may
@@ -485,7 +486,8 @@ const MAX_SCAN_FILES = 200_000;
  * edited but not yet staged is exactly the case the marker exists for, and an
  * enabled directory need not be a git repository at all.
  */
-export async function scanFileState(repoRoot: string): Promise<{ count: number; newestMtimeMs: number }> {
+export async function scanFileState(repoRoot: string): Promise<{ count: number; newestMtimeMs: number; signature: string }> {
+  const files: string[] = [];
   let count = 0;
   let newestMtimeMs = 0;
   const stack: string[] = [repoRoot];
@@ -509,6 +511,7 @@ export async function scanFileState(repoRoot: string): Promise<{ count: number; 
       if (!entry.isFile() || !CODE_EXTS.has(extname(entry.name))) continue;
       try {
         const st = await stat(full);
+        files.push(JSON.stringify([full.slice(repoRoot.length), st.mtimeMs, st.size]));
         count++;
         if (st.mtimeMs > newestMtimeMs) newestMtimeMs = st.mtimeMs;
       } catch {
@@ -517,7 +520,8 @@ export async function scanFileState(repoRoot: string): Promise<{ count: number; 
       if (count >= MAX_SCAN_FILES) break;
     }
   }
-  return { count, newestMtimeMs };
+  const signature = createHash("sha256").update(files.sort().join("\n")).digest("hex");
+  return { count, newestMtimeMs, signature };
 }
 
 function emptyManifest(repoRoot: string): CodeGraphManifest {
