@@ -63,6 +63,34 @@ package's dependencies; `npm run build` compiles every workspace.
 npm run check:types
 ```
 
+### Run tests
+
+Run `npm test` from the repo root for the full suite. CI always runs the full
+suite; the optional coverage map is for faster local feedback on small edits
+in a POSIX checkout:
+
+```bash
+npm run build
+npm run test:map      # on a clean tree: record which test files execute each line
+# edit code
+npm run test:changed  # run the tests that executed the changed lines
+```
+
+The generated `.test-map/` directory is git-ignored. Map construction runs each
+test file under coverage, so expect it to take longer than an ordinary test run.
+After changing `packages/core/src`, run `npm run build` before `test:changed`:
+the selected tests can import built packages, and this command does not rebuild.
+
+`test:changed` prints its selection and anything it cannot vouch for, such as
+uncovered lines, unseen files, or a map built on a dirty tree. Exit 3 means the
+selected tests passed but did not cover the whole change; a missing map or a
+map whose commit is unavailable exits 2. Run `npm test` for full validation,
+or rebuild with `npm run test:map` on a clean tree when the map needs refreshing.
+An older map is compared against its recorded commit, so intervening changes
+are included. Global files (for example `package.json`) and test fixtures
+already select the full suite. Other uncertainties do not automatically trigger
+a full run: they stay visible and nonzero, keeping the local command predictable.
+
 ### Run the daemon locally
 
 ```bash
