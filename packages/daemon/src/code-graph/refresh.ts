@@ -68,10 +68,12 @@ const IMMEDIATE_REASONS: ReadonlySet<RefreshReason> = new Set(["git", "manual", 
 
 /**
  * Triggers that carry no information about WHAT changed (a turn ended, a watcher fired on any
- * file, a scheduled follow-up), so they are worth a build only when the tree really moved. Git
- * events, `manual` and `startup` always build.
+ * file), so they are worth a build only when the tree really moved. Git events, `manual` and
+ * `startup` always build, and so does `retry`: it is also the follow-up for a change that landed
+ * DURING a build, and `builtAt` is stamped when that build completes, so the change looks older
+ * than the graph and the freshness test would wrongly skip it.
  */
-const SKIPPABLE_WHEN_FRESH: ReadonlySet<RefreshReason> = new Set(["stop-hook", "watcher", "retry"]);
+const SKIPPABLE_WHEN_FRESH: ReadonlySet<RefreshReason> = new Set(["stop-hook", "watcher"]);
 
 /** Waits after consecutive failures, then the repo is given up on. */
 export const DEFAULT_BACKOFF_MS: readonly number[] = [30_000, 120_000, 600_000];
@@ -128,7 +130,7 @@ export interface RefresherOptions {
    */
   allow?: (repoRoot: string) => boolean;
   /**
-   * Is the graph already current for this tree? Checked before a stop-hook, watcher or retry
+   * Is the graph already current for this tree? Checked before a stop-hook or watcher
    * build; true skips it. Defaults to {@link graphIsFresh}; an error counts as "not fresh".
    */
   isFresh?: (repoRoot: string) => Promise<boolean>;
@@ -303,7 +305,7 @@ export class CodeGraphRefresher {
     }
     entry.running = true;
     const reason = entry.reason;
-    if (SKIPPABLE_WHEN_FRESH.has(reason) && (await this.isFresh(repoRoot))) {
+    if (SKIPPABLE_WHEN_FRESH.has(reason) && (await this.isFresh(repoRoot).catch(() => false))) {
       // Nothing in the tree is newer than the graph: a build would re-read every file, re-cluster
       // and rewrite the same graph. The Stop hook fires at the end of every turn of every session,
       // so on a busy host this is most of the daemon's graph CPU.
