@@ -10,9 +10,12 @@ test("same resumed session keeps width, tty and feed PID local to its parent", t
   const ppid = Object.getOwnPropertyDescriptor(process, "ppid");
   t.after(() => { Object.defineProperty(process, "ppid", ppid); setTickCacheSession(undefined); });
   setTickCacheSession("resumed");
-  Object.defineProperty(process, "ppid", { value: process.pid });
+  // Node 22 refreshes the native ppid data property despite defineProperty(value).
+  // An accessor override reliably simulates parent changes on every supported Node.
+  let parent = process.pid;
+  Object.defineProperty(process, "ppid", { get: () => parent, configurable: true });
   writeTickCache({ width: 90, tty: "ttys001", claudePid: process.pid, widthAt: Date.now() });
   assert.equal(readTickCache().width, 90);
-  Object.defineProperty(process, "ppid", { value: process.pid + 1 });
+  parent = process.pid + 1;
   assert.deepEqual(readTickCache(), {}, "another terminal must resolve its own parent chain and width");
 });
