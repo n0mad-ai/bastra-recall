@@ -7,6 +7,7 @@ import { json } from "node:stream/consumers";
 import { PowerlineRenderer } from "./powerline";
 import { loadConfigFromCLI } from "./config/loader";
 import { debug } from "./utils/logger";
+import { setTickCacheSession } from "./utils/tick-cache";
 
 function showHelpText(): void {
   console.log(`
@@ -74,6 +75,7 @@ echo '{"session_id":"test-session","workspace":{"project_dir":"/path/to/project"
       process.exit(1);
     }
 
+    setTickCacheSession(hookData.session_id);
     const projectDir = hookData.workspace?.project_dir;
     const config = loadConfigFromCLI(process.argv, projectDir);
     const renderer = new PowerlineRenderer(config);

@@ -43,10 +43,11 @@ export interface BastraInfo {
  *  the feed. One `ps` call + in-memory walk. Falls back to process.ppid.
  *  The resolved pid is cached across ticks (#347) — it cannot change while
  *  the session lives, so a cache hit skips the `ps` fork entirely. Only a
- *  comm-matched hit is cached; the ppid fallback keeps retrying. */
+ *  successful parent walk is cached, including a non-Claude parent. */
 function claudeSessionPid(): number {
-  const cached = readTickCache().claudePid;
-  if (cached !== undefined && pidAlive(cached)) return cached;
+  const entry = readTickCache();
+  if (entry.claudePid !== undefined && pidAlive(entry.claudePid)) return entry.claudePid;
+  if (entry.fallbackPid === process.ppid && pidAlive(entry.fallbackPid)) return entry.fallbackPid;
   try {
     const out = execFileSync("ps", ["-axo", "pid=,ppid=,comm="], {
       encoding: "utf8",
@@ -72,6 +73,9 @@ function claudeSessionPid(): number {
       if (e.ppid === pid) break;
       pid = e.ppid;
     }
+    // A successful walk without a Claude ancestor is stable for this parent
+    // too (wrappers and non-Claude hosts); do not repeat the full ps each tick.
+    writeTickCache({ fallbackPid: process.ppid });
   } catch {
     // ps unavailable — fall through to ppid
   }

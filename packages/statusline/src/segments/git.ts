@@ -92,15 +92,15 @@ export class GitService {
       gitDir = foundGitRoot;
     }
 
+    gitDir = path.resolve(gitDir);
     try {
       const statusWithBranch = await this.getStatusWithBranchAsync(gitDir);
-      const aheadBehind = await this.getAheadBehindAsync(gitDir);
 
       const result: GitInfo = {
         branch: statusWithBranch.branch || "detached",
         status: statusWithBranch.status,
-        ahead: aheadBehind.ahead,
-        behind: aheadBehind.behind,
+        ahead: statusWithBranch.ahead,
+        behind: statusWithBranch.behind,
       };
 
       if (options.showWorkingTree && statusWithBranch.workingTree) {
@@ -356,6 +356,8 @@ export class GitService {
 
   private async getStatusWithBranchAsync(workingDir: string): Promise<{
     branch: string | null;
+    ahead: number;
+    behind: number;
     status: "clean" | "dirty" | "conflicts" | "unknown";
     workingTree?: {
       staged: number;
@@ -366,7 +368,8 @@ export class GitService {
   }> {
     try {
       debug(`[GIT-EXEC] Running git status in ${workingDir}`);
-      const result = await this.execGitAsync("git status --porcelain -b", {
+      // Include counts even if status.aheadBehind is disabled in Git config.
+      const result = await this.execGitAsync("git status --porcelain -b --ahead-behind", {
         cwd: workingDir,
         encoding: "utf8",
         timeout: 2000,
@@ -375,6 +378,9 @@ export class GitService {
       const lines = output.split("\n");
 
       let branch: string | null = null;
+      let hasBranchHeader = false;
+      let ahead = 0;
+      let behind = 0;
       let status: "clean" | "dirty" | "conflicts" = "clean";
       let staged = 0;
       let unstaged = 0;
@@ -385,7 +391,11 @@ export class GitService {
         if (!line) continue;
 
         if (line.startsWith("## ")) {
+          hasBranchHeader = true;
           const branchLine = line.substring(3);
+          const tracking = branchLine.match(/ \[([^\]]+)\]$/)?.[1];
+          ahead = Number(tracking?.match(/(?:^|, )ahead (\d+)(?:,|$)/)?.[1] ?? 0);
+          behind = Number(tracking?.match(/(?:^|, )behind (\d+)(?:,|$)/)?.[1] ?? 0);
           const branchMatch = branchLine.split("...")[0];
           if (branchMatch && branchMatch !== "HEAD (no branch)") {
             branch = branchMatch;
@@ -422,7 +432,9 @@ export class GitService {
       }
 
       return {
-        branch: branch || (await this.getFallbackBranch(workingDir)),
+        branch: hasBranchHeader ? branch : await this.getFallbackBranch(workingDir),
+        ahead,
+        behind,
         status,
         workingTree: { staged, unstaged, untracked, conflicts },
       };
@@ -430,6 +442,8 @@ export class GitService {
       debug(`Git status with branch command failed in ${workingDir}:`, error);
       return {
         branch: await this.getFallbackBranch(workingDir),
+        ahead: 0,
+        behind: 0,
         status: "unknown",
       };
     }
@@ -465,34 +479,5 @@ export class GitService {
       }
     }
     return null;
-  }
-
-  private async getAheadBehindAsync(workingDir: string): Promise<{
-    ahead: number;
-    behind: number;
-  }> {
-    try {
-      debug(`[GIT-EXEC] Running git ahead/behind in ${workingDir}`);
-      const [aheadResult, behindResult] = await Promise.all([
-        this.execGitAsync("git rev-list --count @{u}..HEAD", {
-          cwd: workingDir,
-          encoding: "utf8",
-          timeout: 2000,
-        }),
-        this.execGitAsync("git rev-list --count HEAD..@{u}", {
-          cwd: workingDir,
-          encoding: "utf8",
-          timeout: 2000,
-        }),
-      ]);
-
-      return {
-        ahead: parseInt(aheadResult.stdout.trim()) || 0,
-        behind: parseInt(behindResult.stdout.trim()) || 0,
-      };
-    } catch (error) {
-      debug(`Git ahead/behind command failed in ${workingDir}:`, error);
-      return { ahead: 0, behind: 0 };
-    }
   }
 }
