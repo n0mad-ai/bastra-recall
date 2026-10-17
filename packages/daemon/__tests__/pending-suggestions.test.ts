@@ -234,7 +234,10 @@ test("#1207: a busy lease bounds pending writes and reports no text", { timeout:
   const start = performance.now();
   await writePendingSuggestion("PRIVATE suggestion text");
   const elapsed = performance.now() - start;
-  assert.ok(elapsed >= 11_000 && elapsed < 13_000, `bounded wait: ${elapsed}ms`);
+  // The deadline runs on Date.now() (whole ms), this measurement on
+  // performance.now(): the two clocks can disagree by up to ~1 ms, so an
+  // 11 000 ms wait can read as 10 999.8 ms here.
+  assert.ok(elapsed >= 10_990 && elapsed < 13_000, `bounded wait: ${elapsed}ms`);
   assert.equal(await readFile(`${path}.lock`, "utf8"), "busy");
   assert.match(stderr, /lock busy for 11000ms.*one suggestion lost/);
   assert.doesNotMatch(stderr, /PRIVATE suggestion text/);
