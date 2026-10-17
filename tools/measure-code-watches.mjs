@@ -86,9 +86,15 @@ if (process.argv[2] === "--child") {
     console.table(rows);
     const beforeRows = rows.filter(row => row.version === "before");
     if (beforeRows.length) {
-      assert.ok(beforeRows.every(row => row.watches > 3), "baseline must fail the same <=3 watch regression gate");
-      assert.ok(beforeRows[1].watches > beforeRows[0].watches, "baseline must scale with ignored files");
-      console.log("Baseline watch-count regression: RED; fixed watch-count regression: GREEN.");
+      if (beforeRows.some(row => row.watches > 3)) {
+        assert.ok(beforeRows.every(row => row.watches > 3), "both baseline trees must reproduce the watch-count regression");
+        assert.ok(beforeRows[1].watches > beforeRows[0].watches, "baseline must scale with ignored files");
+        console.log("Baseline watch-count regression: RED; fixed watch-count regression: GREEN.");
+      } else {
+        // Once #1079 has merged, later PRs naturally have a fixed base too.
+        assert.ok(beforeRows.every(row => row.watches === 3), "already-fixed baseline retains the directory-only gate");
+        console.log("Baseline already fixed: GREEN; current watch-count regression: GREEN.");
+      }
     }
   } finally { if (baselinePath) fs.rmSync(baselinePath, { force: true }); }
 }
