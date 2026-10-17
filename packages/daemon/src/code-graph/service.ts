@@ -1,3 +1,4 @@
+import { SKIP_DIRS } from "./build.js";
 /**
  * The daemon-side code-awareness service: preload, startup reconciliation and
  * the file and git watchers (#581).
@@ -39,10 +40,9 @@ import { shortRepo } from "./unavailable-note.js";
 import { gitWatchPaths } from "./git-paths.js";
 import { enabledRepos, isRepoEnabledSync } from "./enabled-repos.js";
 import { codeGraphCache } from "./dependents-block.js";
-import { GRAPH_DIR_NAME } from "./reader.js";
 
 /** Directory names whose subtrees never trigger a refresh. */
-const IGNORED_SEGMENTS = new Set([GRAPH_DIR_NAME, ".git", "node_modules", "dist", "build"]);
+const IGNORED_SEGMENTS = SKIP_DIRS;
 
 /**
  * The process-wide refresher. One per daemon, like the graph cache — two would
@@ -352,12 +352,16 @@ function watchRepoDirectories(
     } else warn("watch_unavailable");
   };
   const remove = (dir: string): void => {
+    const before = dirs.size;
     for (const [path, watcher] of dirs) {
       if (path === dir || path.startsWith(dir + sep)) {
         dirs.delete(path);
         watcher.close();
       }
     }
+    // A deletion/replacement freed kernel handles. New directory events may
+    // register again without a timer or an unbounded ENOSPC retry loop.
+    if (dirs.size < before) limited = false;
   };
   const ignoredDirectory = (dir: string): boolean =>
     dir !== repoRoot && isIgnored(join(relative(repoRoot, dir), "_"));
