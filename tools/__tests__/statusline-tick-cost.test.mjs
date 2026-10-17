@@ -21,7 +21,7 @@ async function tick(cwd) {
   return { info, commands };
 }
 
-test("#1227: fresh GitService instances reuse the disk cache and invalidate on file/ref changes", async () => {
+test("#1227: one status query per tick keeps working-tree and upstream state current", async () => {
   const dir = temporary();
   try {
     const remote = path.join(dir, "remote.git");
@@ -33,17 +33,17 @@ test("#1227: fresh GitService instances reuse the disk cache and invalidate on f
     git(repo, "add", "."); git(repo, "commit", "-m", "initial");
     git(repo, "remote", "add", "origin", remote); git(repo, "push", "-u", "origin", "main");
     assert.equal((await tick(repo)).info.status, "clean");
-    assert.deepEqual((await tick(repo)).commands, [], "valid cache must start no git processes");
-    assert.deepEqual((await tick(repo + path.sep)).commands, [], "trailing separator names the same checkout");
+    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"], "each tick starts only one git process");
+    assert.deepEqual((await tick(repo + path.sep)).commands, ["git status --porcelain -b --ahead-behind"], "trailing separator names the same checkout");
 
     fs.writeFileSync(path.join(repo, "tracked"), "two\n");
     assert.equal((await tick(repo)).info.unstaged, 1, "unstaged edits need no index mtime change");
-    assert.deepEqual((await tick(repo)).commands, []);
+    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"]);
     git(repo, "add", ".");
     assert.equal((await tick(repo)).info.staged, 1);
     git(repo, "commit", "-m", "second");
     assert.equal((await tick(repo)).info.ahead, 1, "commit invalidates at the next tick");
-    assert.deepEqual((await tick(repo)).commands, []);
+    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"]);
     git(repo, "push");
     assert.equal((await tick(repo)).info.ahead, 0, "push changes upstream without changing HEAD");
     git(repo, "checkout", "-b", "other");
@@ -67,7 +67,7 @@ test("#1227: fresh GitService instances reuse the disk cache and invalidate on f
     git(repo, "push");
     await tick(repo);
     fs.writeFileSync(path.join(repo, "ignored", "output"), "changed\n");
-    assert.deepEqual((await tick(repo)).commands, [], "ignored-file edits do not invalidate the cache");
+    assert.deepEqual((await tick(repo)).commands, ["git status --porcelain -b --ahead-behind"], "ignored-file edits still need only one status query");
 
     git(repo, "pack-refs", "--all");
     assert.equal((await tick(repo)).info.ahead, 0);
@@ -75,7 +75,7 @@ test("#1227: fresh GitService instances reuse the disk cache and invalidate on f
     git(repo, "worktree", "add", "-b", "worktree", worktree);
     git(worktree, "branch", "--set-upstream-to=origin/main");
     assert.equal((await tick(worktree)).info.branch, "worktree");
-    assert.deepEqual((await tick(worktree)).commands, []);
+    assert.deepEqual((await tick(worktree)).commands, ["git status --porcelain -b --ahead-behind"]);
     fs.writeFileSync(path.join(worktree, "tracked"), "worktree\n");
     git(worktree, "commit", "-am", "worktree commit");
     assert.equal((await tick(worktree)).info.ahead, 1);
@@ -150,7 +150,7 @@ test("#1227: install and path updates retain a chosen or omitted interval; new b
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-test("#1227: stdin session id reuses Git and Claude PID behind a fresh wrapper shell per tick", () => {
+test("#1227: stdin session id reuses Claude PID behind a fresh wrapper shell per tick", () => {
   const dir = temporary();
   try {
     const repo = path.join(dir, "repo");
@@ -186,8 +186,73 @@ test("#1227: stdin session id reuses Git and Claude PID behind a fresh wrapper s
     const cold = JSON.parse(child(code, dir));
     const warm = JSON.parse(child(code, dir));
     assert.notEqual(cold.parent, warm.parent, "each tick really has a new intermediate parent");
-    assert.equal(cold.calls, 6, "five Git queries and one parent walk populate the session cache");
-    assert.equal(warm.calls, 0, "session id must bridge changing parent PIDs");
+    assert.equal(cold.calls, 2, "one status query and one parent walk on the first tick");
+    assert.equal(warm.calls, 1, "session id skips ps across changing parent PIDs; status stays fresh");
     assert.equal(warm.output, cold.output);
+    const cache = JSON.parse(fs.readFileSync(path.join(dir, ".bastra/statusline/tick-cache.json"), "utf8"));
+    for (const entry of Object.values(cache)) assert.equal("git" in entry, false, "PID cache contains no Git snapshot or file list");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+for (const [header, branch, ahead, behind] of [
+  ["main...origin/main [ahead 3]", "main", 3, 0],
+  ["main...origin/main [behind 2]", "main", 0, 2],
+  ["main...origin/main [ahead 3, behind 2]", "main", 3, 2],
+  ["main...origin/main", "main", 0, 0],
+  ["main...origin/main [gone]", "main", 0, 0],
+  ["main", "main", 0, 0],
+  ["HEAD (no branch)", "detached", 0, 0],
+]) {
+  test(`#1237: status header ${header} preserves branch and counts with one query`, async () => {
+    const repo = temporary();
+    try {
+      fs.mkdirSync(path.join(repo, ".git"));
+      const service = new GitService();
+      const commands = [];
+      service.execGitAsync = async (command) => {
+        commands.push(command);
+        return { stdout: `## ${header}\n` };
+      };
+      const info = await service.getGitInfo(repo);
+      assert.deepEqual([info.branch, info.ahead, info.behind], [branch, ahead, behind]);
+      assert.deepEqual(commands, ["git status --porcelain -b --ahead-behind"]);
+    } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+  });
+}
+
+test("#1237: real divergence matches rev-list even with status.aheadBehind=false; gone/detached need no fallback", async () => {
+  const dir = temporary();
+  try {
+    const repo = path.join(dir, "repo");
+    const remote = path.join(dir, "remote.git");
+    const peer = path.join(dir, "peer");
+    fs.mkdirSync(repo);
+    git(repo, "init", "-b", "main");
+    fs.writeFileSync(path.join(repo, "file"), "initial\n");
+    git(repo, "add", "."); git(repo, "commit", "-m", "initial");
+    git(repo, "clone", "--bare", repo, remote);
+    git(repo, "remote", "add", "origin", remote); git(repo, "push", "-u", "origin", "main");
+    git(repo, "clone", remote, peer);
+    git(repo, "config", "status.aheadBehind", "false");
+    const check = async (expected) => {
+      const { info, commands } = await tick(repo);
+      assert.deepEqual([info.ahead, info.behind], expected);
+      assert.deepEqual([info.ahead, info.behind], [Number(git(repo, "rev-list", "--count", "@{u}..HEAD")), Number(git(repo, "rev-list", "--count", "HEAD..@{u}"))]);
+      assert.deepEqual(commands, ["git status --porcelain -b --ahead-behind"]);
+    };
+    fs.writeFileSync(path.join(peer, "file"), "remote\n");
+    git(peer, "commit", "-am", "remote"); git(peer, "push"); git(repo, "fetch");
+    await check([0, 1]);
+    fs.writeFileSync(path.join(repo, "local"), "local\n");
+    git(repo, "add", "."); git(repo, "commit", "-m", "local");
+    await check([1, 1]);
+    git(repo, "update-ref", "-d", "refs/remotes/origin/main");
+    const gone = await tick(repo);
+    assert.deepEqual([gone.info.ahead, gone.info.behind], [0, 0]);
+    assert.equal(gone.commands.length, 1);
+    git(repo, "checkout", "--detach");
+    const detached = await tick(repo);
+    assert.deepEqual([detached.info.branch, detached.info.ahead, detached.info.behind], ["detached", 0, 0]);
+    assert.equal(detached.commands.length, 1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

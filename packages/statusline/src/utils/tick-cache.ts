@@ -41,17 +41,6 @@ export interface TickCacheEntry {
   parentPid?: number;
   claudePid?: number;
   fallbackPid?: number;
-  git?: {
-    cwd: string;
-    paths: string[];
-    signature: string;
-    status: {
-      branch: string | null;
-      status: "clean" | "dirty" | "conflicts" | "unknown";
-      workingTree?: { staged: number; unstaged: number; untracked: number; conflicts: number };
-    };
-    aheadBehind: { ahead: number; behind: number };
-  };
   tty?: string;
   width?: number;
   widthAt?: number;
