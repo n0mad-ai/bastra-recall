@@ -32,13 +32,15 @@ const servers = [
       sendJson(res, 404, { synthetic: true, error: "probe route only" });
       return;
     }
+    // Mirrors production preflight in src/http.ts:246-259 and CORS-before-gate
+    // in src/http-api-surface.ts:64 (both under packages/daemon).
     const allowedOrigin = resolveCorsOrigin(req.headers.origin, allow);
     const preflight = req.method === "OPTIONS";
     sendCors(res, allowedOrigin, {
       allowPrivateNetwork: preflight && allowedOrigin !== null &&
         req.headers["access-control-request-private-network"] === "true",
     });
-    const status = preflight ? 204 : gateApiRequest({
+    const gateStatus = preflight ? 204 : gateApiRequest({
       reqOrigin: req.headers.origin,
       allowedOrigin,
       isLoopback: isLoopback(req),
@@ -47,6 +49,8 @@ const servers = [
       apiToken: token,
       loopbackSkip: false,
     });
+    const methodAllowed = req.method === "GET" || req.method === "POST";
+    const status = preflight || methodAllowed ? gateStatus : 405;
     // Only protocol diagnostics; do not log Authorization, payloads, or cookies.
     console.log(JSON.stringify({ fixture: label, method: req.method,
       origin: req.headers.origin ?? null, status, cors: allowedOrigin !== null,
@@ -54,7 +58,7 @@ const servers = [
       privateNetwork: req.headers["access-control-request-private-network"] === "true" }));
     req.resume(); // discard every body; no vault or persistence exists
     if (preflight) { res.writeHead(status); res.end(); return; }
-    if (req.method !== "GET" && req.method !== "POST") {
+    if (!methodAllowed) {
       sendJson(res, 405, { synthetic: true, error: "GET/POST only" });
       return;
     }

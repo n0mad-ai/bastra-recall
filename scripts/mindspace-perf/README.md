@@ -16,11 +16,11 @@ CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
 node scripts/mindspace-perf/run.mjs
 ```
 
-`PLAYWRIGHT_CORE_PATH` defaults to `playwright-core` resolved from existing
-Node dependencies. The original baseline used an already present `playwright-core` 1.57.0
+`PLAYWRIGHT_CORE_PATH` is required and must point to an existing external
+`playwright-core` package; this repository does not contain `node_modules/playwright-core`. The original baseline used an already present `playwright-core` 1.57.0
 in `~/Library/Caches/ms-playwright-go/1.57.0/package` without installing a package or browser. `CHROME_PATH` defaults to the path shown above.
-`DURATION_MS=3000`, `REPEATS=3`, and `OUTPUT=scripts/mindspace-perf/results.json`
-are optional environment overrides. Each size/view is run serially, `REPEATS` times (three by default).
+`DURATION_MS=3000`, `REPEATS=3`, and `OUTPUT=results.json`
+are optional environment overrides. Relative output paths resolve from this script's directory, regardless of the working directory. Each size/view is run serially, `REPEATS` times (three by default).
 Output is saved after each measurement, with raw frame samples and metadata.
 
 ## Workload and measurements
@@ -82,9 +82,9 @@ logical core, not the entire machine.
 
 Generated `results.json` is intentionally ignored by Git. It contains complete
 source measurements, including raw arrays, individual repetitions, CPU process
-types, visibility checks and load readings. The original raw baseline remains
-in the measurement worktree and commit `f7c2efced926d165d7a3d42c9e2f96355990d164`;
-it is not included in this harness-only PR. After a new run, generate a local
+types, visibility checks and load readings. The published baseline and its limitations are preserved in the
+[#324 measurement comment](https://github.com/n0mad-ai/bastra-recall/issues/324#issuecomment-6297496784);
+raw results are not included in this harness-only PR. After a new run, generate a local
 pooled summary with:
 
 ```sh

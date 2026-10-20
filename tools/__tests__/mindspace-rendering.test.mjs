@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer } from '../../packages/daemon/webui/js/renderer.js';
+import { BURST_LIFE } from '../../packages/daemon/webui/js/managers/orbit-view.js';
 import { createRenderLoop } from '../../packages/daemon/webui/js/boot/render-loop.js';
 
 function globals(t, values) {
@@ -173,7 +174,7 @@ test('idle throttle wakes immediately for UI input, live effects, flights, burst
   for (const [on, off] of [
     [() => f.setLive(true), () => f.setLive(false)],
     [() => f.setFlying(true), () => f.setFlying(false)],
-    [() => f.setBursts([{}]), () => f.setBursts([])],
+    [() => f.setBursts([{ born: 4000 }]), () => f.setBursts([])],
     [() => f.setRing(true), () => f.setRing(false)],
     [() => f.loop.markBusy(), () => {}],
     [() => f.setView('orbit'), () => f.setView('clouds')],
@@ -195,4 +196,25 @@ test('hover, focus, filters and highlight remain full-rate live renderer states'
   }
   renderer.flashNode('a', '#fff');
   assert.equal(renderer.hasLiveEffects(), true);
+});
+
+
+test('clouds resumes idle throttling when SSE bursts expire without opening orbit', t => {
+  const f = loopFixture(t);
+  f.loop.start(); f.frame(0);
+  f.setBursts([{ born: 0 }, { born: 100 }]);
+  const expires = BURST_LIFE * 1000;
+  f.frame(expires - 1);
+  let before = f.draws;
+  f.frame(expires);
+  assert.equal(f.draws, before + 1, 'a younger burst still needs full-rate rendering');
+  f.frame(expires + 99);
+  before = f.draws;
+  f.frame(expires + 100);
+  assert.equal(f.draws, before, 'all expired bursts allow throttling at the lifetime boundary');
+  f.frame(expires + 130);
+  assert.equal(f.draws, before + 1, 'settled clouds still redraws at the idle cadence');
+  f.setBursts([{ born: expires + 130 }]);
+  f.frame(expires + 131);
+  assert.equal(f.draws, before + 2, 'a fresh SSE burst immediately wakes clouds again');
 });
