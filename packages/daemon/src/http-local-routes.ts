@@ -27,6 +27,8 @@ import { truncateSummaryTo } from "@bastra-recall/core";
 import { type Telemetry } from "./telemetry.js";
 import { handleHookReflex, reflexPoolIds } from "./reflex.js";
 import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
+import type { PromptHookTelemetry } from "./prompt-lane-telemetry.js";
+import { REPLAY_CLIENT } from "./hook-surface.js";
 import { runWriteLane, type WriteHookPayload } from "./write-lane.js";
 import { runBashPreLane, type BashHookPayload } from "./bash-pre-lane.js";
 import { runBashFailLane, type BashFailPayload } from "./bash-fail-lane.js";
@@ -131,6 +133,25 @@ export function dispatchLocalRoutes(
         const payload = (body.payload ?? {}) as ClaudeHookPayload;
         const ppid = typeof body.client_ppid === "number" ? body.client_ppid : null;
         const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
+        // #702: `bastra doctor --replay` posts `{payload, replay: true}`. The
+        // lane runs in shadow (prompt-lane.ts: `replay`) and the answer is
+        // `{stdout, telemetry}` — what the hook would have printed, plus the
+        // row the lane wrote to the replay log — instead of the bare hook
+        // document. No task attachment: nothing is due in a replayed turn.
+        if (body.replay === true) {
+          let row: PromptHookTelemetry | null = null;
+          const stdout = await runPromptLane(
+            { ...payload, bastra_client: REPLAY_CLIENT } as ClaudeHookPayload,
+            null,
+            self,
+            toolDeps.prewarmEmbedding,
+            () => reflexPoolIds(vault),
+            { onTelemetry: (r) => { row = r; } },
+          );
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ stdout, telemetry: row }));
+          return;
+        }
         // #361: the prewarmer rides in from toolDeps — the lane fires it at
         // turn start and never awaits the embed behind it.
         // #371: the wired reflex pool rides in from the vault index. Mode

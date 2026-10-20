@@ -336,7 +336,7 @@ export function handleHookReflex(
   });
   req.on("end", () => {
     void (async () => {
-      let body: { context?: unknown; project?: unknown; session_id?: unknown } = {};
+      let body: { context?: unknown; project?: unknown; session_id?: unknown; client?: unknown } = {};
       try {
         body = raw.trim() ? (JSON.parse(raw) as typeof body) : {};
       } catch {
@@ -362,7 +362,9 @@ export function handleHookReflex(
       // follows_recall-Join (recall→save, ≤5min) würde zu Rauschen
       // (Review-Finding #217).
       const recallId = served.length > 0 ? telemetry.newRecallId() : null;
-      if (recallId) {
+      // #702: a replayed prompt opens no join window — a real load_memory
+      // right after it must not be booked as following a hint nobody saw.
+      if (recallId && body.client !== "replay") {
         // Join-Anker für spätere load_memory-Episoden (score-los → null).
         telemetry.recordHookHints(recallId, served.map((m) => ({ id: m.memory.fm.id })));
       }

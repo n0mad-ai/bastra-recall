@@ -440,14 +440,27 @@ export class BridgePool {
    * excludes terms already in the query, and is capped. Pure — no detection here.
    */
   expansionsFor(query: string, lang: string | null = null): string[] {
+    return this.expand(query, lang).added;
+  }
+
+  /** #702: the ids of the bridges whose trigger matches `query` — the same
+   *  predicate `expansionsFor` fires on, so a replay report counts a fire
+   *  exactly where the recall widened (or, in shadow, would have widened). */
+  firedIds(query: string, lang: string | null = null): string[] {
+    return this.expand(query, lang).fired;
+  }
+
+  private expand(query: string, lang: string | null): { added: string[]; fired: string[] } {
     const bridges = lang ? this.byLang.get(lang) : this.all;
-    if (!bridges || bridges.length === 0) return [];
+    if (!bridges || bridges.length === 0) return { added: [], fired: [] };
     const queryTerms = new Set(distinctiveTerms(query));
-    if (queryTerms.size === 0) return [];
+    if (queryTerms.size === 0) return { added: [], fired: [] };
     const added = new Set<string>();
+    const fired: string[] = [];
     for (const b of bridges) {
       // bucket is pre-sorted by descending evidence at load time
       if (triggerOverlap(b, queryTerms) < requiredOverlapFor(b)) continue;
+      fired.push(b.id);
       // #672: an unconfirmed bridge adds at most MAX_UNCONFIRMED_EXPANSION new
       // terms; confirmed bridges come first (pre-sorted) and keep full weight.
       // #129: a demoted bridge is dampened the same way.
@@ -463,7 +476,7 @@ export class BridgePool {
       }
       if (added.size >= MAX_QUERY_EXPANSION) break;
     }
-    return [...added];
+    return { added: [...added], fired };
   }
 }
 
@@ -496,6 +509,9 @@ export interface ExpansionResult {
   /** Whether `added` is in `query` (the pool is live). False in shadow: the
    *  fire is still logged, the ranking is unchanged. */
   applied: boolean;
+  /** #702: ids of the bridges whose trigger matched (`BridgePool.firedIds`).
+   *  Empty without a pool or a match. */
+  fired: string[];
 }
 
 /**
@@ -514,15 +530,16 @@ export function expandQuery(
   pool: BridgePool | null | undefined,
   opts: { configuredLang?: string | null } = {},
 ): ExpansionResult {
-  if (!pool) return { query, lang: null, added: [], applied: false };
+  if (!pool) return { query, lang: null, added: [], applied: false, fired: [] };
   const configured = opts.configuredLang ?? null;
   const lang = configured ?? bridgeLanguage(query);
   const added = pool.expansionsFor(query, configured);
-  if (added.length === 0) return { query, lang, added: [], applied: false };
-  if (!pool.live) return { query, lang, added, applied: false };
+  const fired = pool.firedIds(query, configured);
+  if (added.length === 0) return { query, lang, added: [], applied: false, fired };
+  if (!pool.live) return { query, lang, added, applied: false, fired };
   // Trigger-Matching (expansionsFor) sah die VOLLE Query; nur die Basis des
   // zusammengesetzten Suchstrings wird gedeckelt (Wortgrenze, nie im Token),
   // damit die Expansions strukturell vor dem Core-Cap sicher sind (#162).
   const base = capAtWordBoundary(query, MAX_BASE_QUERY_CHARS);
-  return { query: `${base} ${added.join(" ")}`, lang, added, applied: true };
+  return { query: `${base} ${added.join(" ")}`, lang, added, applied: true, fired };
 }

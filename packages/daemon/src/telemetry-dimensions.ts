@@ -54,6 +54,10 @@ export const TELEMETRY_CLIENTS = [
   // measure-recall-budget.ts) — not a user-facing surface. Readouts exclude
   // it from the default report so a probe run cannot dominate the numbers.
   "eval",
+  // #702: `bastra doctor --replay` — the user's own past prompts sent through
+  // the live prompt lane in shadow. Measurement traffic like `eval`: the sink
+  // files its rows apart (telemetry-sink.ts) and readouts drop it by default.
+  "replay",
   "unknown",
 ] as const;
 export type TelemetryClient = (typeof TELEMETRY_CLIENTS)[number];
@@ -307,5 +311,6 @@ export function dimensionsFrom(
  */
 export function isEvalTraffic(e: { dimensions?: unknown; [k: string]: unknown }): boolean {
   const dims = e.dimensions as { client?: unknown } | null | undefined;
-  return dims != null && dims.client === "eval";
+  // #702: a replay row is measurement traffic too — never a live number.
+  return dims != null && (dims.client === "eval" || dims.client === "replay");
 }
