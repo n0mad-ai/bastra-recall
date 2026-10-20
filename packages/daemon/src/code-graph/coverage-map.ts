@@ -40,9 +40,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync } from "node:fs";
+import { mkdir, open, readdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
 
@@ -114,52 +114,85 @@ export function withCoverageEnv(command: string, rawDir: string): string {
  * in the project's files or in `.git/info/exclude`.
  */
 export async function ensureCoverageDir(repoRoot: string): Promise<void> {
-  const dir = coverageDirOf(repoRoot);
-  if (!(await realDirectoryOrAbsent(dir)) || !(await realDirectoryOrAbsent(join(dir, RAW_DIR_NAME)))) {
-    throw new Error(`coverage map: ${dir} is not a plain directory`);
-  }
-  await mkdir(join(dir, RAW_DIR_NAME), { recursive: true });
-  const ignore = join(dir, ".gitignore");
+  const dirs = await coverageDirs(repoRoot, true);
+  if (dirs === null) throw new Error(`coverage map: ${coverageDirOf(repoRoot)} is not a plain directory`);
+  const ignore = join(dirs.dir, ".gitignore");
+  let fh;
   try {
-    await stat(ignore);
-  } catch {
-    await writeFile(ignore, "*\n", "utf8");
+    fh = await open(ignore, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | NOFOLLOW);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return;
+    throw err;
+  }
+  try {
+    await fh.writeFile("*\n", "utf8");
+  } finally {
+    await fh.close();
   }
 }
+
+/** `O_NOFOLLOW` where the platform has it; opening a symlink then fails with ELOOP. */
+const NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
 
 /**
- * The directories this module creates, writes to and deletes from must be
- * what it made them: a symlink planted at `.bastra-coverage` or `raw` would
- * turn the fold's `rm` and the map's write into operations elsewhere. So
- * each is checked with `lstat` — absent, or a real directory — before any
- * of that, and a raw file is deleted only when it is a regular file whose
- * real path lies under the raw directory's real path.
+ * The directories this module writes to and deletes from must be what it
+ * made them: a symlink planted at `.bastra-coverage` or `raw` would turn the
+ * fold's delete and the map's write into operations elsewhere.
+ *
+ * NO CHECK-THEN-USE ON FILES. A raw file is opened with `O_NOFOLLOW`, judged
+ * on the handle (`fstat`: a regular file, settled) and read through the same
+ * handle; a symlink at its path fails the open. It is deleted with `unlink`,
+ * which never follows a link. The `.gitignore` and the map's temp file are
+ * created with `O_EXCL | O_NOFOLLOW`, and `rename` replaces a path, not what
+ * a link at it points to.
+ *
+ * THE DIRECTORIES THEMSELVES are compared by real path to the path they are
+ * expected to have under the repository's real root, after `mkdir`; a
+ * symlink in the chain makes the two differ. That is a check before use —
+ * Node has no way to read a directory through a handle — and the window
+ * between it and the file operations is the residual race. It is harmless
+ * here: the directory is the user's own, inside their checkout, and
+ * everything that follows refuses to follow a link on the final component.
  */
-async function realDirectoryOrAbsent(path: string): Promise<boolean> {
+async function coverageDirs(repoRoot: string, create: boolean): Promise<{ dir: string; raw: string } | null> {
+  const dir = coverageDirOf(repoRoot);
+  const raw = coverageRawDirOf(repoRoot);
   try {
-    const st = await lstat(path);
-    return st.isDirectory() && !st.isSymbolicLink();
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT";
+    if (create) await mkdir(raw, { recursive: true });
+    const rootReal = await realpath(repoRoot);
+    const expectedRaw = join(rootReal, COVERAGE_DIR_NAME, RAW_DIR_NAME);
+    if ((await realpath(raw)) !== expectedRaw || (await realpath(dir)) !== dirname(expectedRaw)) {
+      process.stderr.write(`[bastra-recall] coverage map: ${dir} is not a plain directory — left alone\n`);
+      return null;
+    }
+    return { dir, raw };
+  } catch {
+    return null;
   }
 }
 
-async function coverageDirsSafe(repoRoot: string): Promise<boolean> {
-  const ok =
-    (await realDirectoryOrAbsent(coverageDirOf(repoRoot))) && (await realDirectoryOrAbsent(coverageRawDirOf(repoRoot)));
-  if (!ok) process.stderr.write(`[bastra-recall] coverage map: ${coverageDirOf(repoRoot)} is not a plain directory — left alone\n`);
-  return ok;
-}
-
-/** A regular, non-symlinked file whose real path is inside `rawReal`. */
-async function safeRawFile(path: string, rawReal: string): Promise<boolean> {
+/** One raw file through a `O_NOFOLLOW` handle: parsed, still settling, or unreadable (with its age). */
+async function readRawFile(
+  path: string,
+  now: number,
+): Promise<{ kind: "doc"; doc: { result?: RawScript[] } } | { kind: "settling" } | { kind: "unreadable"; ageMs: number } | { kind: "skip" }> {
+  let fh;
   try {
-    const st = await lstat(path);
-    if (!st.isFile() || st.isSymbolicLink()) return false;
-    const real = await realpath(path);
-    return real.startsWith(rawReal + sep);
+    fh = await open(path, fsConstants.O_RDONLY | NOFOLLOW);
   } catch {
-    return false;
+    return { kind: "skip" };
+  }
+  try {
+    const st = await fh.stat();
+    if (!st.isFile()) return { kind: "skip" };
+    if (now - st.mtimeMs < RAW_SETTLE_MS) return { kind: "settling" };
+    try {
+      return { kind: "doc", doc: JSON.parse(await fh.readFile("utf8")) as { result?: RawScript[] } };
+    } catch {
+      return { kind: "unreadable", ageMs: now - st.mtimeMs };
+    }
+  } finally {
+    await fh.close();
   }
 }
 
@@ -338,14 +371,13 @@ export interface FoldResult {
  * Never throws; a fold that cannot finish leaves the raw files for the next.
  */
 export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<FoldResult> {
-  const rawDir = coverageRawDirOf(repoRoot);
   const result: FoldResult = { folded: 0, deferred: 0, unattributed: 0, tests: 0 };
-  if (!(await coverageDirsSafe(repoRoot))) return result;
+  const dirs = await coverageDirs(repoRoot, false);
+  if (dirs === null) return result;
+  const rawDir = dirs.raw;
   let names: string[];
-  let rawReal: string;
   try {
     names = (await readdir(rawDir)).filter((n) => n.startsWith("coverage-") && n.endsWith(".json"));
-    rawReal = await realpath(rawDir);
   } catch {
     return result;
   }
@@ -356,30 +388,21 @@ export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<
   const done: string[] = [];
   for (const name of names) {
     const path = join(rawDir, name);
-    if (!(await safeRawFile(path, rawReal))) {
+    const read = await readRawFile(path, now);
+    if (read.kind === "skip") {
       result.deferred++;
       continue;
     }
-    let doc: { result?: RawScript[] };
-    try {
-      const st = await stat(path);
-      if (now - st.mtimeMs < RAW_SETTLE_MS) {
-        result.deferred++;
-        continue;
-      }
-      doc = JSON.parse(await readFile(path, "utf8")) as { result?: RawScript[] };
-    } catch {
-      let age = 0;
-      try {
-        age = now - (await stat(path)).mtimeMs;
-      } catch {
-        continue;
-      }
-      if (age > RAW_GIVE_UP_MS) done.push(path);
+    if (read.kind === "settling") {
+      result.deferred++;
+      continue;
+    }
+    if (read.kind === "unreadable") {
+      if (read.ageMs > RAW_GIVE_UP_MS) done.push(path);
       else result.deferred++;
       continue;
     }
-    if (foldProcess(doc, repoRoot, sourceOf, map)) result.folded++;
+    if (foldProcess(read.doc, repoRoot, sourceOf, map)) result.folded++;
     else result.unattributed++;
     done.push(path);
   }
@@ -396,7 +419,7 @@ export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<
   }
   for (const path of done) {
     try {
-      await rm(path);
+      await unlink(path);
     } catch {
       /* already gone */
     }
@@ -476,11 +499,16 @@ function sourceResolver(repoRoot: string): (abs: string) => string {
 }
 
 async function writeMap(repoRoot: string, map: CoverageMap): Promise<void> {
+  const dirs = await coverageDirs(repoRoot, true);
+  if (dirs === null) throw new Error("coverage map: directory not safe");
   const file = coverageMapFileOf(repoRoot);
-  if (!(await coverageDirsSafe(repoRoot))) throw new Error("coverage map: directory not safe");
-  await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  await writeFile(tmp, JSON.stringify(map), "utf8");
+  const fh = await open(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | NOFOLLOW);
+  try {
+    await fh.writeFile(JSON.stringify(map), "utf8");
+  } finally {
+    await fh.close();
+  }
   await rename(tmp, file);
 }
 
