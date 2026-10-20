@@ -351,3 +351,28 @@ test("consolidation (#217): ≥3 old same-topic project-facts cluster once, prot
   );
   assert.equal(cooled.length, 0, "Cluster-Cooldown verhindert Re-Nag");
 });
+
+test("demand gaps (#140): repeated empty recalls from the log land in REPORT.md; telemetry off is unavailable, not none", async () => {
+  await withFixture(async (root, deps) => {
+    const logs = join(root, "logs");
+    await mkdir(logs, { recursive: true });
+    // readEventLog windows on the wall clock, so the rows are stamped now.
+    const day = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const rows = [
+      { kind: "recall", ts: day(2), recall_id: "g1", query: "where is the boiler manual", hit_count: 0, hits: [] },
+      { kind: "recall", ts: day(1), recall_id: "g2", query: "where is the boiler manual", hit_count: 1, weak_result: true, hits: [] },
+    ];
+    await writeFile(join(logs, `events-${day(0).slice(0, 10)}.jsonl`), rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+    await withEnv("BASTRA_LOG_PATH", logs, async () => {
+      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+      const report = await readFile(join(root, "REPORT.md"), "utf8");
+      assert.ok(report.includes("- `where is the boiler manual` · 2 occasions"), "gap row listed");
+      await withEnv("BASTRA_TELEMETRY", "off", async () => {
+        await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+        const off = await readFile(join(root, "REPORT.md"), "utf8");
+        assert.ok(off.includes("<!-- bastra-report:demand-gaps -->"));
+        assert.ok(off.includes("Not available"), "telemetry off never reads as an empty list");
+      });
+    });
+  });
+});

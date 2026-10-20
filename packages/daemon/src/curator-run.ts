@@ -30,8 +30,9 @@ import { compactUsage, readUsage, type UsageAggregate } from "./usage-sidecar.js
 import { readEventLog, reconstructReaches, type TelemetryEvent } from "./learned-recall/harvest.js";
 import { logDirFor } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
-import { envInt } from "./env.js";
+import { envInt, envOff } from "./env.js";
 import { collectClaimedTwice } from "./claimed-twice.js";
+import { collectDemandGaps } from "./demand-gaps.js";
 import { isMarkdownFile } from "@bastra-recall/core";
 import {
   claimedTwiceReportLimit,
@@ -592,6 +593,16 @@ async function runCuratorPassInner(
   // before the curator ever acts.
   const firstEverRun = !state.last_run_at;
   const mode: CuratorRunResult["mode"] = dryRun ? "dry-run" : firstEverRun ? "review-first" : "acting";
+  // One read of the recall log per pass, shared by reflex promotion and the
+  // #140 demand-gap section. Unreadable or telemetry off = unknown, not empty.
+  let events: TelemetryEvent[] | null = null;
+  if (!envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) {
+    try {
+      events = await readEventLog(logDirFor(), 30);
+    } catch {
+      events = null;
+    }
+  }
   if (mode === "acting") {
     // #217: Vorschlags-Relay (nie stilles Selbst-Verdrahten) — Reflex-
     // Kandidaten + Konsolidierungs-Cluster für die nächste Session, mit
@@ -599,7 +610,7 @@ async function runCuratorPassInner(
     // Pass nicht.
     try {
       const blocks: string[] = [];
-      for (const c of await collectReflexCandidates(deps.vault, nextState, nowMs)) {
+      for (const c of await collectReflexCandidates(deps.vault, nextState, nowMs, events ?? undefined)) {
         blocks.push(formatReflexCandidateBlock(c));
         nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [c.id]: nowIso };
       }
@@ -640,6 +651,7 @@ async function runCuratorPassInner(
     // #360: the claim gate holds new saves; this is the same question asked of
     // everything written before the gate existed.
     claimedTwice: collectClaimedTwice(deps.vault, claimedTwiceReportLimit()),
+    demandGaps: events ? collectDemandGaps(events) : null,
     emptyFiles: await collectEmptyFiles(deps.vaultRoot),
     flagged: collectFlaggedCaptures(deps.vault),
     damaged: collectDamagedFrontmatter(deps.vault, deps.vaultRoot),

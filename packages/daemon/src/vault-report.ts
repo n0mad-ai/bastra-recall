@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { StaleEntry } from "./curator.js";
 import type { UsageEntry } from "./usage-sidecar.js";
+import { DEMAND_GAP_MIN_OCCASIONS, type DemandGap } from "./demand-gaps.js";
 
 export const REPORT_FILENAME = "REPORT.md";
 
@@ -88,6 +89,10 @@ export interface VaultHealthData {
   /** #360: pairs the write-time claim gate would have held today. Optional so
    *  the report renders unchanged for callers that do not run the sweep. */
   claimedTwice?: ReportClaimedTwicePair[];
+  /** #140: queries that repeatedly found nothing fitting. `null` = the recall
+   *  log could not be read or telemetry is off — rendered as unavailable, never
+   *  as "none". Absent = the caller does not collect it; the section is left out. */
+  demandGaps?: DemandGap[] | null;
   dangling: ReportDanglingLink[];
   /** Vault-relative paths of 0-byte .md files — usually Obsidian's
    *  auto-created empty notes from clicking an unresolved wikilink. */
@@ -107,6 +112,12 @@ function fmtUsage(u?: UsageEntry): string {
   if (!u) return "no recorded usage";
   const last = u.last_acted_on_at ?? u.last_loaded_at ?? "never";
   return `surfaced ${u.surfaced}× · loaded ${u.loaded}× · acted_on ${u.acted_on}× · last engagement: ${last}`;
+}
+
+/** A query inside a code span: one line, no backticks, bounded. */
+function fmtQuery(query: string): string {
+  const flat = query.replace(/[\r\n\x00-\x1f\x7f]+/g, " ").replace(/`/g, "'").trim();
+  return flat.length > 160 ? `${flat.slice(0, 159)}…` : flat;
 }
 
 function fmtDate(iso: string): string {
@@ -215,6 +226,29 @@ export function renderVaultHealthReport(data: VaultHealthData): string {
           `_Bounded at ${claimedTwiceReportLimit()} rows — there are more. Answer some and the next pass shows the next batch, ` +
             `or set BASTRA_CLAIMED_TWICE_LIMIT to see the full set._`,
         );
+      }
+    }
+    L.push("");
+  }
+
+  if (data.demandGaps !== undefined) {
+    L.push("<!-- bastra-report:demand-gaps -->");
+    L.push("## Demand gaps (asked repeatedly, nothing fitting)");
+    L.push("");
+    if (data.demandGaps === null) {
+      L.push("Not available: the recall log could not be read or telemetry is off, so this pass cannot tell which questions went unanswered.");
+    } else if (data.demandGaps.length === 0) {
+      L.push(`None. No question in the last 30 days came back empty or weak on ${DEMAND_GAP_MIN_OCCASIONS} or more separate occasions.`);
+    } else {
+      L.push(
+        `Recall came back empty or weak for these questions on ${DEMAND_GAP_MIN_OCCASIONS} or more separate occasions (sessions or days) in the last 30 days, ` +
+          "the latest ask included. " +
+          "Either the vault lacks the memory, or it exists under words nobody searches for: save it, or add the asking phrase to the existing memory's `recall_when`. " +
+          "A weak result is a signal, not proof — this list is not yet calibrated against a null sample.",
+      );
+      L.push("");
+      for (const g of data.demandGaps) {
+        L.push(`- \`${fmtQuery(g.query)}\` · ${g.occasions} occasions · last asked ${fmtDate(g.lastSeen)}`);
       }
     }
     L.push("");
