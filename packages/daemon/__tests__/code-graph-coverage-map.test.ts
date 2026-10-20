@@ -84,6 +84,12 @@ describe("coverage map: folding", () => {
     await rm(coverageMapFileOf(repo));
     execFileSync("mkfifo", [join(coverageRawDirOf(repo), "coverage-pipe.json")]);
     assert.equal(JSON.parse(run(`console.log(JSON.stringify(await foldCoverage(${JSON.stringify(repo)})));`)).deferred, 1);
+    await mkdir(join(repo, "dist"));
+    execFileSync("mkfifo", [join(repo, "dist/x.js.map")]);
+    await rawFile(repo, "coverage-source-map.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "dist/x.js", [fn("a", 1)])],
+    });
+    assert.equal(JSON.parse(run(`console.log(JSON.stringify(await foldCoverage(${JSON.stringify(repo)})));`)).folded, 1);
   });
 
   it("folds one process per test file: executed functions of in-repo files, paths only, raw deleted", async () => {

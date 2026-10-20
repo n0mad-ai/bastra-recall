@@ -42,10 +42,11 @@
 import { spawnSync } from "node:child_process";
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
 import { coverageIndexStamp } from "./coverage-map-index.js";
+import { sourceResolver, type RawScript } from "./coverage-map-raw.js";
 
 export const COVERAGE_DIR_NAME = ".bastra-coverage";
 export const COVERAGE_MAP_FILE_NAME = "coverage-map.json";
@@ -470,11 +471,6 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
 
 // ─── Folding ─────────────────────────────────────────────────────
 
-interface RawScript {
-  url?: string;
-  functions?: Array<{ functionName?: string; ranges?: Array<{ count?: number }> }>;
-}
-
 export interface FoldResult {
   /** Raw files folded in and deleted. */
   folded: number;
@@ -602,27 +598,6 @@ function foldProcess(
  * mapping function offsets through the mappings would be the expensive half
  * of a source-map library for a name V8 already reports.
  */
-function sourceResolver(repoRoot: string): (abs: string) => string {
-  const cache = new Map<string, string>();
-  return (abs) => {
-    if (!/\.(js|mjs|cjs)$/.test(abs)) return abs;
-    const hit = cache.get(abs);
-    if (hit !== undefined) return hit;
-    let out = abs;
-    try {
-      const mapPath = `${abs}.map`;
-      const m = JSON.parse(readFileSync(mapPath, "utf8")) as { sources?: string[]; sourceRoot?: string };
-      const src = (m.sources ?? [])
-        .map((s) => resolve(dirname(mapPath), m.sourceRoot ?? "", s))
-        .find((s) => !relative(repoRoot, s).startsWith(".."));
-      if (src !== undefined) out = src;
-    } catch {
-      /* no map, or not one we can read: the .js path stands */
-    }
-    cache.set(abs, out);
-    return out;
-  };
-}
 
 async function writeMap(repoRoot: string, map: CoverageMap): Promise<void> {
   const dirs = await coverageDirs(repoRoot, true);
