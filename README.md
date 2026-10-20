@@ -99,7 +99,7 @@ Other MCP clients can connect through the forwarder, but are untested. Scripts a
 |---|---|---|
 | **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension (release builds carry the verified compiled hook client manifest, like npm; the client itself is downloaded only after you opt in), `open_document` and compiled hook client |
 | **Linux** (x86_64 and arm64) | Daemon, CLI, MCP and hooks | Install with npm; compiled hook client available. No Homebrew install path, macOS LaunchAgent (`bastra autostart`), `.mcpb` extension installation or `open_document`. The forwarder starts the daemon on demand. |
-| **Windows** | not covered | No compiled hook client; not tested |
+| **Windows** (x64) | Experimental preparation only | Hook-client cross-build and `.exe` registration configured; executable production and real Windows use not validated. [Acceptance pending (#348)](https://github.com/n0mad-ai/bastra-recall/issues/348). |
 
 ### Why
 
@@ -246,7 +246,7 @@ Weitere MCP-Clients können den Forwarder verwenden, sind aber ungetestet. Skrip
 |---|---|---|
 | **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb` (Release-Builds enthalten wie npm das Manifest des verifizierten kompilierten Hook-Clients; den Client selbst lädt es erst, wenn du zustimmst), `open_document` und kompilierter Hook-Client |
 | **Linux** (x86_64 und arm64) | Daemon, CLI, MCP und Hooks | Installation mit npm; kompilierter Hook-Client verfügbar. Kein Homebrew-Installationsweg, macOS-LaunchAgent (`bastra autostart`), `.mcpb`-Extension-Installation oder `open_document`. Der Forwarder startet den Daemon bei Bedarf. |
-| **Windows** | Nicht abgedeckt | Kein kompilierter Hook-Client; nicht getestet |
+| **Windows** (x64) | Experimentell vorbereitet | Cross-Build des Hook-Clients und `.exe`-Registrierung eingerichtet; Erzeugung einer ausführbaren Datei und Nutzung auf echtem Windows noch nicht geprüft. [Abnahme offen (#348)](https://github.com/n0mad-ai/bastra-recall/issues/348). |
 
 ### Warum
 

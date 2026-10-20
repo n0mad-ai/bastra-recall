@@ -85,10 +85,10 @@ jobs:
     # stub/manifest.json with the sha256 of every asset, generated in `publish`
     # from this job's checksums — and `bastra install claude-code` downloads
     # the host's asset on demand and verifies it against that manifest.
-    # Two runners, two targets each: the darwin pair on macOS so `codesign`
+    # Two runners: two Darwin targets on macOS so `codesign`
     # can prove the ad-hoc signature deno applies (without it the binary does
-    # not exec on Apple Silicon at all — measured in #350), the linux pair
-    # cross-compiled on ubuntu, including the Windows x64 .exe.
+    # not exec on Apple Silicon at all — measured in #350); three targets
+    # cross-compiled on Ubuntu: the Linux pair and the Windows x64 .exe.
     # Real Windows execution acceptance remains open (#348). Runs on dry-run dispatches too, so the build
     # can be rehearsed without a release.
     name: stub (${{ matrix.os }})

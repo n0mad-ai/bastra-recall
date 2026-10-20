@@ -3,7 +3,9 @@
  *
  * Every assertion here is anchored on code, not on another piece of prose: the
  * client set comes from the CLI's own `SURFACES`, the platform set from the
- * `STUB_TARGETS` the release workflow builds. README.md is the matrix; the
+ * `STUB_TARGETS` configured in the release workflow. Target configuration
+ * does not establish successful artifact production or platform acceptance.
+ * README.md is the matrix; the
  * Homebrew caveat, the npm package README and the two published package
  * descriptions are copies, and a copy that drifts fails here.
  *
@@ -92,22 +94,36 @@ test("the published package descriptions do not contradict the matrix", () => {
   }
 });
 
-test("the platform matrix matches the hook-client targets that are built", () => {
+test("the platform matrix matches configured hook-client targets and their validation boundaries", () => {
   const targets = hookClientTargets();
   assert.deepEqual(targets.sort(), [
     "aarch64-apple-darwin",
     "aarch64-unknown-linux-gnu",
     "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
   ]);
+  const workflow = readRepoFile(".github/workflows/publish-npm.yml");
+  const configuredTargets = [...workflow.matchAll(/^\s+targets: (.+)$/gm)]
+    .flatMap((m) => m[1].trim().split(/\s+/));
+  assert.deepEqual(configuredTargets.sort(), targets, "installer and release target configuration drifted");
   const section = README.slice(README.indexOf("### Supported platforms"));
   const table = section.slice(0, section.indexOf("###", 5) === -1 ? undefined : section.indexOf("###", 5));
   // Both macOS architectures and both Linux architectures are built, so the
   // matrix may not present either platform as single-architecture.
   assert.match(table, /Apple Silicon and Intel/);
   assert.match(table, /x86_64 and arm64/);
-  // Nothing is built for Windows, so it must not be presented as supported.
-  assert.match(table, /\*\*Windows\*\*[^|]*\|[^|]*not covered/);
+  // Windows has build configuration, but artifact production and actual
+  // execution remain unvalidated. The matrix must preserve that boundary.
+  const windows = table.split("\n").find((row) => row.includes("**Windows**"));
+  assert.ok(windows, "Windows configuration needs an explicit support boundary");
+  assert.match(windows, /x64/);
+  assert.match(windows, /Experimental preparation only/);
+  assert.match(windows, /executable production and real Windows use not validated/);
+  assert.match(windows, /#348/);
+  const deWindows = README.split("\n").find((row) => row.includes("**Windows**") && row.includes("Experimentell"));
+  assert.ok(deWindows, "DE matrix must state the experimental Windows boundary too");
+  assert.match(deWindows, /echtem Windows noch nicht geprüft/);
 
   const npmReadme = readRepoFile("packages/bastra-recall/README.md");
   assert.doesNotMatch(
@@ -116,4 +132,6 @@ test("the platform matrix matches the hook-client targets that are built", () =>
     "the npm README still states an Apple-Silicon-only requirement",
   );
   assert.match(npmReadme, /Linux/, "the npm README does not state the Linux boundary");
+  assert.match(npmReadme, /Windows[^\n]+experimental preparation only/);
+  assert.match(npmReadme, /executable production and real Windows use not validated/);
 });

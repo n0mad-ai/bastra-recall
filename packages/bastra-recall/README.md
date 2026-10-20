@@ -34,7 +34,7 @@ Platforms — the full matrix is in the [main README](https://github.com/n0mad-a
 
 - **macOS** (Apple Silicon and Intel) — supported, everything included.
 - **Linux** (x86_64 and arm64) — daemon, CLI, MCP and hooks, compiled hook client included. Without `bastra autostart` (LaunchAgent, macOS-only — the forwarder starts the daemon on demand), without the `.mcpb` extension install and without `open_document`.
-- **Windows** — not covered: no compiled hook client is built for it, and nothing here is tested on it.
+- **Windows** (x64) — experimental preparation only: hook-client cross-build and `.exe` registration configured; executable production and real Windows use not validated. [Acceptance pending (#348)](https://github.com/n0mad-ai/bastra-recall/issues/348).
 
 Full docs & source: <https://github.com/n0mad-ai/bastra-recall>
 
