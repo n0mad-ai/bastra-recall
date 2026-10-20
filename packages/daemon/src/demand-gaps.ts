@@ -35,7 +35,7 @@ function normalize(query: string): string {
 export function collectDemandGaps(events: readonly TelemetryEvent[], limit = DEMAND_GAP_REPORT_LIMIT): DemandGap[] {
   // A batch's per-phrasing recall_ids cannot identify its siblings. New rows
   // carry a shared id; old multi-phrasing rows cannot safely prove a gap.
-  const asks: TelemetryEvent[] = [];
+  const asks: Array<{ event: TelemetryEvent; key: string }> = [];
   const batches = new Map<string, TelemetryEvent[]>();
   for (const e of events) {
     if (e.kind !== "recall" || typeof e.query !== "string" || typeof e.ts !== "string" || e.eval_run === true) continue;
@@ -51,20 +51,25 @@ export function collectDemandGaps(events: readonly TelemetryEvent[], limit = DEM
         continue;
       }
     }
-    asks.push(e);
+    asks.push({ event: e, key: JSON.stringify(["single", normalize(e.query)]) });
   }
   for (const batch of batches.values()) {
     const expected = Number(batch[0]!.query_count) - Number(batch[0]!.batch_collapsed ?? 0);
     // Incomplete writes cannot establish that every phrasing missed.
     if (new Set(batch.map(e => e.recall_id)).size !== expected) continue;
     const phrasings = [...new Map(batch.map(e => [normalize(e.query as string), e.query as string])).entries()]
-      .sort(([a], [b]) => a.localeCompare(b)).map(([, query]) => query);
+      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, query]) => query);
     const latest = batch.reduce((a, b) => a.ts > b.ts ? a : b);
     const missed = batch.every(e => e.hit_count === 0 || e.weak_result === true);
-    asks.push({ ...latest, query: phrasings.join(" | "), hit_count: missed ? 0 : 1, weak_result: missed });
+    // Identity is structural and namespaced, never derived from display text:
+    // a literal separator inside a phrasing must not create a sibling query.
+    asks.push({
+      key: JSON.stringify(["batch", phrasings.map(normalize)]),
+      event: { ...latest, query: phrasings.join(" | "), hit_count: missed ? 0 : 1, weak_result: missed },
+    });
   }
   const groups = new Map<string, { query: string; occasions: Set<string>; lastSeen: string; lastMissed: boolean }>();
-  for (const e of asks) {
+  for (const { event: e, key } of asks) {
     // Explicit recalls only: a hook recall's empty result usually means the
     // hint gate held back, not that the vault had nothing.
     if (e.kind !== "recall" || typeof e.query !== "string" || typeof e.ts !== "string") continue;
@@ -72,8 +77,7 @@ export function collectDemandGaps(events: readonly TelemetryEvent[], limit = DEM
     // Tool-lane and harness queries recur with the work, not with a question.
     const origin = queryOrigin(e);
     if (origin !== "owner" && origin !== "agent") continue;
-    const key = normalize(e.query);
-    if (!key) continue;
+    if (!normalize(e.query)) continue;
     const missed = e.hit_count === 0 || e.weak_result === true;
     let group = groups.get(key);
     if (!group) {

@@ -162,3 +162,23 @@ test("telemetry queries keep structural secret syntax until report redaction, in
     assert.ok(!report.includes("fixture-second-line"));
   }
 });
+
+test("batch identity preserves phrasing boundaries even when queries contain the display separator", () => {
+  const first = ["a | b", "c"].map(query => ({ ...recall(query, { day: 1 }), query_count: 2, batch_id: "first" }));
+  const second = ["a", "b | c"].map(query => ({ ...recall(query, { day: 2 }), query_count: 2, batch_id: "second" }));
+  assert.deepEqual(collectDemandGaps([...first, ...second]), [], "different sets cannot manufacture two occasions");
+  const repeat = ["c", "A | B"].map(query => ({ ...recall(query, { day: 3 }), query_count: 2, batch_id: "repeat" }));
+  const gaps = collectDemandGaps([...first, ...second, ...repeat]);
+  assert.equal(gaps.length, 1, "the matching set still joins across order and casing");
+  assert.equal(gaps[0]!.occasions, 2);
+});
+
+test("single-query identity cannot collide with a batch's readable joined text", () => {
+  const single = recall("a | b", { day: 1 });
+  const batched = ["a", "b"].map(query => ({ ...recall(query, { day: 2 }), query_count: 2, batch_id: "pair" }));
+  assert.deepEqual(collectDemandGaps([single, ...batched]), [], "single and batch are independent evidence groups");
+  const repeat = recall("A | B", { day: 3 });
+  assert.deepEqual(collectDemandGaps([single, ...batched, repeat]), [{
+    query: "A | B", occasions: 2, lastSeen: repeat.ts,
+  }]);
+});
