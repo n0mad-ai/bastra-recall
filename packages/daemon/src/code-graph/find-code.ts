@@ -493,4 +493,3 @@ function normalizePath(query: string): string | null {
   if (norm.split("/").includes("..")) return null;
   return norm;
 }
-

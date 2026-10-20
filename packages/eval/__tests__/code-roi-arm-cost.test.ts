@@ -21,6 +21,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -293,6 +294,40 @@ describe("a resumed helping reconstructs its spend from disk", () => {
     }
   });
 
+  test("an abort whose meta never reached disk is charged from its renamed transcript (#601)", () => {
+    // The runner renames `<arm>.jsonl.partial` to `<arm>.jsonl.failed-<stamp>`
+    // and only THEN writes the meta. A crash between the two left a transcript
+    // the old reader never opened, so the attempt was charged $0 on resume.
+    const runs = archive();
+    try {
+      // A budget stop with a result event and no meta at all: measured.
+      writeFileSync(join(runs, "S02", "C.jsonl.failed-3"), budgetStopped);
+      // A kill mid-turn whose meta the same crash truncated: no result event,
+      // so the mean of the finished arms ($0.80 / 4), as the runner would have.
+      writeFileSync(join(runs, "S03", "B.jsonl.failed-4"), killed);
+      writeFileSync(join(runs, "S03", "B.failed-4.meta.json"), '{"arm":"B","chargedU');
+      const spend = spendOnDisk(runs, ARM_IDS);
+      assert.equal(spend.abortedArms, 4, "two with metas, one without, one with a truncated meta");
+      assert.equal(Number(spend.abortedCostUsd.toFixed(2)), Number((0.87 + 0.37 + 0.2).toFixed(2)));
+      assert.equal(spend.finishedArms, 4, "the finished count is untouched");
+    } finally {
+      rmSync(runs, { recursive: true, force: true });
+    }
+  });
+
+  test("before any arm finished, a metaless abort without a result event is charged the registered estimate", () => {
+    const runs = mkdtempSync(join(tmpdir(), "code-roi-spend-first-"));
+    try {
+      mkdirSync(join(runs, "S01"));
+      writeFileSync(join(runs, "S01", "A.jsonl.failed-1"), killed);
+      const spend = spendOnDisk(runs, ARM_IDS, 1.25);
+      assert.equal(spend.abortedArms, 1);
+      assert.equal(spend.abortedCostUsd, 1.25);
+    } finally {
+      rmSync(runs, { recursive: true, force: true });
+    }
+  });
+
   test("an archive that was never run charges nothing, and a missing one does not throw", () => {
     const empty = mkdtempSync(join(tmpdir(), "code-roi-spend-empty-"));
     try {
@@ -306,5 +341,46 @@ describe("a resumed helping reconstructs its spend from disk", () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a timed-out arm is forced down, not asked (#602)", () => {
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
+  const runnerModule = import("../code-roi/v2/run-arms-v3.mjs");
+
+  function closed(child: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+    return new Promise((resolve) => child.on("close", (code, signal) => resolve({ code, signal })));
+  }
+
+  test("a child that ignores SIGTERM is SIGKILLed after the grace, and the escalation is recorded", async () => {
+    const { armTimeout } = await runnerModule;
+    // The stand-in for a stuck CLI: traps TERM to nothing and sleeps on.
+    const child = spawn("sh", ["-c", "trap '' TERM; exec sleep 5"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 100, 200);
+    const { signal } = await closed(child);
+    timeout.clear();
+    assert.equal(signal, "SIGKILL");
+    assert.deepEqual(timeout.state, { timedOut: true, escalated: true });
+  });
+
+  test("a child that leaves on SIGTERM is not escalated", async () => {
+    const { armTimeout } = await runnerModule;
+    const child = spawn("sh", ["-c", "exec sleep 5"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 100, 5_000);
+    const { signal } = await closed(child);
+    timeout.clear();
+    assert.equal(signal, "SIGTERM");
+    assert.deepEqual(timeout.state, { timedOut: true, escalated: false });
+  });
+
+  test("a child that finishes in time is left alone and the timers are cleared", async () => {
+    const { armTimeout, ARM_KILL_GRACE_MS } = await runnerModule;
+    assert.equal(ARM_KILL_GRACE_MS, 30_000);
+    const child = spawn("sh", ["-c", "exit 0"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 5_000, 5_000);
+    const { code } = await closed(child);
+    timeout.clear();
+    assert.equal(code, 0);
+    assert.deepEqual(timeout.state, { timedOut: false, escalated: false });
   });
 });

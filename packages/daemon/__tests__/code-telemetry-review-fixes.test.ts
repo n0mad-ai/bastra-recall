@@ -55,5 +55,6 @@ test("#665: only successful/failed build durations enter percentiles; other coun
   assert.equal(stats.p50, 200); assert.equal(stats.p90, 300);
   assert.equal(stats.started, 1); assert.equal(stats.ok, 2); assert.equal(stats.failed, 1);
   assert.equal(stats.locked, 50); assert.equal(stats.skipped, 1); assert.equal(stats.givenUp, 1);
-  assert.equal(aggregateCodeAwareness([refresh("locked", 1)]).refresh.p50, 0);
+  // Null, not 0: nothing was built, so there is no duration to report (#665).
+  assert.equal(aggregateCodeAwareness([refresh("locked", 1)]).refresh.p50, null);
 });

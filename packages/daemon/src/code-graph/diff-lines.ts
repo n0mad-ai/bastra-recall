@@ -113,3 +113,67 @@ export function* diffLines(diff: string): Generator<DiffLine> {
     yield { kind: "other", raw };
   }
 }
+
+const C_ESCAPES: Record<string, string> = {
+  a: "\x07",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  v: "\v",
+  '"': '"',
+  "\\": "\\",
+};
+
+/**
+ * A path the way git prints it, unquoted (#604).
+ *
+ * git wraps a path that holds a quote, a backslash, a control character or —
+ * under the default `core.quotepath=true` — any non-ASCII byte in double
+ * quotes and C-escapes the inside: `\"`, `\\`, `\t` and friends, plus one
+ * octal `\ooo` per raw byte (`ä` is `\303\244`). Anything not wrapped in
+ * quotes comes back untouched, so a plain path costs nothing. Octal bytes
+ * are collected and decoded as UTF-8 together, since one character may span
+ * several of them.
+ */
+export function unquoteGitPath(text: string): string {
+  if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) return text;
+  const inner = text.slice(1, -1);
+  let out = "";
+  let bytes: number[] = [];
+  const flush = () => {
+    if (bytes.length === 0) return;
+    out += new TextDecoder().decode(Uint8Array.from(bytes));
+    bytes = [];
+  };
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch !== "\\") {
+      flush();
+      out += ch;
+      continue;
+    }
+    const octal = /^[0-7]{1,3}/.exec(inner.slice(i + 1));
+    if (octal !== null) {
+      bytes.push(parseInt(octal[0], 8));
+      i += octal[0].length;
+      continue;
+    }
+    flush();
+    const next = inner[i + 1] ?? "";
+    out += C_ESCAPES[next] ?? next;
+    i++;
+  }
+  flush();
+  return out;
+}
+
+/**
+ * `raw` with every git-quoted token (`"a/weird name.ts"`) replaced by its
+ * unquoted form, so a header line can be matched against a plain path the
+ * same way an unquoted header is.
+ */
+export function unquoteGitPaths(raw: string): string {
+  return raw.replace(/"(?:[^"\\]|\\.)*"/g, (quoted) => unquoteGitPath(quoted));
+}

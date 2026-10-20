@@ -42,7 +42,7 @@ import { join } from "node:path";
 import { score } from "./evaluate.mjs";
 import { rng } from "./select.mjs";
 import { writableOut } from "./archive.mjs";
-import { treeDirOf } from "./run-arms-v3.mjs";
+import { legacyTreeDirOf, treeDirOf } from "./run-arms-v3.mjs";
 import { pinSignature, readBuildPin } from "./build-pin.mjs";
 
 const OUT = writableOut();
@@ -164,9 +164,17 @@ export function parseArm(text, treePrefix, model = REG.arms.model) {
   };
 }
 
+const MOVED_TREE_ROOT = /^\/.*?\/code-roi-trees\/[^/]+\/[^/]+\/tree\//;
+
+/** `treePrefix` is one root or a list of them: the first that matches is stripped. */
 function normalize(p, treePrefix) {
   let n = p.trim().replace(/\\/g, "/");
-  if (treePrefix && n.startsWith(`${treePrefix}/`)) n = n.slice(treePrefix.length + 1);
+  const prefixes = (Array.isArray(treePrefix) ? treePrefix : [treePrefix]).filter(Boolean);
+  const hit = prefixes.find((prefix) => n.startsWith(`${prefix}/`));
+  if (hit !== undefined) n = n.slice(hit.length + 1);
+  // A MOVED archive hashes to another key, so its answers name a root the
+  // caller does not know (#593). Any <tmp>/code-roi-trees/<key>/<id>/tree/ goes.
+  else n = n.replace(MOVED_TREE_ROOT, "");
   return n.replace(/^\.\//, "");
 }
 
@@ -322,7 +330,8 @@ export function buildReport(scenarios, readArm) {
       }
       // The tree lives outside the archive now, so an absolute path in an
       // answer is stripped against THAT root, not against runs/<id>/tree.
-      const parsed = parseArm(text, treeDirOf(s, OUT));
+      // Both layouts: archives run before #593 carry the basename-only path.
+      const parsed = parseArm(text, [treeDirOf(s, OUT), legacyTreeDirOf(s, OUT)]);
       arms[arm] = { ...parsed, ...score(parsed.named, s.truth, s.file) };
     }
     // ADOPTION only needs arm B, so a scenario whose B has run counts for it

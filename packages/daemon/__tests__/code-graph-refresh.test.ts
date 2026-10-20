@@ -53,19 +53,28 @@ function manifest(over: Partial<CodeGraphManifest> = {}): CodeGraphManifest {
 
 describe("refresh single flight", () => {
   it("coalesces changes during a run into exactly ONE follow-up", async () => {
+    // No fixed sleeps: a start is awaited as an event. The default isFresh reads the disk, and
+    // on a loaded CI runner that outlasted the old 10 ms wait, so the first build had not
+    // started yet when the test asserted it had (`0 !== 1`).
     let started = 0;
-    let release: (() => void) | null = null;
+    const releases: (() => void)[] = [];
+    const startWaiters: (() => void)[] = [];
+    const nextStart = (n: number) =>
+      started >= n ? Promise.resolve() : new Promise<void>((res) => startWaiters.push(res));
     const r = new CodeGraphRefresher({
       debounceMs: 1,
+      isFresh: async () => false,
       build: async () => {
         started++;
-        await new Promise<void>((res) => (release = res));
+        const gate = new Promise<void>((res) => releases.push(res));
+        for (const w of startWaiters.splice(0)) w();
+        await gate;
         return OK;
       },
     });
 
     r.enqueue("/repo", "watcher");
-    await tick(10);
+    await nextStart(1);
     assert.equal(started, 1);
 
     // Two quick edits while the first build is in flight.
@@ -73,12 +82,12 @@ describe("refresh single flight", () => {
     r.enqueue("/repo", "watcher");
     assert.equal(r.statusOf("/repo")?.pending, true);
 
-    release!();
-    await tick(20);
+    releases[0]!();
+    await nextStart(2);
     assert.equal(started, 2, "two edits during a run must lead to exactly one follow-up");
-    release!();
+    releases[1]!();
     await r.whenIdle();
-    assert.equal(started, 2);
+    assert.equal(started, 2, "no third build may follow");
     r.stop();
   });
 
