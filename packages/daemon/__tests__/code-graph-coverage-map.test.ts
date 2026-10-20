@@ -341,6 +341,36 @@ describe("coverage map: reading in the hook", () => {
     assert.equal(readCoverageMapSync(repo), null, "a cached map must still pass the tracked-file gate");
   });
 
+  it("caches the verdict \"tracked\" too: no git process on a repeat read, and the map returns after git rm --cached", async (t) => {
+    if (process.platform === "win32") return t.skip("needs a sh git stub");
+    const repo = join(root, "tracked-cached");
+    await mkdir(repo);
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP));
+    execFileSync("git", ["-C", repo, "add", "-f", ".bastra-coverage/coverage-map.json"]);
+    const realGit = execFileSync("sh", ["-c", "command -v git"]).toString().trim();
+    const bin = join(root, "git-counter-bin");
+    const log = join(root, "git-counter.log");
+    await mkdir(bin);
+    await writeFile(join(bin, "git"), `#!/bin/sh\necho x >> ${JSON.stringify(log)}\nexec ${JSON.stringify(realGit)} "$@"\n`, { mode: 0o755 });
+    const spawned = async () => ((await readFile(log, "utf8").catch(() => "")).match(/x/g) ?? []).length;
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${bin}:${oldPath}`;
+    try {
+      assert.equal(readCoverageMapSync(repo), null, "tracked: not read");
+      const first = await spawned();
+      assert.ok(first > 0, "the first read asks git");
+      assert.equal(readCoverageMapSync(repo), null);
+      assert.equal(readCoverageMapSync(repo), null);
+      assert.equal(await spawned(), first, "repeat reads of a tracked map spawn no git process");
+      execFileSync("git", ["-C", repo, "rm", "-q", "--cached", ".bastra-coverage/coverage-map.json"]);
+      assert.ok(readCoverageMapSync(repo), "untracked again: the map is read");
+    } finally {
+      process.env.PATH = oldPath;
+    }
+  });
+
   it("ranks by changed functions executed, then files, then name — and drops file-only hits once any test ran a function", () => {
     const ranked = rankTests(MAP, new Map([["src/search.ts", ["SearchIndex", "query"]]]));
     assert.deepEqual(ranked.map((r) => [r.test, r.functions, r.files, r.exercised]), [

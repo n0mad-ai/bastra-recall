@@ -444,7 +444,10 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
     if (!st.isFile()) return null;
     if ((unknownUntil.get(path) ?? 0) > now) return null;
     const hit = snapshots.get(path);
-    let index = hit === undefined ? null : coverageIndexStamp(repoRoot);
+    // Stamped before the verdict, for every verdict: a `git add` between the two
+    // then changes the stamp the snapshot is checked against, and "tracked" is
+    // cached too, so a tracked map costs no git process per read.
+    const index = coverageIndexStamp(repoRoot);
     if (hit !== undefined && index !== null && hit.index === index && hit.mtimeMs === st.mtimeMs && hit.ctimeMs === st.ctimeMs && hit.size === st.size) return hit.map;
     if (st.size > MAX_MAP_BYTES) return null;
     const verdict = gitVerdict(repoRoot);
@@ -455,7 +458,6 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
       return null;
     }
     unknownUntil.delete(path);
-    index ??= verdict === "untracked" ? coverageIndexStamp(repoRoot) : null;
     const map = verdict === "tracked" ? null : parseMap(readFileSync(fd, "utf8"));
     snapshots.delete(path);
     if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
