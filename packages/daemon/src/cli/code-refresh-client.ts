@@ -47,3 +47,16 @@ export async function requestManualRefresh(
     return false;
   }
 }
+
+/**
+ * After the CLI's own build: tell the daemon to resume, but only when it gave up
+ * on this repository. A healthy daemon would answer `manual` with a second build
+ * on the graph that was just made. True when the daemon was told.
+ */
+export async function resumeRefreshIfGivenUp(
+  repoRoot: string,
+  baseUrl: string = resolveDaemonEndpoint().baseUrl,
+): Promise<boolean> {
+  const seen = (await fetchRefreshStatus(baseUrl))?.get(repoRoot);
+  return seen?.givenUp === true && (await requestManualRefresh(repoRoot, baseUrl));
+}

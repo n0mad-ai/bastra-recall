@@ -14,7 +14,7 @@ import {
   toRefreshStatusRows,
 } from "../src/code-graph/refresh-status.js";
 import { dispatchLocalRoutes, type LocalRouteCtx } from "../src/http-local-routes.js";
-import { fetchRefreshStatus, requestManualRefresh } from "../src/cli/code-refresh-client.js";
+import { fetchRefreshStatus, requestManualRefresh, resumeRefreshIfGivenUp } from "../src/cli/code-refresh-client.js";
 
 const NOW = new Date("2026-10-20T10:00:00Z");
 
@@ -123,6 +123,29 @@ describe("GET and POST /code/refresh", () => {
       await refresher.whenIdle();
       assert.equal(calls, 2, "the manual request built despite the stop");
       assert.equal((await fetchRefreshStatus(baseUrl))?.get("/repo")?.givenUp, false);
+    });
+  });
+
+  it("resumes only a repository the daemon gave up on, never a healthy one", async () => {
+    let calls = 0;
+    const refresher = new CodeGraphRefresher({
+      debounceMs: 1,
+      backoffMs: [1],
+      maxFailures: 1,
+      build: async () => (++calls === 1 ? fail() : ok),
+    });
+    refresher.enqueue("/stopped", "watcher");
+    await refresher.whenIdle();
+    assert.equal(calls, 1);
+    await withServer(refresher, async (baseUrl) => {
+      assert.equal(await resumeRefreshIfGivenUp("/healthy", baseUrl), false, "unknown to the daemon");
+      assert.equal(calls, 1, "no build for a repository the daemon never gave up on");
+      assert.equal(await resumeRefreshIfGivenUp("/stopped", baseUrl), true);
+      await refresher.whenIdle();
+      assert.equal(calls, 2);
+      assert.equal(await resumeRefreshIfGivenUp("/stopped", baseUrl), false, "healthy again: no second build");
+      await refresher.whenIdle();
+      assert.equal(calls, 2);
     });
   });
 

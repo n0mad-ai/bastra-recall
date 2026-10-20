@@ -37,7 +37,7 @@ import { confirm, isInteractive } from "./prompt.js";
 import { findExecutable, run } from "./exec.js";
 import { GRAPHIFY_PIN, installArgv, probeTool } from "../code-graph/graphify-tool.js";
 import { refreshStatusLines } from "../code-graph/refresh-status.js";
-import { fetchRefreshStatus, requestManualRefresh } from "./code-refresh-client.js";
+import { fetchRefreshStatus, resumeRefreshIfGivenUp } from "./code-refresh-client.js";
 
 const out = (s: string): void => void process.stdout.write(s);
 
@@ -196,9 +196,12 @@ async function cmdIndex(dir: string, rebuild: boolean, yes: boolean): Promise<nu
   out(`✓ indexed in ${secs}s${size === null ? "" : ` (${size} MB)`}\n`);
   // The daemon's automatic refresh may be paused on a busy lock or stopped
   // after failed builds (#1148). The user asking is the one signal that clears
-  // that, so the running daemon is told — it picks the graph up, rebuilds
-  // incrementally and resumes its own triggers. No daemon: nothing to resume.
-  if (await requestManualRefresh(dir)) out("  the daemon resumes automatic refreshes for this repository\n");
+  // that, so a running daemon that gave up on this repository is told to resume.
+  // A healthy daemon is left alone: a manual request would start a second build
+  // on the graph that was just made.
+  if (await resumeRefreshIfGivenUp(dir)) {
+    out("  the daemon resumes automatic refreshes for this repository\n");
+  }
   return 0;
 }
 
