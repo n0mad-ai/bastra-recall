@@ -355,7 +355,7 @@ describe("a timed-out arm is forced down, not asked (#602)", () => {
   test("a child that ignores SIGTERM is SIGKILLed after the grace, and the escalation is recorded", async () => {
     const { armTimeout } = await runnerModule;
     // The stand-in for a stuck CLI: traps TERM to nothing and sleeps on.
-    const child = spawn("sh", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    const child = spawn("sh", ["-c", "trap '' TERM; exec sleep 5"], { stdio: "ignore" });
     const timeout = armTimeout(child, 100, 200);
     const { signal } = await closed(child);
     timeout.clear();
@@ -365,7 +365,7 @@ describe("a timed-out arm is forced down, not asked (#602)", () => {
 
   test("a child that leaves on SIGTERM is not escalated", async () => {
     const { armTimeout } = await runnerModule;
-    const child = spawn("sh", ["-c", "sleep 60"], { stdio: "ignore" });
+    const child = spawn("sh", ["-c", "exec sleep 5"], { stdio: "ignore" });
     const timeout = armTimeout(child, 100, 5_000);
     const { signal } = await closed(child);
     timeout.clear();
