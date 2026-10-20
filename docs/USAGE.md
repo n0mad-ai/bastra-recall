@@ -361,13 +361,20 @@ an instruction. `bastra code` and `bastra doctor` show whether a map exists and
 how old it is.
 
 Worth knowing before switching it on: the rewrite changes the command the agent
-wrote, which is why this is its own switch; a permission rule that matches on
-the command prefix sees the rewritten command; a test run costs about 40 %
+wrote, which is why this is its own switch, and it happens only for Claude
+Code; a permission rule that matches on the command prefix, such as
+`Bash(npm test:*)`, sees the rewritten command (`export NODE_V8_COVERAGE=…;
+npm test`), so Claude Code may ask about a test run it used to allow without
+asking; a test run costs about 40 %
 more wall time under coverage (measured on `packages/core`: 10.5–10.8 s plain,
 14.7–15.4 s with coverage) and leaves about 170 MB of raw output per run until
 the next fold; and a process that loads no test file of its own — a daemon a
-test spawned — cannot be attributed to its test and is dropped. Collection
-stops on its own if unfolded raw output reaches 1 GB.
+test spawned — cannot be attributed to its test and is dropped. The map is
+attributed per process: where one process runs several test files — Jest
+workers, `node --test --test-isolation=none` — every one of those tests is
+credited with everything any of them executed. Collection stops on its own if
+unfolded raw output reaches 1 GB. With the switch off, a map already on disk
+is not read either.
 
 If something looks wrong, `bastra doctor` reports the state of every enabled
 repository, and `bastra code rebuild` repairs a broken map after asking.
@@ -911,13 +918,20 @@ Anweisung. `bastra code` und `bastra doctor` zeigen, ob eine Karte existiert und
 wie alt sie ist.
 
 Vor dem Einschalten wissenswert: Die Umschreibung ändert den Befehl, den der
-Agent geschrieben hat — deshalb ein eigener Schalter; eine Berechtigungsregel
-auf den Befehlsanfang sieht den umgeschriebenen Befehl; ein Testlauf braucht
+Agent geschrieben hat — deshalb ein eigener Schalter, und sie geschieht nur
+unter Claude Code; eine Berechtigungsregel auf den Befehlsanfang wie
+`Bash(npm test:*)` sieht den umgeschriebenen Befehl
+(`export NODE_V8_COVERAGE=…; npm test`), Claude Code fragt dann womöglich bei
+einem Testlauf nach, den es vorher ohne Rückfrage erlaubt hat; ein Testlauf braucht
 unter Coverage etwa 40 % mehr Zeit (gemessen an `packages/core`: 10,5–10,8 s
 ohne, 14,7–15,4 s mit) und hinterlässt bis zur nächsten Faltung rund 170 MB
 Rohdaten; und ein Prozess, der keine eigene Testdatei lädt — ein vom Test
-gestarteter Daemon — lässt sich keinem Test zuordnen und wird verworfen.
-Erreichen ungefaltete Rohdaten 1 GB, stoppt die Sammlung von selbst.
+gestarteter Daemon — lässt sich keinem Test zuordnen und wird verworfen. Die
+Zuordnung geschieht pro Prozess: Wo ein Prozess mehrere Testdateien ausführt —
+Jest-Worker, `node --test --test-isolation=none` —, bekommt jeder dieser Tests
+alles zugeschrieben, was irgendeiner von ihnen ausgeführt hat. Erreichen
+ungefaltete Rohdaten 1 GB, stoppt die Sammlung von selbst. Mit ausgeschaltetem
+Schalter wird auch eine schon vorhandene Karte nicht gelesen.
 
 Wenn etwas nicht stimmt: `bastra doctor` nennt den Zustand jedes aktivierten
 Repositories, und `bastra code rebuild` repariert eine kaputte Karte nach
