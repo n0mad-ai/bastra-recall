@@ -4,10 +4,9 @@ import type { EmbeddingIndex } from "./embeddings.js";
 import { normalizeQuery, tokenizeWithIdentifiers } from "./query-normalize.js";
 import { foldTerm } from "./fold.js";
 import { DocFreqMiniSearch } from "./doc-freq-index.js";
-import { rareTermFuzzy } from "./bm25-expansion.js";
+import { BM25_FUZZY, rareTermFuzzy } from "./bm25-expansion.js";
 import { groupQueryTerms, groupedTokenize } from "./bm25-grouping.js";
 import { capBm25Query } from "./bm25-query-cap.js";
-import { BM25_FUZZY } from "./bm25-expansion.js";
 import { queryStems } from "./word-form.js";
 import type { CueProjection } from "./cue-sidecar.js";
 import type { CueIndexOptions, IndexDoc, RecallHit, RecallOptions } from "./search-types.js";
@@ -51,6 +50,12 @@ export {
  *  contributor's 0.3 — a stem's prefix matches are a guess at the inflection,
  *  not the word. */
 export const QUERY_STEM_WEIGHT = 0.3;
+/** #1194: stems per word. `queryStems` lists the shortest first, and the
+ *  "word minus one or two letters" stems behind it mostly re-match the word. */
+export const QUERY_STEMS_PER_WORD = 2;
+/** #1194: stems per query. A long prompt with 43 unindexed words asked for
+ *  45 stem terms, each a prefix trie walk; the budget keeps that bounded. */
+export const QUERY_STEMS_MAX = 12;
 
 /**
  * Field weights of the BM25 index — the "Search ranking" table in
@@ -270,13 +275,16 @@ export class SearchIndex {
     // at QUERY_STEM_WEIGHT of the word. They are NOT query terms: anchor and
     // authored-term checks below see `grouped.counts` alone, and a query
     // whose every word is indexed sends the byte-identical call as before.
-    // Stems are an expansion, so `bm25_no_fuzzy` turns them off too.
+    // Stems are an expansion, so `bm25_no_fuzzy` turns them off too. Capped
+    // per word and per query; words come in query order, so a long prompt
+    // keeps the stems of its first unindexed words.
     const stems = new Map<string, number>();
     if (!opts.bm25_no_fuzzy) {
       for (const [term, count] of grouped.counts) {
+        if (stems.size >= QUERY_STEMS_MAX) break;
         if (this.mini.docFreq(term) > 0) continue;
-        for (const stem of queryStems(term)) {
-          if (grouped.counts.has(stem)) continue;
+        for (const stem of queryStems(term).slice(0, QUERY_STEMS_PER_WORD)) {
+          if (grouped.counts.has(stem) || (stems.size >= QUERY_STEMS_MAX && !stems.has(stem))) continue;
           stems.set(stem, Math.max(stems.get(stem) ?? 0, count * QUERY_STEM_WEIGHT));
         }
       }

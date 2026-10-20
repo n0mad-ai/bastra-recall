@@ -167,6 +167,13 @@ export const QUERY_STEM_MIN_LETTERS = 7;
 export const QUERY_STEM_MIN_STEM_LETTERS = 5;
 // Prefix stems only strip endings; the English transitions reduce to these.
 const ENGLISH_ENDINGS = endings("s es ed ing");
+// The Latin families ARE mixed here, against the rule above. That rule guards
+// `sameWordForm`, where a shared ending pair equates two different words
+// (folder/folded). A stem is never equated with anything: it is a prefix
+// search term that keeps five letters of a word the index does not hold, and
+// whatever it reaches is still scored as a prefix match at 0.3 of the word.
+// Cutting an ending from the wrong language yields a stem that is either the
+// true stem (harmless) or a longer prefix that reaches less (harmless).
 const LATIN_ENDINGS: ReadonlySet<string> = new Set(
   [GERMAN, FINNISH, TURKISH, ENGLISH_ENDINGS].flatMap((s) => [...s]).filter((e) => e !== ""),
 );

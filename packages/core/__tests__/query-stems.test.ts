@@ -17,8 +17,9 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
-import { SearchIndex } from "../src/search.js";
+import { QUERY_STEMS_MAX, QUERY_STEMS_PER_WORD, SearchIndex } from "../src/search.js";
 import { queryStems } from "../src/word-form.js";
+import { foldTerm } from "../src/fold.js";
 
 function md(id: string, opts: { recallWhen: string; body: string }): string {
   return `---
@@ -119,5 +120,29 @@ test("an indexed query word gets no stems, and bm25_no_fuzzy gets none either", 
   );
   await withVault(NOTES, (search) => {
     assert.deepEqual(search.recall("skriptillä", { bm25_no_fuzzy: true }), []);
+  });
+});
+
+/** The lexical plan's term list, stems included — the only place the cap shows. */
+function planTerms(search: SearchIndex, query: string): string[] {
+  const plan = (search as unknown as { bm25Plan(q: string, o: object): { lexQuery: string } }).bm25Plan(query, {});
+  return plan.lexQuery.split(" ");
+}
+
+test("stems are capped per word (shortest first) and per query", async () => {
+  await withVault(NOTES, (search) => {
+    assert.equal(QUERY_STEMS_PER_WORD, 2);
+    assert.equal(QUERY_STEMS_MAX, 12);
+    // Three candidate stems, two kept: the shortest reach the stored form.
+    // (The index fold turns Turkish ı into i; stems are cut after the fold.)
+    assert.deepEqual(planTerms(search, "şablonlarında"), ["şablonlarında", "şablon", "şablonların"].map(foldTerm));
+    // Twelve unindexed words with two stems each ask for 24; the query budget keeps 12.
+    const words = ["şablonlarında", "faturalarında", "müşterilerinde", "raporlarında", "projelerinde",
+      "toplantılarında", "sözleşmelerinde", "ödemelerinde", "siparişlerinde", "teklifl" + "erinde",
+      "kullanıcılarında", "hesaplarında"];
+    const terms = planTerms(search, words.join(" "));
+    assert.equal(terms.length, words.length + QUERY_STEMS_MAX);
+    assert.deepEqual(terms.slice(0, words.length), words.map(foldTerm));
+    assert.equal(new Set(terms).size, terms.length, "no stem is asked for twice");
   });
 });
