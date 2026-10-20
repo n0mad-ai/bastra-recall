@@ -22,6 +22,7 @@ function fixture() {
   ]);
   const calls: Array<{ bin: string; args: string[]; opts: unknown }> = [];
   const refreshes: unknown[] = [];
+  const questions: unknown[] = [];
   let inline = false;
   const spawn = ((bin: string, args: string[], opts: unknown) => {
     calls.push({ bin, args, opts });
@@ -42,9 +43,9 @@ function fixture() {
     install: async () => { inline = true; return 0; },
     refresh: async (_, options) => { refreshes.push(options); return { ok: true, detail: "ok" }; },
     service: () => null,
-    ask: () => null,
+    ask: installed => { questions.push(installed); return null; },
   };
-  return { io, files, calls, refreshes, inline: () => inline };
+  return { io, files, calls, refreshes, questions, inline: () => inline };
 }
 
 test("Windows npm paths detect global and ephemeral installs and derive the correct package root", () => {
@@ -70,6 +71,7 @@ for (const staged of [true, false]) {
     const register = f.calls.find(c => c.args[0] === cli)!;
     assert.deepEqual([register.bin, ...register.args], [node, cli, "install", "all", "--no-ollama", "--no-stop-hook", "--yes", "--vault", 'C:\\Vault & notes']);
     assert.equal(f.inline(), false, "never pin registration from the old in-memory CLI");
+    assert.deepEqual(f.questions, staged ? [] : [{ node, script, version: "9.0.0" }], "interactive asks once using the installed runtime; staged never asks");
     assert.deepEqual(f.refreshes, [{ target: { node, script, version: "9.0.0" }, reload: !staged, platform: "win32" }]);
     for (const call of f.calls) {
       assert.equal(call.bin, node, "all Windows update subprocesses execute Node, never .cmd");
