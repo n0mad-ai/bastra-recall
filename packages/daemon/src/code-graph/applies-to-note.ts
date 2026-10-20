@@ -71,6 +71,8 @@ export interface AppliesToNoteOptions {
   /** Injectable for tests; defaults to the shared caches. */
   index?: AppliesToIndex | null;
   cache?: CodeGraphCache;
+  /** Injectable clock for the budget check; tests pin it so a slow runner cannot trip the budget. */
+  now?: () => number;
 }
 
 export interface AppliesToNote {
@@ -97,7 +99,8 @@ export function appliesToDedupeKey(repoRelFile: string): string {
  */
 export async function appliesToNote(opts: AppliesToNoteOptions): Promise<AppliesToNote | null> {
   if (envOff("BASTRA_CODE_AWARENESS")) return null;
-  const startedAt = Date.now();
+  const now = opts.now ?? Date.now;
+  const startedAt = now();
 
   const rel = repoRelative(opts.repoRoot, opts.filePath);
   if (rel === null) return null;
@@ -114,7 +117,7 @@ export async function appliesToNote(opts: AppliesToNoteOptions): Promise<Applies
   if (candidates.length === 0) return null;
 
   const note = format(rel, candidates);
-  if (note === null || Date.now() - startedAt > BUDGET_MS) return null;
+  if (note === null || now() - startedAt > BUDGET_MS) return null;
   return { note, dedupeKey, candidates };
 }
 

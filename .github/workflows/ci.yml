@@ -49,6 +49,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: OpenAPI artifacts in sync
+        run: npm run openapi:check
+
       - name: Type-check
         run: npm run check:types
 

@@ -106,6 +106,11 @@ describe("the applies_to block", () => {
     assert.equal(note.candidates[0]?.hop, "direct");
   });
 
+  it("drops the block when the lookup overruns its budget", async () => {
+    let t = 0;
+    assert.equal(await appliesToNote(opts({ now: () => (t += 11) })), null);
+  });
+
   it("is silent for a file nothing declares", async () => {
     assert.equal(await appliesToNote(opts({ filePath: join(repo, "packages/core/src/other.ts") })), null);
   });
