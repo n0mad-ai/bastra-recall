@@ -91,3 +91,21 @@ export async function answerDraftReview(id: string, decision: "confirm" | "rejec
   if (result.changed) await writeDraftEvent({ kind: decision === "confirm" ? "draft_review_confirmed" : "draft_review_rejected", count: 1, draft_ids: [id] });
   return result;
 }
+/** #1222: the owner closes named open drafts from the CLI, shown or not. Same
+ * close as a review rejection: rejected state, no announcement, the retained
+ * fingerprint tombstone and the store's 180-day retention. */
+export type DraftRejectOutcome = "rejected" | "already_rejected" | "promoted" | "unknown";
+export async function rejectDrafts(ids: readonly string[], now = Date.now()): Promise<Array<{ id: string; outcome: DraftRejectOutcome }>> {
+  const results = await withDraftPublication(() => transactDrafts(async rows => [...new Set(ids)].map(id => {
+    const row = rows.find(row => row.id === id);
+    if (!row) return { id, outcome: "unknown" as const };
+    if (row.state === "promoted") return { id, outcome: "promoted" as const };
+    if (row.state === "rejected") return { id, outcome: "already_rejected" as const };
+    row.owner_review = { decision: "reject", at: now, via: "cli" };
+    row.state = "rejected"; row.announce = false; row.last_touched = now;
+    return { id, outcome: "rejected" as const };
+  }), now));
+  const closed = results.filter(r => r.outcome === "rejected").map(r => r.id);
+  if (closed.length) await writeDraftEvent({ kind: "draft_review_rejected", count: closed.length, draft_ids: closed });
+  return results;
+}
