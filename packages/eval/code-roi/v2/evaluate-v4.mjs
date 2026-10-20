@@ -164,12 +164,17 @@ export function parseArm(text, treePrefix, model = REG.arms.model) {
   };
 }
 
+const MOVED_TREE_ROOT = /^\/.*?\/code-roi-trees\/[^/]+\/[^/]+\/tree\//;
+
 /** `treePrefix` is one root or a list of them: the first that matches is stripped. */
 function normalize(p, treePrefix) {
   let n = p.trim().replace(/\\/g, "/");
   const prefixes = (Array.isArray(treePrefix) ? treePrefix : [treePrefix]).filter(Boolean);
   const hit = prefixes.find((prefix) => n.startsWith(`${prefix}/`));
   if (hit !== undefined) n = n.slice(hit.length + 1);
+  // A MOVED archive hashes to another key, so its answers name a root the
+  // caller does not know (#593). Any <tmp>/code-roi-trees/<key>/<id>/tree/ goes.
+  else n = n.replace(MOVED_TREE_ROOT, "");
   return n.replace(/^\.\//, "");
 }
 

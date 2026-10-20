@@ -737,6 +737,15 @@ describe("the arms cannot reach their own answer sheet", () => {
     assert.deepEqual(parsed.named, ["src/a.ts", "src/b.ts"]);
   });
 
+  test("an answer naming the tree of a MOVED archive is normalised too (#593)", () => {
+    const was = "/Users/x/.bastra/eval/code-roi-v4";
+    const now = "/Users/x/archive/code-roi-v4";
+    const s = { id: "S01" };
+    const text = transcript({ files: [`${treeDirOf(s, was)}/src/a.ts`], affectedCalls: 0 });
+    const parsed = parseArm(text, [treeDirOf(s, now), legacyTreeDirOf(s, now)]);
+    assert.deepEqual(parsed.named, ["src/a.ts"]);
+  });
+
   test("the working tree lives outside the archive", () => {
     const out = join(process.env.HOME ?? "", ".bastra", "eval", "code-roi-v4-bastra-io");
     const tree = treeDirOf({ id: "S01" }, out);
