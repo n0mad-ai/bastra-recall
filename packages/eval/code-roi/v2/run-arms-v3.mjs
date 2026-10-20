@@ -120,6 +120,20 @@ const ARM_TIMEOUT_MS = 20 * 60_000;
 export const ARM_KILL_GRACE_MS = 30_000;
 
 /**
+ * Signal the child's whole process group (#602). The CLI is spawned detached,
+ * so it leads its own group; a grandchild holding the inherited stdout/stderr
+ * pipe would otherwise keep `close` from firing after only the CLI died. A
+ * child that is no group leader (ESRCH) falls back to the plain signal.
+ */
+function killGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
+}
+
+/**
  * Arm the timeout on a child: SIGTERM at `timeoutMs`, SIGKILL `graceMs` later
  * if it is still running. Returns the state the `close` handler reads —
  * whether the arm timed out and whether it needed the escalation — and a
@@ -130,11 +144,11 @@ export function armTimeout(child, timeoutMs = ARM_TIMEOUT_MS, graceMs = ARM_KILL
   let killer = null;
   const timer = setTimeout(() => {
     state.timedOut = true;
-    child.kill("SIGTERM");
+    killGroup(child, "SIGTERM");
     killer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
         state.escalated = true;
-        child.kill("SIGKILL");
+        killGroup(child, "SIGKILL");
       }
     }, graceMs);
   }, timeoutMs);
@@ -312,7 +326,7 @@ function runArm(
   return new Promise((resolve) => {
     const startedAt = Date.now();
     const out = createWriteStream(`${transcript}.partial`);
-    const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"], detached: true });
     child.stdout.pipe(out);
     let stderr = "";
     child.stderr.on("data", (d) => (stderr += d));
