@@ -21,7 +21,7 @@ import {
 } from "../src/curator-run.js";
 import { recordUsage } from "../src/usage-sidecar.js";
 import { loadCuratorState } from "../src/curator.js";
-import type { TelemetryEvent } from "../src/learned-recall/harvest.js";
+import { readEventLog, type TelemetryEvent } from "../src/learned-recall/harvest.js";
 
 const NOW = Date.parse("2026-07-03T12:00:00Z");
 const iso = (daysAgo: number) => new Date(NOW - daysAgo * 86_400_000).toISOString();
@@ -374,5 +374,26 @@ test("demand gaps (#140): repeated empty recalls from the log land in REPORT.md;
         assert.ok(off.includes("Not available"), "telemetry off never reads as an empty list");
       });
     });
+  });
+});
+
+test("demand gaps: unreadable log directories are unavailable; readable empty logs are none", async () => {
+  await withFixture(async (root, deps) => {
+    const logs = join(root, "log-dir");
+    // ENOTDIR is deterministic even when a privileged runner can read chmod(0).
+    await writeFile(logs, "not a directory");
+    assert.deepEqual(await readEventLog(logs, 30), [], "legacy callers keep their tolerant default");
+    await assert.rejects(readEventLog(logs, 30, { strict: true }));
+    await withEnv("BASTRA_TELEMETRY", "on", () => withEnv("BASTRA_LOG_PATH", logs, async () => {
+      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+      let report = await readFile(join(root, "REPORT.md"), "utf8");
+      assert.ok(report.includes("Not available"));
+      assert.ok(!report.includes("None. No question"));
+      await rm(logs);
+      await mkdir(logs);
+      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+      report = await readFile(join(root, "REPORT.md"), "utf8");
+      assert.ok(report.includes("None. No question"));
+    }));
   });
 });

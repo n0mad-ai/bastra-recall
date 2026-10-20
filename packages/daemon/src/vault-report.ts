@@ -9,6 +9,8 @@
  * has no I/O dependencies beyond writing the file.
  */
 import { readFile, rename, writeFile } from "node:fs/promises";
+import { redactSecrets } from "@bastra-recall/core";
+import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { StaleEntry } from "./curator.js";
@@ -116,7 +118,7 @@ function fmtUsage(u?: UsageEntry): string {
 
 /** A query inside a code span: one line, no backticks, bounded. */
 function fmtQuery(query: string): string {
-  const flat = query.replace(/[\r\n\x00-\x1f\x7f]+/g, " ").replace(/`/g, "'").trim();
+  const flat = redactSecrets(query, homedir()).text.replace(/[\r\n\x00-\x1f\x7f]+/g, " ").replace(/`/g, "'").trim();
   return flat.length > 160 ? `${flat.slice(0, 159)}…` : flat;
 }
 
@@ -234,6 +236,8 @@ export function renderVaultHealthReport(data: VaultHealthData): string {
   if (data.demandGaps !== undefined) {
     L.push("<!-- bastra-report:demand-gaps -->");
     L.push("## Demand gaps (asked repeatedly, nothing fitting)");
+    L.push("");
+    L.push("Batch phrasings count as one ask; a fitting result for any phrasing answers it. Older batches without a shared batch id are excluded unless only one phrasing ran. Repeated batches match by their set of phrasings.");
     L.push("");
     if (data.demandGaps === null) {
       L.push("Not available: the recall log could not be read or telemetry is off, so this pass cannot tell which questions went unanswered.");

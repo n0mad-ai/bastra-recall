@@ -3,6 +3,7 @@
  *
  * Run: npx tsx --test packages/daemon/__tests__/demand-gaps.test.ts
  */
+import { homedir } from "node:os";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
@@ -34,7 +35,7 @@ test("a query that misses on two independent occasions is a gap; one occasion is
     recall("tax id number", { day: 4, session: "s1" }),
     recall("tax id number", { day: 5, session: "s1" }),
   ]);
-  assert.deepEqual(gaps, [{ query: "where is the parking permit?", occasions: 2, lastSeen: "2026-10-03T10:00:00.000Z" }]);
+  assert.deepEqual(gaps, [{ query: "where is the  parking permit?", occasions: 2, lastSeen: "2026-10-03T10:00:00.000Z" }]);
 });
 
 test("a gap disappears once the latest ask found something fitting", () => {
@@ -99,4 +100,65 @@ test("report: rows are one-line code spans without backticks, bounded in length"
   assert.ok(report.includes(`\`${"x".repeat(159)}…\``));
   assert.ok(report.includes("not yet calibrated against a null sample"));
   assert.ok(report.indexOf("demand-gaps") < report.indexOf("bastra-report:dangling"), "section sits before dangling links");
+});
+
+function batch(day: number, id: string, fitting = false): TelemetryEvent[] {
+  return ["boiler handbook", "heating instructions"].map((query, i) => ({
+    ...recall(query, { day, hits: fitting && i === 1 ? 1 : 0 }),
+    batch_id: id, query_count: 2, batch_collapsed: 0,
+  }));
+}
+
+test("batch phrasings form one ask across independent occasions, irrespective of order", () => {
+  assert.deepEqual(collectDemandGaps(batch(1, "b1")), []);
+  const events = [...batch(1, "b1"), ...batch(2, "b2").reverse()];
+  const gaps = collectDemandGaps(events);
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0]!.occasions, 2);
+  assert.equal(gaps[0]!.query, "boiler handbook | heating instructions");
+  assert.deepEqual(collectDemandGaps([...events, ...batch(3, "b3", true)]), [], "one fitting sibling answers the latest batch");
+  assert.deepEqual(collectDemandGaps([...batch(1, "b1", true), ...batch(2, "b2")]), [], "a mixed batch is not a prior miss");
+});
+
+test("batches in the same session remain one occasion; separate batches in a day do not become siblings", () => {
+  const events = [...batch(1, "b1"), ...batch(2, "b2")].map(e => ({ ...e, dimensions: { experiment_session: "one-session" } }));
+  assert.deepEqual(collectDemandGaps(events), []);
+  assert.equal(collectDemandGaps([...batch(1, "b1"), ...batch(1, "b2"), ...batch(2, "b3")])[0]!.occasions, 2);
+});
+
+test("legacy multi-phrasing and incomplete batches cannot prove gaps; collapsed singleton can", () => {
+  const legacy = [...batch(1, "b1"), ...batch(2, "b2")].map(({ batch_id, ...e }) => e);
+  assert.deepEqual(collectDemandGaps(legacy), []);
+  assert.deepEqual(collectDemandGaps([batch(1, "b1")[0]!, batch(2, "b2")[0]!]), []);
+  const singleton = [recall("boiler handbook", { day: 1 }), recall("boiler handbook", { day: 2 })]
+    .map(e => ({ ...e, query_count: 2, batch_collapsed: 1 }));
+  assert.equal(collectDemandGaps(singleton)[0]!.occasions, 2);
+});
+
+test("report redacts secrets and home paths before flattening or clipping queries", () => {
+  const secret = "fixture-password-never-publish";
+  const report = renderVaultHealthReport({ ...BASE, demandGaps: [
+    { query: `manual ${homedir()}/private password=${secret}`, occasions: 2, lastSeen: "2026-10-18" },
+    { query: `-----BEGIN RSA PRIVATE KEY-----\n${secret}\n-----END RSA PRIVATE KEY-----`, occasions: 2, lastSeen: "2026-10-18" },
+    { query: `${"a ".repeat(70)}password=${secret}`, occasions: 2, lastSeen: "2026-10-18" },
+  ] });
+  assert.ok(report.includes("[REDACTED]"));
+  assert.ok(!report.includes(secret));
+  assert.ok(!report.includes(homedir()));
+  assert.ok(!report.includes("BEGIN RSA"));
+  assert.ok(!report.includes("fixture-password"), "clipping cannot expose the start of a secret");
+});
+
+test("telemetry queries keep structural secret syntax until report redaction, including batches", () => {
+  const query = "password: |\n  fixture-private-line\n  fixture-second-line\nhost: example";
+  const single = [recall(query, { day: 1 }), recall(query, { day: 2 })];
+  const batched = [1, 2].flatMap(day => [query, "manual"].map(text => ({
+    ...recall(text, { day }), batch_id: `sensitive-${day}`, query_count: 2,
+  })));
+  for (const events of [single, batched]) {
+    const report = renderVaultHealthReport({ ...BASE, demandGaps: collectDemandGaps(events) });
+    assert.ok(report.includes("[REDACTED]"));
+    assert.ok(!report.includes("fixture-private-line"));
+    assert.ok(!report.includes("fixture-second-line"));
+  }
 });

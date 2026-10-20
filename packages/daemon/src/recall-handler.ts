@@ -5,6 +5,7 @@
  */
 import { searchDrafts, withDraftBudget, type DraftHit } from "./draft-search.js";
 import { missingVaultReason } from "./vault-presence.js";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
 import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
@@ -284,6 +285,8 @@ async function recallAgainstVault(
   rawArgs: unknown,
   options: {
     onStage?: StageListener;
+    /** Internal correlation for batch telemetry; never a tool argument. */
+    batchId?: string;
     /** #263: Oberflächen-Hinweise für die Telemetrie. Hinweise, keine Werte —
      *  die Allowlist und das Session-Pseudonym entstehen in `telemetry.ts`.
      *  Der Session-Assembler (#265) weist sich hierüber als eigene Hook-Quelle
@@ -318,7 +321,7 @@ async function recallAgainstVault(
     // Teil-Recall.
     // #421: das Aufrufer-Projekt ebenso — es ist eine Eigenschaft des
     // Transports wie die Capability, nicht des gemergten Aufrufs.
-    const subOptions = { trustedPrivate: options.trustedPrivate, project: options.project,
+    const subOptions = { batchId: randomUUID(), trustedPrivate: options.trustedPrivate, project: options.project,
       // #1128-capture: a measurement run stays one — its rows are written by the sub-recalls.
       ...(options.client === "eval" ? { client: "eval" } : {}) };
     const subs = await Promise.all(
@@ -585,6 +588,7 @@ async function recallAgainstVault(
         session_id: options.session_id ?? undefined,
         // #351: batch width when this recall is one phrasing of a batch.
         query_count: parsed.data.batch_of,
+        batch_id: options.batchId,
         batch_overlap: parsed.data.batch_overlap,
         batch_collapsed: parsed.data.batch_collapsed,
         k: parsed.data.k ?? null,

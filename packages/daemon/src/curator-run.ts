@@ -598,7 +598,7 @@ async function runCuratorPassInner(
   let events: TelemetryEvent[] | null = null;
   if (!envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) {
     try {
-      events = await readEventLog(logDirFor(), 30);
+      events = await readEventLog(logDirFor(), 30, { strict: true });
     } catch {
       events = null;
     }
