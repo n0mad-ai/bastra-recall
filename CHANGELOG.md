@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `bastra doctor --replay [--days N] [--json] [--compare <report.json>]` sends your own Claude Code prompts of the last N days (default 14) through the running daemon's prompt lane in shadow and reports how recall behaves on your vault: share of system turns, prompts with a hint, hint slots and the share of the ten most frequent notes, slots on notes the agent loaded, bridge fires, p50/p95 latency and timeouts. A replay writes nothing to the vault, opens no join window, teaches the latency profile nothing and logs to its own `replay-YYYY-MM-DD.jsonl`, which no live readout counts and which ages out with the event logs. `bastra onboard` runs it once at the end; a daemon without the replay mode is refused (#702).
+
 ### Fixed
 
 - Code awareness (experimental): dependents are ranked by evidence within a hop — a call site before an import, an import before a re-export or package import — and only then by file name. Under the impact block's ten-file cap an alphabetical list dropped tests that really call the changed symbol; on the 44 registered delivered-run scenarios the block now names a correct file in 16 of 37 instead of 15, at the same block size (#637).
