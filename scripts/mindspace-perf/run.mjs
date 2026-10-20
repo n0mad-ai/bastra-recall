@@ -14,7 +14,7 @@ const durationMs=Number(process.env.DURATION_MS||3000);
 const repeats=Number(process.env.REPEATS||3);
 if(!Number.isFinite(durationMs)||durationMs<=0)throw Error('DURATION_MS must be positive and finite');
 if(!Number.isInteger(repeats)||repeats<1)throw Error('REPEATS must be a positive integer');
-const output=resolve(process.env.OUTPUT||'scripts/mindspace-perf/results.json');
+const output=resolve(dirname(fileURLToPath(import.meta.url)),process.env.OUTPUT||'results.json');
 const quantile=(a,p)=>a.length?[...a].sort((x,y)=>x-y)[Math.ceil(p*a.length)-1]:null;
 const server=createServer(async(req,res)=>{
  try{

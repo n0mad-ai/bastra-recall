@@ -4,9 +4,13 @@
  * Run: npx tsx --test packages/daemon/__tests__/learned-recall-harvest.test.ts
  */
 import { test } from "node:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { strict as assert } from "node:assert";
 
 import {
+  readEventLog,
   reconstructReaches,
   harvestBridges,
   extractCandidatePools,
@@ -199,4 +203,15 @@ test("#704 mintBridge: zzallirog's machine trigger does not mint; machine terms 
   assert.ok(b, "an owner sentence mints");
   assert.ok(!b.trigger_terms.includes("claude"), "a machine term never becomes a trigger");
   assert.ok(b.trigger_terms.includes("panel"));
+});
+
+
+test("strict event-log reads treat a missing fresh-install directory as empty", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-harvest-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  assert.deepEqual(await readEventLog(join(dir, "missing", "logs"), null, { strict: true }), []);
+  const file = join(dir, "not-a-directory");
+  await writeFile(file, "");
+  await assert.rejects(readEventLog(file, null, { strict: true }), { code: "ENOTDIR" });
+  assert.deepEqual(await readEventLog(file), [], "non-strict callers retain their fallback");
 });

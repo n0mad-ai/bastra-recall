@@ -11,6 +11,8 @@
  *  callers and moving it would be a redesign, not a split.
  */
 
+import { BURST_LIFE } from "../managers/orbit-view.js";
+
 /**
  * @param {object} deps
  * @param {HTMLCanvasElement} deps.canvas
@@ -83,7 +85,8 @@ export function createRenderLoop({
       !ringView.isAnimating() &&
       !getInteractions().isFlying() &&
       !renderer.hasLiveEffects() &&
-      orbitView.listBursts().length === 0 &&
+      // Clouds never calls renderBursts(), which prunes the orbit burst map.
+      !orbitView.listBursts().some(b => now - b.born < BURST_LIFE * 1000) &&
       now - lastInput > IDLE_AFTER_INPUT_MS
     );
   }
