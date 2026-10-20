@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { markDraftDelivery } from './draft-delivery.js';
 import { cleanDraftField } from './draft-text.js';
 /**
@@ -143,7 +144,9 @@ export function handleHookRecall(
             }
           : undefined,
       );
-      if (!res.destroyed && !req.socket.destroyed && typeof body.session_id === "string")
+      // #702: a replay marks no draft as delivered — the local draft store
+      // keeps the state the live sessions gave it.
+      if (!res.destroyed && !req.socket.destroyed && typeof body.session_id === "string" && body.client !== "replay")
         markDraftDelivery(cleanDraftField(body.session_id),Array.isArray(payload.draft_hits)?payload.draft_hits.map((hit:{id:string})=>hit.id):[],query);
       if (wantsSse) {
         writeSseEvent(res, "done", payload);
@@ -232,7 +235,10 @@ export async function runHookRecall(
         k, hookSessionId, hookToolName, hookProject, scope, type, expand_hops, vectorDeadlineMs,
         lexicalOnly, maxTokens, budgetMs, budgetSource, sessionStartCallId,
       } = readHookRecallInput(body);
-      if (hookToolName === "UserPromptSubmit") {
+      // #702: a replayed prompt (`bastra doctor --replay`) leaves the join
+      // state alone — no turn, no hint window a real load_memory could close.
+      const replay = body.client === "replay";
+      if (hookToolName === "UserPromptSubmit" && !replay) {
         telemetry.rotateTurn(hookSessionId);
       }
 
@@ -391,7 +397,9 @@ export async function runHookRecall(
         search.hasEmbeddings() && !embeddingDegradedAtRecall && !skipDense
           ? (deps.deadlineShadow?.key() ?? null)
           : null;
-      const shadow = shadowKey ? deps.deadlineShadow! : null;
+      // #702: a replay teaches the latency profile nothing — its arm runs
+      // in a burst of replayed turns, not under the user's load.
+      const shadow = shadowKey && !replay ? deps.deadlineShadow! : null;
       // Vor dem Abfeuern gelesen, nicht danach: Ein Arm, der das Modell selbst
       // lädt, macht es warm — die Residenz NACH dem Aufruf beschriebe die
       // Maschine, die er hinterlassen hat, nicht die, auf die er traf.
@@ -517,8 +525,11 @@ export async function runHookRecall(
         );
       if (suppressionMode === "live") hits = usageSuppression.kept;
       const usageSuppressedTokensEst = usageSuppression.suppressed.reduce((n, s) => n + s.tokens_est, 0);
-      const recallId = telemetry.newRecallId();
-      telemetry.recordHookHints(recallId, hits);
+      // #702: a replay's id is minted outside the join state — through
+      // `newRecallId()` it would become the "latest recall" a real
+      // load_memory/save_memory within five minutes is booked against.
+      const recallId = replay ? randomUUID() : telemetry.newRecallId();
+      if (!replay) telemetry.recordHookHints(recallId, hits);
       // #489: Ab hier ist die `recall_id` bekannt — die späte Stichprobe kann
       // geschrieben werden. Ein Sample, das schon eingetroffen ist, wird
       // nachgeholt.
@@ -594,7 +605,12 @@ export async function runHookRecall(
         hookProject, hybridActiveAtRecall, degradedReason,
       });
       const draftHits = await searchDrafts(query, hits.map(hit => ({ ...hit, body: vault.get(hit.id)?.body })), 2, hookSessionId ?? undefined);
-      const payload = withDraftBudget(budgeted.payload, draftHits, maxTokens);
+      // #702: which bridges fired on this query — the replay report counts
+      // fires per bridge. Only on the wire when one did.
+      const payload = {
+        ...withDraftBudget(budgeted.payload, draftHits, maxTokens),
+        ...(expansion.fired.length > 0 ? { bridges_fired: expansion.fired } : {}),
+      };
       // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
       // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.
       const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;

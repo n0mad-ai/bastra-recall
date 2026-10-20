@@ -45,6 +45,9 @@ function args(positional: string[], dryRun = false): ParsedArgs {
     lines: null,
     stats: false,
     includeEval: false,
+    replay: false,
+    days: null,
+    compare: null,
     positional,
   };
 }

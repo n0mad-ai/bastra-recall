@@ -193,7 +193,8 @@ export interface DeliveredPromptImpact {
   basis: AffectedBasis | null;
 }
 
-const NOTHING: DeliveredPromptImpact = {
+/** No block, nothing to dedupe — also what a replayed prompt gets (#702). */
+export const NO_PROMPT_IMPACT: DeliveredPromptImpact = {
   block: null,
   dedupeKey: null,
   tokensEst: 0,
@@ -225,14 +226,14 @@ export async function deliverPromptImpact(opts: {
   cache?: CodeGraphCache;
   budgetMs?: number;
 }): Promise<DeliveredPromptImpact> {
-  if (!(await getPromptImpactEnabled())) return NOTHING;
+  if (!(await getPromptImpactEnabled())) return NO_PROMPT_IMPACT;
   let result: PromptImpactResult;
   try {
     result = await promptImpactNote(opts);
   } catch {
-    return NOTHING;
+    return NO_PROMPT_IMPACT;
   }
-  if (result.note === null && !result.dedupeHit) return NOTHING;
+  if (result.note === null && !result.dedupeHit) return NO_PROMPT_IMPACT;
 
   const repo = repoRootSync(opts.cwd) ?? opts.cwd;
   void logDeliveredBlock({
@@ -250,7 +251,7 @@ export async function deliverPromptImpact(opts: {
         }
       : {}),
   });
-  if (result.note === null) return NOTHING;
+  if (result.note === null) return NO_PROMPT_IMPACT;
   return {
     block: result.note.note,
     dedupeKey: result.note.dedupeKey,

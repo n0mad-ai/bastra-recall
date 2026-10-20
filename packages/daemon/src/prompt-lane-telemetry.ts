@@ -3,10 +3,10 @@
  * prompt-lane.ts, #680).
  */
 import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
+import { eventLogFile } from "./telemetry-sink.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import type { HookAgent, HookClientEvidence } from "./hook-surface.js";
 import type { ScopeFilterMode } from "./scope-filter.js";
@@ -17,7 +17,7 @@ const HOOK_VERSION = "0.3.0"; // 0.3.0 = daemon-side lane (#343)
 
 // ─── telemetry ──────────────────────────────────────────────────────────────
 
-interface PromptHookTelemetry {
+export interface PromptHookTelemetry {
   /** #356: the Claude Code session this call belongs to — the payload's
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
@@ -122,6 +122,9 @@ interface PromptHookTelemetry {
   /** P0/#342: der Grund dafür — `vector-arm-timeout` | `vector-arm-error` |
    *  `vector-arm-empty`. Trennt „zu langsam" von „aus" von „kein Vektor da". */
   degraded?: string;
+  /** #702: ids of the learned bridges whose trigger matched this prompt's
+   *  query (`/hook/recall` reports them). Absent when none fired. */
+  bridges_fired?: string[];
 }
 
 export async function writeTelemetry(payload: PromptHookTelemetry): Promise<void> {
@@ -142,7 +145,8 @@ export async function writeTelemetry(payload: PromptHookTelemetry): Promise<void
       // #507: prompt is this lane's own hook_source — it never varies per call.
       dimensions: dimensionsFrom({ client, hook_source: "prompt", session_id: payloadSessionId, agent }),
     };
-    const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
+    // #702: a replay row goes to its own file (telemetry-sink.ts).
+    const file = eventLogFile(logDir, ts, event);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");
   } catch {
     // Telemetry must never break the lane.

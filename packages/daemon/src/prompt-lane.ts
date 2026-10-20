@@ -39,7 +39,7 @@ import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
 import { ownerPromptText } from "./system-turn.js";
 import { governContext } from "./context-governor.js";
-import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
+import { deliverPromptImpact, NO_PROMPT_IMPACT } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { repoRootSync } from "./code-graph/git-paths.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
@@ -70,7 +70,7 @@ import {
   type DetectedMode,
 } from "./prompt-classify.js";
 import { formatHintBlock, formatReflexBlock, type PromptReflexHit, type RecallHit } from "./prompt-format.js";
-import { writeTelemetry } from "./prompt-lane-telemetry.js";
+import { writeTelemetry, type PromptHookTelemetry } from "./prompt-lane-telemetry.js";
 import { postJson } from "./prompt-loopback.js";
 
 // #680: classification, formatting, telemetry and the loopback call live in
@@ -137,6 +137,18 @@ interface RecallResponse {
    *  | `vector-arm-empty`. Trennt „diese Maschine degradiert gerade" von
    *  „Embeddings sind hier aus". */
   degraded?: string;
+  /** #702: ids of the learned bridges whose trigger matched the query. */
+  bridges_fired?: string[];
+}
+
+/**
+ * #702: what a caller may hang on the lane besides the payload. Today one
+ * hook: the replay route (`bastra doctor --replay`) takes the telemetry row
+ * the lane wrote, so the CLI builds its report from the same numbers the log
+ * holds instead of parsing the lane's stdout.
+ */
+export interface PromptLaneOptions {
+  onTelemetry?: (row: PromptHookTelemetry) => void;
 }
 
 interface ReflexResponse {
@@ -210,6 +222,7 @@ export async function runPromptLane(
    *  recall below is worth paying for. Absent = no accessor wired (an older
    *  caller, a unit test): the lane then recalls exactly as it did before. */
   reflexPool?: () => string[],
+  opts: PromptLaneOptions = {},
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
@@ -217,6 +230,16 @@ export async function runPromptLane(
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
   const clientEvidence = hookClientEvidence(payload);
   const agent = hookAgent(payload);
+  // #702: a replayed prompt runs the whole lane — classification, recall,
+  // reflex, dedup, backoff, scope filter — and leaves no trace outside its own
+  // `replay-` session state and the replay telemetry file: no statusline feed,
+  // no code-graph block, no usage sidecar, no budget ledger, no draft claims.
+  // What the user sees in the report is what the hook would have injected.
+  const replay = clientEvidence === "replay";
+  const emitTelemetry = async (row: PromptHookTelemetry): Promise<void> => {
+    await writeTelemetry(row);
+    opts.onTelemetry?.(row);
+  };
 
   if (payload.hook_event_name !== "UserPromptSubmit") return "{}";
 
@@ -232,7 +255,7 @@ export async function runPromptLane(
   // New user turn → reset statusline counters to idle. Needs the client's
   // process-tree position; without a resolvable ppid the reset is skipped
   // (statusline is cosmetic, the lane is not).
-  const sessionPid = resolveSessionPid(clientPpid);
+  const sessionPid = replay ? null : resolveSessionPid(clientPpid);
   if (sessionPid !== null) resetStatuslineFeed(sessionPid, payload.session_id ?? null);
 
   const submitted = extractPrompt(payload);
@@ -248,7 +271,7 @@ export async function runPromptLane(
   // and text typed after a leading <system-reminder> block is the prompt.
   const prompt = ownerPromptText(submitted);
   if (prompt === null) {
-    await writeTelemetry({
+    await emitTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
       agent,
@@ -273,7 +296,7 @@ export async function runPromptLane(
   // #151: gate before any recall work — the saved tokens surface in stats
   // via status:"gated" + gated:true.
   if (isTrivialPrompt(prompt)) {
-    await writeTelemetry({
+    await emitTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
       agent,
@@ -342,7 +365,7 @@ export async function runPromptLane(
   const reflexPromise: Promise<ReflexResponse | null> = postJson<ReflexResponse>(
     selfBaseUrl,
     "/hook/reflex",
-    { context: prompt, project, session_id: payload.session_id ?? null },
+    { context: prompt, project, session_id: payload.session_id ?? null, client: clientEvidence },
     remainingMs,
   ).catch(() => null);
 
@@ -357,12 +380,14 @@ export async function runPromptLane(
   // the first search runs. Started here so it overlaps the recall; gated twice
   // (phrasing, then resolution against the graph) inside, so an ordinary
   // prompt costs one regex pass and nothing else.
-  const impactPromise = deliverPromptImpact({
-    prompt,
-    cwd,
-    sessionId: payload.session_id ?? null,
-    session: state,
-  });
+  const impactPromise = replay
+    ? Promise.resolve(NO_PROMPT_IMPACT)
+    : deliverPromptImpact({
+        prompt,
+        cwd,
+        sessionId: payload.session_id ?? null,
+        session: state,
+      });
 
   // #371: in mode "none" the recall can only ever contribute a memory that
   // the user wired as `recall_mode: reflex` (the filter below) and that this
@@ -696,14 +721,14 @@ export async function runPromptLane(
     ...(reflexBlock ? reflexKept.map((h) => h.id) : []),
     ...(recallBlock ? recallHits.map((h) => h.id) : []),
   ];
-  if (injectedIds.length > 0) {
+  if (injectedIds.length > 0 && !replay) {
     await reportHinted(selfBaseUrl, injectedIds, payload.session_id ?? null);
   }
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4));
-  await writeTelemetry({
+  if (!replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4));
+  await emitTelemetry({
     session_id: payload.session_id ?? null,
     client: clientEvidence,
     agent,
@@ -750,6 +775,7 @@ export async function runPromptLane(
       : {}),
     ...(resp?.unfused === true ? { unfused: true } : {}),
     ...(resp?.degraded ? { degraded: resp.degraded } : {}),
+    ...(resp?.bridges_fired?.length ? { bridges_fired: resp.bridges_fired } : {}),
     suppressed,
     suppressed_tokens_est: suppressedTokensEst,
     status: suppressed ? "suppressed" : status,
@@ -758,6 +784,7 @@ export async function runPromptLane(
     recall_skipped: recallSkipped,
   });
 
+  if (replay) return stdout;
   return appendLaneDrafts(stdout, "UserPromptSubmit", prompt, payload.session_id, [...(resp?.hits ?? []), ...reflexKept], 1, false, undefined, startedAt + laneBudgetMs(detectedMode));
 }
 

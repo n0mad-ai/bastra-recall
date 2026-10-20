@@ -379,7 +379,8 @@ export class Telemetry {
     // "surfaced"-Notice VOR dem enabled-Gate — der Hook-Pfad ist der
     // Löwenanteil des Traffics; die Map-Notice ist UI, nicht Persistenz. Das Band filtert.
     try {
-      this.onRecalled?.(surfacedHits(payload.hits));
+      // #702: replayed hits never light up the live map.
+      if (payload.client !== "replay") this.onRecalled?.(surfacedHits(payload.hits));
     } catch {
       /* Notices dürfen einen Hook-Recall nie brechen */
     }
