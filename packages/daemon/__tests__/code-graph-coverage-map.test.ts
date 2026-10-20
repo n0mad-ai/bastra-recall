@@ -19,6 +19,7 @@ import {
   coverageTestsLine,
   ensureCoverageDir,
   foldCoverage,
+  gitVerdict,
   isTestCommand,
   isSafeRepoPath,
   isTestFile,
@@ -41,6 +42,9 @@ import { readSettings } from "../src/settings.js";
 let root: string;
 before(async () => {
   root = await mkdtemp(join(tmpdir(), "bastra-coverage-map-"));
+  // The reader trusts a map only where git vouches nothing is tracked under
+  // `.bastra-coverage`, so every fixture repository lives inside a work tree.
+  execFileSync("git", ["-C", root, "init", "-q"]);
 });
 after(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -386,6 +390,63 @@ describe("coverage map: reading in the hook", () => {
     await symlink(join(repo3, "elsewhere.json"), coverageMapFileOf(repo3));
     assert.equal(readCoverageMapSync(repo3), null, "the map itself is opened without following a link");
     assert.equal(await readCoverageMap(repo3), null);
+  });
+
+  it("fails closed: no git answer — not a repository, git missing — means no map and no line", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "bastra-coverage-nogit-"));
+    try {
+      await ensureCoverageDir(outside);
+      await writeFile(coverageMapFileOf(outside), JSON.stringify(MAP), "utf8");
+      assert.equal(gitVerdict(outside), "unknown");
+      assert.equal(readCoverageMapSync(outside), null, "not inside a work tree");
+      assert.equal(await readCoverageMap(outside), null);
+      const changed = new Map([["src/search.ts", ["SearchIndex"]]]);
+      assert.equal(coverageTestsLine(readCoverageMapSync(outside), changed, new Set()), null, "no line");
+      // The fold does not overwrite a map it could not read: it waits.
+      await rawFile(outside, "coverage-1-1-0.json", { result: [script(outside, "t/a.test.ts", [fn("t", 1)])] });
+      const r = await foldCoverage(outside);
+      assert.equal(r.folded, 0);
+      assert.equal(r.deferred, 1);
+      assert.equal(await readFile(coverageMapFileOf(outside), "utf8"), JSON.stringify(MAP), "map untouched");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+
+    const repo = join(root, "git-missing");
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP), "utf8");
+    const path = process.env.PATH;
+    process.env.PATH = join(root, "no-such-bin");
+    try {
+      assert.equal(gitVerdict(repo), "unknown");
+      assert.equal(readCoverageMapSync(repo), null, "git cannot be spawned");
+    } finally {
+      process.env.PATH = path;
+    }
+    // Not cached: once git answers, the map is read.
+    assert.equal(gitVerdict(repo), "untracked");
+    assert.ok(readCoverageMapSync(repo));
+  });
+
+  it("a tracked .Bastra-Coverage voids the map on a case-insensitive file system", async (t) => {
+    const repo = join(root, "icase");
+    await mkdir(join(repo, ".Bastra-Coverage"), { recursive: true });
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    try {
+      await stat(join(repo, ".bastra-coverage"));
+    } catch {
+      t.skip("case-sensitive file system: the two spellings are two directories");
+      return;
+    }
+    await writeFile(join(repo, ".Bastra-Coverage", "coverage-map.json"), JSON.stringify(MAP), "utf8");
+    execFileSync("git", ["-C", repo, "add", "-f", ".Bastra-Coverage/coverage-map.json"]);
+    assert.equal(gitVerdict(repo), "tracked", "git is asked case-insensitively");
+    assert.equal(readCoverageMapSync(repo), null);
+    assert.equal(await readCoverageMap(repo), null);
+    // Untracked, the spelling on disk alone still differs from the expected name.
+    execFileSync("git", ["-C", repo, "rm", "-q", "--cached", ".Bastra-Coverage/coverage-map.json"]);
+    assert.equal(gitVerdict(repo), "untracked");
+    assert.equal(readCoverageMapSync(repo), null, "the native real path has the wrong spelling");
   });
 
   it("anything git tracks under .bastra-coverage voids the map, not only the map file", async () => {

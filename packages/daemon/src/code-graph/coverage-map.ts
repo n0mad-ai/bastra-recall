@@ -306,7 +306,7 @@ export async function readCoverageMap(repoRoot: string): Promise<CoverageMap | n
   if (fd === null) return null;
   try {
     const st = fstatSync(fd);
-    if (!st.isFile() || st.size > MAX_MAP_BYTES || trackedByGit(repoRoot)) return null;
+    if (!st.isFile() || st.size > MAX_MAP_BYTES || gitVerdict(repoRoot) !== "untracked") return null;
     return parseMap(readFileSync(fd, "utf8"));
   } catch {
     return null;
@@ -322,13 +322,19 @@ export async function readCoverageMap(repoRoot: string): Promise<CoverageMap | n
  * them differ — and the map itself is opened with `O_NOFOLLOW`, so a symlink
  * at its path fails the open. The caller still checks the handle is a
  * regular file.
+ *
+ * The native real path carries the spelling on disk: on a case-insensitive
+ * file system (macOS) `.Bastra-Coverage` answers to `.bastra-coverage`, and
+ * only the native call tells the two apart. NFC on both sides, since macOS
+ * may hand back a decomposed form of the repository's own path.
  */
 function openMapSync(repoRoot: string): number | null {
   try {
     const dir = coverageDirOf(repoRoot);
     const st = lstatSync(dir);
     if (!st.isDirectory() || st.isSymbolicLink()) return null;
-    if (realpathSync(dir) !== join(realpathSync(repoRoot), COVERAGE_DIR_NAME)) return null;
+    const expected = join(realpathSync.native(repoRoot), COVERAGE_DIR_NAME).normalize("NFC");
+    if (realpathSync.native(dir).normalize("NFC") !== expected) return null;
     return openSync(coverageMapFileOf(repoRoot), fsConstants.O_RDONLY | NOFOLLOW);
   } catch {
     return null;
@@ -366,24 +372,36 @@ export function parseMap(text: string | null): CoverageMap | null {
 }
 
 /**
- * Does git track anything at `.bastra-coverage` — the directory's contents,
- * or the path itself as a symlink? A checkout that brought one along is the
- * one way an outsider's map reaches the reader; the daemon's own directory
- * ignores itself, so git lists nothing there. Asking for the map file alone
- * was not enough: behind a committed symlink git does not match the path and
- * the map passed as untracked. One short `git ls-files`; the sync reader
- * caches it by the map's mtime. No git, or no repository: nothing is tracked.
+ * Does git vouch that nothing is tracked at `.bastra-coverage` — neither the
+ * directory's contents nor the path itself as a symlink? A checkout that
+ * brought one along is the one way an outsider's map reaches the reader; the
+ * daemon's own directory ignores itself, so git lists nothing there. Asking
+ * for the map file alone was not enough: behind a committed symlink git does
+ * not match the path. `:(icase)` because on a case-insensitive file system a
+ * tracked `.Bastra-Coverage` is the same directory.
+ *
+ * FAIL CLOSED. Only a clean answer counts as "untracked": git ran, the
+ * directory is inside a work tree, and `ls-files` exited 0 with nothing.
+ * No git, no repository, a timeout or any error is "unknown" — not read, and
+ * not cached by the sync reader, so the next call asks again.
  */
-export function trackedByGit(repoRoot: string): boolean {
-  try {
-    const r = spawnSync("git", ["-C", repoRoot, "ls-files", "-z", "--", COVERAGE_DIR_NAME], {
+export type GitVerdict = "untracked" | "tracked" | "unknown";
+
+export function gitVerdict(repoRoot: string): GitVerdict {
+  const git = (args: string[]) =>
+    spawnSync("git", ["-C", repoRoot, ...args], {
       stdio: ["ignore", "pipe", "ignore"],
       // Runs in the Write/Edit lane before its budget check: short.
       timeout: 1_000,
     });
-    return r.stdout !== null && r.stdout.length > 0;
+  try {
+    const inside = git(["rev-parse", "--is-inside-work-tree"]);
+    if (inside.error !== undefined || inside.status !== 0 || inside.stdout.toString().trim() !== "true") return "unknown";
+    const r = git(["ls-files", "-z", "--", `:(icase)${COVERAGE_DIR_NAME}`]);
+    if (r.error !== undefined || r.status !== 0) return "unknown";
+    return r.stdout.length === 0 ? "untracked" : "tracked";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
@@ -409,8 +427,10 @@ export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
     if (!st.isFile()) return null;
     const hit = snapshots.get(path);
     if (hit !== undefined && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.map;
-    const map =
-      st.size > MAX_MAP_BYTES || trackedByGit(repoRoot) ? null : parseMap(readFileSync(fd, "utf8"));
+    if (st.size > MAX_MAP_BYTES) return null;
+    const verdict = gitVerdict(repoRoot);
+    if (verdict === "unknown") return null; // asked again next time
+    const map = verdict === "tracked" ? null : parseMap(readFileSync(fd, "utf8"));
     snapshots.delete(path);
     if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
     snapshots.set(path, { mtimeMs: st.mtimeMs, size: st.size, map });
@@ -456,6 +476,10 @@ export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<
     return result;
   }
   if (names.length === 0) return result;
+  // Without git's clean "untracked" the map on disk cannot be read, and
+  // folding would start from an empty map and overwrite it — or write into a
+  // directory git tracks. Leave everything for a later fold.
+  if (gitVerdict(repoRoot) !== "untracked") return { ...result, deferred: names.length };
 
   const map = (await readCoverageMap(repoRoot)) ?? emptyMap();
   const sourceOf = sourceResolver(repoRoot);

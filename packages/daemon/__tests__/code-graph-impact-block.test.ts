@@ -1,6 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -345,6 +346,8 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.ok(without.note);
     assert.doesNotMatch(without.note.note, /coverage map/);
 
+    // The reader trusts a map only inside a git work tree.
+    execFileSync("git", ["-C", repo, "init", "-q"]);
     await mkdir(dirname(coverageMapFileOf(repo)), { recursive: true });
     await writeFile(
       coverageMapFileOf(repo),
