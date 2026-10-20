@@ -125,6 +125,16 @@ describe("coverage map: folding", () => {
     await stat(join(coverageRawDirOf(repo2), "coverage-9-9-0.json"));
   });
 
+  it("does not follow a symlinked .bastra-coverage when creating the directories", async () => {
+    const repo = join(root, "symlink-top");
+    const elsewhere = join(root, "elsewhere-top");
+    await mkdir(elsewhere, { recursive: true });
+    await mkdir(repo, { recursive: true });
+    await symlink(elsewhere, join(repo, ".bastra-coverage"));
+    await assert.rejects(ensureCoverageDir(repo), /not a plain directory/);
+    assert.deepEqual(await readdir(elsewhere), [], "nothing is created behind the link");
+  });
+
   it("merges a later run into the map and leaves a file still being written alone", async () => {
     const repo = join(root, "merge");
     await mkdir(repo, { recursive: true });

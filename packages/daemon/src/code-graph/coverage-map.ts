@@ -41,7 +41,7 @@
 
 import { spawnSync } from "node:child_process";
 import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync } from "node:fs";
-import { mkdir, open, readdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
@@ -146,19 +146,47 @@ const NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
  * created with `O_EXCL | O_NOFOLLOW`, and `rename` replaces a path, not what
  * a link at it points to.
  *
- * THE DIRECTORIES THEMSELVES are compared by real path to the path they are
- * expected to have under the repository's real root, after `mkdir`; a
+ * THE DIRECTORIES THEMSELVES are created one level at a time: each level is
+ * `lstat`ed, made with a non-recursive `mkdir` if absent, and refused if it is
+ * a symlink. They are then compared by real path to the path they are
+ * expected to have under the repository's real root; a
  * symlink in the chain makes the two differ. That is a check before use —
  * Node has no way to read a directory through a handle — and the window
  * between it and the file operations is the residual race. It is harmless
  * here: the directory is the user's own, inside their checkout, and
  * everything that follows refuses to follow a link on the final component.
  */
+/**
+ * One directory level, no link followed: absent → a non-recursive `mkdir` of
+ * exactly this level; present → only a real directory, never a symlink.
+ */
+async function ensurePlainDir(path: string): Promise<boolean> {
+  let st = await lstat(path).catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  });
+  if (!st) {
+    await mkdir(path).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== "EEXIST") throw e;
+    });
+    st = await lstat(path);
+  }
+  return st.isDirectory() && !st.isSymbolicLink();
+}
+
 async function coverageDirs(repoRoot: string, create: boolean): Promise<{ dir: string; raw: string } | null> {
   const dir = coverageDirOf(repoRoot);
   const raw = coverageRawDirOf(repoRoot);
   try {
-    if (create) await mkdir(raw, { recursive: true });
+    if (create) {
+      await mkdir(repoRoot, { recursive: true }); // the checkout itself may legitimately be a link
+      for (const level of [dir, raw]) {
+        if (!(await ensurePlainDir(level))) {
+          process.stderr.write(`[bastra-recall] coverage map: ${dir} is not a plain directory — left alone\n`);
+          return null;
+        }
+      }
+    }
     const rootReal = await realpath(repoRoot);
     const expectedRaw = join(rootReal, COVERAGE_DIR_NAME, RAW_DIR_NAME);
     if ((await realpath(raw)) !== expectedRaw || (await realpath(dir)) !== dirname(expectedRaw)) {
