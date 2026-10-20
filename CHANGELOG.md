@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Code awareness (experimental, off by default): a coverage map collected from the test runs the agent already makes. With `bastra config set coverageMap.enabled true`, test commands (`npm test`, `node --test`, `vitest`, `jest`, `tsx --test`) in a repository with code awareness run with `NODE_V8_COVERAGE` into the git-ignored `.bastra-coverage/`; the raw output is folded in the background into a map of which tests executed which files and functions, paths only. The Write/Edit and task-boundary blocks add one line naming the tests that ran the changed functions, at most five, never as an instruction. `bastra code` and `bastra doctor` show whether a map exists and how old it is (#629, refs #668).
 
+### Fixed
+
+- Code-awareness telemetry (#665): graph refreshes the daemon never finished now
+  appear as `interrupted`, so started = ok + failed + locked + interrupted; "by lane"
+  counts only the blocks actually injected; an untimed delivered block omits `took_ms`
+  instead of writing 0; `bastra logs --stats` and the Telemetry tab print `n/a`
+  where nothing was measured and keep sub-10 ms latencies from rounding to "0 ms".
+- Code awareness (experimental): dependents are ranked by evidence within a hop — a call site before an import, an import before a re-export or package import — and only then by file name. Under the impact block's ten-file cap an alphabetical list dropped tests that really call the changed symbol; on the 44 registered delivered-run scenarios the block now names a correct file in 16 of 37 instead of 15, at the same block size (#637).
+
 ## [1.1.1] — 2026-10-17
 
 ### Security

@@ -147,6 +147,67 @@ describe("reversing a diff whose content looks like a header", () => {
   });
 });
 
+/**
+ * #603: a pure rename carries no `---`/`+++` pair and no hunk, so every line
+ * used to fall through the pass-through branch and the reversed diff still
+ * pointed the same way.
+ */
+describe("reversing a pure rename", () => {
+  const RENAME = [
+    "diff --git a/old.ts b/new.ts",
+    "similarity index 100%",
+    "rename from old.ts",
+    "rename to new.ts",
+  ].join("\n");
+
+  test("THE REPRODUCTION: `rename from`/`rename to` trade places and the header's sides follow", () => {
+    assert.equal(
+      reverseUnifiedDiff(RENAME),
+      ["diff --git a/new.ts b/old.ts", "similarity index 100%", "rename from new.ts", "rename to old.ts"].join("\n"),
+    );
+  });
+
+  test("reversing twice gives the rename back", () => {
+    assert.equal(reverseUnifiedDiff(reverseUnifiedDiff(RENAME)), RENAME);
+  });
+
+  test("a quoted rename keeps git's quoting on both sides", () => {
+    const d = [
+      'diff --git "a/old \\303\\244.ts" "b/new \\303\\244.ts"',
+      'rename from "old \\303\\244.ts"',
+      'rename to "new \\303\\244.ts"',
+    ].join("\n");
+    assert.equal(
+      reverseUnifiedDiff(d),
+      [
+        'diff --git "a/new \\303\\244.ts" "b/old \\303\\244.ts"',
+        'rename from "new \\303\\244.ts"',
+        'rename to "old \\303\\244.ts"',
+      ].join("\n"),
+    );
+  });
+
+  test("a rename with a hunk reverses the hunk as well", () => {
+    const d = [
+      "diff --git a/old.ts b/new.ts",
+      "similarity index 90%",
+      "rename from old.ts",
+      "rename to new.ts",
+      "--- a/old.ts",
+      "+++ b/new.ts",
+      "@@ -4,1 +4,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const back = reverseUnifiedDiff(d).split("\n");
+    assert.equal(back[0], "diff --git a/new.ts b/old.ts");
+    assert.equal(back[4], "+++ a/old.ts");
+    assert.equal(back[5], "--- b/new.ts");
+    assert.equal(back[7], "-new");
+    assert.equal(back[8], "+old");
+  });
+});
+
 describe("the product reads the side the tree actually is", () => {
   const file = "packages/core/src/save.ts";
 

@@ -41,7 +41,7 @@ import { score } from "./evaluate.mjs";
 import { rng } from "./select.mjs";
 import { writableOut } from "./archive.mjs";
 import { parseArm } from "./evaluate-v4.mjs";
-import { treeDirOf } from "./run-arms-v3.mjs";
+import { legacyTreeDirOf, treeDirOf } from "./run-arms-v3.mjs";
 import { armMetaRows, mixedBuildsReport } from "./evaluate-v4.mjs";
 import { armIdsOf, resolveRegistration } from "./registration.mjs";
 import { pinSignature, readBuildPin } from "./build-pin.mjs";
@@ -348,7 +348,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
         missing.push(`${s.id}/${arm}`);
         continue;
       }
-      const a = parseArm(text, treeDirOf(s, OUT), registration.arms.model);
+      const a = parseArm(text, [treeDirOf(s, OUT), legacyTreeDirOf(s, OUT)], registration.arms.model);
       parsed[arm] = { ...a, ...score(a.named, s.truth, s.file) };
     }
     if (arms.some((a) => parsed[a] === undefined)) continue;

@@ -66,9 +66,9 @@ export interface ToolStats {
   byKind: Counted[];
   /** Files named across all answers — the reach of the answers that came back. */
   filesNamed: number;
-  /** Wall clock inside the tool, milliseconds. */
-  p50: number;
-  p90: number;
+  /** Wall clock inside the tool, milliseconds; null when no row carried one. */
+  p50: number | null;
+  p90: number | null;
 }
 
 export interface RefreshStats {
@@ -79,10 +79,19 @@ export interface RefreshStats {
   locked: number;
   skipped: number;
   givenUp: number;
+  /**
+   * Starts with no terminal row in the window (#665): the daemon restarted
+   * mid-build, so neither ok nor failed nor locked was ever written. Derived,
+   * not logged — `started − ok − failed − locked`. `given-up` always follows
+   * a locked or failed row, and `skipped` never follows a start, so neither
+   * enters the subtraction. Floored at 0: a start whose terminal row fell on
+   * the other side of the window edge would otherwise go negative.
+   */
+  interrupted: number;
   byReason: Counted[];
-  /** Build duration, start → ok/failed; lock checks and skipped runs excluded. */
-  p50: number;
-  p90: number;
+  /** Build duration, start → ok/failed; lock checks and skipped runs excluded. Null when none ran. */
+  p50: number | null;
+  p90: number | null;
   /** Short failure details, biggest first — never a path or a command line. */
   failures: Counted[];
 }
@@ -120,9 +129,13 @@ export interface DeliveredStats {
   /** Estimated tokens spent on them — the cost side. */
   tokensTotal: number;
   tokensMedian: number;
-  /** Wall clock inside the block builder, milliseconds. */
-  p50: number;
-  p90: number;
+  /**
+   * Wall clock inside the block builder, milliseconds. Null when no delivered
+   * row carried a measurement — a boundary block (#572) has none, and 0 would
+   * read as "instant" rather than "not measured".
+   */
+  p50: number | null;
+  p90: number | null;
 }
 
 export interface CodeAwarenessStats {
@@ -180,10 +193,11 @@ const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
-function quantile(values: number[], q: number): number {
-  if (values.length === 0) return 0;
+/** Null, not 0, for an empty sample: nothing measured is not the same as fast. */
+function quantile(values: number[], q: number): number | null {
+  if (values.length === 0) return null;
   const s = [...values].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.floor(s.length * q))] ?? 0;
+  return s[Math.min(s.length - 1, Math.floor(s.length * q))] ?? null;
 }
 
 const bump = (m: Map<string, number>, key: string): void => {
@@ -258,12 +272,14 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
       // fold; letting it into `tools` would make "does anyone call this tool?"
       // answer itself with Recall's own injections.
       if (str(e.surface) === "delivered") {
-        bump(delivered.lanes, str(e.delivered_lane) ?? "unknown");
         if (e.dedupe_hit === true) {
           delivered.dedupeHits++;
           continue;
         }
         delivered.blocks++;
+        // After the dedupe check (#665): "by lane" sits next to "blocks
+        // injected" and has to sum to it, not to blocks plus suppressions.
+        bump(delivered.lanes, str(e.delivered_lane) ?? "unknown");
         const basis = str(e.basis);
         if (basis !== null) bump(delivered.bases, basis);
         delivered.filesNamed += num(e.files) ?? 0;
@@ -350,7 +366,7 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
       byBasis: counted(delivered.bases),
       filesNamed: delivered.filesNamed,
       tokensTotal: delivered.tokens.reduce((a, b) => a + b, 0),
-      tokensMedian: quantile(delivered.tokens, 0.5),
+      tokensMedian: quantile(delivered.tokens, 0.5) ?? 0,
       p50: quantile(delivered.took, 0.5),
       p90: quantile(delivered.took, 0.9),
     },
@@ -361,6 +377,7 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
       locked,
       skipped,
       givenUp,
+      interrupted: Math.max(0, started - ok - failed - locked),
       byReason: counted(refreshReasons),
       p50: quantile(durations, 0.5),
       p90: quantile(durations, 0.9),

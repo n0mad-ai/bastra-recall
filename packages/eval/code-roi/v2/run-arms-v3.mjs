@@ -71,7 +71,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { buildGraph, promptFor } from "./run-arms.mjs";
 import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
@@ -111,6 +111,55 @@ const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathna
 
 // From the registration — not tunable here.
 const ARM_TIMEOUT_MS = 20 * 60_000;
+/**
+ * How long a timed-out arm gets to leave on SIGTERM before SIGKILL (#602).
+ * A CLI stuck in an uninterruptible wait, ignoring TERM or waiting on a
+ * runaway child of its own kept its slot forever: `close` never fired, the
+ * arm was neither finished nor charged, and the helping simply hung.
+ */
+export const ARM_KILL_GRACE_MS = 30_000;
+
+/**
+ * Signal the child's whole process group (#602). The CLI is spawned detached,
+ * so it leads its own group; a grandchild holding the inherited stdout/stderr
+ * pipe would otherwise keep `close` from firing after only the CLI died. A
+ * child that is no group leader (ESRCH) falls back to the plain signal.
+ */
+function killGroup(child, signal) {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
+}
+
+/**
+ * Arm the timeout on a child: SIGTERM at `timeoutMs`, SIGKILL `graceMs` later
+ * if it is still running. Returns the state the `close` handler reads —
+ * whether the arm timed out and whether it needed the escalation — and a
+ * `clear` to call once the child has closed.
+ */
+export function armTimeout(child, timeoutMs = ARM_TIMEOUT_MS, graceMs = ARM_KILL_GRACE_MS) {
+  const state = { timedOut: false, escalated: false };
+  let killer = null;
+  const timer = setTimeout(() => {
+    state.timedOut = true;
+    killGroup(child, "SIGTERM");
+    killer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        state.escalated = true;
+        killGroup(child, "SIGKILL");
+      }
+    }, graceMs);
+  }, timeoutMs);
+  return {
+    state,
+    clear() {
+      clearTimeout(timer);
+      if (killer !== null) clearTimeout(killer);
+    },
+  };
+}
 /**
  * The built-in tools every arm gets — Read, Grep, Glob and nothing that runs a
  * command.
@@ -277,17 +326,13 @@ function runArm(
   return new Promise((resolve) => {
     const startedAt = Date.now();
     const out = createWriteStream(`${transcript}.partial`);
-    const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"], detached: true });
     child.stdout.pipe(out);
     let stderr = "";
-    let timedOut = false;
     child.stderr.on("data", (d) => (stderr += d));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, ARM_TIMEOUT_MS);
+    const timeout = armTimeout(child);
     child.on("close", (code) => {
-      clearTimeout(timer);
+      timeout.clear();
       out.end(() => {
         // FINALISATION IS EARNED, NOT AUTOMATIC (#582 review). The rename used
         // to happen unconditionally, so a timed-out, budget-stopped or crashed
@@ -323,8 +368,13 @@ function runArm(
               ...(finished
                 ? {}
                 : {
-                    reason: timedOut
-                      ? "timeout"
+                    // `timeout_sigkill` names an arm that ignored SIGTERM
+                    // for the whole grace, so a pattern of stuck arms is
+                    // visible in the archive and not only as a hung helping.
+                    reason: timeout.state.timedOut
+                      ? timeout.state.escalated
+                        ? "timeout_sigkill"
+                        : "timeout"
                       : result !== null
                         ? `result_${result.subtype ?? "unknown"}`
                         : code === 0
@@ -363,10 +413,56 @@ function runArm(
  *
  * The path is derived, not random, so a helping that resumes finds the tree a
  * previous helping extracted instead of rebuilding it.
+ *
+ * Derived from the WHOLE resolved archive path, not its basename (#593). Two
+ * archives whose last segment matched — `~/.bastra/eval/code-roi-v4` and a
+ * copy of it elsewhere — mapped to one tree directory, and because scenario
+ * ids are `S01…` in every archive, the second one's arms silently ran against
+ * the first one's tree. The basename stays in the path so a human can still
+ * tell the directories apart; the hash is what keeps them apart.
  */
 export function treeDirOf(s, outDir = OUT) {
+  const archive = resolve(outDir);
+  const key = `${basename(archive) || "code-roi"}-${createHash("sha256").update(archive).digest("hex").slice(0, 10)}`;
+  return join(tmpdir(), "code-roi-trees", key, s.id, "tree");
+}
+
+/**
+ * Where a tree lived BEFORE #593: basename only. Transcripts of archives run
+ * under that layout carry its absolute path in their answers, so the scorers
+ * normalise against both; nothing is extracted there any more.
+ */
+export function legacyTreeDirOf(s, outDir = OUT) {
   const archive = outDir.split("/").filter(Boolean).slice(-1)[0] ?? "code-roi";
   return join(tmpdir(), "code-roi-trees", archive, s.id, "tree");
+}
+
+/**
+ * The marker written beside a tree, naming which archive and which commit it
+ * was extracted for. A tree is only ever reused when its marker says it is the
+ * tree this scenario asked for; anything else is re-extracted. Without it a
+ * stale tree (another archive's, or the same scenario re-mined at a different
+ * parent) was reused silently, because the runner only checked that the
+ * directory existed.
+ */
+export function treeMarkerOf(s, outDir = OUT) {
+  return {
+    path: join(dirname(treeDirOf(s, outDir)), "tree.json"),
+    expected: { archive: resolve(outDir), parent: s.parent, repo: s.repo ?? REPO_SELF },
+  };
+}
+
+/** Is the tree on disk the one this scenario asked for, by its marker? */
+export function treeIsReusable(s, outDir = OUT) {
+  if (!existsSync(treeDirOf(s, outDir))) return false;
+  const { path, expected } = treeMarkerOf(s, outDir);
+  let marker;
+  try {
+    marker = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return false;
+  }
+  return ["archive", "parent", "repo"].every((k) => marker[k] === expected[k]);
 }
 
 /**
@@ -420,12 +516,16 @@ export function helpingSize() {
  * more: it archived from bastra-recall only, and it put the tree inside the
  * archive.
  */
-export function prepareTreeOf(s, dir) {
-  const tree = treeDirOf(s);
+export function prepareTreeOf(s, dir, outDir = OUT) {
+  const tree = treeDirOf(s, outDir);
   const graphRoot = join(dir, "graph");
-  if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && existsSync(tree)) {
+  const reusable = treeIsReusable(s, outDir);
+  if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && reusable) {
     return { tree, graphRoot };
   }
+  // A tree whose marker does not vouch for it is thrown away, not extracted
+  // over: `tar -x` into a stale tree leaves files the parent commit never had.
+  if (!reusable) rmSync(tree, { recursive: true, force: true });
   mkdirSync(tree, { recursive: true });
   mkdirSync(graphRoot, { recursive: true });
   const tar = execFileSync("git", ["archive", "--format=tar", s.parent], {
@@ -444,6 +544,10 @@ export function prepareTreeOf(s, dir) {
         `to run rather than following it silently.`,
     );
   }
+  // The marker vouches for a COMPLETE tree, so it is written last (#593): a
+  // crash mid-extraction leaves no marker, and the next run discards the half.
+  const marker = treeMarkerOf(s, outDir);
+  writeFileSync(marker.path, JSON.stringify(marker.expected, null, 2) + "\n");
   return { tree, graphRoot };
 }
 

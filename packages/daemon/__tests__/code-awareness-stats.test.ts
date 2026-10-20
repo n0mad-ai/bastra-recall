@@ -23,6 +23,10 @@ import { renderCodeAwareness } from "../src/cli/log-stats-code.js";
 import { summarizeCodeAwareness } from "../src/telemetry-report-code.js";
 import { aggregate, renderStats } from "../src/cli/log-stats.js";
 import { buildTelemetryReport } from "../src/telemetry-report.js";
+import { logDeliveredBlock } from "../src/code-delivered-telemetry.js";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const toolCall = (over: Record<string, unknown> = {}) => ({
   kind: "code_tool_call",
@@ -238,8 +242,9 @@ describe("code awareness: the two readouts", () => {
     assert.equal(s.tools[0].tool, "find_code");
     assert.equal(s.delivered.blocks, 2);
     assert.equal(s.delivered.dedupeHits, 1);
+    // #665: "by lane" sums to the blocks injected, not to blocks + dedupe hits.
     assert.deepEqual(s.delivered.byLane, [
-      { key: "write", count: 2 },
+      { key: "write", count: 1 },
       { key: "prompt", count: 1 },
     ]);
     assert.deepEqual(s.delivered.byBasis, [
@@ -255,7 +260,7 @@ describe("code awareness: the two readouts", () => {
       aggregateCodeAwareness([delivered(), delivered({ dedupe_hit: true, status: "no_answer" })]),
     ).join("\n");
     assert.match(out, /delivered blocks: 1 injected, 1 suppressed as already delivered/);
-    assert.match(out, /by lane: write×2/);
+    assert.match(out, /by lane: write×1/);
     assert.match(out, /by basis: diff×1/);
     assert.match(out, /cost: 120 tokens total/);
   });
@@ -274,5 +279,104 @@ describe("code awareness: the two readouts", () => {
     assert.notEqual(section, null);
     assert.equal(section.active.events, 0);
     assert.equal(section.block.withCodeBlock, 1);
+  });
+});
+
+describe("code awareness: audit follow-ups (#665)", () => {
+  it("books a start with no terminal row as interrupted, so started = ok + failed + locked + interrupted", () => {
+    const s = aggregateCodeAwareness([
+      refresh({ outcome: "started" }),
+      refresh({ outcome: "ok" }),
+      refresh({ outcome: "started" }),
+      refresh({ outcome: "locked", duration_ms: 1 }),
+      refresh({ outcome: "started" }),
+      refresh({ outcome: "failed", detail: "x" }),
+      refresh({ outcome: "given-up", detail: "x" }),
+      refresh({ outcome: "started" }), // daemon restarted mid-build
+      refresh({ outcome: "skipped", detail: "graph fresh" }), // never had a start
+    ]).refresh;
+    assert.equal(s.started, 4);
+    assert.equal(s.interrupted, 1);
+    assert.equal(s.started, s.ok + s.failed + s.locked + s.interrupted);
+  });
+
+  it("never reports a negative interrupted count when a start fell outside the window", () => {
+    const s = aggregateCodeAwareness([refresh({ outcome: "ok" })]).refresh;
+    assert.equal(s.interrupted, 0);
+  });
+
+  it("prints the interrupted bucket in `bastra logs --stats`", () => {
+    const out = renderCodeAwareness(
+      aggregateCodeAwareness([refresh({ outcome: "started" }), refresh({ outcome: "started" }), refresh()]),
+    ).join("\n");
+    assert.match(out, /graph refresh: 2 run\(s\) — 1 ok, 0 failed, 0 locked, 1 interrupted, 0 skipped, 0 given up/);
+  });
+
+  it("counts 'by lane' after the dedupe check, so it sums to the blocks injected", () => {
+    const s = aggregateCodeAwareness([
+      delivered({ delivered_lane: "write" }),
+      delivered({ delivered_lane: "write", dedupe_hit: true, status: "no_answer", basis: undefined }),
+      delivered({ delivered_lane: "boundary", dedupe_hit: true, status: "no_answer", basis: undefined }),
+    ]).delivered;
+    assert.equal(s.blocks, 1);
+    assert.equal(s.dedupeHits, 2);
+    assert.deepEqual(s.byLane, [{ key: "write", count: 1 }]);
+    assert.equal(s.byLane.reduce((n, l) => n + l.count, 0), s.blocks);
+  });
+
+  it("reports no latency at all, not 0 ms, when no delivered row was timed", () => {
+    const s = aggregateCodeAwareness([delivered({ took_ms: undefined, delivered_lane: "boundary", basis: undefined })]);
+    assert.equal(s.delivered.blocks, 1);
+    assert.equal(s.delivered.p50, null);
+    assert.equal(s.delivered.p90, null);
+    const out = renderCodeAwareness(s).join("\n");
+    assert.match(out, /delivered blocks: 1 injected/);
+    assert.match(out, /latency: p50 n\/a, p90 n\/a/);
+  });
+
+  it("reports no build duration when only lock checks ran", () => {
+    const s = aggregateCodeAwareness([refresh({ outcome: "started" }), refresh({ outcome: "locked", duration_ms: 1 })]);
+    assert.equal(s.refresh.p50, null);
+    assert.match(renderCodeAwareness(s).join("\n"), /build duration \(successful or failed\): p50 n\/a, p90 n\/a/);
+  });
+
+  it("keeps a sub-10 ms latency from rounding to 0 ms in the CLI", () => {
+    const out = renderCodeAwareness(aggregateCodeAwareness([toolCall({ took_ms: 0.34 })])).join("\n");
+    assert.match(out, /latency: p50 0\.3 ms, p90 0\.3 ms/);
+    const slow = renderCodeAwareness(aggregateCodeAwareness([toolCall({ took_ms: 1234.56 })])).join("\n");
+    assert.match(slow, /latency: p50 1235 ms, p90 1235 ms/);
+  });
+
+  it("shows n/a for find_code's files named when nothing could name one", () => {
+    const out = renderCodeAwareness(aggregateCodeAwareness([toolCall({ files: 0 })])).join("\n");
+    assert.match(out, /files named: n\/a/);
+    const aff = renderCodeAwareness(
+      aggregateCodeAwareness([toolCall({ tool: "find_affected_files", lane: undefined, basis: "diff", files: 0 })]),
+    ).join("\n");
+    assert.match(aff, /0 file\(s\) named/);
+  });
+
+  it("omits took_ms from a delivered row that was not timed, instead of writing 0", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bastra-665-"));
+    const prev = process.env.BASTRA_LOG_PATH;
+    process.env.BASTRA_LOG_PATH = dir;
+    try {
+      await logDeliveredBlock({ sessionId: "s1", lane: "boundary", repo: "/x/Projekte/bastra-recall", files: 2, tokensEst: 40, dedupeHit: false });
+      await logDeliveredBlock({ sessionId: "s1", lane: "write", repo: "/x/Projekte/bastra-recall", basis: "diff", files: 1, tokensEst: 20, tookMs: 7, dedupeHit: false });
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
+      else process.env.BASTRA_LOG_PATH = prev;
+    }
+    const rows: Record<string, unknown>[] = [];
+    for (const f of (await readdir(dir)).filter((n) => n.startsWith("events-"))) {
+      for (const line of (await readFile(join(dir, f), "utf8")).split("\n")) if (line) rows.push(JSON.parse(line));
+    }
+    assert.equal(rows.length, 2);
+    const boundary = rows.find((r) => r.delivered_lane === "boundary")!;
+    const write = rows.find((r) => r.delivered_lane === "write")!;
+    assert.ok(!("took_ms" in boundary), "untimed row must not carry took_ms");
+    assert.equal(write.took_ms, 7);
+    // …and the fold leaves the untimed row out of the percentiles.
+    assert.equal(aggregateCodeAwareness(rows).delivered.p50, 7);
   });
 });
