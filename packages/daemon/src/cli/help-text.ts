@@ -271,10 +271,13 @@ purge also clears the pending relay (even when disabled); unreadable relay files
   code: `bastra code — code awareness for a repository (experimental)
 
 Usage:
-  bastra code                        What is enabled, which Graphify, how fresh
+  bastra code                        What is enabled, which Graphify, how fresh,
+                                     and whether the daemon's automatic refresh
+                                     is paused or stopped (and until when)
   bastra code enable [<dir>]         Turn it on here and build the graph once
   bastra code disable [<dir>]        Turn it off; the graph files stay
-  bastra code index [<dir>]          Refresh the graph (incremental, ~2s)
+  bastra code index [<dir>]          Refresh the graph (incremental, ~2s) and
+                                     resume a paused or stopped daemon refresh
   bastra code rebuild [<dir>] [--yes]
                                      Repair: rebuild with --force, which
                                      overrides Graphify's refusal to replace a

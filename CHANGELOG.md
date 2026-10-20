@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Code awareness: a paused (busy lock) or stopped (three failed builds) automatic refresh is now shown by `bastra code` and `bastra doctor` with the last error and the next attempt, and `bastra code index` / `rebuild` tells the running daemon to resume. A build-lock takeover interrupted between its steps no longer wedges a repository until someone deletes the marker by hand (#1148).
+
 ## [1.1.1] — 2026-10-17
 
 ### Security
