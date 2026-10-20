@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import ts from "typescript";
+import { actionServerUrl } from "./gpt-action-url.js";
 import { z } from "zod";
 import { RecallArgs, LoadMemoryArgs, SaveMemoryInput, ArchiveMemoryArgs } from "../src/tool-handlers.js";
 import { EditMemoryArgs } from "../src/edit-memory-handler.js";
@@ -196,10 +197,47 @@ export function checkArtifacts(artifacts: Record<string, string>, read: (path: s
     try { return read(path) !== expected; } catch { return true; }
   }).map(([path]) => path);
 }
+export function personalizedAction(serverUrl: string): ApiDocument {
+  const action = generateDocuments().action;
+  action.servers = [{ url: actionServerUrl(serverUrl) }];
+  return action;
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const artifacts = generatedArtifacts();
-  if (process.argv.includes("--check")) {
-    const stale = checkArtifacts(artifacts);
-    if (stale.length) { console.error(`OpenAPI drift: ${stale.join(", ")}. Run npm run openapi:generate.`); process.exitCode = 1; }
-  } else for (const [path, content] of Object.entries(artifacts)) writeFileSync(resolve(root, path), content);
+  try {
+    const args = process.argv.slice(2);
+    const flags = new Map<string, string>();
+    let check = false;
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      if (arg === "--check") { check = true; continue; }
+      if ((arg !== "--server-url" && arg !== "--output") || !args[i + 1] || args[i + 1]!.startsWith("--")) {
+        throw new Error("Usage: openapi:generate [--check | --server-url PUBLIC_HTTPS_URL [--output FILE]]");
+      }
+      if (flags.has(arg)) throw new Error(`Duplicate option ${arg}`);
+      flags.set(arg, args[++i]!);
+    }
+    const serverUrl = flags.get("--server-url");
+    const output = flags.get("--output");
+    if (serverUrl) {
+      if (check) throw new Error("--check verifies deterministic repository defaults; use --server-url separately.");
+      const content = `${JSON.stringify(personalizedAction(serverUrl), null, 2)}\n`;
+      if (output) {
+        const target = resolve(output);
+        if (["docs/openapi.yaml", "docs/gpt-action.json"].some(path => target === resolve(root, path))) {
+          throw new Error("Choose a separate output file; repository defaults must remain deterministic.");
+        }
+        writeFileSync(target, content);
+      } else process.stdout.write(content);
+    } else {
+      if (output) throw new Error("--output requires --server-url.");
+      const artifacts = generatedArtifacts();
+      if (check) {
+        const stale = checkArtifacts(artifacts);
+        if (stale.length) { console.error(`OpenAPI drift: ${stale.join(", ")}. Run npm run openapi:generate.`); process.exitCode = 1; }
+      } else for (const [path, content] of Object.entries(artifacts)) writeFileSync(resolve(root, path), content);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "OpenAPI generation failed.");
+    process.exitCode = 1;
+  }
 }

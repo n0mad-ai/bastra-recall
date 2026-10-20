@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
-import { checkArtifacts, discoverGetRoutes, discoverPostTools, generatedArtifacts, generateDocuments } from "../scripts/generate-openapi.js";
+import { checkArtifacts, discoverGetRoutes, discoverPostTools, generatedArtifacts, generateDocuments, personalizedAction } from "../scripts/generate-openapi.js";
 import { TASK_HTTP_ROUTES, matchTaskHttpRoute } from "../src/task-http-routes.js";
 import { taskTools } from "../src/task-transport.js";
 
@@ -58,4 +58,12 @@ test("new routes or changed schemas cannot silently keep the old artifacts", () 
   assert.notDeepEqual(api, generateDocuments().api);
   assert.throws(() => discoverPostTools("// dispatcher disappeared"), /No HTTP dispatcher/);
   assert.throws(() => discoverGetRoutes("// routing disappeared"), /No HTTP GET/);
+});
+
+test("a personalized GPT Action accepts the user's public HTTPS address without changing defaults", () => {
+  const defaults = generatedArtifacts();
+  const action = personalizedAction("https://my-recall.example.com/api/v1/");
+  assert.deepEqual(action.servers, [{ url: "https://my-recall.example.com/api/v1" }]);
+  assert.deepEqual(generatedArtifacts(), defaults);
+  assert.deepEqual(action.paths, generateDocuments().action.paths);
 });
