@@ -45,6 +45,7 @@ import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "nod
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
+import { coverageIndexStamp } from "./coverage-map-index.js";
 
 export const COVERAGE_DIR_NAME = ".bastra-coverage";
 export const COVERAGE_MAP_FILE_NAME = "coverage-map.json";
@@ -413,7 +414,7 @@ export function gitVerdict(repoRoot: string): GitVerdict {
 }
 
 /** Per repository, so switching between repositories does not re-parse; a few at most. */
-const snapshots = new Map<string, { mtimeMs: number; size: number; map: CoverageMap | null }>();
+const snapshots = new Map<string, { mtimeMs: number; size: number; ctimeMs: number; index: string; map: CoverageMap | null }>();
 const MAX_SNAPSHOTS = 8;
 /**
  * A git that gave no clean answer (hung, missing, an error) is not asked again
@@ -439,10 +440,11 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) return null;
-    const hit = snapshots.get(path);
-    if (hit !== undefined && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.map;
-    if (st.size > MAX_MAP_BYTES) return null;
     if ((unknownUntil.get(path) ?? 0) > now) return null;
+    const hit = snapshots.get(path);
+    let index = hit === undefined ? null : coverageIndexStamp(repoRoot);
+    if (hit !== undefined && index !== null && hit.index === index && hit.mtimeMs === st.mtimeMs && hit.ctimeMs === st.ctimeMs && hit.size === st.size) return hit.map;
+    if (st.size > MAX_MAP_BYTES) return null;
     const verdict = gitVerdict(repoRoot);
     if (verdict === "unknown") {
       unknownUntil.delete(path);
@@ -451,10 +453,13 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
       return null;
     }
     unknownUntil.delete(path);
+    index ??= verdict === "untracked" ? coverageIndexStamp(repoRoot) : null;
     const map = verdict === "tracked" ? null : parseMap(readFileSync(fd, "utf8"));
     snapshots.delete(path);
     if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
-    snapshots.set(path, { mtimeMs: st.mtimeMs, size: st.size, map });
+    if (index !== null && coverageIndexStamp(repoRoot) === index) {
+      snapshots.set(path, { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, size: st.size, index, map });
+    }
     return map;
   } catch {
     return null;

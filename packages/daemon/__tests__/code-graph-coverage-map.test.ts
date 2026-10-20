@@ -310,6 +310,17 @@ const MAP: CoverageMap = {
 };
 
 describe("coverage map: reading in the hook", () => {
+  it("invalidates a warm snapshot when git starts tracking the unchanged map", async () => {
+    const repo = join(root, "cached-then-tracked");
+    await mkdir(repo);
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP));
+    assert.ok(readCoverageMapSync(repo));
+    execFileSync("git", ["-C", repo, "add", "-f", ".bastra-coverage/coverage-map.json"]);
+    assert.equal(readCoverageMapSync(repo), null, "a cached map must still pass the tracked-file gate");
+  });
+
   it("ranks by changed functions executed, then files, then name — and drops file-only hits once any test ran a function", () => {
     const ranked = rankTests(MAP, new Map([["src/search.ts", ["SearchIndex", "query"]]]));
     assert.deepEqual(ranked.map((r) => [r.test, r.functions, r.files, r.exercised]), [
