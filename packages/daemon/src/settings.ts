@@ -24,6 +24,9 @@
  *   - docs.language (optional): doc language, e.g. "en" | "de" (default "en").
  *   - promptImpact.enabled (optional): boolean (default false, #607 experimental —
  *       see code-graph/prompt-impact-settings.ts for the resolution + why)
+ *   - coverageMap.enabled (optional): boolean (default false, #629 experimental —
+ *       the Bash lane collects V8 coverage from the agent's own test runs;
+ *       see code-graph/coverage-map-settings.ts)
  *
  * The env var BASTRA_UPDATE_CHECK=off is a hard kill-switch over update.mode.
  * The env var BASTRA_EMBEDDING_PROVIDER wins over embedding.provider (the file).

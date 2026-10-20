@@ -52,6 +52,7 @@ import { hintFor, matchPattern, shimOffLine } from "./bash-pre-analysis.js";
 export { shimOffLine } from "./bash-pre-analysis.js";
 import { archiveMaxItem, shimRewrite } from "./rm-archive.js";
 import { getArchiveEnabled, getArchiveMaxItem } from "./settings.js";
+import { coverageRewrite } from "./bash-pre-coverage.js";
 import { bashVerdict, settingsFiles } from "./cc-permissions.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
@@ -106,7 +107,30 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // they rewrite and allow only a call that proves it is Claude Code — an
   // unmarked payload is weighed as "unknown", never as claude-code.
   const match = hintFor(command, clientEvidence, await getArchiveEnabled().catch(() => false));
-  if (!match) return appendLaneDrafts("{}", "PreToolUse", command, payload.session_id, [], 1, false, draftNotes ? () => draftNotes(command) : undefined, startedAt + HOOK_TIMEOUT_MS);
+  if (!match) {
+    // #629: a test command in a repository with code awareness and the
+    // coverage switch on runs with NODE_V8_COVERAGE. Only on the quiet path —
+    // a command the tripwire has an opinion about is never rewritten twice —
+    // and, like the rm and git rewrites, only for a call that proves it is
+    // Claude Code: `updatedInput` is its contract, not Codex's.
+    const rewritten = clientEvidence === "claude-code" ? await coverageRewrite(command, payload.cwd) : null;
+    // The rewrite leaves no mark in the transcript; this event is its trace.
+    if (rewritten !== null) {
+      await writeShadow("coverage_rewrite", {
+        session_id: payload.session_id ?? null,
+        dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+      });
+    }
+    const stdout = rewritten === null
+      ? "{}"
+      : JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            updatedInput: { ...toolInput, command: rewritten },
+          },
+        });
+    return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, [], 1, false, draftNotes ? () => draftNotes(command) : undefined, startedAt + HOOK_TIMEOUT_MS);
+  }
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 

@@ -57,6 +57,8 @@ import {
 } from "./affected.js";
 import type { CodeGraphCache } from "./cache.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
+import { coverageTestsLine, isTestFile, readCoverageMapSync } from "./coverage-map.js";
+import { getCoverageMapEnabled } from "./coverage-map-settings.js";
 import { codeGraphCache, repoRelative } from "./dependents-block.js";
 import type { AffectedBasis } from "./find-affected-files.js";
 import { isStale, readManifest } from "./manifest.js";
@@ -251,6 +253,15 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
   const stale = await isGraphStale(opts.repoRoot, opts.filePath);
 
   const shown = displayOrder(result.hits);
+  // #629: the tests that executed the changed functions, from the coverage
+  // map when the repository has one — and only with the switch on: a map in a
+  // checkout is untrusted, and an opt-in feature must not read one unasked.
+  // One `fstat`; the map is cached by mtime.
+  const coverage = coverageTestsLine(
+    (await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(opts.repoRoot) : null,
+    new Map([[rel, names]]),
+    new Set(shown.map((h) => h.file)),
+  );
   const note = renderImpactBlock({
     file: rel,
     basis: selection.basis,
@@ -259,6 +270,7 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
     total: result.hits.length,
     stale,
     lead: selection.basis === "whole_file" ? WRITE_LEAD_WHOLE_FILE : WRITE_LEAD_SYMBOLS,
+    coverage,
   });
   if (Date.now() - startedAt > budgetMs) return { note: null, dedupeHit: false, booking };
   return {
@@ -415,10 +427,8 @@ export async function isGraphStale(repoRoot: string, filePath: string): Promise<
 
 // ─── The block ───────────────────────────────────────────────────
 
-/** One rule for what counts as a test, shared by the ordering and the count. */
-export function isTestFile(f: string): boolean {
-  return f.includes("__tests__") || /\.(test|spec)\./.test(f);
-}
+/** One rule for what counts as a test, shared by the ordering, the count and the coverage fold. */
+export { isTestFile };
 
 /**
  * The hits the block names, production first.
@@ -449,6 +459,8 @@ export interface ImpactBlockInput {
   stale: boolean;
   /** The first line: why this block is here, in the delivering lane's words. */
   lead: string;
+  /** #629: the coverage map's line, when the repository has a map that names a test. */
+  coverage?: string | null;
 }
 
 /**
@@ -473,6 +485,7 @@ export function renderImpactBlock(input: ImpactBlockInput): string {
   }
   const rest = input.total - input.hits.length;
   if (rest > 0) lines.push(`- … and ${rest} more (find_affected_files lists them)`);
+  if (input.coverage) lines.push(input.coverage);
   if (input.stale) {
     lines.push(
       "This graph was built before the current state of this file, or its build " +

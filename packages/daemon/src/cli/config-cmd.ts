@@ -52,8 +52,9 @@ import type { ParsedArgs } from "./types.js";
 import { mapUrl } from "./map-cmd.js";
 import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainDays } from "../rm-archive.js";
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
+import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "battery.saver"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "coverageMap.enabled", "battery.saver"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -128,6 +129,12 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       process.stdout.write(`${await getPromptImpactEnabled(settingsFilePath(), {})}\n`);
       const env = process.env.BASTRA_PROMPT_IMPACT;
       if (env) process.stdout.write(`  note: BASTRA_PROMPT_IMPACT=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "coverageMap.enabled": {
+      process.stdout.write(`${await getCoverageMapEnabled(settingsFilePath(), {})}\n`);
+      const env = process.env.BASTRA_COVERAGE_MAP;
+      if (env) process.stdout.write(`  note: BASTRA_COVERAGE_MAP=${env} (env) overrides this file at runtime\n`);
       return 0;
     }
     case "archive.retain": {
@@ -309,6 +316,23 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       process.stdout.write(`✓ promptImpact.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
       const env = process.env.BASTRA_PROMPT_IMPACT;
       if (env) process.stdout.write(`  ⚠ BASTRA_PROMPT_IMPACT=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      return 0;
+    }
+    case "coverageMap.enabled": {
+      const on = parseBool(value);
+      if (on === null) {
+        process.stderr.write("error: coverageMap.enabled must be one of: true | false (also on|off)\n");
+        return 2;
+      }
+      await setCoverageMapEnabled(on);
+      process.stdout.write(
+        `✓ coverageMap.enabled = ${on}\n  stored in ${settingsFilePath()}\n` +
+          (on
+            ? "  test commands in repositories with code awareness now run with NODE_V8_COVERAGE; the next Bash call uses it (no restart needed).\n"
+            : "  test commands run untouched again.\n"),
+      );
+      const env = process.env.BASTRA_COVERAGE_MAP;
+      if (env) process.stdout.write(`  ⚠ BASTRA_COVERAGE_MAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
       return 0;
     }
     case "archive.retain": {

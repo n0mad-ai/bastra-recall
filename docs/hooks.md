@@ -630,6 +630,19 @@ settings_verdict, settings_rule, hinted`). Each shim runs only where it is
 on: with one of the two switched off, a command that needs both is not
 rewritten.
 
+**Coverage collection (#629, experimental, off by default).** With
+`coverageMap.enabled` on, a call marked as Claude Code, a recognised test
+command (`npm|pnpm|yarn|bun test`, `npx vitest` / `jest`, `node … --test`,
+`tsx … --test`) and a working directory inside a repository with code
+awareness on, the lane answers `updatedInput` with the same command behind
+`export NODE_V8_COVERAGE='<repo>/.bastra-coverage/raw'; `. Nothing else
+changes and no `permissionDecision` rides along. Only on the quiet path: a
+command the tripwire matched is never rewritten for coverage. Codex and
+unmarked calls run as written. Each rewrite is a telemetry event
+`coverage_rewrite` (`session_id`, the call's dimensions); the transcript
+itself shows only the command the agent wrote. The map this feeds is
+described in `docs/USAGE.md` (code awareness).
+
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hint_kind,
 hit_count, top_score, status`. `hint_kind` is what the block told the agent:
 `stop`, `receipt` or `reversible-form` for a destructive match, `null` for a
@@ -2226,6 +2239,20 @@ die Tat verwirft. Braucht git 2.26 oder neuer. Nicht übernommen:
 `git commit --amend`, `git rebase`, `git push --force`, `git reflog expire`,
 `git gc --prune`. Mit Opt-in lässt `BASTRA_GIT_SHIM=0` nur diesen Teil weg
 (dann eine Zeile und ein Ereignis `git_shim_shadow`).
+
+**Coverage-Sammlung (#629, experimentell, standardmäßig aus).** Mit
+`coverageMap.enabled` an, einem als Claude Code markierten Aufruf, einem
+erkannten Testbefehl (`npm|pnpm|yarn|bun test`, `npx vitest` / `jest`,
+`node … --test`, `tsx … --test`) und einem Arbeitsverzeichnis in einem
+Repository mit Code-Awareness antwortet die Lane mit `updatedInput`: derselbe
+Befehl hinter `export NODE_V8_COVERAGE='<repo>/.bastra-coverage/raw'; `.
+Sonst ändert sich nichts, eine `permissionDecision` geht nicht mit. Nur auf
+dem ruhigen Pfad: Ein Befehl, auf den der Tripwire angesprungen ist, wird
+nicht für Coverage umgeschrieben. Codex- und unmarkierte Aufrufe laufen wie
+geschrieben. Jede Umschreibung ist ein Telemetrie-Ereignis `coverage_rewrite`
+(`session_id`, die Dimensionen des Aufrufs); im Transkript steht nur der
+Befehl, den der Agent geschrieben hat. Die Map, die daraus entsteht,
+beschreibt `docs/USAGE.md` (Code-Awareness).
 
 Telemetrie: `bash_hook_call` mit `matched_pattern, severity, hint_kind,
 hit_count, top_score, status`. `hint_kind` ist, was der Block dem Agenten

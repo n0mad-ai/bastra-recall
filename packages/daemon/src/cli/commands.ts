@@ -46,6 +46,7 @@ import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
 import { graphDirOf, loadGraph } from "../code-graph/reader.js";
 import { externalRefLines } from "../code-graph/external-refs.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
+import { coverageMapStatus } from "../code-graph/coverage-map.js";
 import { scanFileState } from "../code-graph/build.js";
 import { refreshStatusLines } from "../code-graph/refresh-status.js";
 import { fetchRefreshStatus } from "./code-refresh-client.js";
@@ -614,6 +615,7 @@ async function printCodeGraphNote(): Promise<void> {
       if (manifest.lastError !== null) {
         process.stdout.write(`    last error: ${manifest.lastError}\n`);
       }
+      process.stdout.write(`    ${await coverageMapStatus(repo)} (experimental)\n`);
       const refreshState = refresh?.get(repo);
       if (refreshState !== undefined) {
         for (const line of refreshStatusLines(refreshState)) process.stdout.write(`    ${line}\n`);

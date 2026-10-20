@@ -444,6 +444,7 @@ const GIT_LIKE_TIMEOUT_MS = 10_000;
 export const SKIP_DIRS: ReadonlySet<string> = new Set([
   ".git",
   "graphify-out",
+  ".bastra-coverage",
   "node_modules",
   "dist",
   "build",

@@ -169,6 +169,9 @@ export interface CliSettings {
   // next to the feature; this file only keeps the schema (same split as `code`
   // above).
   promptImpact?: { enabled?: boolean };
+  // #629: coverage collected from the agent's own test runs. Resolution in
+  // code-graph/coverage-map-settings.ts; the schema lives here like the rest.
+  coverageMap?: { enabled?: boolean };
 }
 
 // "asked" is not an answer: the question was put to the user on a terminal and
@@ -266,6 +269,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "language",
   "code",
   "promptImpact",
+  "coverageMap",
   "archive",
   "battery",
   "daemon",
@@ -575,6 +579,10 @@ function parseSettingsText(raw: string, path: string): { settings: CliSettings; 
   const promptImpactEnabled = (data as { promptImpact?: { enabled?: unknown } }).promptImpact?.enabled;
   if (typeof promptImpactEnabled === "boolean") {
     settings.promptImpact = { enabled: promptImpactEnabled };
+  }
+  const coverageMapEnabled = (data as { coverageMap?: { enabled?: unknown } }).coverageMap?.enabled;
+  if (typeof coverageMapEnabled === "boolean") {
+    settings.coverageMap = { enabled: coverageMapEnabled };
   }
   const langData = (data as { language?: { primary?: unknown } }).language;
   if (langData !== undefined) {

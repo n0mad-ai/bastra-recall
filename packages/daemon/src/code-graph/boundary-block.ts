@@ -38,6 +38,8 @@ import { type CodeGraphCache } from "./cache.js";
 import { codeGraphCache, repoRelative } from "./dependents-block.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import { MAX_IMPACT_FILES, isTestFile } from "./impact-block.js";
+import { coverageTestsLine, readCoverageMapSync } from "./coverage-map.js";
+import { getCoverageMapEnabled } from "./coverage-map-settings.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
 
 const DEDUPE_PREFIX = "code-boundary:";
@@ -115,6 +117,8 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   const identity: string[] = [];
   let files = 0;
   let unanswered = 0;
+  // #629: the coverage switch, read once and only once a block is under way.
+  let coverageOn: boolean | undefined;
 
   for (const repoRoot of [...touched.keys()].sort()) {
     // Code awareness off for this repository: the cache answers `null` for that
@@ -170,7 +174,18 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
       ...impact.missed.map((m) => `${m.file}<${m.changedFile}`),
       ...impact.unanswered.map((f) => `?${f}`),
     );
-    sections.push(render(repoRoot, impact.missed, impact.seen.length, impact.unanswered, impact.truncated));
+    // #629: the tests that executed the touched files' changed symbols — the
+    // booked `via` of each hit is the changed symbol an edit reached it through.
+    const changed = new Map<string, string[]>();
+    for (const t of touches) {
+      changed.set(t.file, [...new Set((t.hits ?? []).map((h) => h.via))]);
+    }
+    const coverage = coverageTestsLine(
+      (coverageOn ??= await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(repoRoot) : null,
+      changed,
+      new Set([...impact.missed.map((m) => m.file), ...impact.seen, ...impact.touchedFiles]),
+    );
+    sections.push(render(repoRoot, impact.missed, impact.seen.length, impact.unanswered, impact.truncated, coverage));
   }
 
   if (sections.length === 0) return null;
@@ -208,6 +223,7 @@ function render(
   seen: number,
   unanswered: readonly string[],
   truncated: boolean,
+  coverage: string | null = null,
 ): string {
   // Production before tests, #577's measured reason: a file's own tests are
   // the part an agent can already assume.
@@ -249,6 +265,7 @@ function render(
     );
   }
   if (truncated) lines.push("A dependent list was capped on the way; this is not all of them.");
+  if (coverage !== null) lines.push(coverage);
   lines.push(
     "Dependents are as the graph had them when each edit was made. A listed file " +
       "may survive the change; a body edit often leaves its callers intact, and " +
