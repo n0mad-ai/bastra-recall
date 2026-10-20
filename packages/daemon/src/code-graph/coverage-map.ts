@@ -138,6 +138,8 @@ export async function ensureCoverageDir(repoRoot: string): Promise<void> {
 
 /** `O_NOFOLLOW` where the platform has it; opening a symlink then fails with ELOOP. */
 const NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
+// O_NOFOLLOW alone still blocks on a FIFO before fstat can reject it.
+const READ_FLAGS = fsConstants.O_RDONLY | NOFOLLOW | (fsConstants.O_NONBLOCK ?? 0);
 
 /**
  * The directories this module writes to and deletes from must be what it
@@ -211,7 +213,7 @@ async function readRawFile(
 ): Promise<{ kind: "doc"; doc: { result?: RawScript[] } } | { kind: "settling" } | { kind: "unreadable"; ageMs: number } | { kind: "skip" }> {
   let fh;
   try {
-    fh = await open(path, fsConstants.O_RDONLY | NOFOLLOW);
+    fh = await open(path, READ_FLAGS);
   } catch {
     return { kind: "skip" };
   }
@@ -335,7 +337,7 @@ function openMapSync(repoRoot: string): number | null {
     if (!st.isDirectory() || st.isSymbolicLink()) return null;
     const expected = join(realpathSync.native(repoRoot), COVERAGE_DIR_NAME).normalize("NFC");
     if (realpathSync.native(dir).normalize("NFC") !== expected) return null;
-    return openSync(coverageMapFileOf(repoRoot), fsConstants.O_RDONLY | NOFOLLOW);
+    return openSync(coverageMapFileOf(repoRoot), READ_FLAGS);
   } catch {
     return null;
   }

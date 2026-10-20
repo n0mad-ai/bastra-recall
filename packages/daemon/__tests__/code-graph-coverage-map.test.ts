@@ -70,6 +70,21 @@ async function rawFile(repo: string, name: string, doc: unknown, ageMs = 10_000)
 }
 
 describe("coverage map: folding", () => {
+  it("rejects named pipes without waiting for a writer", { skip: process.platform === "win32" }, async () => {
+    const repo = join(root, "fifo");
+    await ensureCoverageDir(repo);
+    execFileSync("mkfifo", [coverageMapFileOf(repo)]);
+    const moduleUrl = new URL("../src/code-graph/coverage-map.ts", import.meta.url).href;
+    const run = (code: string) => execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+      `import {readCoverageMapSync, readCoverageMap, foldCoverage} from ${JSON.stringify(moduleUrl)}; ${code}`,
+    ], { timeout: 3_000, encoding: "utf8" });
+    assert.equal(run(`console.log(readCoverageMapSync(${JSON.stringify(repo)}));`), "null\n");
+    assert.equal(run(`console.log(await readCoverageMap(${JSON.stringify(repo)}));`), "null\n");
+    await rm(coverageMapFileOf(repo));
+    execFileSync("mkfifo", [join(coverageRawDirOf(repo), "coverage-pipe.json")]);
+    assert.equal(JSON.parse(run(`console.log(JSON.stringify(await foldCoverage(${JSON.stringify(repo)})));`)).deferred, 1);
+  });
+
   it("folds one process per test file: executed functions of in-repo files, paths only, raw deleted", async () => {
     const repo = join(root, "fold");
     await mkdir(repo, { recursive: true });
