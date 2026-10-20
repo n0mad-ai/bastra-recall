@@ -9,6 +9,25 @@ import { evalRunMark } from "./training-signal.js"; // #1128-capture
  * (#1039) unchanged — the row bytes are pinned by telemetry-log-format.test.ts,
  * because `bastra logs --stats` and `bastra bridges mint` read this file.
  */
+/**
+ * #702: where a row goes. Live rows fill `events-YYYY-MM-DD.jsonl`; a row a
+ * replay wrote (`bastra doctor --replay`: `dimensions.client === "replay"`,
+ * or a `replay-` session id for a writer that carries no dimensions) goes to
+ * `replay-YYYY-MM-DD.jsonl` instead. Every reader of the event log selects
+ * `events-*.jsonl`, so a replay can never move a live number — not through
+ * `bastra logs --stats`, not through the UI report, not through `bridges mint`.
+ */
+export function eventLogFile(
+  logDir: string,
+  ts: string,
+  row: { session_id?: unknown; dimensions?: { client?: unknown } | null },
+): string {
+  const replay =
+    row.dimensions?.client === "replay" ||
+    (typeof row.session_id === "string" && row.session_id.startsWith("replay-"));
+  return join(logDir, `${replay ? "replay" : "events"}-${ts.slice(0, 10)}.jsonl`);
+}
+
 export class EventSink {
   private readonly logDir: string;
   private initPromise: Promise<void> | null = null;
@@ -27,8 +46,7 @@ export class EventSink {
   async write(event: TelemetryEvent): Promise<void> {
     try {
       await this.ensureDir();
-      const day = event.ts.slice(0, 10);
-      const file = join(this.logDir, `events-${day}.jsonl`);
+      const file = eventLogFile(this.logDir, event.ts, event);
       // #1128-capture: a row a measurement run wrote says so.
       await appendFile(file, JSON.stringify({ ...event, ...evalRunMark(event) }) + "\n", "utf8");
     } catch (err) {

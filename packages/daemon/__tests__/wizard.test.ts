@@ -117,6 +117,7 @@ test("install --help documents instead of acting (wizard or missing-surface erro
     fix: false, withStopHook: false, staged: false, force: false, ollama: null,
     origin: null, answers: null, extension: false, stub: null, exclude: [], follow: false,
     since: null, source: null, lines: null, stats: false, includeEval: false,
+    replay: false, days: null, compare: null,
     positional: ["install"],
   };
   const origWrite = process.stdout.write.bind(process.stdout);

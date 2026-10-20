@@ -66,6 +66,9 @@ export const FLAGS = [
   "--exclude",
   "--origin",
   "--answers",
+  "--replay",
+  "--days",
+  "--compare",
 ] as const;
 
 export const SHELLS = ["bash", "zsh", "fish"] as const;

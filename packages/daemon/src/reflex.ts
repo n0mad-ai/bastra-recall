@@ -27,6 +27,7 @@
  * wird als hook_reflex-Event getraced; surfaced-Usage zählt erst der
  * Client-Report via /hook/hinted (Phantom-Demand-Regel, telemetry.ts).
  */
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tokenizeWithIdentifiers, foldTerm, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, ALTERNATIVE_WORDS, hasWordForm } from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
@@ -336,7 +337,7 @@ export function handleHookReflex(
   });
   req.on("end", () => {
     void (async () => {
-      let body: { context?: unknown; project?: unknown; session_id?: unknown } = {};
+      let body: { context?: unknown; project?: unknown; session_id?: unknown; client?: unknown } = {};
       try {
         body = raw.trim() ? (JSON.parse(raw) as typeof body) : {};
       } catch {
@@ -361,8 +362,12 @@ export function handleHookReflex(
       // überschriebe JEDER Prompt telemetry.lastRecall und der
       // follows_recall-Join (recall→save, ≤5min) würde zu Rauschen
       // (Review-Finding #217).
-      const recallId = served.length > 0 ? telemetry.newRecallId() : null;
-      if (recallId) {
+      // #702: a replayed prompt opens no join window — a real load_memory
+      // or save_memory right after it must not be booked as following a hint
+      // nobody saw. Its id is minted outside the join state.
+      const replay = body.client === "replay";
+      const recallId = served.length > 0 ? (replay ? randomUUID() : telemetry.newRecallId()) : null;
+      if (recallId && !replay) {
         // Join-Anker für spätere load_memory-Episoden (score-los → null).
         telemetry.recordHookHints(recallId, served.map((m) => ({ id: m.memory.fm.id })));
       }

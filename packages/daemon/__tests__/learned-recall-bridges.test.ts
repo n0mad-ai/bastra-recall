@@ -260,7 +260,7 @@ test("expandQuery on a shadow pool (the default) reports the fire but leaves the
 });
 
 test("expandQuery is a no-op for a null pool; an abstained language consults every folder (#707)", async () => {
-  assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [], applied: false });
+  assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [], applied: false, fired: [] });
   const deB = bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["resignkey"] });
   const enB = bridge({ lang: "en", trigger_terms: ["nspanel", "observer"], expansion_terms: ["attachedsheet"] });
   await withPool([deB, enB], async (pool) => {

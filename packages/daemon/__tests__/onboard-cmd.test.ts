@@ -7,13 +7,15 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { cmdOnboard, loadAnswersFile, runInterview } from "../src/cli/onboard-cmd.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { isOnboardingDone, questionsFor } from "../src/onboarding.js";
+import { ONBOARD_REPLAY_MAX_TURNS } from "../src/cli/doctor-replay.js";
 
 function sink(): PassThrough {
   const out = new PassThrough();
@@ -219,6 +221,80 @@ test("cmdOnboard --answers: saves through the interview's save path without a TT
     assert.match(settings, /"pl"/, "the language named in identity lands in cli-settings");
   } finally {
     process.env.HOME = savedHome;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cmdOnboard ends with the shadow replay (#702), capped at the latest turns with a hint how to replay them all", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-replay-"));
+  const vault = join(dir, "vault");
+  const home = join(dir, "home");
+  // More turns than the cap, inside the default 14-day window.
+  const proj = join(home, ".claude", "projects", "-Users-me-proj");
+  await mkdir(proj, { recursive: true });
+  const total = ONBOARD_REPLAY_MAX_TURNS + 5;
+  const now = Date.now();
+  const rows = Array.from({ length: total }, (_, i) => JSON.stringify({
+    type: "user",
+    timestamp: new Date(now - (total - i) * 60_000).toISOString(),
+    cwd: "/Users/me/proj",
+    message: { role: "user", content: `turn ${i}` },
+  }));
+  await writeFile(join(proj, "sess-1.jsonl"), rows.join("\n") + "\n", "utf8");
+  // A stand-in daemon on its own port — never the user's — that knows the
+  // replay mode and answers every turn with an empty lane row.
+  const prompts: string[] = [];
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ ok: true, version: "test", vault_size: 0 }));
+        return;
+      }
+      const body = JSON.parse(raw) as { payload: { prompt: string; session_id: string } };
+      prompts.push(body.payload.prompt);
+      res.end(JSON.stringify({
+        stdout: "{}",
+        telemetry: {
+          session_id: body.payload.session_id, origin: "owner", gated: false, status: "no-hits",
+          detected_mode: "none", hinted_ids: [], latency_ms_total: 1,
+        },
+      }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const saved = { home: process.env.HOME, url: process.env.BASTRA_DAEMON_URL, cfg: process.env.CLAUDE_CONFIG_DIR };
+  process.env.HOME = home;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  let stdout = "";
+  const original = process.stdout.write.bind(process.stdout);
+  try {
+    const file = join(dir, "answers.yaml");
+    await writeFile(file, "persona: developer\n", "utf8");
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+    const code = await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file]));
+    process.stdout.write = original;
+    assert.equal(code, 0);
+    // The probe is the empty prompt; every other POST is a replayed turn.
+    const turns = prompts.filter((p) => p !== "");
+    assert.equal(turns.length, ONBOARD_REPLAY_MAX_TURNS, "capped");
+    assert.ok(turns.includes(`turn ${total - 1}`) && !turns.includes("turn 0"), "the latest turns are kept");
+    assert.match(stdout, new RegExp(`replaying the latest ${ONBOARD_REPLAY_MAX_TURNS} of ${total} user turns`));
+    assert.match(stdout, /bastra doctor --replay --days 14/);
+    assert.match(stdout, /How recall answers your own prompts on this vault/);
+  } finally {
+    process.stdout.write = original;
+    process.env.HOME = saved.home;
+    if (saved.url === undefined) delete process.env.BASTRA_DAEMON_URL;
+    else process.env.BASTRA_DAEMON_URL = saved.url;
+    if (saved.cfg !== undefined) process.env.CLAUDE_CONFIG_DIR = saved.cfg;
+    await new Promise<void>((r) => server.close(() => r()));
     await rm(dir, { recursive: true, force: true });
   }
 });

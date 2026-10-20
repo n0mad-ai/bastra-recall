@@ -32,11 +32,17 @@ export function hookClient(payload: unknown): HookClient {
  *  gebucht, obwohl der Payload das nie belegt hat. `"unknown"` ist der
  *  Unbekannt-Wert, den die TelemetryClient-Allowlist (telemetry-dimensions.ts)
  *  bereits kennt. */
-export type HookClientEvidence = "claude-code" | "codex" | "unknown";
+export type HookClientEvidence = "claude-code" | "codex" | "replay" | "unknown";
+
+/** #702: the payload `bastra doctor --replay` posts — a past prompt sent
+ *  through the lane in shadow. The hint block keeps the claude-code surface
+ *  (`hookClient` above), the telemetry dimension says `replay`. */
+export const REPLAY_CLIENT = "replay";
 
 export function hookClientEvidence(payload: unknown): HookClientEvidence {
   if (!payload || typeof payload !== "object") return "unknown";
   const p = payload as Record<string, unknown>;
+  if (p.bastra_client === REPLAY_CLIENT) return "replay";
   if (p.bastra_client === "codex") return "codex";
   if (p.bastra_client === "claude-code") return "claude-code";
   if (p.tool_name === "apply_patch" || p.tool_name === "update_plan") return "codex";

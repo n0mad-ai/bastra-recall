@@ -52,6 +52,16 @@ test("retention: drops logs past the window, keeps everything inside it", async 
   });
 });
 
+test("retention: replay logs (#702) age out on the same window as event logs", async () => {
+  await withLogDir(async (dir) => {
+    const replayFile = (age: number): string => dayFile(age).replace(/^events-/, "replay-");
+    for (const age of [5, 95]) await writeFile(join(dir, replayFile(age)), '{"ts":"x"}\n', "utf8");
+    const r = await pruneEventLogs({ logDir: dir, now: NOW });
+    assert.deepEqual(r.removed, [replayFile(95)]);
+    assert.deepEqual(await readdir(dir), [replayFile(5)]);
+  });
+});
+
 test("retention: the curator's 30-day window is a floor, not a suggestion", () => {
   // Someone trying to be tidy sets 7 days. The curator needs 30 — so 30 wins.
   assert.equal(resolveRetentionDays("7"), RETENTION_FLOOR_DAYS);
