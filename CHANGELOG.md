@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Code awareness (experimental): dependents are ranked by evidence within a hop — a call site before an import, an import before a re-export or package import — and only then by file name. Under the impact block's ten-file cap an alphabetical list dropped tests that really call the changed symbol; on the 44 registered delivered-run scenarios the block now names a correct file in 16 of 37 instead of 15, at the same block size (#637).
+
 ## [1.1.1] — 2026-10-17
 
 ### Security
