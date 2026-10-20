@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@bastra-recall/core/platform-paths": "../../core/src/platform-paths.ts"
+  }
+}

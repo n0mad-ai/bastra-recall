@@ -132,7 +132,10 @@ function resolveSpecifier(fromFile, spec) {
  */
 export function stubSourceFiles({ entry = STUB_ENTRY, root = PACKAGE_ROOT } = {}) {
   const seen = new Set();
-  const queue = [entry];
+  const mapFile = resolve(root, "stub", "import-map.json");
+  let mapped = {};
+  try { mapped = JSON.parse(readFileSync(mapFile, "utf8")).imports ?? {}; } catch { /* fixture or old checkout */ }
+  const queue = [entry, ...(isFile(mapFile) ? [mapFile] : [])];
   while (queue.length > 0) {
     const file = queue.pop();
     if (seen.has(file)) continue;
@@ -148,10 +151,11 @@ export function stubSourceFiles({ entry = STUB_ENTRY, root = PACKAGE_ROOT } = {}
     }
     seen.add(file);
     for (const spec of specifiersOf(source)) {
-      if (!spec.startsWith(".")) continue; // node:, npm:, bare — not our sources
-      const abs = resolveSpecifier(file, spec);
+      const target = mapped[spec];
+      if (!spec.startsWith(".") && !target) continue; // node:, npm:, unmapped bare
+      const abs = target ? resolve(dirname(mapFile), target) : resolveSpecifier(file, spec);
       if (abs === STUB_BUILD_INFO) continue; // the stamp cannot contain itself
-      if (relative(root, abs).startsWith("..")) continue; // outside the package
+      if (!target && relative(root, abs).startsWith("..")) continue; // only explicit map targets may leave the package
       queue.push(abs);
     }
   }

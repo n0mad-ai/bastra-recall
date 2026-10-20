@@ -45,13 +45,15 @@ const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}` : "stub/
 const denoArgs = [
   "compile",
   ...(target ? ["--target", target] : []),
-  // The stub has no npm dependencies — node: builtins and two local modules.
+  // The stub has no npm dependencies. The import map points the shared
+  // dependency-free core path helper at its local source.
   // Without this flag deno sees the workspace package.json, switches to
   // bring-your-own-node_modules and embeds the whole node_modules tree: the
   // 168 MB binary #350 is named after carried ~108 MB of it, and a build on
   // a fuller checkout reached 723 MB. With it the binary is the deno runtime
   // plus ~150 KB of our code.
   "--no-npm",
+  "--import-map=stub/import-map.json",
   "--sloppy-imports",
   "--allow-net=127.0.0.1",
   "--allow-env",
