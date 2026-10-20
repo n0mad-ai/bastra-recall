@@ -37,8 +37,7 @@ export function createRenderer(canvas, sim, initialHues) {
   let filterFn = null; // active sidebar filter — non-matching nodes dim
   let decorFn = null; // view decor (ring guides, center emblem), world space
   let drawOrder = null; // node paint order (orbit view: back-to-front)
-  let sorted = []; // persistent depth-sorted copy of sim.nodes
-  let sortedFrom = null; // the sim.nodes array `sorted` was copied from
+  const sorted = []; // persistent depth-sorted copy of sim.nodes
   let overlayFn = null; // drawn after nodes (live supernovae) — every view
   let quietEdges = false; // ring view: no ambient edges, only the active node's
   let clusterLabels = true; // ring view draws names curved in the band instead
@@ -233,27 +232,22 @@ export function createRenderer(canvas, sim, initialHues) {
     // ── nodes ──
     // painter's order for the orbit view: back-to-front by depth, so front
     // nodes genuinely occlude the ones behind them
-    // The sorted copy persists between frames: depths move a little per frame,
-    // so re-sorting the previous order is near-linear (TimSort on almost-sorted
-    // input) instead of a full n log n sort of a fresh copy.
+    // Reuse storage, but refill in source order before the stable sort. Depth
+    // ties must paint exactly as a fresh [...sim.nodes].sort(drawOrder) would;
+    // refilling also observes in-place replacements at an unchanged length.
     let nodeList = sim.nodes;
     if (drawOrder) {
-      if (sortedFrom !== sim.nodes || sorted.length !== sim.nodes.length) {
-        sortedFrom = sim.nodes;
-        sorted = [...sim.nodes];
-      }
+      sorted.length = sim.nodes.length;
+      for (let i = 0; i < sim.nodes.length; i++) sorted[i] = sim.nodes[i];
       nodeList = sorted.sort(drawOrder);
     } else {
-      sorted = [];
+      sorted.length = 0; // release node references when depth ordering is off
     }
     for (const n of nodeList) {
       if (n.ringHidden) continue; // drilled away (ring browser)
       const fade = n.ringFade ?? 1; // fan-out crossfade multiplier
       if (fade <= 0.02) continue;
       let r = drawRadius(n);
-      // glows (≤ 3.7 r, ≤ 60 px), beacon rings (r + 36) all fit inside this margin
-      const cm = Math.max(r * 3.7, 60 / camera.scale, r + 36);
-      if (n.x < cullL - cm || n.x > cullR + cm || n.y < cullT - cm || n.y > cullB + cm) continue;
       // a legend hover is a PREVIEW — while it lasts it outranks the active
       // filter and the focus neighborhood, else its nodes could never light up
       const dimmed = highlightFn !== null
@@ -263,6 +257,12 @@ export function createRenderer(canvas, sim, initialHues) {
       // "what did this filter select" is visible at a glance
       const filterHit = !dimmed && filterFn !== null && filterFn(n);
       if (filterHit && n.kind !== "ghost") r *= 1 + Math.sin(now / 350 + n.idx * 1.7) * 0.14;
+      // Bound the effective (filter-pulsed) radius, salience breathing, bridge
+      // halos and beacon strokes. Live flashes/bolts are a separate pass and
+      // must still run when their source node is outside this viewport.
+      const cm = Math.max(r * 3.2 * 1.14, 60 / camera.scale,
+        r + 34 + 1.1 / camera.scale, r + 6 * (n.ringScale ?? 1) + 1 / camera.scale);
+      if (n.x < cullL - cm || n.x > cullR + cm || n.y < cullT - cm || n.y > cullB + cm) continue;
       const nodeAlpha = (dimmed ? theme.dim : 1) * fade;
       ctx.globalAlpha = nodeAlpha;
       const color = colorOf(n);
@@ -504,8 +504,8 @@ export function createRenderer(canvas, sim, initialHues) {
       const links = boltChainOf(sim, id);
       flashes.set(id, { color, born: now, life: lifeMs, boltAt: now, links, spill: spillOf(sim, links) });
     },
-    /** A live-notice flash is still playing (frame loop: no idle throttle). */
-    hasLiveEffects: () => flashes.size > 0,
+    /** Active strands, beacons, filters and live notices keep their full cadence. */
+    hasLiveEffects: () => flashes.size > 0 || hover !== null || focus !== null || filterFn !== null || highlightFn !== null,
     setHover: (n) => (hover = n),
     setFocus: (n) => {
       if ((n?.id ?? null) !== (focus?.id ?? null)) focusSince = performance.now();

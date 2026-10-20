@@ -52,13 +52,14 @@ export function createRenderLoop({
   let lastInput = -Infinity;
   let lastFrame = -Infinity;
   let rafId = 0;
+  let started = false;
   const noteInput = () => (lastInput = performance.now());
 
-  addEventListener("resize", () => renderer.resize());
+  addEventListener("resize", () => { renderer.resize(); noteInput(); });
   canvas.addEventListener("pointerdown", () => (userTouched = true));
   canvas.addEventListener("wheel", () => (userTouched = true), { passive: true });
-  for (const type of ["pointerdown", "pointermove", "pointerup", "wheel"]) {
-    canvas.addEventListener(type, noteInput, { passive: true });
+  for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "wheel"]) {
+    addEventListener(type, noteInput, { passive: true });
   }
   addEventListener("keydown", noteInput);
 
@@ -68,7 +69,8 @@ export function createRenderLoop({
     if (document.hidden) {
       cancelAnimationFrame(rafId);
       rafId = 0;
-    } else if (!rafId) {
+    } else if (started && !rafId) {
+      noteInput();
       rafId = requestAnimationFrame(frame);
     }
   });
@@ -87,6 +89,8 @@ export function createRenderLoop({
   }
 
   function frame(now) {
+    rafId = 0;
+    if (document.hidden) return;
     if (isIdle(now) && now - lastFrame < IDLE_FRAME_MS) {
       rafId = requestAnimationFrame(frame);
       return;
@@ -138,6 +142,8 @@ export function createRenderLoop({
 
   return {
     start() {
+      if (started) return;
+      started = true;
       getInteractions().fitAll();
       if (!document.hidden) rafId = requestAnimationFrame(frame);
     },
