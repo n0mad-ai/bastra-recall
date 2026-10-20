@@ -39,7 +39,7 @@ import { request } from "node:http";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
-import { normalizeTurns } from "../stop-transcript.js";
+import { MAX_TRANSCRIPT_BYTES, normalizeTurns } from "../stop-transcript.js";
 import type { PromptHookTelemetry } from "../prompt-lane-telemetry.js";
 import { probeDaemon } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
@@ -71,6 +71,8 @@ export interface ReplayCorpus {
   /** Ids the agent passed to `load_memory` inside the window, any session. */
   loadedIds: Set<string>;
   files: number;
+  /** Transcripts in the window skipped for exceeding the Stop hook's size cap. */
+  oversized: number;
   sessions: number;
 }
 
@@ -118,11 +120,12 @@ export async function readClaudeTranscripts(
   const loadedIds = new Set<string>();
   const sessions = new Set<string>();
   let files = 0;
+  let oversized = 0;
   let projects: string[];
   try {
     projects = (await readdir(projectsDir)).sort();
   } catch {
-    return { turns, loadedIds, files, sessions: 0 };
+    return { turns, loadedIds, files, oversized, sessions: 0 };
   }
   for (const project of projects) {
     const dir = join(projectsDir, project);
@@ -137,6 +140,12 @@ export async function readClaudeTranscripts(
       try {
         const st = await stat(path);
         if (!st.isFile() || st.mtimeMs < sinceMs) continue;
+        // The Stop hook's cap: a file this large is read whole or not at all,
+        // and whole would hold the CLI's heap hostage.
+        if (st.size > MAX_TRANSCRIPT_BYTES) {
+          oversized += 1;
+          continue;
+        }
       } catch {
         continue;
       }
@@ -176,7 +185,7 @@ export async function readClaudeTranscripts(
     }
   }
   turns.sort((a, b) => (a.session < b.session ? -1 : a.session > b.session ? 1 : a.at - b.at));
-  return { turns, loadedIds, files, sessions: sessions.size };
+  return { turns, loadedIds, files, oversized, sessions: sessions.size };
 }
 
 // ─── the replay ──────────────────────────────────────────────────────────────
@@ -312,6 +321,8 @@ export interface ReplayReport {
   days: number;
   since: string;
   files: number;
+  /** Transcripts skipped for exceeding 64 MiB. */
+  oversized_files: number;
   sessions: number;
   turns: number;
   /** Turns the daemon answered with a row. */
@@ -353,7 +364,7 @@ function countBy(keys: string[]): Record<string, number> {
 /** Pure: the same rows give the same report. */
 export function summarizeReplay(
   rows: ReplayRow[],
-  corpus: Pick<ReplayCorpus, "loadedIds" | "files" | "sessions"> & { turns: number },
+  corpus: Pick<ReplayCorpus, "loadedIds" | "files" | "sessions"> & Partial<Pick<ReplayCorpus, "oversized">> & { turns: number },
   meta: { days: number; sinceMs: number },
 ): ReplayReport {
   const system = rows.filter((r) => r.origin === "system");
@@ -390,6 +401,7 @@ export function summarizeReplay(
     days: meta.days,
     since: new Date(meta.sinceMs).toISOString().slice(0, 10),
     files: corpus.files,
+    oversized_files: corpus.oversized ?? 0,
     sessions: corpus.sessions,
     turns: corpus.turns,
     replayed: rows.length,
@@ -423,6 +435,9 @@ export function formatReplayReport(r: ReplayReport): string {
   lines.push(
     `replay: ${r.turns} user turns from ${r.sessions} Claude Code sessions, last ${r.days} days (since ${r.since})`,
   );
+  if (r.oversized_files > 0) {
+    lines.push(`  skipped transcripts: ${r.oversized_files} over ${MAX_TRANSCRIPT_BYTES / (1024 * 1024)} MiB (not read)`);
+  }
   if (r.replayed < r.turns) lines.push(`  not answered by the daemon: ${r.turns - r.replayed} turns (left out below)`);
   lines.push(`  system turns        ${r.system_turns} (${pct(r.system_turns, r.replayed)}) — task notifications, agent mail, reminders; gated, no recall`);
   lines.push(`  owner prompts       ${r.owner_prompts}`);

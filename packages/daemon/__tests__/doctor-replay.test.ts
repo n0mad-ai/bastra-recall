@@ -17,7 +17,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type IncomingHttpHeaders } from "node:http";
@@ -151,6 +151,7 @@ const CORPUS: ReplayCorpus = {
   ],
   loadedIds: new Set(["alpha"]),
   files: 2,
+  oversized: 0,
   sessions: 2,
 };
 
@@ -204,6 +205,7 @@ test("(b) a replayed reflex hit leaves no join anchor a real load_memory could c
       turns: [turn("s1", 1, "what about golf hotel india today?")],
       loadedIds: new Set(),
       files: 1,
+      oversized: 0,
       sessions: 1,
     };
     const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "rx" });
@@ -223,6 +225,7 @@ test("(b) a replay leaves no recall a real load_memory or save_memory would foll
       turns: [turn("s1", 1, "where is alpha bravo charlie?"), turn("s1", 2, "what about golf hotel india today?")],
       loadedIds: new Set(),
       files: 1,
+      oversized: 0,
       sessions: 1,
     };
     const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "rid" });
@@ -323,6 +326,28 @@ test("readClaudeTranscripts: user turns with cwd, system turns kept, tool result
       [["sess-1", "/Users/me/proj", "fix the parser"], ["sess-1", "/Users/me/proj", "<task-notification>"]],
     );
     assert.deepEqual([...corpus.loadedIds], ["note-1"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("readClaudeTranscripts skips and counts a transcript over 64 MiB instead of reading it whole", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bastra-replay-big-"));
+  try {
+    const proj = join(root, "-Users-me-proj");
+    await mkdir(proj, { recursive: true });
+    const row = { type: "user", timestamp: "2026-10-19T12:00:01.000Z", cwd: "/Users/me/proj", message: { role: "user", content: "fix the parser" } };
+    await writeFile(join(proj, "small.jsonl"), JSON.stringify(row) + "\n", "utf8");
+    // Sparse: 64 MiB + 1 byte on paper, nothing on disk.
+    await writeFile(join(proj, "big.jsonl"), "", "utf8");
+    await truncate(join(proj, "big.jsonl"), 64 * 1024 * 1024 + 1);
+    const corpus = await readClaudeTranscripts(root, Date.parse("2026-10-19T00:00:00.000Z"));
+    assert.equal(corpus.files, 1, "only the small transcript is read");
+    assert.equal(corpus.oversized, 1, "the big one is counted");
+    assert.equal(corpus.turns.length, 1);
+    const r = summarizeReplay([], { ...corpus, turns: corpus.turns.length }, { days: 14, sinceMs: Date.parse("2026-10-06T00:00:00.000Z") });
+    assert.equal(r.oversized_files, 1);
+    assert.match(formatReplayReport(r), /skipped transcripts: 1 over 64 MiB/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

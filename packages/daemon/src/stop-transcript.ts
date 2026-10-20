@@ -74,7 +74,7 @@ export async function loadTranscript(payload: ClaudeStopPayload): Promise<Transc
   return [];
 }
 
-const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024; // 64 MiB — weit über realen Transcripts
+export const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024; // 64 MiB — weit über realen Transcripts
 
 /**
  * Classifies an empty `turns` list for telemetry. `loadTranscript`'s
