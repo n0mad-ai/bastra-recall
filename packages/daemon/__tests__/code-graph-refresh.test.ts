@@ -53,19 +53,28 @@ function manifest(over: Partial<CodeGraphManifest> = {}): CodeGraphManifest {
 
 describe("refresh single flight", () => {
   it("coalesces changes during a run into exactly ONE follow-up", async () => {
+    // No fixed sleeps: a start is awaited as an event. The default isFresh reads the disk, and
+    // on a loaded CI runner that outlasted the old 10 ms wait, so the first build had not
+    // started yet when the test asserted it had (`0 !== 1`).
     let started = 0;
-    let release: (() => void) | null = null;
+    const releases: (() => void)[] = [];
+    const startWaiters: (() => void)[] = [];
+    const nextStart = (n: number) =>
+      started >= n ? Promise.resolve() : new Promise<void>((res) => startWaiters.push(res));
     const r = new CodeGraphRefresher({
       debounceMs: 1,
+      isFresh: async () => false,
       build: async () => {
         started++;
-        await new Promise<void>((res) => (release = res));
+        const gate = new Promise<void>((res) => releases.push(res));
+        for (const w of startWaiters.splice(0)) w();
+        await gate;
         return OK;
       },
     });
 
     r.enqueue("/repo", "watcher");
-    await tick(10);
+    await nextStart(1);
     assert.equal(started, 1);
 
     // Two quick edits while the first build is in flight.
@@ -73,12 +82,12 @@ describe("refresh single flight", () => {
     r.enqueue("/repo", "watcher");
     assert.equal(r.statusOf("/repo")?.pending, true);
 
-    release!();
-    await tick(20);
+    releases[0]!();
+    await nextStart(2);
     assert.equal(started, 2, "two edits during a run must lead to exactly one follow-up");
-    release!();
+    releases[1]!();
     await r.whenIdle();
-    assert.equal(started, 2);
+    assert.equal(started, 2, "no third build may follow");
     r.stop();
   });
 
@@ -181,6 +190,47 @@ describe("failure handling", () => {
     assert.equal(r.statusOf("/repo")?.givenUp, false);
     assert.equal(r.statusOf("/repo")?.failures, 0);
     r.stop();
+  });
+
+  it("a stop after failed builds has no next attempt; a lock pause names the hourly one (#1148)", async () => {
+    const stopped = new CodeGraphRefresher({
+      debounceMs: 1,
+      backoffMs: [1],
+      maxFailures: 1,
+      build: async () => fail(),
+    });
+    stopped.enqueue("/repo", "watcher");
+    await stopped.whenIdle();
+    const s = stopped.statusOf("/repo");
+    assert.equal(s?.givenUp, true);
+    assert.equal(s?.nextAttemptAt, null, "a stop waits for the user, not for a timer");
+    assert.equal(s?.failures, 1);
+    stopped.stop();
+
+    const paused = new CodeGraphRefresher({
+      debounceMs: 1,
+      lockRetryMs: 1,
+      build: async () => fail("locked"),
+    });
+    paused.enqueue("/repo", "git");
+    // Six retries at 1, 2, 4, 8, 16, 32 ms, then the hourly pause.
+    for (let i = 0; i < 100 && paused.statusOf("/repo")?.givenUp !== true; i++) await tick(5);
+    const p = paused.statusOf("/repo");
+    assert.equal(p?.givenUp, true);
+    assert.equal(p?.state, "waiting");
+    const due = Date.parse(p?.nextAttemptAt ?? "");
+    assert.ok(due - Date.now() > 59 * 60_000, `the next attempt is about an hour away: ${p?.nextAttemptAt}`);
+    assert.match(p?.lastError ?? "", /^locked after 7 attempts/);
+
+    // The user asking clears the pause and cancels the hourly timer.
+    let built = false;
+    (paused as unknown as { build: () => Promise<BuildResult> }).build = async () => ((built = true), OK);
+    paused.enqueue("/repo", "manual");
+    await paused.whenIdle();
+    assert.equal(built, true);
+    assert.equal(paused.statusOf("/repo")?.givenUp, false);
+    assert.equal(paused.statusOf("/repo")?.nextAttemptAt, null);
+    paused.stop();
   });
 
   it("stops immediately on an unsupported platform instead of retrying", async () => {
@@ -311,9 +361,15 @@ describe("status and shutdown", () => {
     const before = r.status();
     assert.equal(before.length, 2);
     assert.ok(before.every((s) => s.state === "waiting"));
+    // #1148: a waiting repository says WHEN — the debounce, here.
+    for (const s of before) {
+      const due = Date.parse(s.nextAttemptAt ?? "");
+      assert.ok(due - Date.now() > 4_000 && due - Date.now() <= 5_000, `nextAttemptAt ${s.nextAttemptAt}`);
+    }
 
     r.stop();
     assert.ok(r.status().every((s) => s.state === "idle"));
+    assert.ok(r.status().every((s) => s.nextAttemptAt === null), "nothing is due once stopped");
     r.enqueue("/a", "manual");
     assert.equal(r.statusOf("/a")?.state, "idle", "a stopped refresher takes no new work");
     await r.whenIdle();

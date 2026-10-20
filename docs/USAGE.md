@@ -383,8 +383,13 @@ A busy build lock is retried after 10, 20, 40, 80, 160 and 320 seconds; further
 automatic triggers do not shorten these waits. After the seventh locked attempt,
 automatic refreshes pause and retry once per hour. A successful attempt
 restores normal refresh triggers; a continuing lock keeps the hourly pace.
-`bastra code index` or `bastra code rebuild` can also update the map manually.
-The refresh log records the pause. Function anchors accept `file.ts#name` and
+After three failed builds in a row, automatic refreshes stop until you ask.
+Both states are visible: `bastra code` and `bastra doctor` print `refresh
+paused` or `refresh stopped` under the repository, with the last error and the
+time of the next automatic attempt. `bastra code index` (or `bastra code
+rebuild`) is the way back: it builds the map now and tells the running daemon
+to clear the pause or stop and resume its own triggers. The refresh log
+records the pause as well. Function anchors accept `file.ts#name` and
 `file.ts#name()` equally; Windows-style CRLF diffs are read normally.
 
 ### REST API (for non-MCP clients)
@@ -942,8 +947,14 @@ Sekunden erneut versucht; weitere automatische Auslöser verkürzen diese Pausen
 nicht. Nach dem siebten gesperrten Versuch werden automatische Aktualisierungen
 pausiert und einmal pro Stunde erneut versucht. Ein erfolgreicher Versuch gibt die
 normalen Auslöser wieder frei; bleibt die Sperre belegt, bleibt es beim
-Stundenabstand. `bastra code index` oder `bastra code rebuild` können die Karte
-auch manuell aktualisieren. Das Aktualisierungslog hält die Pause fest.
+Stundenabstand. Nach drei fehlgeschlagenen Builds in Folge stoppen automatische
+Aktualisierungen, bis du selbst fragst. Beide Zustände sind sichtbar: `bastra
+code` und `bastra doctor` zeigen unter dem Repository `refresh paused` oder
+`refresh stopped`, mit dem letzten Fehler und dem Zeitpunkt des nächsten
+automatischen Versuchs. `bastra code index` (oder `bastra code rebuild`) ist der
+Rückweg: Es baut die Karte sofort und sagt dem laufenden Daemon, Pause oder
+Stopp aufzuheben und seine eigenen Auslöser wieder zu nutzen. Das
+Aktualisierungslog hält die Pause ebenfalls fest.
 Funktionsanker akzeptieren `datei.ts#name` und `datei.ts#name()` gleichwertig;
 Diffs mit Windows-Zeilenenden (CRLF) werden normal gelesen.
 

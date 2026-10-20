@@ -43,7 +43,10 @@
  * spend the user's CPU to produce the same error; recall meanwhile keeps
  * working on the last good graph with the staleness marker (#577). An explicit
  * `manual` request always clears that state — the user asking again is the one
- * signal that something may have changed.
+ * signal that something may have changed. `bastra code index` sends that
+ * request to the running daemon after its own build (#1148), and both the
+ * pause and the stop are shown with their next attempt by `bastra code` and
+ * `bastra doctor`, read from {@link CodeGraphRefresher.status}.
  *
  * A BUSY LOCK IS NOT A FAILURE. `locked` means another process — a second
  * daemon, or `bastra code index` in a terminal — is building this very repo.
@@ -101,6 +104,12 @@ export interface RepoStatus {
   lastReason: RefreshReason | null;
   /** Completed successful builds since the daemon started. */
   builds: number;
+  /**
+   * When the scheduled run is due, ISO; null when nothing is scheduled. For a
+   * paused repository this is the hourly recovery attempt — the one number a
+   * user needs to decide whether to wait or to run `bastra code index` (#1148).
+   */
+  nextAttemptAt: string | null;
 }
 
 export type BuildFn = (repoRoot: string, reason: RefreshReason) => Promise<BuildResult>;
@@ -160,6 +169,8 @@ interface RepoEntry {
   givenUp: boolean;
   lastReason: RefreshReason | null;
   builds: number;
+  /** Epoch ms the pending timer fires at, null without a timer. */
+  dueAt: number | null;
 }
 
 export class CodeGraphRefresher {
@@ -230,11 +241,7 @@ export class CodeGraphRefresher {
       clearTimeout(entry.timer);
     }
     entry.reason = reason;
-    entry.timer = setTimeout(() => {
-      entry.timer = null;
-      void this.run(repoRoot, entry);
-    }, wait);
-    entry.timer.unref?.();
+    this.arm(repoRoot, entry, wait);
   }
 
   /**
@@ -264,6 +271,7 @@ export class CodeGraphRefresher {
       givenUp: e.givenUp,
       lastReason: e.lastReason,
       builds: e.builds,
+      nextAttemptAt: e.dueAt === null ? null : new Date(e.dueAt).toISOString(),
     }));
   }
 
@@ -299,11 +307,17 @@ export class CodeGraphRefresher {
   }
 
   /** Drop every scheduled refresh. A build already running is left to finish. */
+  /** May this repository be built at all? The same gate a queued run passes (#585). */
+  allows(repoRoot: string): boolean {
+    return this.allow(repoRoot);
+  }
+
   stop(): void {
     this.stopped = true;
     for (const entry of this.repos.values()) {
       if (entry.timer !== null) clearTimeout(entry.timer);
       entry.timer = null;
+      entry.dueAt = null;
       entry.pending = false;
     }
     this.settle();
@@ -403,8 +417,15 @@ export class CodeGraphRefresher {
     if (this.stopped) return this.settle();
     if (entry.timer !== null) clearTimeout(entry.timer);
     entry.reason = "retry";
+    this.arm(repoRoot, entry, delayMs);
+  }
+
+  /** The one place a timer is set, so `dueAt` can never disagree with it. */
+  private arm(repoRoot: string, entry: RepoEntry, delayMs: number): void {
+    entry.dueAt = Date.now() + delayMs;
     entry.timer = setTimeout(() => {
       entry.timer = null;
+      entry.dueAt = null;
       void this.run(repoRoot, entry);
     }, delayMs);
     entry.timer.unref?.();
@@ -429,6 +450,7 @@ export class CodeGraphRefresher {
         givenUp: false,
         lastReason: null,
         builds: 0,
+        dueAt: null,
       };
       this.repos.set(repoRoot, entry);
     }
