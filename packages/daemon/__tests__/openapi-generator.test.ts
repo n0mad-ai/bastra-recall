@@ -38,7 +38,7 @@ test("actual dispatcher branches determine coverage and shared tool schemas dete
   const findDocument: any = api.paths["/find_document"]?.post;
   assert.equal(findDocument.requestBody.content["application/json"].schema.properties.k.maximum, 5);
   assert.deepEqual(findDocument.requestBody.content["application/json"].schema.required, ["query"]);
-  assert.deepEqual(findDocument.responses["401"].content["application/json"].schema.required, ["error"]);
+  assert.deepEqual(findDocument.responses["401"], { $ref: "#/components/responses/Error401" });
   assert.ok(action.paths["/recall"]?.post);
   assert.ok(action.paths["/edit_memory"]?.post);
   assert.ok(action.paths["/floors"]?.get);

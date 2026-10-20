@@ -27,7 +27,7 @@ export interface ApiDocument {
   servers: { url: string }[];
   security: { bearerAuth: never[] }[];
   paths: Paths;
-  components: { securitySchemes: Record<string, unknown> };
+  components: { securitySchemes: Record<string, unknown>; responses: Record<string, unknown> };
 }
 function source(relative: string, read = readFileSync): ts.SourceFile {
   return ts.createSourceFile(relative, read(resolve(root, relative), "utf8") as string, ts.ScriptTarget.Latest, true);
@@ -97,6 +97,16 @@ function inputSchema(name: string): Schema | undefined {
   const validator = inputValidators[name];
   return validator ? z.toJSONSchema(validator, { target: "openapi-3.0", io: "input" }) as Schema : undefined;
 }
+const errorDescriptions: Record<string, string> = {
+  "400": "Invalid JSON, invalid arguments, or handler rejection.",
+  "401": "Missing or invalid bearer credential.",
+  "403": "Origin or credential not permitted.",
+  "404": "Unknown resource or disabled preview.",
+  "405": "Method not allowed.",
+  "409": "Task revision, approval, or execution conflict.",
+  "500": "Internal operation failed.",
+  "503": "Required service unavailable.",
+};
 function operation(id: string, description: string, schema?: Schema): Operation {
   return {
     operationId: id,
@@ -105,18 +115,7 @@ function operation(id: string, description: string, schema?: Schema): Operation 
     ...(schema ? { requestBody: { required: true, content: { "application/json": { schema } } } } : {}),
     responses: {
       "200": { description: "Successful JSON result; fields depend on the operation.", content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
-      ...Object.fromEntries(Object.entries({
-        "400": "Invalid JSON, invalid arguments, or handler rejection.",
-        "401": "Missing or invalid bearer credential.",
-        "403": "Origin or credential not permitted.",
-        "404": "Unknown resource or disabled preview.",
-        "405": "Method not allowed.",
-        "409": "Task revision, approval, or execution conflict.",
-        "500": "Internal operation failed.",
-        "503": "Required service unavailable.",
-      }).map(([status, description]) => [status, { description, content: { "application/json": { schema: {
-        type: "object", properties: { error: { type: "string" } }, required: ["error"], additionalProperties: true,
-      } } } }])),
+      ...Object.fromEntries(Object.keys(errorDescriptions).map(status => [status, { $ref: `#/components/responses/Error${status}` }])),
     },
   };
 }
@@ -165,7 +164,13 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
       description: "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and disabled by default." },
     servers: [{ url: "http://127.0.0.1:6723/api/v1" }], security: [{ bearerAuth: [] }],
     paths: Object.fromEntries(Object.entries(paths).sort(([a], [b]) => a.localeCompare(b, "en"))),
-    components: { securitySchemes: {
+    components: {
+      responses: Object.fromEntries(Object.entries(errorDescriptions).map(([status, description]) => [`Error${status}`, {
+        description, content: { "application/json": { schema: {
+          type: "object", properties: { error: { type: "string" } }, required: ["error"], additionalProperties: true,
+        } } },
+      }])),
+      securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer" },
       taskCredential: { type: "http", scheme: "bearer", description: "Mapped task credential, distinct from BASTRA_API_TOKEN. Loopback Host required." },
     } },
