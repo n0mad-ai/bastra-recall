@@ -203,6 +203,22 @@ test("#493: ein leerer Arm ist ebenfalls keine Stichprobe, ein Arm mit Treffern 
   assert.equal(profil.sampleCount(KEY), 1, "genau diese eine Stichprobe");
 });
 
+test("#702: ein Replay-Recall lehrt das Latenzprofil nichts", async (t) => {
+  const profil = createLatencyProfile({ path: join(await mkdtemp(join(tmpdir(), "bastra-mi-prof-")), "p.json") });
+  const geladen: (number | null)[] = [];
+  const shadow = { ...schattenMit(profil), observeLoad: (ms: number | null) => geladen.push(ms) };
+  // Derselbe Arm wie im Gegenbeweis oben, der dort genau eine Stichprobe
+  // liefert — nur als Replay (`bastra doctor --replay`) gekennzeichnet.
+  const d = await daemonMit(t, armMitAusgang("hits", 30, 585), shadow);
+  const res = await httpPost(d.port, "/hook/recall", {
+    query: "deployen", k: 5, vector_deadline_ms: 2000, client: "replay",
+  });
+  assert.ok(Array.isArray(res.hits) && res.hits.length > 0, `der Recall lief: ${JSON.stringify(res)}`);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(profil.sampleCount(KEY), 0, "keine Stichprobe aus dem Replay");
+  assert.deepEqual(geladen, [], "und auch kein Residenz-Signal");
+});
+
 test("#493: ein Kaltstart wird als Grundwahrheit aufgezeichnet, nicht geschätzt", async (t) => {
   const profil = createLatencyProfile({ path: join(await mkdtemp(join(tmpdir(), "bastra-mi-prof-")), "p.json") });
   const geladen: (number | null)[] = [];

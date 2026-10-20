@@ -397,7 +397,9 @@ export async function runHookRecall(
         search.hasEmbeddings() && !embeddingDegradedAtRecall && !skipDense
           ? (deps.deadlineShadow?.key() ?? null)
           : null;
-      const shadow = shadowKey ? deps.deadlineShadow! : null;
+      // #702: a replay teaches the latency profile nothing — its arm runs
+      // in a burst of replayed turns, not under the user's load.
+      const shadow = shadowKey && !replay ? deps.deadlineShadow! : null;
       // Vor dem Abfeuern gelesen, nicht danach: Ein Arm, der das Modell selbst
       // lädt, macht es warm — die Residenz NACH dem Aufruf beschriebe die
       // Maschine, die er hinterlassen hat, nicht die, auf die er traf.
