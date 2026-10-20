@@ -3,8 +3,8 @@
  * build-stub.mjs — compile stub/bastra-hook.ts with deno (#344).
  *
  * One place for the permission flags: they are the stub's security contract
- * (network limited to loopback; exec limited to `sh`/`ps`, which the skip gate
- * and the statusline need — but `--allow-run=sh` is still a shell, so this is
+ * (network limited to loopback; exec limited to `sh`/`ps` on Unix and
+ * `cmd`/`mode` on Windows for the statusline — shells still run commands, so this is
  * defence in depth, not a sandbox, and read/write/env are unscoped), and the
  * release workflow compiles the same file once
  * per target (#350). Two package.json strings carrying the same flag list is
@@ -14,7 +14,7 @@
  *   node scripts/build-stub.mjs --target <t>     # cross-compile → stub/bastra-hook-<t>
  *
  * <t> is a deno target triple, e.g. aarch64-apple-darwin, x86_64-apple-darwin,
- * x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu. The statusline bundle
+ * x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, x86_64-pc-windows-msvc. The statusline bundle
  * (packages/statusline/dist) must be built first — the stub embeds it.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -40,7 +40,9 @@ if (oi >= 0 && !explicitOutput) {
 // `--output` exists for the parity guard (#546): it builds a binary of its own
 // in a temp dir rather than overwriting the one the developer's hooks are
 // currently running. Without it, `npm test` would replace a live binary.
-const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}` : "stub/bastra-hook");
+const windows = target ? target.endsWith("-windows-msvc") : process.platform === "win32";
+const suffix = windows ? ".exe" : "";
+const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}${suffix}` : `stub/bastra-hook${suffix}`);
 
 const denoArgs = [
   "compile",
@@ -60,7 +62,7 @@ const denoArgs = [
   "--allow-read",
   "--allow-write",
   "--allow-sys",
-  "--allow-run=sh,/bin/sh,ps",
+  windows ? "--allow-run=cmd,cmd.exe,mode,mode.com" : "--allow-run=sh,/bin/sh,ps",
   "--output", output,
   "stub/bastra-hook.ts",
 ];

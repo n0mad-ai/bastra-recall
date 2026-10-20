@@ -35,6 +35,7 @@ import {
   lookalikeHookCommands,
   runsOurHookRunner,
   slashes,
+  windowsHookToken,
   type HookWrapper,
 } from "./command-paths.js";
 
@@ -141,11 +142,13 @@ function buildHookEntry(
   def: HookDef,
   stubPresent: boolean = existsSync(HOOK_STUB_BIN),
   wrap: HookWrapper = { prefix: "", suffix: "" },
+  platform: string = process.platform,
 ): Record<string, unknown> {
+  const token = platform === "win32" ? windowsHookToken : (s: string) => s;
   const runner =
     def.stubSubcommand && stubPresent
-      ? `${HOOK_STUB_BIN} ${def.stubSubcommand}`
-      : `node ${def.bin}`;
+      ? `${token(HOOK_STUB_BIN)} ${def.stubSubcommand}`
+      : `node ${token(def.bin)}`;
   // #647: a user's wrapper around the runner survives the rewrite. The
   // client marker is ours and written fresh (#657/#650: the bash-pre lane
   // rewrites a command only for a call that proves it is Claude Code), so it
@@ -155,7 +158,9 @@ function buildHookEntry(
   // shell operator (`cd /dir && node …`) the marker goes after the last one —
   // in front of the runner it is for — instead of onto `cd`.
   const cut = lastShellOperatorCut(prefix);
-  const command = `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
+  const command = platform === "win32"
+    ? `${prefix}${runner} --client=claude-code${wrap.suffix}`
+    : `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
@@ -397,6 +402,7 @@ export function planHookEntries(
     mapBin?: (bin: string) => string;
     /** Test seam — see buildHookEntry. Omitted in production. */
     stubPresent?: boolean;
+    platform?: string;
   },
 ): HookPlan {
   // Register the stable-runtime copy of each bin when active (#180) — hooks
@@ -435,15 +441,15 @@ export function planHookEntries(
     // is re-built from the current def, in place; foreign ones stay verbatim.
     if (action === "install" && !opts.includeStop && ev === "Stop") {
       stopPreserved = cur.some((m) => isOurHookEntry(m));
-      after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? [buildHookEntry(stopDef, stubPresent, wrapOf(stopDef)), ...foreignRemainder(m)] : [m]));
+      after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? [buildHookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform), ...foreignRemainder(m)] : [m]));
     } else {
       after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? foreignRemainder(m) : [m]));
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def)));
+    for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def), opts.platform));
     // #675: a preserved Stop opt-in brings its SessionEnd companion along.
-    if (stopPreserved) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef)));
+    if (stopPreserved) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
   }
   return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }

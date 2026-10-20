@@ -46,12 +46,11 @@ export const STUB_TARGETS = [
   "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
 ] as const;
 export type StubTarget = (typeof STUB_TARGETS)[number];
 
-/** The release asset for this host, or null when none is built for it —
- *  Windows stays on the node client until its milestone (the stub spawns
- *  sh/ps, which do not exist there). */
+/** The release asset for this host, or null when none is built for it. */
 export function stubTarget(platform: string = process.platform, arch: string = process.arch): StubTarget | null {
   if (platform === "darwin") {
     return arch === "arm64" ? "aarch64-apple-darwin" : arch === "x64" ? "x86_64-apple-darwin" : null;
@@ -59,6 +58,7 @@ export function stubTarget(platform: string = process.platform, arch: string = p
   if (platform === "linux") {
     return arch === "x64" ? "x86_64-unknown-linux-gnu" : arch === "arm64" ? "aarch64-unknown-linux-gnu" : null;
   }
+  if (platform === "win32" && arch === "x64") return "x86_64-pc-windows-msvc";
   return null;
 }
 

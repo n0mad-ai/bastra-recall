@@ -109,3 +109,6 @@ graphify-out/
 
 # tools/test-map.mjs build output
 .test-map/
+
+packages/daemon/stub/bastra-hook.exe
+packages/daemon/stub/bastra-hook.exe.partial

@@ -111,6 +111,7 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
     }
   }
   if (start < 0) return null;
+  if (/^--client=(codex|claude-code)$/.test(tokens[end + 1]?.value ?? "")) end++;
   return {
     prefix: cmd.slice(0, tokens[start].start),
     suffix: cmd.slice(tokens[end].end),
@@ -185,7 +186,7 @@ export function runsOurHookRunner(cmd: string, files: string[], clientMarker: st
   const program = baseAt(at);
   if (/^node(\.exe)?$/.test(program)) {
     const script = pathAt(at + 1);
-    return files.includes(fileOf(script)) && (marked || script.includes("/daemon/dist/"));
+    return files.includes(fileOf(script)) && (marked || words[at + 2] === `--client=${clientMarker.split("=")[1]}` || script.includes("/daemon/dist/"));
   }
   if (/^bastra-hook(\.exe)?$/.test(program)) {
     return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "") &&
@@ -227,4 +228,9 @@ export function leftAloneNote(commands: string[]): string | undefined {
   return commands.length > 0
     ? `hooks left alone (the name looks like ours, the command does not run a bastra-recall hook): ${commands.join(" | ")}`
     : undefined;
+}
+
+/** Quote native Windows paths for both cmd and POSIX-style client shells. */
+export function windowsHookToken(value: string): string {
+  return `"${value.replace(/\\/g, "/")}"`;
 }

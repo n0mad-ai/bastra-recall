@@ -10,7 +10,7 @@
  *
  * The matrix itself lives in README.md (`### Supported surfaces` and
  * `### Supported platforms`). This module holds the machine-readable anchors —
- * the CLI's own surface list and the release workflow's hook-client targets —
+ * the CLI's own surface list and the release workflow's configured hook-client targets —
  * and the small extractors the drift test compares the prose against.
  */
 import { readFileSync } from "node:fs";
@@ -37,9 +37,10 @@ export function installableSurfaces() {
 }
 
 /**
- * The compiled hook-client targets, taken from
+ * The configured compiled hook-client targets, taken from
  * `packages/daemon/src/cli/stub-install.ts` — the list the release workflow
- * builds and the platform half of the matrix has to agree with.
+ * configures and the platform half of the matrix has to agree with.
+ * Configuration does not imply a successful build or real-platform acceptance.
  */
 export function hookClientTargets() {
   const src = read("packages/daemon/src/cli/stub-install.ts");

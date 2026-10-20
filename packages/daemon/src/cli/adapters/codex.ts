@@ -1,3 +1,4 @@
+import { windowsHookToken } from "./command-paths.js";
 /**
  * Codex + ChatGPT desktop adapter (#15).
  *
@@ -109,10 +110,12 @@ function hookEntry(
   def: CodexHookDef,
   stubPresent = existsSync(HOOK_STUB_BIN),
   wrap: HookWrapper = { prefix: "", suffix: "" },
+  platform: string = process.platform,
 ): Record<string, unknown> {
+  const token = platform === "win32" ? windowsHookToken : shellToken;
   const runner = stubPresent
-    ? `${shellToken(HOOK_STUB_BIN)} ${def.stubSubcommand}`
-    : `node ${shellToken(def.bin)}`;
+    ? `${token(HOOK_STUB_BIN)} ${def.stubSubcommand}`
+    : `node ${token(def.bin)}`;
   // #647: a user's wrapper around the runner survives the rewrite. The client
   // marker is ours and is written fresh, so it is taken out of the kept prefix.
   const prefix = wrap.prefix.replace(`${CLIENT_MARKER} `, "");
@@ -120,7 +123,9 @@ function hookEntry(
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
     type: "command",
-    command: `${prefix}${CLIENT_MARKER} ${runner}${wrap.suffix}`,
+    command: platform === "win32"
+      ? `${prefix}${runner} --client=codex${wrap.suffix}`
+      : `${prefix}${CLIENT_MARKER} ${runner}${wrap.suffix}`,
     timeout: def.timeout,
     statusMessage: `Bastra Recall · ${def.label}`,
   }];
@@ -164,7 +169,7 @@ export interface CodexHookPlan {
 export function planCodexHooks(
   action: "install" | "uninstall",
   hooks: Record<string, unknown>,
-  opts: { includeStop: boolean; mapBin?: (bin: string) => string; stubPresent?: boolean },
+  opts: { includeStop: boolean; mapBin?: (bin: string) => string; stubPresent?: boolean; platform?: string },
 ): CodexHookPlan {
   const map = (def: CodexHookDef): CodexHookDef =>
     opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def;
@@ -190,13 +195,13 @@ export function planCodexHooks(
     if (action === "install" && !opts.includeStop && event === "Stop") {
       stopPreserved = current.some(isOurHookEntry);
       after[event] = current.flatMap((entry) => isOurHookEntry(entry)
-        ? [hookEntry(stopDef, stubPresent, wrapOf(stopDef)), ...foreignRemainder(entry)] : [entry]);
+        ? [hookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform), ...foreignRemainder(entry)] : [entry]);
     } else {
       after[event] = current.flatMap((entry) => isOurHookEntry(entry) ? foreignRemainder(entry) : [entry]);
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def)));
+    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def), opts.platform));
   }
   return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }

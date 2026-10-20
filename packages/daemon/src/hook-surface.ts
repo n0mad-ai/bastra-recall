@@ -2,7 +2,8 @@
  * Hook-surface normalization (#15).
  *
  * Claude Code and Codex now feed the same daemon-side recall lanes. Codex
- * registrations set BASTRA_HOOK_CLIENT=codex; the thin clients copy that
+ * registrations set BASTRA_HOOK_CLIENT=codex (or --client=codex on Windows);
+ * the thin clients copy that
  * value into the payload because the long-running daemon does not inherit a
  * hook process' environment. Codex-specific tool names remain a fallback for
  * hand-written tool-hook registrations.
@@ -104,7 +105,10 @@ export function hookCaller(payload: unknown): HookCaller {
 
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
-  const requested = process.env.BASTRA_HOOK_CLIENT;
+  // Windows registrations use argv so the compiled stub starts directly,
+  // without a POSIX env-prefix or an extra interpreter process.
+  const requested = process.argv.slice(2).find((a) => /^--client=(codex|claude-code)$/.test(a))?.slice(9)
+    ?? process.env.BASTRA_HOOK_CLIENT;
   if (requested !== "codex" && requested !== "claude-code") return payload;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   return { ...(payload as Record<string, unknown>), bastra_client: requested } as T;
