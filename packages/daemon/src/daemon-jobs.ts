@@ -315,8 +315,14 @@ function startIdleWatchdog(deps: BackgroundJobDeps): void {
 // auto-staged Update würde nie live gehen. Nach dem Stage: bei ≥15 min
 // Inaktivität sauber beenden; launchd (KeepAlive) respawnt sofort mit dem
 // neuen Code. Im Forwarder-Mode erledigt das der Idle-Self-Shutdown.
-function startStagedRestart(deps: BackgroundJobDeps): void {
-  if (!deps.launchAgentOwned) return;
+export function startStagedRestart(
+  deps: Pick<BackgroundJobDeps, "launchAgentOwned" | "isStagedRestartPending" | "getLastActivity" | "clearStagedRestartPending" | "shutdown">,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  // Windows Task Scheduler's RestartOnFailure does not restart a clean exit.
+  // Leave its warm process running until explicit restart or the next login;
+  // launchd KeepAlive retains its existing clean idle-restart behavior.
+  if (!deps.launchAgentOwned || platform === "win32") return;
   setInterval(() => {
     if (deps.isStagedRestartPending() && Date.now() - deps.getLastActivity() >= 15 * 60 * 1000) {
       deps.clearStagedRestartPending();
