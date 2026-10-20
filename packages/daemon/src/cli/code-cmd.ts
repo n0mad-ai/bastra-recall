@@ -3,10 +3,12 @@
  *
  * Five subcommands, all of them explicit acts by the user:
  *
- *   status    what is enabled, which binary, which graph, how fresh  (default)
+ *   status    what is enabled, which binary, which graph, how fresh, and
+ *             whether the daemon's refresh is paused or stopped      (default)
  *   enable    turn it on for a repository and build the graph once
  *   disable   turn it off; files stay where they are
- *   index     rebuild the graph for a repository, incrementally
+ *   index     rebuild the graph for a repository, incrementally, and resume
+ *             the daemon's automatic refresh if it had paused or stopped
  *   rebuild   the same, with --force — a confirmed repair, never automatic
  *
  * WHY `rebuild` IS ITS OWN SUBCOMMAND. Graphify refuses to replace a good
@@ -34,6 +36,8 @@ import { enabledRepos, isRepoEnabled, setRepoEnabled } from "../code-graph/enabl
 import { confirm, isInteractive } from "./prompt.js";
 import { findExecutable, run } from "./exec.js";
 import { GRAPHIFY_PIN, installArgv, probeTool } from "../code-graph/graphify-tool.js";
+import { refreshStatusLines } from "../code-graph/refresh-status.js";
+import { fetchRefreshStatus, resumeRefreshIfGivenUp } from "./code-refresh-client.js";
 
 const out = (s: string): void => void process.stdout.write(s);
 
@@ -91,6 +95,9 @@ async function cmdStatus(): Promise<number> {
     out("  none enabled — run 'bastra code enable' inside a repository\n");
     return 0;
   }
+  // The running daemon's view (#1148): a paused or stopped refresh is state
+  // the manifest cannot show. Null without a daemon, and then nothing to add.
+  const refresh = await fetchRefreshStatus();
   for (const repo of repos) {
     out(`  ${repo}\n`);
     const manifest = await readManifest(graphDirOf(repo));
@@ -106,6 +113,8 @@ async function cmdStatus(): Promise<number> {
     out(size === null ? "\n" : `, ${size} MB\n`);
     if (manifest.lastError !== null) out(`    last error: ${manifest.lastError}\n`);
     if (manifest.dirty) out("    a build did not finish — it will be retried\n");
+    const refreshState = refresh?.get(repo);
+    if (refreshState !== undefined) for (const line of refreshStatusLines(refreshState)) out(`    ${line}\n`);
   }
   return 0;
 }
@@ -185,6 +194,14 @@ async function cmdIndex(dir: string, rebuild: boolean, yes: boolean): Promise<nu
   }
   const size = await graphSizeMB(dir);
   out(`✓ indexed in ${secs}s${size === null ? "" : ` (${size} MB)`}\n`);
+  // The daemon's automatic refresh may be paused on a busy lock or stopped
+  // after failed builds (#1148). The user asking is the one signal that clears
+  // that, so a running daemon that gave up on this repository is told to resume.
+  // A healthy daemon is left alone: a manual request would start a second build
+  // on the graph that was just made.
+  if (await resumeRefreshIfGivenUp(dir)) {
+    out("  the daemon resumes automatic refreshes for this repository\n");
+  }
   return 0;
 }
 

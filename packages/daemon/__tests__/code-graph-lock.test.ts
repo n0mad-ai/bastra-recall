@@ -232,15 +232,15 @@ describe("the build lock against adversarial interleavings", () => {
     assert.ok(next !== null, "an abandoned marker must not lock the repository for good");
     assert.equal(next.record.gen, dead.record.gen + 1);
     await next.release();
-    const gens = join(dir, ".bastra-build.lock.gens");
-    assert.ok((await readdir(gens)).some((n) => n.includes(".abandoned-")));
-    // The takeover's own marker is pruned with the generation it took over.
+    // The takeover lives inside the marker it took over (#1148) …
+    assert.match((await readdir(marker)).join(","), /^takeover-\d+$/);
+    // … and is pruned with that generation.
     for (let i = 0; i < 6; i++) {
       const l = await acquireRepoLock(dir, { heartbeat: false });
       assert.ok(l !== null);
       await l.release();
     }
-    assert.deepEqual((await readdir(gens)).filter((n) => n.includes(".abandoned-")), []);
+    assert.equal(await stat(marker).catch(() => null), null);
   });
 
   it("lets exactly one of several contenders take over an abandoned marker", async (t) => {
@@ -268,6 +268,58 @@ describe("the build lock against adversarial interleavings", () => {
       assert.equal(new Set(generations).size, generations.length, `round ${round}: duplicate generation in ${generations}`);
       for (const h of holders) await h!.release();
     }
+  });
+
+  it("recovers a takeover that was interrupted between its two steps (#1148)", async (t) => {
+    // Before #1148 a takeover claimed `<marker>.abandoned-<ino>-<mtime>`, then
+    // removed and re-created the marker. A process stopped between the claim
+    // and the removal left both behind: every later contender judged the
+    // marker abandoned, lost the sibling claim, and the repository was wedged
+    // until someone deleted the directory by hand. Both halves of that
+    // interruption — sibling present with the old marker still in place, and
+    // the marker already gone — must now recover without help.
+    const dir = await tempDir("bastra-lock-interrupted-takeover-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const dead = await acquireRepoLock(dir, { heartbeat: false });
+    assert.ok(dead !== null);
+    await dead.suspend();
+    const gens = join(dir, ".bastra-build.lock.gens");
+    const marker = join(gens, String(dead.record.gen + 1));
+    await mkdir(marker);
+    const old = new Date(Date.now() - LOCK_STALE_MS - 1_000);
+    await utimes(marker, old, old);
+    const seen = await stat(marker);
+    // What the older scheme left behind when it died between its two steps.
+    await mkdir(join(gens, `${dead.record.gen + 1}.abandoned-${seen.ino}-${Math.trunc(seen.mtimeMs)}`));
+
+    const next = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(next !== null, "an interrupted takeover must not wedge the repository");
+    assert.equal(next.record.gen, dead.record.gen + 1);
+    await next.release();
+    assert.equal(await readLock(dir), null);
+  });
+
+  it("a takeover whose claimant died is taken over in turn, and a live one is not (#1148)", async (t) => {
+    const dir = await tempDir("bastra-lock-dead-takeover-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const dead = await acquireRepoLock(dir, { heartbeat: false });
+    assert.ok(dead !== null);
+    await dead.suspend();
+    const marker = join(dir, ".bastra-build.lock.gens", String(dead.record.gen + 1));
+    await mkdir(marker);
+    const old = new Date(Date.now() - LOCK_STALE_MS - 1_000);
+    await utimes(marker, old, old);
+    // The first takeover claimant: it won the claim of this mtime and died before publishing.
+    await mkdir(join(marker, `takeover-${Math.trunc((await stat(marker)).mtimeMs)}`));
+    // Its claim is fresh, so the marker is busy — a contender a moment later waits.
+    assert.equal(await acquireRepoLock(dir, { staleMs: -1, heartbeat: false }), null);
+    // Once it has aged out, the next contender claims the entry of that later mtime.
+    const later = new Date(Date.now() - LOCK_STALE_MS - 500);
+    await utimes(marker, later, later);
+    const next = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(next !== null, "a dead takeover claimant must not wedge the repository either");
+    assert.equal((await readdir(marker)).length, 2);
+    await next.release();
   });
 
   it("keeps numeric generation markers bounded across normal acquire/release cycles", async (t) => {

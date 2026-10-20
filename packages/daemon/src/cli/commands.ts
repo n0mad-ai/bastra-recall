@@ -46,6 +46,8 @@ import { graphDirOf, loadGraph } from "../code-graph/reader.js";
 import { externalRefLines } from "../code-graph/external-refs.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
 import { scanFileState } from "../code-graph/build.js";
+import { refreshStatusLines } from "../code-graph/refresh-status.js";
+import { fetchRefreshStatus } from "./code-refresh-client.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
 
 export function showVersion(): void {
@@ -578,6 +580,10 @@ async function printCodeGraphNote(): Promise<void> {
         `  note: your own Graphify at ${tool.external.path} is left untouched\n`,
       );
     }
+    // #1148: whether the daemon has paused (busy lock) or stopped (failed
+    // builds) its automatic refresh, and when it tries again. The manifest
+    // says when the graph was built, never why it is no longer rebuilt.
+    const refresh = repos.length > 0 ? await fetchRefreshStatus() : null;
     for (const repo of repos) {
       const manifest = await readManifest(graphDirOf(repo));
       if (manifest === null) {
@@ -585,11 +591,16 @@ async function printCodeGraphNote(): Promise<void> {
         continue;
       }
       const state = await scanFileState(repo).catch(() => null);
+      const paused = refresh?.get(repo)?.givenUp === true;
       const stale = isStale(manifest, state?.newestMtimeMs ?? 0);
-      process.stdout.write(`  ${stale ? "\u26a0 " : ""}${repo}: built ${manifest.builtAt ?? "never"}`);
+      process.stdout.write(`  ${stale || paused ? "\u26a0 " : ""}${repo}: built ${manifest.builtAt ?? "never"}`);
       process.stdout.write(stale ? " (may be outdated)\n" : "\n");
       if (manifest.lastError !== null) {
         process.stdout.write(`    last error: ${manifest.lastError}\n`);
+      }
+      const refreshState = refresh?.get(repo);
+      if (refreshState !== undefined) {
+        for (const line of refreshStatusLines(refreshState)) process.stdout.write(`    ${line}\n`);
       }
       // #582: the package boundary is the half of the graph Graphify does not
       // carry, and it fails SILENTLY — a changed id format costs every
