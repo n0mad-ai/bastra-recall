@@ -58,6 +58,7 @@ import type { RepoStatus } from "./code-graph/refresh.js";
 export interface CodeRefreshDeps {
   status: () => RepoStatus[];
   enqueue: (repoRoot: string, reason: "manual") => void;
+  allows: (repoRoot: string) => boolean;
 }
 
 export interface LocalRouteCtx {
@@ -347,6 +348,11 @@ export function dispatchLocalRoutes(
           const repo = (body as { repo?: unknown }).repo;
           if (typeof repo !== "string" || repo.length === 0) {
             sendJson(res, 400, { error: "repo must be an absolute repository path" });
+            return;
+          }
+          // An arbitrary path must not get a permanent entry in the coordinator.
+          if (!refresh.allows(repo)) {
+            sendJson(res, 404, { error: "code awareness is not enabled for this repository" });
             return;
           }
           refresh.enqueue(repo, "manual");

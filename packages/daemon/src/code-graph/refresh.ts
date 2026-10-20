@@ -293,6 +293,11 @@ export class CodeGraphRefresher {
   }
 
   /** Drop every scheduled refresh. A build already running is left to finish. */
+  /** May this repository be built at all? The same gate a queued run passes (#585). */
+  allows(repoRoot: string): boolean {
+    return this.allow(repoRoot);
+  }
+
   stop(): void {
     this.stopped = true;
     for (const entry of this.repos.values()) {

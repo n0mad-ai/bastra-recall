@@ -149,6 +149,27 @@ describe("GET and POST /code/refresh", () => {
     });
   });
 
+  it("answers 404 for a repository that is not enabled and keeps no entry for it", async () => {
+    let calls = 0;
+    const refresher = new CodeGraphRefresher({
+      debounceMs: 1,
+      allow: (repo) => repo === "/enabled",
+      build: async () => (calls++, ok),
+    });
+    await withServer(refresher, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/code/refresh`, {
+        method: "POST",
+        body: JSON.stringify({ repo: "/anywhere" }),
+      });
+      assert.equal(res.status, 404);
+      assert.equal(await requestManualRefresh("/anywhere", baseUrl), false);
+      assert.deepEqual(refresher.status(), [], "no entry was created");
+      assert.equal(await requestManualRefresh("/enabled", baseUrl), true);
+      await refresher.whenIdle();
+      assert.equal(calls, 1);
+    });
+  });
+
   it("rejects a request without a repository and answers 405 to other methods", async () => {
     await withServer(new CodeGraphRefresher({ build: async () => ok }), async (baseUrl) => {
       const bad = await fetch(`${baseUrl}/code/refresh`, { method: "POST", body: "{}" });
