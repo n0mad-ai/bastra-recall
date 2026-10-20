@@ -39,6 +39,7 @@ import { codeGraphCache, repoRelative } from "./dependents-block.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import { MAX_IMPACT_FILES, isTestFile } from "./impact-block.js";
 import { coverageTestsLine, readCoverageMapSync } from "./coverage-map.js";
+import { getCoverageMapEnabled } from "./coverage-map-settings.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
 
 const DEDUPE_PREFIX = "code-boundary:";
@@ -116,6 +117,8 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   const identity: string[] = [];
   let files = 0;
   let unanswered = 0;
+  // #629: the coverage switch, read once and only once a block is under way.
+  let coverageOn: boolean | undefined;
 
   for (const repoRoot of [...touched.keys()].sort()) {
     // Code awareness off for this repository: the cache answers `null` for that
@@ -178,7 +181,7 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
       changed.set(t.file, [...new Set((t.hits ?? []).map((h) => h.via))]);
     }
     const coverage = coverageTestsLine(
-      readCoverageMapSync(repoRoot),
+      (coverageOn ??= await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(repoRoot) : null,
       changed,
       new Set([...impact.missed.map((m) => m.file), ...impact.seen, ...impact.touchedFiles]),
     );

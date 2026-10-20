@@ -58,6 +58,7 @@ import {
 import type { CodeGraphCache } from "./cache.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import { coverageTestsLine, isTestFile, readCoverageMapSync } from "./coverage-map.js";
+import { getCoverageMapEnabled } from "./coverage-map-settings.js";
 import { codeGraphCache, repoRelative } from "./dependents-block.js";
 import type { AffectedBasis } from "./find-affected-files.js";
 import { isStale, readManifest } from "./manifest.js";
@@ -253,9 +254,11 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
 
   const shown = displayOrder(result.hits);
   // #629: the tests that executed the changed functions, from the coverage
-  // map when the repository has one. One `fstat`; the map is cached by mtime.
+  // map when the repository has one — and only with the switch on: a map in a
+  // checkout is untrusted, and an opt-in feature must not read one unasked.
+  // One `fstat`; the map is cached by mtime.
   const coverage = coverageTestsLine(
-    readCoverageMapSync(opts.repoRoot),
+    (await getCoverageMapEnabled().catch(() => false)) ? readCoverageMapSync(opts.repoRoot) : null,
     new Map([[rel, names]]),
     new Set(shown.map((h) => h.file)),
   );

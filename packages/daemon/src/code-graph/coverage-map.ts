@@ -40,8 +40,8 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync } from "node:fs";
-import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
@@ -248,19 +248,29 @@ export async function rawBytesOf(repoRoot: string): Promise<number> {
  * The map is read from inside the repository and its lines reach the agent's
  * context, so it is untrusted input like any file in a checkout (#1232):
  * every key must be a plain repo-relative path, every value a list of plain
- * names, the file must carry the daemon's own marker, and it must not be
- * tracked by git — a map that arrived with a clone is not one this daemon
- * wrote. Anything else and the map is treated as absent.
+ * names, the file must carry the daemon's own marker (which proves nothing on
+ * its own — anyone can write it), and nothing under `.bastra-coverage` may be
+ * tracked by git — a map, a directory or a symlink that arrived with a clone
+ * is not one this daemon wrote. `.bastra-coverage` must be a real directory
+ * at its own place under the repository's real root, and the map a regular
+ * file opened without following a link. Anything else and the map is treated
+ * as absent.
  */
 export const COVERAGE_MAP_WRITER = "bastra-recall";
-const MAX_KEY_LENGTH = 1024;
+const MAX_KEY_LENGTH = 256;
 const MAX_NAME_LENGTH = 256;
 /** Control characters and the four that open a tag, a quote or a fence. */
 const UNSAFE_CHARS = /[\u0000-\u001f\u007f<>"`]/;
+/**
+ * A path key, character by character: word characters, `@ + . / -`. No
+ * space, so a key cannot carry a sentence; no shell or markup punctuation.
+ * A file whose path falls outside this is left out of the map by the fold.
+ */
+const SAFE_PATH = /^[\w@+./-]+$/;
 
 export function isSafeRepoPath(key: string): boolean {
   if (key.length === 0 || key.length > MAX_KEY_LENGTH) return false;
-  if (UNSAFE_CHARS.test(key) || key.includes("\\")) return false;
+  if (!SAFE_PATH.test(key)) return false;
   if (isAbsolute(key) || key.startsWith("/")) return false;
   return key.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
 }
@@ -287,10 +297,34 @@ function emptyMap(): CoverageMap {
 
 /** The map on disk, or null when there is none, it is unreadable, invalid or git-tracked. */
 export async function readCoverageMap(repoRoot: string): Promise<CoverageMap | null> {
+  const fd = openMapSync(repoRoot);
+  if (fd === null) return null;
   try {
-    if (trackedByGit(repoRoot, coverageMapFileOf(repoRoot))) return null;
-    const buf = await readFile(coverageMapFileOf(repoRoot));
-    return parseMap(buf.byteLength > MAX_MAP_BYTES ? null : buf.toString("utf8"));
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > MAX_MAP_BYTES || trackedByGit(repoRoot)) return null;
+    return parseMap(readFileSync(fd, "utf8"));
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The map's file descriptor, or null. `.bastra-coverage` must be a real
+ * directory (`lstat`, never a symlink) whose real path is exactly its place
+ * under the repository's real root — a link anywhere between the two makes
+ * them differ — and the map itself is opened with `O_NOFOLLOW`, so a symlink
+ * at its path fails the open. The caller still checks the handle is a
+ * regular file.
+ */
+function openMapSync(repoRoot: string): number | null {
+  try {
+    const dir = coverageDirOf(repoRoot);
+    const st = lstatSync(dir);
+    if (!st.isDirectory() || st.isSymbolicLink()) return null;
+    if (realpathSync(dir) !== join(realpathSync(repoRoot), COVERAGE_DIR_NAME)) return null;
+    return openSync(coverageMapFileOf(repoRoot), fsConstants.O_RDONLY | NOFOLLOW);
   } catch {
     return null;
   }
@@ -327,18 +361,21 @@ export function parseMap(text: string | null): CoverageMap | null {
 }
 
 /**
- * Is this file in git's index? A checkout that brought a map along is the
- * one way an outsider's map reaches the reader; the daemon's own map lives in
- * a directory that ignores itself. One short `git ls-files`; the sync reader
- * caches it by the file's mtime. No git, or no repository: nothing is tracked.
+ * Does git track anything at `.bastra-coverage` — the directory's contents,
+ * or the path itself as a symlink? A checkout that brought one along is the
+ * one way an outsider's map reaches the reader; the daemon's own directory
+ * ignores itself, so git lists nothing there. Asking for the map file alone
+ * was not enough: behind a committed symlink git does not match the path and
+ * the map passed as untracked. One short `git ls-files`; the sync reader
+ * caches it by the map's mtime. No git, or no repository: nothing is tracked.
  */
-export function trackedByGit(repoRoot: string, file: string): boolean {
+export function trackedByGit(repoRoot: string): boolean {
   try {
-    const r = spawnSync("git", ["-C", repoRoot, "ls-files", "--error-unmatch", "--", file], {
-      stdio: ["ignore", "ignore", "ignore"],
+    const r = spawnSync("git", ["-C", repoRoot, "ls-files", "-z", "--", COVERAGE_DIR_NAME], {
+      stdio: ["ignore", "pipe", "ignore"],
       timeout: 5_000,
     });
-    return r.status === 0;
+    return r.stdout !== null && r.stdout.length > 0;
   } catch {
     return false;
   }
@@ -353,20 +390,19 @@ let snapshot: { path: string; mtimeMs: number; size: number; map: CoverageMap | 
  */
 export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
   const path = coverageMapFileOf(repoRoot);
-  let fd: number;
-  try {
-    fd = openSync(path, "r");
-  } catch {
+  const fd = openMapSync(repoRoot);
+  if (fd === null) {
     if (snapshot?.path === path) snapshot = null;
     return null;
   }
   try {
     const st = fstatSync(fd);
+    if (!st.isFile()) return null;
     if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
       return snapshot.map;
     }
     const map =
-      st.size > MAX_MAP_BYTES || trackedByGit(repoRoot, path) ? null : parseMap(readFileSync(fd, "utf8"));
+      st.size > MAX_MAP_BYTES || trackedByGit(repoRoot) ? null : parseMap(readFileSync(fd, "utf8"));
     snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, map };
     return map;
   } catch {
@@ -474,7 +510,9 @@ function foldProcess(
     }
     if (abs.includes("/node_modules/")) continue;
     const rel = relative(repoRoot, sourceOf(abs));
-    if (rel.startsWith("..") || isAbsolute(rel)) continue;
+    // A path the reader would reject is left out, or one odd file name would
+    // void the whole map on every read.
+    if (rel.startsWith("..") || isAbsolute(rel) || !isSafeRepoPath(rel)) continue;
     let fns = perFile.get(rel);
     if (fns === undefined) {
       fns = new Set();

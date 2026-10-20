@@ -364,7 +364,21 @@ describe("delivered change-impact block: what the agent sees", () => {
       }),
       "utf8",
     );
-    const withMap = await call();
+    // Switch off: the map on disk is not even read — no line.
+    const before = process.env.BASTRA_COVERAGE_MAP;
+    process.env.BASTRA_COVERAGE_MAP = "off";
+    let off;
+    let withMap;
+    try {
+      off = await call();
+      process.env.BASTRA_COVERAGE_MAP = "on";
+      withMap = await call();
+    } finally {
+      if (before === undefined) delete process.env.BASTRA_COVERAGE_MAP;
+      else process.env.BASTRA_COVERAGE_MAP = before;
+    }
+    assert.ok(off.note);
+    assert.doesNotMatch(off.note.note, /coverage map/, "switch off: no line despite a map on disk");
     assert.ok(withMap.note);
     const line = withMap.note.note.split("\n").find((l) => l.includes("coverage map"));
     assert.ok(line, withMap.note.note);
