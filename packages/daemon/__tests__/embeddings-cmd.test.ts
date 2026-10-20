@@ -325,3 +325,28 @@ test("#646: embeddings on under an env override to another provider says nothing
     assert.doesNotMatch(out, /doc2query/);
   });
 });
+
+
+test("doctor: Windows explains external setup and BM25 without changing provider state", () => {
+  for (const platform of ["win32", "darwin", "linux"] as const) {
+    const lines = formatEmbeddingDoctorLines({
+      platform,
+      choice: { provider: "none", source: "none" },
+      fileProvider: undefined, envValue: undefined, probe: null,
+    }).join("\n");
+    assert.equal(lines.includes("Windows includes no bundled Ollama"), platform === "win32");
+    if (platform === "win32") {
+      assert.match(lines, /ollama pull embeddinggemma/);
+      assert.match(lines, /embedding.provider openai/);
+      assert.match(lines, /keyword-only \(BM25\)/);
+    }
+  }
+  const ready = formatEmbeddingDoctorLines({
+    platform: "win32",
+    choice: { provider: "ollama", source: "cli-settings" },
+    fileProvider: "ollama", envValue: undefined,
+    probe: { ok: true, detail: "running", hasModel: true },
+  }).join("\n");
+  assert.match(ready, /✓ ok: ollama/);
+  assert.doesNotMatch(ready, /Semantic recall is OFF|⚠/);
+});

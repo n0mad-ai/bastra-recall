@@ -583,6 +583,6 @@ body
   assert.equal(res.ok, false, "a missing file must not be reported as opened");
   assert.match(
     res.message ?? "",
-    process.platform === "darwin" ? /no longer exists/ : /only supported on macOS/,
+    process.platform === "darwin" ? /no longer exists/ : process.platform === "win32" ? /cannot launch originals on Windows/ : /only supported on macOS/,
   );
 });

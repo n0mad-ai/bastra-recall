@@ -208,7 +208,7 @@ export function readDocument(
 export async function openDocument(
   vault: Vault,
   args: { id: string },
-  opts: { allowPrivate?: boolean } = {},
+  opts: { allowPrivate?: boolean; platform?: NodeJS.Platform } = {},
 ): Promise<
   | { ok: true; path: string }
   | { ok: false; path?: string; message: string }
@@ -225,11 +225,14 @@ export async function openDocument(
   }
   const fm = m.fm as typeof m.fm & { original_path?: string };
   const path = fm.original_path ?? m.filePath;
-  if (process.platform !== "darwin") {
+  const platform = opts.platform ?? process.platform;
+  if (platform !== "darwin") {
     return {
       ok: false,
       path,
-      message: "open_document is only supported on macOS — returning path.",
+      message: platform === "win32"
+        ? "open_document cannot launch originals on Windows yet — returning path. Windows document import/OCR has no supported backend yet (#85); search and read of already-extracted document text remain available. Open this path manually."
+        : "open_document is only supported on macOS — returning path.",
     };
   }
   // #240/B11: the try/catch was dead code for the real failure mode — spawn
