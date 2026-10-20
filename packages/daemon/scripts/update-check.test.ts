@@ -419,7 +419,7 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
   );
   assert.ok(src.includes("reload: !args.staged,"), "staged must pass reload: false, never a hardcoded reload");
   assert.ok(src.includes("if (!autostart.ok) {"), "a failed refresh must not be ignored");
-  const refreshAt = src.indexOf("refreshManagedAutostart((s)");
+  const refreshAt = src.indexOf("(io.refresh ?? refreshManagedAutostart)((s)");
   const stagedReturnAt = src.indexOf("→ staged — daemon left running on old code");
   assert.ok(refreshAt > 0 && stagedReturnAt > 0, "both anchors must exist");
   assert.ok(

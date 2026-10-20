@@ -1,12 +1,13 @@
 /** Installer update orchestration and cross-client restart guidance (#15). */
 import { spawnSync } from "node:child_process";
+import { captureUpdateNpm, runUpdateNpm, globalDaemonScript, updatePaths, type UpdateRuntimeIo } from "./update-npm.js";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cmdInstall } from "./commands.js";
 import { findExecutable, run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
-import { buildManifest, formatPreflight, preflight, writeManifest } from "./update-preflight.js";
+import { buildManifest, formatPreflight, preflight, writeManifest, verifyProvenance } from "./update-preflight.js";
 import { activePatches, applySeries } from "../patch-registry.js";
 import { formatApplyOutcome, writeLastRun } from "../patch-report.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
@@ -48,6 +49,7 @@ export interface InstallMode {
  */
 export function detectInstallMode(cliPathOverride?: string): InstallMode {
   const cliPath = cliPathOverride ?? fileURLToPath(import.meta.url);
+  const normalizedPath = cliPath.replace(/\\/g, "/");
 
   // Homebrew Cellar
   if (
@@ -65,7 +67,7 @@ export function detectInstallMode(cliPathOverride?: string): InstallMode {
   }
 
   // npm-global: cliPath sits inside a `node_modules/@bastra-recall/daemon/` tree.
-  if (cliPath.includes("/node_modules/@bastra-recall/") || cliPath.includes("/lib/node_modules/")) {
+  if (normalizedPath.includes("/node_modules/@bastra-recall/") || normalizedPath.includes("/lib/node_modules/")) {
     return {
       mode: "npm-global",
       cliPath,
@@ -108,8 +110,9 @@ function hasGitAncestor(start: string): boolean {
  * <root>/dist/cli/update.js, so the root is two levels above the cli dir.
  * Exported so the preflight wiring can be pinned without a real install.
  */
-export function packageRootFromCliPath(cliPath: string): string {
-  return resolve(dirname(cliPath), "..", "..");
+export function packageRootFromCliPath(cliPath: string, platform: NodeJS.Platform = process.platform): string {
+  const paths = updatePaths(platform);
+  return paths.resolve(paths.dirname(cliPath), "..", "..");
 }
 
 /**
@@ -125,28 +128,33 @@ export function packageRootFromCliPath(cliPath: string): string {
  * `npm prefix -g` names the global root regardless of what PATH currently
  * prefers.
  */
-function reRegisterViaInstalledBinary(args: ParsedArgs): number | null {
-  const npmBin = findExecutable("npm");
-  if (!npmBin) return null;
-  const prefix = spawnSync(npmBin, ["prefix", "-g"], { encoding: "utf8", timeout: 30_000 });
-  const root = `${prefix.stdout ?? ""}`.trim();
-  if (prefix.status !== 0 || !root) return null;
+export function reRegisterViaInstalledBinary(args: ParsedArgs, io: UpdateRuntimeIo = {}, spawn: typeof spawnSync = spawnSync): number | null {
+  const platform = io.platform ?? process.platform;
+  const prefix = captureUpdateNpm(["prefix", "-g"], { timeoutMs: 30_000 }, io);
+  const root = prefix.stdout.trim();
+  if (!prefix.ok || !root) return null;
 
   // `bastra` is the bin the daemon package has always declared — v0.7.9 already
   // shipped it under that name. `bastra-recall` is checked only as a second
   // guess: it is the name of the npm WRAPPER package (`npx bastra-recall`) and
   // has been seen in a Homebrew prefix, so a global root may carry it. Never
   // assumed to exist; the list is ordered by what is actually declared.
-  const candidates = [resolve(root, "bin", "bastra"), resolve(root, "bin", "bastra-recall")];
-  const bin = candidates.find((p) => existsSync(p));
+  const script = platform === "win32" ? globalDaemonScript(root, io) : null;
+  const windowsCli = script ? updatePaths(platform).resolve(updatePaths(platform).dirname(script), "cli.js") : null;
+  const candidates = platform === "win32"
+    ? (windowsCli ? [windowsCli] : [])
+    : [resolve(root, "bin", "bastra"), resolve(root, "bin", "bastra-recall")];
+  const bin = candidates.find(p => (io.exists ?? existsSync)(p));
   if (!bin) return null;
 
   process.stdout.write(`  → handing the re-registration to ${bin}\n`);
-  process.stdout.write("    (this process runs from the npx cache and would pin its own old version)\n\n");
+  process.stdout.write("    (registration must use the newly installed CLI, not this old process)\n\n");
   const installArgs = ["install", "all", "--no-ollama", "--no-stop-hook"];
   if (args.yes || args.staged) installArgs.push("--yes");
   if (args.vaultPath) installArgs.push("--vault", args.vaultPath);
-  const r = spawnSync(bin, installArgs, { stdio: "inherit", timeout: 300_000 });
+  const r = platform === "win32"
+    ? spawn(io.node ?? process.execPath, [bin, ...installArgs], { stdio: "inherit", timeout: 300_000 })
+    : spawn(bin, installArgs, { stdio: "inherit", timeout: 300_000 });
   if (r.error || r.status === null) return null;
   return r.status;
 }
@@ -255,14 +263,21 @@ export function installedVersion(root: string): string {
  * `stableNodeBin()`: under Homebrew `process.execPath` is a version-pinned node
  * keg, and a plist naming it dies the next time node is upgraded and cleaned up.
  */
-export function resolveInstalledRuntime(mode: InstallMode): InstalledRuntime | null {
-  const script = installedDaemonScript(mode);
+export function resolveInstalledRuntime(mode: InstallMode, io: UpdateRuntimeIo = {}): InstalledRuntime | null {
+  const script = installedDaemonScript(mode, io);
   if (!script) return null;
   // dist/index.js → the daemon package root that carries the version.
-  return { node: stableNodeBin(), script, version: packageVersion(resolve(dirname(script), "..")) };
+  const paths = updatePaths(io.platform);
+  const root = paths.resolve(paths.dirname(script), "..");
+  let version: string | null = null;
+  try {
+    const candidate = io.read ? JSON.parse(io.read(paths.resolve(root, "package.json"))).version : packageVersion(root);
+    version = typeof candidate === "string" && candidate ? candidate : null;
+  } catch { /* leave unknown */ }
+  return { node: io.node ?? stableNodeBin(), script, version };
 }
 
-function installedDaemonScript(mode: InstallMode): string | null {
+function installedDaemonScript(mode: InstallMode, io: UpdateRuntimeIo = {}): string | null {
   if (mode.mode === "brew") {
     const brewBin = findExecutable("brew");
     if (!brewBin) return null;
@@ -272,12 +287,10 @@ function installedDaemonScript(mode: InstallMode): string | null {
     return existsFile(resolve(prefix, "libexec", "packages", "daemon", "dist", "index.js"));
   }
   if (mode.mode === "npm-global") {
-    const npmBin = findExecutable("npm");
-    if (!npmBin) return null;
-    const r = runCaptured(npmBin, ["prefix", "-g"], { timeoutMs: 60_000 });
+    const r = captureUpdateNpm(["prefix", "-g"], { timeoutMs: 60_000 }, io);
     const root = r.stdout.trim();
     if (!r.ok || !root) return null;
-    return existsFile(resolve(root, "lib", "node_modules", "@bastra-recall", "daemon", "dist", "index.js"));
+    return globalDaemonScript(root, io);
   }
   return existsFile(DAEMON_SCRIPT_PATH);
 }
@@ -377,8 +390,30 @@ function existsFile(path: string): string | null {
   return existsSync(path) ? path : null;
 }
 
-export async function cmdUpdate(args: ParsedArgs): Promise<number> {
-  const mode = detectInstallMode();
+/** Injectable lifecycle boundaries let platform regressions run without touching live configs. */
+export interface UpdateIo extends UpdateRuntimeIo {
+  cliPath?: string;
+  spawn?: typeof spawnSync;
+  preflight?: typeof preflight;
+  reapply?: typeof reapplyPatchSeries;
+  manifest?: typeof buildManifest;
+  writeManifest?: typeof writeManifest;
+  clearBlocked?: typeof clearBlockedUpdate;
+  install?: typeof cmdInstall;
+  refresh?: typeof refreshManagedAutostart;
+  ask?: typeof askModelRecommendation;
+  service?: typeof autostartService;
+}
+export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<number> {
+  try { return await performUpdate(args, io); }
+  catch (error) {
+    process.stderr.write(`error: update stopped: ${(error as Error).message}\n`);
+    return 1;
+  }
+}
+async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
+  const platform = io.platform ?? process.platform;
+  const mode = detectInstallMode(io.cliPath);
   if (args.staged) {
     process.stdout.write("→ staged update: swapping files only, no daemon restart\n");
   }
@@ -391,7 +426,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   // nothing here overwrites it), and the "unknown" branch installs nothing at
   // all — guarding those would mean a dirty tree could veto a re-registration
   // that never touched a single package file.
-  const packageRoot = packageRootFromCliPath(mode.cliPath);
+  const packageRoot = packageRootFromCliPath(mode.cliPath, platform);
   const preflightSupported = hasInPlacePreflight(mode.mode);
   const runsInstaller = mode.mode === "brew" || mode.mode === "npm-global";
 
@@ -445,7 +480,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write(
       `→ preflight: locally modified files${mode.mode === "npm-global" ? " + npm provenance (#226)" : ""}\n`,
     );
-    const verdict = await preflight({
+    const verdict = await (io.preflight ?? preflight)({
       root: packageRoot,
       // --staged is the detached SessionStart path: it cannot ask, so a finding
       // ends it rather than being silently overridden.
@@ -453,6 +488,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
       force: args.force === true,
       // brew and source carry no registry attestation — only npm publishes one.
       checkProvenance: mode.mode === "npm-global",
+      verify: platform === "win32" ? root => verifyProvenance(root, io, io.spawn) : undefined,
     });
     const rendered = formatPreflight(verdict);
     // Printed on the way through as well, not only on refusal: a backup nobody
@@ -509,12 +545,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   } else if (mode.mode === "npm-global") {
     process.stdout.write(`→ ${mode.updateCommand}\n`);
     if (!args.dryRun) {
-      const npmBin = findExecutable("npm");
-      if (!npmBin) {
-        process.stdout.write("\n✗ npm not found on a trusted PATH — run 'npm install -g @bastra-recall/daemon@latest' manually\n");
-        return 1;
-      }
-      const r = run(npmBin, ["install", "-g", "@bastra-recall/daemon@latest"], { timeoutMs: 300_000, showProgress: true });
+      const r = runUpdateNpm(["install", "-g", "@bastra-recall/daemon@latest"], { timeoutMs: 300_000, showProgress: true }, io);
       if (!r.ok) {
         process.stdout.write(`\n✗ npm install failed (${r.detail}) — fix it manually, then re-run 'bastra update'\n`);
         return 1;
@@ -556,7 +587,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //     "reapplied onto the fresh install after every update". The keg to patch
   //     is the one the installer just linked, asked from brew, never this
   //     process's own (superseded) path.
-  reapplyPatchSeries(mode, packageRoot);
+  (io.reapply ?? reapplyPatchSeries)(mode, packageRoot);
 
   // 1b. Baseline for the NEXT update (#268). Without this write the dirty check
   //     above can never say more than "unknown" — this is the step that starts
@@ -567,7 +598,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //     `manifest.root !== opts.root` while claiming a baseline had been taken.
   if (preflightSupported) {
     try {
-      const manifest = await buildManifest(packageRoot, installedVersion(packageRoot));
+      const manifest = await (io.manifest ?? buildManifest)(packageRoot, installedVersion(packageRoot));
       if (manifest.files.length === 0) {
         // The install root we hashed from is empty — an npm prefix that moved,
         // a partially written install. An empty manifest would read as "clean"
@@ -575,7 +606,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
         // at least reports itself as an unknown.
         process.stdout.write(`  ⚠ no baseline written — ${packageRoot} is empty now (install root moved?)\n\n`);
       } else {
-        await writeManifest(manifest);
+        await (io.writeManifest ?? writeManifest)(manifest);
         process.stdout.write(`  ✓ baseline recorded (${manifest.files.length} files) — the next update can tell local changes apart\n\n`);
       }
     } catch (e) {
@@ -589,7 +620,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //     automatic update (#268), whatever the recorded reason was. Drop the
   //     record so the next SessionStart stops reporting a block that no longer
   //     stands, and the unattended path is allowed to stage again.
-  if (runsInstaller) await clearBlockedUpdate();
+  if (runsInstaller) await (io.clearBlocked ?? clearBlockedUpdate)();
 
   // 2. Re-register every surface (idempotent — refreshes skill content if SKILL.md changed)
   process.stdout.write("→ re-registering with every supported surface (idempotent)\n\n");
@@ -628,9 +659,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   // after, so `action: "native"` registers it directly. Only the ephemeral case
   // needs the hand-off, so only the ephemeral case pays for a second process.
   let installRC: number | null = null;
-  if (runsInstaller && isEphemeralInstallPath(mode.cliPath) && !args.dryRun) {
-    installRC = reRegisterViaInstalledBinary(args);
+  if (runsInstaller && (isEphemeralInstallPath(mode.cliPath) || (platform === "win32" && mode.mode === "npm-global")) && !args.dryRun) {
+    installRC = reRegisterViaInstalledBinary(args, io, io.spawn);
     if (installRC === null) {
+      if (platform === "win32") {
+        process.stderr.write("error: cannot locate or run the newly installed Windows CLI; refusing re-registration from this old process. Update manually and run bastra install all from the new installation.\n");
+        return 1;
+      }
       // Could not find the freshly installed binary — fall through and register
       // inline. That reproduces the stale pin, so say it instead of letting the
       // run look clean.
@@ -640,7 +675,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
       );
     }
   }
-  if (installRC === null) installRC = await cmdInstall(installArgs);
+  if (installRC === null) installRC = await (io.install ?? cmdInstall)(installArgs);
   if (installRC !== 0) {
     process.stdout.write("✗ re-register failed — fix the surface errors above, then re-run\n");
     return installRC;
@@ -658,11 +693,12 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
   //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
   //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
-  const installed = args.dryRun ? null : resolveInstalledRuntime(mode);
+  const installed = args.dryRun ? null : resolveInstalledRuntime(mode, io);
   if (!args.dryRun) {
-    const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
+    const autostart = await (io.refresh ?? refreshManagedAutostart)((s) => process.stdout.write(s), {
       target: installed,
       reload: !args.staged,
+      platform,
     });
     if (!autostart.ok) {
       process.stdout.write("\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n");
@@ -685,9 +721,9 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   }
 
   process.stdout.write("→ restarting daemon\n");
-  const service = autostartService();
+  const service = (io.service ?? autostartService)(platform);
   const state = await service?.status();
-  if (service && state?.loaded && process.platform === "darwin") {
+  if (service && state?.loaded && platform === "darwin") {
     if (args.dryRun) {
       process.stdout.write("  would kickstart autostart service\n\n");
     } else {
@@ -695,14 +731,14 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
       if (kick.ok) process.stdout.write("  ✓ autostart service kicked — daemon restarted with new code\n\n");
       else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
     }
-  } else if (process.platform === "win32" && state?.managed) {
+  } else if (platform === "win32" && state?.managed) {
     process.stdout.write("  managed Task Scheduler restart handled by autostart refresh\n\n");
   } else {
     // #528 — no claim about what is in memory here: this branch cannot restart
     // anything, so what a running daemon holds is asked below, not guessed.
     process.stdout.write("  no running autostart service registered — restart a running daemon manually\n");
     process.stdout.write("  Restart it manually if the check below says it is needed:\n");
-    if (process.platform === "win32") {
+    if (platform === "win32") {
       process.stdout.write(`    Get-NetTCPConnection -LocalPort ${resolveDaemonEndpoint().port} | Select-Object OwningProcess\n`);
       process.stdout.write("    Stop-Process -Id <pid>     # forwarder respawns it on the next call\n\n");
     } else {
@@ -720,13 +756,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
     process.stdout.write(said.report);
     process.stdout.write(said.closing);
-    askModelRecommendation(installed);
+    (io.ask ?? askModelRecommendation)(installed);
     return 0;
   }
 
   process.stdout.write(
     "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
   );
-  askModelRecommendation(installed);
+  (io.ask ?? askModelRecommendation)(installed);
   return 0;
 }

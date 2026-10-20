@@ -26,11 +26,11 @@ import { bastraDataDir } from "../platform-paths.js";
  * say "no" and nothing else.
  */
 import { createHash } from "node:crypto";
+import { npmInvocation, type UpdateRuntimeIo } from "./update-npm.js";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, relative, dirname } from "node:path";
 import { readdir, readFile, writeFile, mkdir, stat, cp } from "node:fs/promises";
-import { findExecutable } from "./exec.js";
 
 export interface ManifestEntry {
   /** Path relative to the package root, POSIX separators. */
@@ -297,10 +297,11 @@ export function classifyAuditOutput(status: number, output: string): ProvenanceC
  * exits 1 with "Fetching verification keys using TUF failed" / ENOTCACHED, and
  * with a negative list that verdict would have killed `bastra update` for good.
  */
-export function verifyProvenance(packageRoot: string): ProvenanceCheck {
-  const npmBin = findExecutable("npm");
-  if (!npmBin) return { ok: true, skipped: "npm not found on a trusted PATH" };
-  const r = spawnSync(npmBin, ["audit", "signatures"], {
+export function verifyProvenance(packageRoot: string, io: UpdateRuntimeIo = {}, spawn: typeof spawnSync = spawnSync): ProvenanceCheck {
+  let npm;
+  try { npm = npmInvocation(io); }
+  catch (error) { return { ok: true, skipped: (error as Error).message }; }
+  const r = spawn(npm.bin, [...npm.args, "audit", "signatures"], {
     cwd: packageRoot,
     encoding: "utf8",
     timeout: 60_000,
