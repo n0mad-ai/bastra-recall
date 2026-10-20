@@ -1,0 +1,50 @@
+<!doctype html><html data-theme="dark"><head><link rel="stylesheet" href="/packages/daemon/webui/css/base.css">
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden}#map{width:1280px;height:800px}#mini{position:absolute;right:10px;bottom:10px;width:180px;height:110px}</style></head>
+<body><div id="orbit-hint" hidden></div><canvas id="map"></canvas><canvas id="mini"></canvas><script type="module">
+import {createSimulation} from '/packages/daemon/webui/js/simulation.js';
+import {createRenderer} from '/packages/daemon/webui/js/renderer.js';
+import {createRenderLoop} from '/packages/daemon/webui/js/boot/render-loop.js';
+import {createOrbitView} from '/packages/daemon/webui/js/managers/orbit-view.js';
+import {createMinimap} from '/packages/daemon/webui/js/minimap.js';
+import {createInteractions} from '/packages/daemon/webui/js/interactions.js';
+import {clusterHues,clusterColor} from '/packages/daemon/webui/js/graph-data.js';
+const view = new URLSearchParams(location.search).get('view') || 'clouds';
+const count = Number(new URLSearchParams(location.search).get('nodes'));
+// Fixed seed, bounded degree (four), ten clusters, two edges per node.
+let seed=324;
+Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+const clusters=Array.from({length:10},(_,i)=>({key:`cluster-${i}`,count:count/10}));
+const nodes=Array.from({length:count},(_,i)=>({id:`node-${i}`,idx:i,kind:'memory',degree:4,cluster:clusters[i%10].key,title:`Node ${i}`,tags:[],summary:'',salience:0}));
+const edges=nodes.flatMap((n,i)=>[10,1].map(d=>({source:n.id,target:nodes[(i+d)%count].id})));
+const sim=createSimulation({nodes,edges,clusters},1280,800);
+const hues=clusterHues(clusters);
+const canvas=document.querySelector('#map');
+const renderer=createRenderer(canvas,sim,hues);renderer.resize();
+const interactions=createInteractions(canvas,renderer,sim,{});
+const minimap=createMinimap(document.querySelector('#mini'),sim,renderer,n=>clusterColor(hues,n.cluster,'60%','65%'),interactions.flyTo);
+let busy=true,collect=false,previous=null,frames=[],costs=[],draws=0,warmup=0;
+const nativeRAF=requestAnimationFrame.bind(window);
+const originalDraw=renderer.draw;
+renderer.draw=now=>{draws++;originalDraw(now);};
+// Wrap real RAF callbacks; no PerformanceEntry allocation or observer.
+window.requestAnimationFrame=callback=>nativeRAF(now=>{
+  if(busy)sim.reheat(0.5);
+  const start=performance.now();
+  callback(now);
+  const cost=performance.now()-start;
+  warmup++;
+  if(collect){if(previous!==null)frames.push(now-previous);previous=now;costs.push(cost);}
+});
+const noView={tick(){},isAnimating:()=>false};
+const orbitView=createOrbitView({sim,renderer,getInteractions:()=>interactions,getHues:()=>hues,getSatLight:()=>['78%','66%']});
+if(view==='orbit'){busy=false;orbitView.enter();orbitView.tick(performance.now());}
+createRenderLoop({canvas,sim,renderer,minimap,ringView:noView,orbitView,semanticView:noView,getInteractions:()=>interactions,getView:()=>view,getTransition:()=>null,setTransition(){},saveAnchorsSoon(){}}).start();
+window.bench={
+ get warmup(){return warmup;},
+ get hidden(){return document.hidden;},
+ settle(){busy=false;if(view==='clouds')for(let i=0;i<500;i++){if(!sim.tick())break;}interactions.fitAll();},
+ syntheticHidden(){Object.defineProperty(document,'hidden',{configurable:true,value:true});Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));},
+ begin(){frames=[];costs=[];previous=null;collect=true;draws=0;},
+ end(){collect=false;return {frames,costs,draws,hidden:document.hidden,visibilityState:document.visibilityState};}
+};
+</script></body></html>
