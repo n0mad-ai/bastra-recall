@@ -20,6 +20,10 @@ import { tasksEnabled } from "./tasks-enabled.js";
  *                                          Header, siehe http-health.ts)
  *   POST /hook/recall                    → hook-spezifisch (Telemetry-Pfad,
  *                                          loopback-only, kein Auth)
+ *   GET  /code/refresh                   → Code-Graph-Refresh je Repository:
+ *                                          pausiert/gestoppt, nächster Versuch
+ *   POST /code/refresh {repo}            → manueller Refresh, hebt Pause/Stopp
+ *                                          auf (#1148; loopback-only, kein Auth)
  *
  *   REST-API (alle POST, JSON-Body, JSON-Antwort, mit Auth+CORS):
  *   POST /api/v1/recall                  → wie MCP-Tool recall
@@ -87,6 +91,7 @@ import { sendCors, sendJson } from "./http-util.js";
 import { isLoopbackHost, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
 import { dispatchUiRoutes } from "./http-ui-routes.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
+import { codeGraphRefresher } from "./code-graph/service.js";
 import { dispatchApiSurface } from "./http-api-surface.js";
 import { createHttpServerContext } from "./http-context.js";
 import { listenHttp } from "./http-listen.js";
@@ -255,7 +260,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     }
 
     // Loopback surface: /health, /tools, /vault/count, /hook/*, /curator/*,
-    // /settings/docs — all token-free behind the host gate above
+    // /settings/docs, /code/refresh — all token-free behind the host gate above
     // (http-local-routes.ts, route order preserved).
     if (dispatchLocalRoutes(req, res, method, url, t0, {
       vault,
@@ -263,6 +268,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       toolDeps,
       healthPayload: ctx.healthPayload,
       curator: opts.curator,
+      codeRefresh: codeGraphRefresher(),
     })) {
       return;
     }

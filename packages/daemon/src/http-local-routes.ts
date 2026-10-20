@@ -51,6 +51,14 @@ import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { handleHookRecall } from "./http-hook-routes.js";
 import { appendDraftNotice } from "./draft-notice.js";
 import { handleHookAct } from "./http-hook-act.js";
+import { toRefreshStatusRows } from "./code-graph/refresh-status.js";
+import type { RepoStatus } from "./code-graph/refresh.js";
+
+/** The code-graph refresh coordinator, as far as the CLI may see and poke it (#1148). */
+export interface CodeRefreshDeps {
+  status: () => RepoStatus[];
+  enqueue: (repoRoot: string, reason: "manual") => void;
+}
 
 export interface LocalRouteCtx {
   vault: Vault;
@@ -60,6 +68,8 @@ export interface LocalRouteCtx {
   healthPayload: () => Record<string, unknown>;
   /** Curator-Deps (#155/#156) für die /curator/*-Loopback-Endpoints. */
   curator?: CuratorRunDeps;
+  /** Code-graph refresh state and the manual trigger (#1148), for /code/refresh. */
+  codeRefresh?: CodeRefreshDeps;
 }
 
 export function dispatchLocalRoutes(
@@ -315,6 +325,37 @@ export function dispatchLocalRoutes(
   }
   if (ctx.curator && method === "POST" && url === "/curator/run") {
     handleCuratorRun(req, res, ctx.curator);
+    return true;
+  }
+
+  // Code-graph refresh (#1148): GET says per repository whether the automatic
+  // refresh is running, paused on a busy lock or stopped after failed builds,
+  // and when the next attempt is due. POST {repo} is the `manual` request the
+  // coordinator honours above any pause: `bastra code index` sends it after
+  // its own build. Loopback-only, no auth, like /health — the repository path
+  // is the caller's own, and a refresh of an enabled repository is what the
+  // daemon does on every file save anyway.
+  if (ctx.codeRefresh && url === "/code/refresh") {
+    const refresh = ctx.codeRefresh;
+    if (method === "GET") {
+      sendJson(res, 200, { repos: toRefreshStatusRows(refresh.status()) });
+      return true;
+    }
+    if (method === "POST") {
+      readJsonBody(req, MAX_BODY_BYTES)
+        .then((body) => {
+          const repo = (body as { repo?: unknown }).repo;
+          if (typeof repo !== "string" || repo.length === 0) {
+            sendJson(res, 400, { error: "repo must be an absolute repository path" });
+            return;
+          }
+          refresh.enqueue(repo, "manual");
+          sendJson(res, 200, { ok: true, repos: toRefreshStatusRows(refresh.status()) });
+        })
+        .catch((err: Error) => sendJson(res, 400, { error: err.message }));
+      return true;
+    }
+    sendJson(res, 405, { error: "method not allowed" });
     return true;
   }
 
