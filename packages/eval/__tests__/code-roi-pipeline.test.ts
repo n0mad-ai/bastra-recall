@@ -27,7 +27,7 @@ const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey 
   // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/select.mjs"
 );
-const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOLS } = await import(
+const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, legacyTreeDirOf, treeIsReusable, treeMarkerOf, GRAPH_TOOLS } = await import(
   // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/run-arms-v3.mjs"
 );
@@ -726,6 +726,17 @@ describe("the cost ceiling is enforced, not documented", () => {
 // ─── Isolation and arm shape (#582 review) ───────────────────────
 
 describe("the arms cannot reach their own answer sheet", () => {
+  test("an answer is normalised against the current AND the legacy tree root", () => {
+    const out = "/Users/x/.bastra/eval/code-roi-v4";
+    const s = { id: "S01" };
+    const text = transcript({
+      files: [`${treeDirOf(s, out)}/src/a.ts`, `${legacyTreeDirOf(s, out)}/src/b.ts`],
+      affectedCalls: 0,
+    });
+    const parsed = parseArm(text, [treeDirOf(s, out), legacyTreeDirOf(s, out)]);
+    assert.deepEqual(parsed.named, ["src/a.ts", "src/b.ts"]);
+  });
+
   test("the working tree lives outside the archive", () => {
     const out = join(process.env.HOME ?? "", ".bastra", "eval", "code-roi-v4-bastra-io");
     const tree = treeDirOf({ id: "S01" }, out);
@@ -736,6 +747,41 @@ describe("the arms cannot reach their own answer sheet", () => {
 
   test("two archives do not share a tree", () => {
     assert.notEqual(treeDirOf({ id: "S01" }, "/a/arch-one"), treeDirOf({ id: "S01" }, "/a/arch-two"));
+  });
+
+  test("two archives with the SAME basename do not share a tree either (#593)", () => {
+    // Scenario ids are S01… in every archive, so a basename-only derivation
+    // made the collision the normal case: a copy of an archive ran its arms
+    // against the original's tree, and nothing errored.
+    const a = treeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4");
+    const b = treeDirOf({ id: "S01" }, "/Volumes/ext/code-roi-v4");
+    assert.notEqual(a, b);
+    assert.ok(a.includes("code-roi-v4-"), `the basename is still readable in ${a}`);
+    assert.equal(treeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4/"), a, "a trailing slash is the same archive");
+    assert.equal(legacyTreeDirOf({ id: "S01" }, "/Volumes/ext/code-roi-v4"), legacyTreeDirOf({ id: "S01" }, "/Users/x/.bastra/eval/code-roi-v4"), "the legacy layout is the one that collided");
+  });
+
+  test("a tree is only reused when its marker names this archive and this parent (#593)", () => {
+    const box = mkdtempSync(join(tmpdir(), "code-roi-marker-"));
+    const out = join(box, "code-roi-v4");
+    const s = { id: "S01", parent: "abc123", repo: "/some/repo" };
+    try {
+      const tree = treeDirOf(s, out);
+      assert.equal(treeIsReusable(s, out), false, "no tree, nothing to reuse");
+      mkdirSync(tree, { recursive: true });
+      assert.equal(treeIsReusable(s, out), false, "a tree without a marker is not vouched for");
+      const { path, expected } = treeMarkerOf(s, out);
+      writeFileSync(path, JSON.stringify(expected));
+      assert.equal(treeIsReusable(s, out), true);
+      assert.equal(treeIsReusable({ ...s, parent: "def456" }, out), false, "the same scenario at another parent is a different tree");
+      writeFileSync(path, JSON.stringify({ ...expected, archive: join(box, "other") }));
+      assert.equal(treeIsReusable(s, out), false, "another archive's tree is not this one's");
+      writeFileSync(path, "{not json");
+      assert.equal(treeIsReusable(s, out), false);
+    } finally {
+      rmSync(box, { recursive: true, force: true });
+      rmSync(join(treeDirOf(s, out), "..", ".."), { recursive: true, force: true });
+    }
   });
 });
 

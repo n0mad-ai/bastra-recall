@@ -71,7 +71,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { buildGraph, promptFor } from "./run-arms.mjs";
 import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
@@ -363,10 +363,56 @@ function runArm(
  *
  * The path is derived, not random, so a helping that resumes finds the tree a
  * previous helping extracted instead of rebuilding it.
+ *
+ * Derived from the WHOLE resolved archive path, not its basename (#593). Two
+ * archives whose last segment matched — `~/.bastra/eval/code-roi-v4` and a
+ * copy of it elsewhere — mapped to one tree directory, and because scenario
+ * ids are `S01…` in every archive, the second one's arms silently ran against
+ * the first one's tree. The basename stays in the path so a human can still
+ * tell the directories apart; the hash is what keeps them apart.
  */
 export function treeDirOf(s, outDir = OUT) {
+  const archive = resolve(outDir);
+  const key = `${basename(archive) || "code-roi"}-${createHash("sha256").update(archive).digest("hex").slice(0, 10)}`;
+  return join(tmpdir(), "code-roi-trees", key, s.id, "tree");
+}
+
+/**
+ * Where a tree lived BEFORE #593: basename only. Transcripts of archives run
+ * under that layout carry its absolute path in their answers, so the scorers
+ * normalise against both; nothing is extracted there any more.
+ */
+export function legacyTreeDirOf(s, outDir = OUT) {
   const archive = outDir.split("/").filter(Boolean).slice(-1)[0] ?? "code-roi";
   return join(tmpdir(), "code-roi-trees", archive, s.id, "tree");
+}
+
+/**
+ * The marker written beside a tree, naming which archive and which commit it
+ * was extracted for. A tree is only ever reused when its marker says it is the
+ * tree this scenario asked for; anything else is re-extracted. Without it a
+ * stale tree (another archive's, or the same scenario re-mined at a different
+ * parent) was reused silently, because the runner only checked that the
+ * directory existed.
+ */
+export function treeMarkerOf(s, outDir = OUT) {
+  return {
+    path: join(dirname(treeDirOf(s, outDir)), "tree.json"),
+    expected: { archive: resolve(outDir), parent: s.parent, repo: s.repo ?? REPO_SELF },
+  };
+}
+
+/** Is the tree on disk the one this scenario asked for, by its marker? */
+export function treeIsReusable(s, outDir = OUT) {
+  if (!existsSync(treeDirOf(s, outDir))) return false;
+  const { path, expected } = treeMarkerOf(s, outDir);
+  let marker;
+  try {
+    marker = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return false;
+  }
+  return ["archive", "parent", "repo"].every((k) => marker[k] === expected[k]);
 }
 
 /**
@@ -420,14 +466,20 @@ export function helpingSize() {
  * more: it archived from bastra-recall only, and it put the tree inside the
  * archive.
  */
-export function prepareTreeOf(s, dir) {
-  const tree = treeDirOf(s);
+export function prepareTreeOf(s, dir, outDir = OUT) {
+  const tree = treeDirOf(s, outDir);
   const graphRoot = join(dir, "graph");
-  if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && existsSync(tree)) {
+  const reusable = treeIsReusable(s, outDir);
+  if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && reusable) {
     return { tree, graphRoot };
   }
+  // A tree whose marker does not vouch for it is thrown away, not extracted
+  // over: `tar -x` into a stale tree leaves files the parent commit never had.
+  if (!reusable) rmSync(tree, { recursive: true, force: true });
   mkdirSync(tree, { recursive: true });
   mkdirSync(graphRoot, { recursive: true });
+  const marker = treeMarkerOf(s, outDir);
+  writeFileSync(marker.path, JSON.stringify(marker.expected, null, 2) + "\n");
   const tar = execFileSync("git", ["archive", "--format=tar", s.parent], {
     cwd: s.repo ?? REPO_SELF,
     maxBuffer: 1024 * 1024 * 1024,
