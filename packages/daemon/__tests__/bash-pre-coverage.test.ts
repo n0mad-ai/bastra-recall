@@ -34,7 +34,8 @@ after(async () => {
   await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
-const payload = (command: string, cwd = repo) => ({
+const payload = (command: string, cwd = repo, client: string | null = "claude-code") => ({
+  ...(client === null ? {} : { bastra_client: client }),
   session_id: "s-cov",
   cwd,
   hook_event_name: "PreToolUse",
@@ -74,6 +75,13 @@ describe("bash-pre lane: coverage rewrite (#629)", () => {
     assert.equal(await coverageRewrite("npm test", join(home, "nowhere")), null);
     assert.equal(await coverageRewrite("npm test", undefined), null);
     await assert.rejects(stat(join(other, ".bastra-coverage")));
+  });
+
+  it("switch on: a call that does not prove it is Claude Code (Codex, unmarked) runs as written", async () => {
+    await setRepoEnabled(repo, true);
+    await setCoverageMapEnabled(true);
+    assert.equal(await runBashPreLane(payload("npm test", repo, "codex"), "http://127.0.0.1:1"), "{}");
+    assert.equal(await runBashPreLane(payload("npm test", repo, null), "http://127.0.0.1:1"), "{}");
   });
 
   it("BASTRA_COVERAGE_MAP=off wins over the stored switch", async () => {

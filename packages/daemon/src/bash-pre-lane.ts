@@ -110,8 +110,10 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   if (!match) {
     // #629: a test command in a repository with code awareness and the
     // coverage switch on runs with NODE_V8_COVERAGE. Only on the quiet path —
-    // a command the tripwire has an opinion about is never rewritten twice.
-    const rewritten = await coverageRewrite(command, payload.cwd);
+    // a command the tripwire has an opinion about is never rewritten twice —
+    // and, like the rm and git rewrites, only for a call that proves it is
+    // Claude Code: `updatedInput` is its contract, not Codex's.
+    const rewritten = clientEvidence === "claude-code" ? await coverageRewrite(command, payload.cwd) : null;
     const stdout = rewritten === null
       ? "{}"
       : JSON.stringify({
