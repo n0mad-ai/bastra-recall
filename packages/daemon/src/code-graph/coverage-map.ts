@@ -570,12 +570,20 @@ async function writeMap(repoRoot: string, map: CoverageMap): Promise<void> {
   const file = coverageMapFileOf(repoRoot);
   const tmp = `${file}.${process.pid}.tmp`;
   const fh = await open(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | NOFOLLOW);
+  // A temp file left behind (disk full mid-write, a failed rename) would make
+  // every later fold fail on O_EXCL and freeze the map while raw output grows.
+  let moved = false;
   try {
-    await fh.writeFile(JSON.stringify(map), "utf8");
+    try {
+      await fh.writeFile(JSON.stringify(map), "utf8");
+    } finally {
+      await fh.close();
+    }
+    await rename(tmp, file);
+    moved = true;
   } finally {
-    await fh.close();
+    if (!moved) await unlink(tmp).catch(() => {});
   }
-  await rename(tmp, file);
 }
 
 // ─── Scheduling ──────────────────────────────────────────────────

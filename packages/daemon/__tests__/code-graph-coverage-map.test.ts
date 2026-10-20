@@ -180,6 +180,27 @@ describe("coverage map: folding", () => {
     assert.deepEqual(map?.tests["__tests__/x.test.ts"], { "src/x.ts": ["compiled"], "dist/nomap.js": ["plain"] });
   });
 
+  it("a failed map write leaves no temp file behind, so the next fold still writes", async () => {
+    const repo = join(root, "write-fails");
+    await mkdir(repo, { recursive: true });
+    const doc = { result: [script(repo, "__tests__/a.test.ts", [fn("t", 1)]), script(repo, "src/a.ts", [fn("a", 1)])] };
+    await rawFile(repo, "coverage-1-1-0.json", doc);
+    // A directory where the map goes: the write succeeds, the rename fails.
+    await mkdir(join(coverageMapFileOf(repo), "blocker"), { recursive: true });
+    const failed = await foldCoverage(repo);
+    assert.equal(failed.folded, 0);
+    assert.equal(failed.deferred, 1, "raw output stays for the next fold");
+    assert.deepEqual(
+      (await readdir(join(repo, ".bastra-coverage"))).filter((n) => n.endsWith(".tmp")),
+      [],
+      "the temp file is removed",
+    );
+    await rm(coverageMapFileOf(repo), { recursive: true });
+    const ok = await foldCoverage(repo);
+    assert.equal(ok.folded, 1);
+    assert.ok(await readCoverageMap(repo));
+  });
+
   it("is a no-op without a raw directory, and discards an old file that never parses", async () => {
     const repo = join(root, "empty");
     await mkdir(repo, { recursive: true });
