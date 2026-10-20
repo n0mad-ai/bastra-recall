@@ -2,6 +2,7 @@ import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import {
   loadGraph,
@@ -282,6 +283,46 @@ describe("boundary block — what the Stop lane parks", () => {
     assert.equal(built!.files, 4);
     assert.match(built!.note, /src\/audit\.ts:1 — calls saveMemory \(src\/save\.ts\)/);
     assert.match(built!.note, /src\/report\.ts:1/);
+  });
+
+  it("adds the coverage line only with the switch on — a map on disk alone is not read (#629)", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "bastra-boundary-coverage-"));
+    try {
+      execFileSync("git", ["-C", repo, "init", "-q"]);
+      await mkdir(join(repo, ".bastra-coverage"), { recursive: true });
+      await writeFile(join(repo, ".bastra-coverage", ".gitignore"), "*\n", "utf8");
+      await writeFile(
+        join(repo, ".bastra-coverage", "coverage-map.json"),
+        JSON.stringify({
+          version: 1,
+          writer: "bastra-recall",
+          foldedAt: new Date().toISOString(),
+          runs: 1,
+          tests: { "t/runtime.test.ts": { "src/save.ts": ["saveMemory"] } },
+        }),
+        "utf8",
+      );
+      const s: SessionState = { shown: {} };
+      recordTouched(s, repo, "src/save.ts", BOOKED_FOUR, false, T0);
+      const before = process.env.BASTRA_COVERAGE_MAP;
+      let off;
+      let on;
+      try {
+        process.env.BASTRA_COVERAGE_MAP = "off";
+        off = await boundaryNote({ session: s, cache, mtimeOf: written });
+        process.env.BASTRA_COVERAGE_MAP = "on";
+        on = await boundaryNote({ session: s, cache, mtimeOf: written });
+      } finally {
+        if (before === undefined) delete process.env.BASTRA_COVERAGE_MAP;
+        else process.env.BASTRA_COVERAGE_MAP = before;
+      }
+      assert.ok(off);
+      assert.doesNotMatch(off.note, /coverage map/, "switch off: no line despite the map");
+      assert.ok(on);
+      assert.match(on.note, /Tests that ran the changed functions \(coverage map, [^)]+\): t\/runtime\.test\.ts\./);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   });
 
   it("ignores a booking the disk never confirmed", async () => {
