@@ -45,6 +45,16 @@ import { probeDaemon } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
 export const REPLAY_DEFAULT_DAYS = 14;
+/** The onboarding replay stops at this many turns — hundreds would keep the
+ *  end of `bastra onboard` busy for minutes. `doctor --replay` has no cap. */
+export const ONBOARD_REPLAY_MAX_TURNS = 200;
+
+/** The `max` most recent turns, back in corpus order (session, then time). */
+export function latestTurns(corpus: ReplayCorpus, max: number): ReplayCorpus {
+  const kept = [...corpus.turns].sort((a, b) => b.at - a.at).slice(0, max);
+  kept.sort((a, b) => (a.session < b.session ? -1 : a.session > b.session ? 1 : a.at - b.at));
+  return { ...corpus, turns: kept, sessions: new Set(kept.map((t) => t.session)).size };
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Sessions replayed side by side; turns inside one session stay in order. */
 const SESSION_CONCURRENCY = 4;
@@ -511,11 +521,13 @@ export async function replayAndReport(opts: {
   now?: number;
   projectsDir?: string;
   progress?: (line: string) => void;
+  /** Replay only the most recent this many turns (onboarding). */
+  maxTurns?: number;
 }): Promise<{ report: ReplayReport | ReplayNotEvaluable; code: number }> {
   const now = opts.now ?? Date.now();
   const sinceMs = now - opts.days * DAY_MS;
   const projectsDir = opts.projectsDir ?? claudeProjectsDir();
-  const corpus = await readClaudeTranscripts(projectsDir, sinceMs, now);
+  let corpus = await readClaudeTranscripts(projectsDir, sinceMs, now);
   if (corpus.turns.length === 0) {
     return {
       report: notEvaluable(
@@ -543,6 +555,12 @@ export async function replayAndReport(opts: {
       ),
       code: 1,
     };
+  }
+  if (opts.maxTurns !== undefined && corpus.turns.length > opts.maxTurns) {
+    opts.progress?.(
+      `replaying the latest ${opts.maxTurns} of ${corpus.turns.length} user turns — \`bastra doctor --replay --days ${opts.days}\` replays them all`,
+    );
+    corpus = latestTurns(corpus, opts.maxTurns);
   }
   opts.progress?.(
     `replaying ${corpus.turns.length} user turns from ${corpus.sessions} sessions (${corpus.files} transcripts) through ${endpoint.label} in shadow — nothing is written to the vault`,
@@ -605,7 +623,11 @@ export async function cmdDoctorReplay(args: ParsedArgs): Promise<number> {
  */
 export async function replayAfterOnboarding(out: { write: (s: string) => unknown }): Promise<void> {
   try {
-    const { report } = await replayAndReport({ days: REPLAY_DEFAULT_DAYS, progress: (line) => out.write(`${line}\n`) });
+    const { report } = await replayAndReport({
+      days: REPLAY_DEFAULT_DAYS,
+      maxTurns: ONBOARD_REPLAY_MAX_TURNS,
+      progress: (line) => out.write(`${line}\n`),
+    });
     if (!report.evaluable) {
       out.write(`\nrecall replay: not evaluable — ${report.reason}\n`);
       return;
