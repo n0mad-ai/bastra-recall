@@ -1,3 +1,4 @@
+import { matchTaskHttpRoute } from "./task-http-routes.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 import { isLoopbackHost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
@@ -73,23 +74,10 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
       let id: string | undefined;
       const tool = pathname.slice("/api/v1/".length);
       if (isTaskTool(tool) && method === "POST") operation = tool;
-      else if (pathname === "/api/v1/tasks/due" && method === "GET") operation = "task_due";
-      else if (pathname === "/api/v1/tasks/recovery" && method === "POST") operation = "task_recover";
-      else if (pathname === "/api/v1/tasks/archive" && method === "POST") operation = "task_archive";
-      else if (pathname === "/api/v1/tasks/archive/restore" && method === "POST") operation = "task_archive_restore";
-      else if (pathname === "/api/v1/tasks/events" && method === "POST") operation = "task_event";
-      else if (pathname === "/api/v1/tasks/sources" && method === "POST") operation = "task_source_register";
-      else if (pathname === "/api/v1/tasks/reconcile" && method === "POST") operation = "task_reconcile";
-      else if (pathname === "/api/v1/tasks" || pathname === "/api/v1/tasks/") {
-        operation = method === "GET" ? "task_list" : method === "POST" ? "task_create" : undefined;
-      } else {
-        const match = /^\/api\/v1\/tasks\/([a-z0-9._:-]+)(?:\/(review|snooze|acknowledge|resolve|cancel|rearm|reconsider))?$/.exec(pathname);
-        if (match) {
-          id = match[1];
-          if (method === "GET" && !match[2]) operation = "task_get";
-          if (method === "PATCH" && !match[2]) operation = "task_edit";
-          if (method === "POST" && match[2]) operation = `task_${match[2]}` as TaskCrudOperation;
-        }
+      else {
+        const route = matchTaskHttpRoute(method, pathname);
+        operation = route?.operation;
+        id = route?.id;
       }
       if (!operation) { sendJson(res, 404, { error: "Task route absent", code: "not_found", retryable: false }); return; }
       let input: Record<string, unknown> = method === "GET" ? {} : await readJsonBody(req, MAX_BODY_BYTES).catch(() => {
