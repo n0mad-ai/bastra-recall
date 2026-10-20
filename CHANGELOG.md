@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Code-awareness telemetry (#665): graph refreshes the daemon never finished now
+  appear as `interrupted`, so started = ok + failed + locked + interrupted; "by lane"
+  counts only the blocks actually injected; an untimed delivered block omits `took_ms`
+  instead of writing 0; `bastra logs --stats` and the Telemetry tab print `n/a`
+  where nothing was measured and keep sub-10 ms latencies from rounding to "0 ms".
+
 ## [1.1.1] — 2026-10-17
 
 ### Security
