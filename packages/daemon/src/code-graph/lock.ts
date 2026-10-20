@@ -340,6 +340,12 @@ async function claimTurn(gens: string, name: string): Promise<boolean> {
   // the mtime JUST SEEN, not after a count read afterwards: a count read
   // after another contender's claim would be a different name, and two
   // claims would both succeed.
+  //
+  // This relies on a new entry updating the directory's mtime (POSIX file
+  // systems and NTFS do), which is what makes a dead claimant age out like the
+  // marker itself. On FAT/exFAT it does not: the mtime stays, the same claim
+  // name keeps existing, and a claimant that died there would block the
+  // marker for good.
   return mkdir(join(marker, `takeover-${Math.trunc(seen.mtimeMs)}`)).then(
     () => true,
     () => false,
