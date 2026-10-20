@@ -7,6 +7,30 @@ export interface RawScript {
   functions?: Array<{ functionName?: string; ranges?: Array<{ count?: number }> }>;
 }
 
+function object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function parseRawCoverage(text: string): { result: RawScript[] } | null {
+  try {
+    const doc: unknown = JSON.parse(text);
+    if (!object(doc) || !Array.isArray(doc.result)) return null;
+    for (const script of doc.result) {
+      if (!object(script) || (script.url !== undefined && typeof script.url !== "string")) return null;
+      if (script.functions === undefined) continue;
+      if (!Array.isArray(script.functions)) return null;
+      for (const fn of script.functions) {
+        if (!object(fn) || (fn.functionName !== undefined && typeof fn.functionName !== "string")) return null;
+        if (fn.ranges === undefined) continue;
+        if (!Array.isArray(fn.ranges) || !fn.ranges.every((r: unknown) => object(r) && typeof r.count === "number" && Number.isFinite(r.count))) return null;
+      }
+    }
+    return doc as unknown as { result: RawScript[] };
+  } catch {
+    return null;
+  }
+}
+
 /** Resolve compiled files through regular, bounded, nonblocking source maps. */
 export function sourceResolver(repoRoot: string): (abs: string) => string {
   const cache = new Map<string, string>();

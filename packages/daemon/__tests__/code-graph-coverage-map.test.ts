@@ -71,6 +71,20 @@ async function rawFile(repo: string, name: string, doc: unknown, ageMs = 10_000)
 }
 
 describe("coverage map: folding", () => {
+  it("skips malformed raw shapes without starving valid test output", async () => {
+    const repo = join(root, "malformed");
+    const bad = [null, { result: {} }, { result: [null] }, { result: [{ functions: {} }] },
+      { result: [{ functions: [null] }] }, { result: [{ functions: [{ ranges: [null] }] }] }];
+    for (let i = 0; i < bad.length; i++) await rawFile(repo, `coverage-bad-${i}.json`, bad[i]);
+    await rawFile(repo, "coverage-valid.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "src/a.ts", [fn("a", 1)])],
+    });
+    const result = await foldCoverage(repo);
+    assert.equal(result.folded, 1);
+    assert.equal(result.deferred, bad.length);
+    assert.ok(await readCoverageMap(repo));
+  });
+
   it("rejects named pipes without waiting for a writer", { skip: process.platform === "win32" }, async () => {
     const repo = join(root, "fifo");
     await ensureCoverageDir(repo);

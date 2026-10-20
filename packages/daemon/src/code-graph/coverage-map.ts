@@ -46,7 +46,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
 import { coverageIndexStamp } from "./coverage-map-index.js";
-import { sourceResolver, type RawScript } from "./coverage-map-raw.js";
+import { parseRawCoverage, sourceResolver, type RawScript } from "./coverage-map-raw.js";
 
 export const COVERAGE_DIR_NAME = ".bastra-coverage";
 export const COVERAGE_MAP_FILE_NAME = "coverage-map.json";
@@ -224,7 +224,8 @@ async function readRawFile(
     if (!st.isFile()) return { kind: "skip" };
     if (now - st.mtimeMs < RAW_SETTLE_MS) return { kind: "settling" };
     try {
-      return { kind: "doc", doc: JSON.parse(await fh.readFile("utf8")) as { result?: RawScript[] } };
+      const doc = parseRawCoverage(await fh.readFile("utf8"));
+      return doc === null ? { kind: "unreadable", ageMs: now - st.mtimeMs } : { kind: "doc", doc };
     } catch {
       return { kind: "unreadable", ageMs: now - st.mtimeMs };
     }
