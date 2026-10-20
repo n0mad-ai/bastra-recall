@@ -32,7 +32,7 @@ import { defaultLogDir } from "../learned-recall/harvest.js";
 import { showHelp } from "./help-text.js";
 import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
-import { autostartWarning, readState } from "./autostart.js";
+import { autostartWarning, autostartService } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
 import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
@@ -707,7 +707,7 @@ async function printDaemonOriginNote(): Promise<void> {
     const probe = await probeDaemon();
     let configured: ReturnType<typeof configuredState> | undefined;
     if (probe.ok && probe.configFingerprint && probe.endpoint && canAutoSpawnAt(probe.endpoint)) {
-      const agent = process.platform === "darwin" ? await readState() : null;
+      const agent = await autostartService()?.status();
       configured = configuredState((await readSettings()).daemon?.env, agent?.managed ? agent.env : null);
     }
     const lines = daemonOriginLines(probe, configured);
