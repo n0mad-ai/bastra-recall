@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * bastra-recall prompt hook — THIN CLIENT (#343/#15, stage A of #305 direction 2).
  *
@@ -36,7 +37,6 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff, envInt, testRunLogDir } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
@@ -156,7 +156,7 @@ async function writeClientTelemetry(
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
+      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
     const event = {

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /** Durable write-ahead evidence for local patches. `last-run.json` is written
  * after reapply; if that write fails, a later update must not mistake our own
  * reverse-applying patch for a change merged upstream and retire it. */
@@ -21,7 +22,7 @@ export function appliedByLastRun(last: LastRun | null, id: string, applyRoot: st
 }
 
 function fileOf(home: string): string {
-  return join(home, ".bastra", "patches", "reapply-provenance.json");
+  return join(bastraDataDir(home), "patches", "reapply-provenance.json");
 }
 
 function readRecords(home: string): RecordOnDisk[] {
@@ -41,7 +42,7 @@ function readRecords(home: string): RecordOnDisk[] {
 
 function writeRecords(home: string, records: RecordOnDisk[]): void {
   const path = fileOf(home);
-  mkdirSync(join(home, ".bastra", "patches"), { recursive: true, mode: 0o700 });
+  mkdirSync(join(bastraDataDir(home), "patches"), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(tmp, JSON.stringify(records) + "\n", { encoding: "utf8", flag: "wx", mode: 0o600 });

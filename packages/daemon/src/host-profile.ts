@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Eine stabile, datensparsame Kennung für DIESE Maschine (#493).
  *
@@ -28,7 +29,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { arch, cpus, homedir, hostname, platform, totalmem, userInfo } from "node:os";
+import { arch, cpus, hostname, platform, totalmem, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { envFirst, testRunHostProfilePath } from "./env.js";
 
@@ -44,7 +45,7 @@ export function hostProfilePath(): string {
   // BASTRA_HOST_PROFILE_PATH is a test seam, not a user setting. It always
   // names the FILE, and setting it moves the salt — so the host id changes.
   return (
-    envFirst("BASTRA_HOST_PROFILE_PATH") ?? testRunHostProfilePath() ?? join(homedir(), ".bastra", "host-profile.json")
+    envFirst("BASTRA_HOST_PROFILE_PATH") ?? testRunHostProfilePath() ?? join(bastraDataDir(), "host-profile.json")
   );
 }
 

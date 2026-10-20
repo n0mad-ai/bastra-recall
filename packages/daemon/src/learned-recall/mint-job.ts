@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * #353: Teacher 1 — the free in-band mint — on its own trigger.
  *
@@ -12,7 +13,7 @@
  * host + trigger, so a frozen pool is visible without counting files.
  */
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
 import { distinctiveTerms, isExpiredUnconfirmed, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
@@ -165,7 +166,7 @@ async function recordLastMint(bridgesRoot: string, record: LastMintRecord): Prom
 async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
-    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
     await mkdir(logDir, { recursive: true });
     const event = {
       kind: "bridges_mint",

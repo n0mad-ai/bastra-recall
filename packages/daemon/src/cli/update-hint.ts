@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * CLI-side update-hint (#39).
  *
@@ -12,7 +13,6 @@
  */
 import { request as httpRequest } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -34,7 +34,7 @@ interface HealthResponse {
 }
 
 function shownFilePath(): string {
-  return join(homedir(), ".bastra", "update-hint-shown.txt");
+  return join(bastraDataDir(), "update-hint-shown.txt");
 }
 
 function todayISO(): string {
@@ -126,7 +126,7 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
  * `opts` is for tests (a recommendation, the settings file, the marker file).
  */
 export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: string } = {}): Promise<boolean> {
-  const shownPath = opts.shownPath ?? join(homedir(), ".bastra", "model-hint-shown.txt");
+  const shownPath = opts.shownPath ?? join(bastraDataDir(), "model-hint-shown.txt");
   if (await alreadyShownToday(shownPath) || !(await pendingModelNotice(opts))) return false;
   try {
     await mkdir(dirname(shownPath), { recursive: true });

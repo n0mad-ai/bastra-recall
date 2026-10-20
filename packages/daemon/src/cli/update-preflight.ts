@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * #268 + #226 — one preflight stage in front of the install step.
  *
@@ -74,7 +75,7 @@ export interface PreflightResult {
 }
 
 function baseDir(home = homedir()): string {
-  return join(home, ".bastra");
+  return bastraDataDir(home);
 }
 
 export function manifestPath(home = homedir()): string {

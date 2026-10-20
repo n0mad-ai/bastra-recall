@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /** A selected work root is not permission to overwrite control, key or vault state. */
 import {realpath} from "node:fs/promises";
 import {homedir} from "node:os";
@@ -13,7 +14,7 @@ export async function normalizedOwnerTarget(input:unknown){
  try{root=await realpath(resolve(target.root));absolute=resolve(root,target.path);if(await realpath(absolute)!==absolute)invalid("target_boundary");}catch(e){if((e as any)?.reason)throw e;invalid("target_path_missing");}
  const path=relative(root,absolute);if(path.startsWith("..")||isAbsolute(path)||!path)invalid("target_boundary");
  const home=await canonical(homedir()),vault=await resolveVault({} as any),registry=await readApprovalRegistry();
- const protectedRoots=await Promise.all([dirname(tasksPath()),join(home,".bastra"),join(home,".claude"),join(home,".codex"),join(home,".cursor"),join(home,".config"),join(home,".ssh"),join(home,".gnupg"),join(home,"Library","LaunchAgents"),join(home,"Library","LaunchDaemons"),"/etc","/private/etc","/System","/Library",...(registry?.key_storage_roots??[]),...("path"in vault?[vault.path]:[])].map(canonical));
+ const protectedRoots=await Promise.all([dirname(tasksPath()),bastraDataDir(home),join(home,".claude"),join(home,".codex"),join(home,".cursor"),join(home,".config"),join(home,".ssh"),join(home,".gnupg"),join(home,"Library","LaunchAgents"),join(home,"Library","LaunchDaemons"),"/etc","/private/etc","/System","/Library",...(registry?.key_storage_roots??[]),...("path"in vault?[vault.path]:[])].map(canonical));
  if(protectedRoots.some(p=>inside(p,absolute)||inside(p,root)||inside(root,p)))invalid("target_protected");
  const components=absolute.split(sep).map(p=>p.toLowerCase()),dangerousDirs=new Set([".git",".husky",".bastra",".claude",".codex",".cursor",".config",".ssh",".gnupg",".gemini",".continue",".vscode",".cmuxterm","launchagents","launchdaemons"]);
  const shell=new Set([".zshrc",".zprofile",".zshenv",".zlogin",".zlogout",".bashrc",".bash_profile",".bash_login",".bash_logout",".profile","config.fish","profile","bash.bashrc"]);

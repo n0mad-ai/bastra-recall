@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 import { dropLegacyTaskComparisons, migrateTaskComparisons } from "./task-private-comparison.js";
 import { discoverTaskArchiveExports,validateTaskArchivePrune } from "./task-archive.js";
 import { canonicalTaskValue } from "./task-canonical.js";
@@ -19,7 +20,7 @@ export class TaskStoreError extends Error {
 }
 
 export function tasksPath(): string {
-  return resolve(process.env.BASTRA_TASKS_PATH ?? join(homedir(), ".bastra", "proactive-tasks.json"));
+  return resolve(process.env.BASTRA_TASKS_PATH ?? join(bastraDataDir(), "proactive-tasks.json"));
 }
 
 export function decodeTaskStore(raw: string): TaskStore {

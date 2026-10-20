@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Cue lexicons for the stop-lane heuristics (#476) — data, not code.
  *
@@ -19,7 +20,6 @@
  * Location: $BASTRA_LEXICON_DIR, else ~/.bastra/lexicon/<name>.txt.
  */
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -72,7 +72,7 @@ export const DEFAULT_FRUSTRATION_CUES: readonly string[] = Object.values(DEFAULT
 export const DEFAULT_DECISION_CUES: readonly string[] = Object.values(DEFAULT_DECISION_CUES_BY_LANGUAGE).flat();
 
 export function lexiconDir(): string {
-  return process.env.BASTRA_LEXICON_DIR ?? join(homedir(), ".bastra", "lexicon");
+  return process.env.BASTRA_LEXICON_DIR ?? join(bastraDataDir(), "lexicon");
 }
 
 /** A real cue fragment is a few characters; anything this long is a mistake

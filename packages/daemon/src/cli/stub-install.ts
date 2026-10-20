@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * The compiled hook client on plain npm installs (#350).
  *
@@ -23,7 +24,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -111,7 +111,7 @@ export function stubAssetUrl(version: string, file: string): string {
 // ─── the remembered answer ───────────────────────────────────────
 
 export function stubMarkerPath(): string {
-  return process.env.BASTRA_HOOK_STUB_MARKER_PATH ?? join(homedir(), ".bastra", "hook-stub.json");
+  return process.env.BASTRA_HOOK_STUB_MARKER_PATH ?? join(bastraDataDir(), "hook-stub.json");
 }
 
 interface StubMarker {

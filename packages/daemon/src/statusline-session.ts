@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Per-session statusline feed paths.
  *
@@ -13,10 +14,9 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
-export const STATUSLINE_DIR = path.join(os.homedir(), ".bastra", "statusline");
+export const STATUSLINE_DIR = path.join(bastraDataDir(), "statusline");
 
 /**
  * Shared, session-independent vault size, written by the daemon on every index

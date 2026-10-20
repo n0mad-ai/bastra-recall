@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * #892: the one guard every writer under the vault root goes through before it
  * creates a directory there.
@@ -30,7 +31,7 @@
  */
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class VaultRootMissingError extends Error {
@@ -84,7 +85,7 @@ export function vaultRootsPath(): string {
     testRootsPath ??= join(mkdtempSync(join(tmpdir(), "bastra-test-vault-roots-")), "vault-roots.json");
     return testRootsPath;
   }
-  return join(homedir(), ".bastra", "vault-roots.json");
+  return join(bastraDataDir(), "vault-roots.json");
 }
 
 /** Null means unreadable or corrupt; only ENOENT means no history yet. */

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Import P2 (#211) — mine the official conversations.json data export of
  * ChatGPT / Claude for lessons, decisions and preferences.
@@ -13,7 +14,6 @@
  */
 import { readFile, rename, unlink, writeFile, mkdir } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 
@@ -26,7 +26,7 @@ const MAX_MESSAGES_PER_CONVERSATION = 80;
 const CHUNK_CHAR_BUDGET = 16_000;
 
 export function defaultQueueDir(): string {
-  return join(homedir(), ".bastra");
+  return bastraDataDir();
 }
 
 /** The path the queue lock is taken on. It is the queue FILE, not the

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -27,7 +28,7 @@ function defaultLogDir(): string {
   // #673: a test process never falls through to the developer's real log.
   const underTest = testRunLogDir();
   if (underTest) return underTest;
-  const next = join(homedir(), ".bastra", "logs");
+  const next = join(bastraDataDir(), "logs");
   const legacy = join(homedir(), ".nexus-recall", "logs");
   if (existsSync(next)) return next;
   if (existsSync(legacy)) return legacy;

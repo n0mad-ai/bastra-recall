@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Floor registry (#141/#142) — the pin-with-lifecycle primitive, daemon-side.
  *
@@ -29,7 +30,6 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { appendAct } from "./floor-acts.js";
 import { withPathLock } from "./path-lock.js";
@@ -62,7 +62,7 @@ export interface FloorEntry {
 export const MAX_FLOORS = 12;
 
 export function floorsFilePath(): string {
-  return process.env.BASTRA_FLOORS_PATH ?? join(homedir(), ".bastra", "floors.json");
+  return process.env.BASTRA_FLOORS_PATH ?? join(bastraDataDir(), "floors.json");
 }
 
 function isFloorEntry(v: unknown): v is FloorEntry {

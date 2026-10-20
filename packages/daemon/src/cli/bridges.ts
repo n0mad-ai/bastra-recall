@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * `bastra bridges` — the shared learned-recall layer (#120).
  *
@@ -20,7 +21,6 @@
  */
 import { cpSync, existsSync, linkSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { SearchIndex, Vault } from "@bastra-recall/core";
 import {
@@ -54,7 +54,7 @@ import { recordRerankVerdicts, type RerankVerdict } from "../training-signal.js"
  *  lives in its own directory, not inside the git checkout of the shared
  *  Commons repo. Env override kept for tests/relocation. */
 export function bridgesPath(): string {
-  return process.env.BASTRA_BRIDGES_PATH ?? join(homedir(), ".bastra", "bridges");
+  return process.env.BASTRA_BRIDGES_PATH ?? join(bastraDataDir(), "bridges");
 }
 
 /**

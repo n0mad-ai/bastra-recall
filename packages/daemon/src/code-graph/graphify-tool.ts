@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * Locating, pinning and version-checking the Graphify binary (#573).
  *
@@ -48,7 +49,7 @@ export const GRAPHIFY_PACKAGE = "graphifyy";
 
 /** Recall's own uv tool directory. Never the user's default one. */
 export function bastraToolDir(home: string = homedir()): string {
-  return join(home, ".bastra", "tools");
+  return join(bastraDataDir(home), "tools");
 }
 
 /** Absolute path of the binary Recall installed, whether or not it exists. */

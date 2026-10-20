@@ -61,3 +61,10 @@ test("a .js specifier still maps to its .ts source", () => {
     ["entry.ts", "mod.ts"],
   );
 });
+
+
+test("stub closure includes the mapped dependency-free shared path source and import map", () => {
+  const files: string[] = stubSourceFiles();
+  assert.ok(files.some(path => path.endsWith("/core/src/platform-paths.ts")));
+  assert.ok(files.some(path => path.endsWith("/stub/import-map.json")));
+});

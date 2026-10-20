@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Das gelernte Latenzprofil des dichten Arms (#491) — AUSSCHLIESSLICH IM SCHATTEN.
  *
@@ -49,7 +50,6 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { EmbeddingProvider } from "@bastra-recall/core";
 import type { Residency, ResidencyReading } from "./embedding-warmup.js";
@@ -389,7 +389,7 @@ export interface LatencyProfileOptions {
 }
 
 export function latencyProfilePath(): string {
-  return join(homedir(), ".bastra", "latency-profile.json");
+  return join(bastraDataDir(), "latency-profile.json");
 }
 
 /** Nearest-rank-p95 über eine unsortierte Liste. Kein Interpolieren: bei 32

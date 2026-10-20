@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * #1128-capture — TEMPORARY text-free additions to the event log.
  *
@@ -14,12 +15,11 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { appendFile, lstat, mkdir, open, type FileHandle } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Memory, RecallHit, Vault } from "@bastra-recall/core";
 import { envFirst, envOff, isOnValue, testRunLogDir } from "./env.js";
 
-const logDir = (): string => envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
+const logDir = (): string => envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
 
 // ─── This feature's own files ────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * The archiving `rm` for the agent shell (#650): `rm` that moves its targets
  * into an archive instead of unlinking them, so "rm -rf" in the model's shell
@@ -88,7 +89,7 @@ export function stableNode(execPath: string, realpath: (p: string) => string = r
 
 /** Where the archive lives — creates nothing (the post lane asks after every Bash call). */
 export function archiveDir(env: NodeJS.ProcessEnv): string {
-  return env.BASTRA_ARCHIVE_DIR || join(homedir(), ".bastra", "archive");
+  return env.BASTRA_ARCHIVE_DIR || join(bastraDataDir(), "archive");
 }
 
 export function archiveRoot(env: NodeJS.ProcessEnv = process.env): string {

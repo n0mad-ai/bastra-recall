@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * After-session harvest (#675).
  *
@@ -39,7 +40,6 @@
  */
 import { appendFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { envFirst, envOff } from "./env.js";
@@ -93,7 +93,7 @@ interface QueueEntry {
 }
 
 export function harvestQueuePath(): string {
-  return process.env.BASTRA_HARVEST_QUEUE_PATH ?? join(homedir(), ".bastra", "harvest-queue.json");
+  return process.env.BASTRA_HARVEST_QUEUE_PATH ?? join(bastraDataDir(), "harvest-queue.json");
 }
 
 export function sessionHarvestEnabled(): boolean {

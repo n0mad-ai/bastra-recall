@@ -39,6 +39,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DAEMON_PACKAGE_ROOT, HOOK_STUB_BIN } from "./paths.js";
+import { hostPaths } from "../platform-paths.js";
 
 /** What `bastra-hook version` prints (stub/build-info.ts plus the version). */
 export interface StubStamp {
@@ -144,9 +145,10 @@ export const STUB_REBUILD_HINT = "npm run build:stub -w @bastra-recall/daemon";
  * `[CLAUDE_CODE_SETTINGS, CODEX_HOOKS]`, and a test pins that.
  */
 export function stubRegistrationFiles(home: string = homedir()): Array<{ surface: string; path: string }> {
+  const paths = hostPaths({ home });
   return [
-    { surface: "claude-code", path: join(home, ".claude", "settings.json") },
-    { surface: "codex", path: join(home, ".codex", "hooks.json") },
+    { surface: "claude-code", path: paths.claudeCodeSettings },
+    { surface: "codex", path: paths.codexHooks },
   ];
 }
 

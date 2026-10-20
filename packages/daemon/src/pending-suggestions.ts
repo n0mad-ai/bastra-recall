@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Stiller Relay-Kanal für Stop-Hook-Vorschläge (#48 Redesign).
  *
@@ -135,7 +136,7 @@ function reportLoss(detail: string): void {
 export const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function pendingSuggestionsPath(): string {
-  return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(homedir(), ".bastra", "pending-suggestions.json");
+  return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(bastraDataDir(), "pending-suggestions.json");
 }
 
 /** One gate for every relay producer, reader and settlement. Existing files stay untouched. */

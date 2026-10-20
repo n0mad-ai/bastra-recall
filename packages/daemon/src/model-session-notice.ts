@@ -1,12 +1,12 @@
+import { bastraDataDir } from "./platform-paths.js";
 /** A separate UTC-day claim for the agent block; the CLI line keeps its own. */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { formatModelSessionBlock, pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { tryWithPathLock } from "./path-lock.js";
 
 export function modelSessionHintPath(): string {
-  return join(homedir(), ".bastra", "model-session-hint-shown.txt");
+  return join(bastraDataDir(), "model-session-hint-shown.txt");
 }
 
 /** Only claim a day when its block is part of the prepared hook response.

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * Building the code graph with the pinned Graphify binary (#574).
  *
@@ -53,7 +54,6 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { access, readdir, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, extname, isAbsolute } from "node:path";
 import { graphDirOf } from "./reader.js";
 import { readManifest, writeManifest, type CodeGraphManifest } from "./manifest.js";
@@ -61,7 +61,7 @@ import { acquireRepoLock, type RepoLock } from "./lock.js";
 import { headCommit } from "./git-paths.js";
 
 /** Where #573 installs the pinned binary. */
-export const DEFAULT_GRAPHIFY_BIN = join(homedir(), ".bastra", "tools", "bin", "graphify");
+export const DEFAULT_GRAPHIFY_BIN = join(bastraDataDir(), "tools", "bin", "graphify");
 
 /** The only subcommand Recall ever runs. */
 export const BUILD_SUBCOMMAND = "extract";

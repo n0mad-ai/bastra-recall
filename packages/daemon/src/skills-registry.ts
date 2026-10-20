@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Skills registry (#215) — declare-once identities for link targets that live
  * on another surface (a Claude Code skill, an external doc), so the map stops
@@ -13,7 +14,6 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SkillRef } from "@bastra-recall/core";
@@ -35,7 +35,7 @@ const SKILL_ID_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 export const MAX_SKILLS = 64;
 
 export function skillsFilePath(): string {
-  return process.env.BASTRA_SKILLS_PATH ?? join(homedir(), ".bastra", "skills.json");
+  return process.env.BASTRA_SKILLS_PATH ?? join(bastraDataDir(), "skills.json");
 }
 
 function isSkillEntry(v: unknown): v is SkillEntry {

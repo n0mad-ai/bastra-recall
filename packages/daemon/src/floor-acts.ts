@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Append-only affirm log for the floor registry (#198).
  *
@@ -37,7 +38,6 @@
  * A separate file so unbounded growth never enlarges the blob `listFloors`
  * reads on every session start.
  */
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { appendJsonl, readJsonl } from "./jsonl-store.js";
 
@@ -80,7 +80,7 @@ export interface LiveIntent {
 }
 
 export function floorActsPath(): string {
-  return process.env.BASTRA_FLOOR_ACTS_PATH ?? join(homedir(), ".bastra", "floor-acts.jsonl");
+  return process.env.BASTRA_FLOOR_ACTS_PATH ?? join(bastraDataDir(), "floor-acts.jsonl");
 }
 
 function isFloorAct(v: unknown): v is FloorAct {

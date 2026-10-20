@@ -37,6 +37,10 @@
     "./rrf": {
       "types": "./dist/rrf.d.ts",
       "import": "./dist/rrf.js"
+    },
+    "./platform-paths": {
+      "types": "./dist/platform-paths.d.ts",
+      "import": "./dist/platform-paths.js"
     }
   },
   "files": [

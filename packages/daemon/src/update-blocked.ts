@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * #268 — the report channel for an update that was held back.
  *
@@ -41,7 +42,7 @@ export interface BlockedUpdate {
 }
 
 export function blockedUpdatePath(home = homedir()): string {
-  return join(home, ".bastra", "update-blocked.json");
+  return join(bastraDataDir(home), "update-blocked.json");
 }
 
 /**

@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * bastra-recall local CLI settings — the file itself (split out of
  * settings.ts, #680): the CliSettings shape, key validation, readSettings,
@@ -8,7 +9,6 @@
 import { parseRetain, parseSize } from "./rm-archive.js";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
@@ -193,7 +193,7 @@ export type ModelRecommendationAnswer = (typeof MODEL_RECOMMENDATION_ANSWERS)[nu
 export const GENERATION_MODEL_DEFAULT = "gemma3:4b";
 
 export function settingsFilePath(): string {
-  return join(homedir(), ".bastra", "cli-settings.json");
+  return join(bastraDataDir(), "cli-settings.json");
 }
 
 function isUpdateMode(v: unknown): v is UpdateMode {
