@@ -227,13 +227,19 @@ export function withinCeiling(chargedUsd, estimateUsd, ceilingUsd = COST_CEILING
  *
  * Every scenario directory is walked, not just the ones this invocation will
  * touch: money spent under `--only S01` is still money spent.
+ *
+ * An abort whose meta never made it to disk is charged from its renamed
+ * transcript instead (#601) — see `abortedAttemptCharge`.
  */
-export function spendOnDisk(runsDir, armIds) {
+export function spendOnDisk(runsDir, armIds, registeredEstimateUsd = REGISTERED_ARM_ESTIMATE_USD) {
   const spend = { finishedCostUsd: 0, finishedArms: 0, abortedCostUsd: 0, abortedArms: 0 };
   if (!existsSync(runsDir)) return spend;
-  for (const entry of readdirSync(runsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dir = join(runsDir, entry.name);
+  const dirs = readdirSync(runsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(runsDir, entry.name));
+  // Finished arms FIRST, over the whole archive: an abort that has to be
+  // charged from the mean of finished arms needs that mean complete.
+  for (const dir of dirs) {
     for (const armId of armIds) {
       const path = join(dir, `${armId}.jsonl`);
       if (!existsSync(path)) continue;
@@ -242,18 +248,67 @@ export function spendOnDisk(runsDir, armIds) {
       spend.finishedCostUsd += armCostUsd(transcript);
       spend.finishedArms++;
     }
-    for (const file of readdirSync(dir)) {
-      if (!/\.failed.*\.meta\.json$/.test(file)) continue;
-      try {
-        const meta = JSON.parse(readFileSync(join(dir, file), "utf8"));
-        if (typeof meta.chargedUsd === "number") {
-          spend.abortedCostUsd += meta.chargedUsd;
-          spend.abortedArms++;
-        }
-      } catch {
-        /* an unreadable meta charges nothing; the transcript beside it is gone anyway */
-      }
+  }
+  for (const dir of dirs) {
+    for (const attempt of abortedAttemptsOf(dir)) {
+      const charge = abortedAttemptCharge(dir, attempt, spend, registeredEstimateUsd);
+      if (charge === null) continue;
+      spend.abortedCostUsd += charge.usd;
+      spend.abortedArms++;
     }
   }
   return spend;
+}
+
+/**
+ * Every aborted attempt in a scenario directory, keyed the way the runner
+ * names them: `<arm>.jsonl.failed-<stamp>` beside `<arm>.failed-<stamp>.meta.json`.
+ * Either file alone is an attempt — the runner renames the transcript BEFORE
+ * it writes the meta, so a crash between the two leaves the transcript on its
+ * own, and an older runner may have left a meta whose transcript is gone.
+ */
+export function abortedAttemptsOf(dir) {
+  const attempts = new Map();
+  for (const file of readdirSync(dir)) {
+    const transcript = /^(.+)\.jsonl\.failed-(.+)$/.exec(file);
+    const meta = /^(.+)\.failed-(.+)\.meta\.json$/.exec(file);
+    const m = transcript ?? meta;
+    if (m === null) continue;
+    const key = `${m[1]}.failed-${m[2]}`;
+    const attempt = attempts.get(key) ?? { arm: m[1], stamp: m[2], transcript: null, meta: null };
+    if (transcript !== null) attempt.transcript = file;
+    else attempt.meta = file;
+    attempts.set(key, attempt);
+  }
+  return [...attempts.values()];
+}
+
+/**
+ * What one aborted attempt is charged on resume (#601).
+ *
+ * The meta written at the time is the record of choice. But the runner writes
+ * it in a second filesystem operation after renaming the transcript, and a
+ * crash between the two — or a write the same crash truncated — leaves a
+ * transcript with no readable meta beside it. That transcript is not gone:
+ * it still holds whatever `result` event the arm produced, so it is charged
+ * the way the runner would have charged it, through `abortedArmCharge`. Only
+ * an attempt with neither a readable meta nor a transcript charges nothing.
+ */
+function abortedAttemptCharge(dir, attempt, spend, registeredEstimateUsd) {
+  if (attempt.meta !== null) {
+    try {
+      const meta = JSON.parse(readFileSync(join(dir, attempt.meta), "utf8"));
+      if (typeof meta.chargedUsd === "number") return { usd: meta.chargedUsd, source: meta.chargedFrom ?? "meta" };
+    } catch {
+      /* unreadable — fall through to the transcript beside it */
+    }
+  }
+  if (attempt.transcript === null) return null;
+  let body;
+  try {
+    body = readFileSync(join(dir, attempt.transcript), "utf8");
+  } catch {
+    return null;
+  }
+  return abortedArmCharge(body, spend.finishedCostUsd, spend.finishedArms, registeredEstimateUsd);
 }

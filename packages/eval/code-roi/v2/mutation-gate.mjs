@@ -181,7 +181,24 @@ const POPULATION_FILE = join(OUT, "population.json");
  */
 export function checkPopulation(recorded, current) {
   if (recorded === null) return { ok: true, write: true };
-  for (const key of ["repository", "commit", "population_sha256", "candidates", "seed"]) {
+  // The STOPPING RULE is pinned with the draw (#592). The commit, the seed and
+  // the population hash freeze the order of the draw, not how far down it the
+  // sample goes: a later `--target 40` against an evaluated archive passed
+  // every check above, walked further down the same order and appended to
+  // `mutations.jsonl`, so the scorer read a larger sample than the one the
+  // verdict was given on. Raising the target is now a pinned change that
+  // starts a new archive, the rule the rest of this gate already follows.
+  if (recorded.target === undefined) {
+    return {
+      ok: false,
+      write: false,
+      why:
+        `this gate archive was pinned before the target was part of the pin. Add ` +
+        `"target": <n> to population.json, stating the target its verdict was ` +
+        `evaluated at, or start a new archive.`,
+    };
+  }
+  for (const key of ["repository", "commit", "population_sha256", "candidates", "seed", "target"]) {
     if (recorded[key] !== current[key]) {
       return {
         ok: false,
@@ -247,6 +264,7 @@ async function main() {
     population_sha256: populationHash(candidates),
     candidates: candidates.length,
     seed: SEED,
+    target: TARGET,
   };
   const recorded = existsSync(POPULATION_FILE)
     ? JSON.parse(readFileSync(POPULATION_FILE, "utf8"))
