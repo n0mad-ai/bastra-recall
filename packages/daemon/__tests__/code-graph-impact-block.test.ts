@@ -326,6 +326,43 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.equal(out.note.listed.length, MAX_IMPACT_FILES);
   });
 
+  it("lists a test that CALLS the symbol ahead of tests that only import it, whatever the alphabet says (#637)", async () => {
+    // Measured on the 44 delivered-run scenarios: the block for `search.ts`
+    // named eight tests that import `SearchIndex` at line 1 and cut, right
+    // behind them, six tests that call it at a real site — every one of them a
+    // file the change broke. An alphabetical list under a cap cuts by the
+    // alphabet; evidence has to come first.
+    const nodes = [node("save_savememory", "saveMemory()", SAVE, 4)];
+    const links: ReturnType<typeof edge>[] = [];
+    for (let i = 0; i < MAX_IMPACT_FILES + 2; i++) {
+      const file = `packages/core/__tests__/a${String(i).padStart(2, "0")}.test.ts`;
+      nodes.push(node(`imp_${i}`, file, file, 1, "code"));
+      links.push(edge(`imp_${i}`, "save_savememory", "imports"));
+    }
+    nodes.push(node("zz_calls", "callsIt()", "packages/core/__tests__/zz-calls.test.ts", 40));
+    links.push(edge("zz_calls", "save_savememory", "calls"));
+    const repo = await freshRepo(root, "evidence-first", { ...FIXTURE, nodes, links });
+    const cache = new CodeGraphCache();
+    await cache.ensureLoaded(repo);
+
+    const out = await impactNote({
+      filePath: join(repo, SAVE),
+      repoRoot: repo,
+      toolName: "Edit",
+      toolInput: EDIT_SAVE,
+      session: EMPTY_SESSION,
+      cache,
+      budgetMs: CONTENT_BUDGET_MS,
+    });
+    assert.ok(out.note);
+    const listed = out.note.note.split("\n").filter((l) => l.startsWith("- packages/"));
+    assert.equal(listed.length, MAX_IMPACT_FILES);
+    assert.match(listed[0], /zz-calls\.test\.ts:40 — calls saveMemory/);
+    assert.match(out.note.note, /… and 3 more/);
+    // The strongest line per file is also what the booking carries, in that order.
+    assert.equal(out.booking?.hits?.[0]?.file, "packages/core/__tests__/zz-calls.test.ts");
+  });
+
   it("puts production files before test files", async () => {
     const repo = await freshRepo(root, "prodfirst");
     const cache = new CodeGraphCache();
