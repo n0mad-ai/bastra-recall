@@ -4,12 +4,13 @@ import { Vault } from "@bastra-recall/core";
 import { undoDraftPromotion } from "../draft-promote.js";
 import { resolveVault } from "./helpers.js";
 import { listDrafts, purgeDrafts } from "../draft-store.js";
+import { rejectDrafts } from "../draft-review.js";
 import type { ParsedArgs } from "./types.js";
 
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
-  if (!["list", "purge", "undo"].includes(sub) || args.positional.length > (sub === "undo" ? 3 : 2) || sub === "undo" && !args.positional[2]) {
-    process.stderr.write("usage: bastra drafts [list|purge|undo <id>] [--json] [--vault <path>] [--force]\n");
+  if (!["list", "purge", "undo", "reject"].includes(sub) || sub !== "reject" && args.positional.length > (sub === "undo" ? 3 : 2) || (sub === "undo" || sub === "reject") && !args.positional[2]) {
+    process.stderr.write("usage: bastra drafts [list|purge|undo <id>|reject <id>...] [--json] [--vault <path>] [--force]\n");
     return 2;
   }
   try {
@@ -22,6 +23,17 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
         const memoryId = await undoDraftPromotion(vault, args.positional[2], Date.now(), args.force);
         process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`);
       } finally { await vault.stop(); }
+    } else if (sub === "reject") {
+      const results = await rejectDrafts(args.positional.slice(2));
+      if (args.json) process.stdout.write(JSON.stringify({ results }) + "\n");
+      else for (const r of results) {
+        if (r.outcome === "rejected") process.stdout.write(`Draft rejected: ${r.id}\n`);
+        else if (r.outcome === "already_rejected") process.stdout.write(`Draft already rejected: ${r.id}\n`);
+        else if (r.outcome === "promoted") process.stderr.write(`Draft already promoted, not rejected: ${r.id}; use bastra drafts undo ${r.id}\n`);
+        else process.stderr.write(`No open draft with this id: ${r.id}\n`);
+      }
+      // An already rejected draft is closed; only promoted and unknown ids fail.
+      return results.every(r => r.outcome === "rejected" || r.outcome === "already_rejected") ? 0 : 1;
     } else if (sub === "purge") {
       const { pendingRelay } = await purgeDrafts();
       const cleared = ["drafts", "vectors", "decisions", ...(pendingRelay ? ["pending-relay"] : [])];

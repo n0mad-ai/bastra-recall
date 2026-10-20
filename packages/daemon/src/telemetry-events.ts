@@ -132,6 +132,8 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   /** #351: set when this recall is one phrasing of a batched call — the
    *  batch width (2-4). Absent on plain single-query recalls. */
   query_count?: number;
+  /** Shared by executed phrasings of one call; absent in older telemetry. */
+  batch_id?: string;
   /** #351 guard: highest pairwise content-token overlap across the batch's
    *  submitted queries — measures how paraphrase-shaped batches really are. */
   batch_overlap?: number;

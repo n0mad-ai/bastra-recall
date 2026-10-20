@@ -49,6 +49,10 @@ test("recallHandler (#351): queries[] merges per-phrasing results, deduped by be
     search.start();
     const deps = { vault, search, telemetry: new Telemetry(), vaultPath: dir } as ToolDeps;
 
+    const rows: Record<string, unknown>[] = [];
+    const logRecall = deps.telemetry.logRecall.bind(deps.telemetry);
+    deps.telemetry.logRecall = async (payload) => { rows.push(payload); await logRecall(payload); };
+
     const single = await recallHandler(deps, { query: "panel resignKey observer", min_score: 0 });
     assert.ok(single.hits.length > 0, "single-query path still works");
 
@@ -62,6 +66,14 @@ test("recallHandler (#351): queries[] merges per-phrasing results, deduped by be
     assert.equal(new Set(ids).size, ids.length, "no duplicate ids after merge");
     assert.equal((batched as { query_count?: number }).query_count, 2);
     assert.ok(Array.isArray((batched as { recall_ids?: string[] }).recall_ids), "per-query recall_ids exposed");
+    assert.equal(rows[0]!.batch_id, undefined, "single recall has no batch id");
+    assert.equal(typeof rows[1]!.batch_id, "string");
+    assert.equal(rows[1]!.batch_id, rows[2]!.batch_id, "sibling events share their call id");
+    assert.notEqual(rows[1]!.recall_id, rows[2]!.recall_id, "per-phrasing recall ids are preserved");
+    assert.ok(!("batch_id" in batched), "internal telemetry id is not an MCP response field");
+    await recallHandler(deps, { queries: ["panel resignKey observer", "scrollview trailing inset"], min_score: 0 });
+    assert.notEqual(rows[1]!.batch_id, rows[3]!.batch_id, "separate calls receive separate ids");
+
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

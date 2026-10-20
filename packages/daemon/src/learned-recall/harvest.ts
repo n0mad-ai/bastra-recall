@@ -67,12 +67,14 @@ export function defaultLogDir(): string {
   return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
 }
 
-/** Read events-*.jsonl from a log dir, optionally limited to the last `days`. */
-export async function readEventLog(logDir: string = defaultLogDir(), days: number | null = null): Promise<TelemetryEvent[]> {
+/** Read events-*.jsonl, optionally limited to `days`. Strict readers distinguish
+ * unavailable directories from readable empty logs; existing callers keep []. */
+export async function readEventLog(logDir: string = defaultLogDir(), days: number | null = null, options: { strict?: boolean } = {}): Promise<TelemetryEvent[]> {
   let files: string[];
   try {
     files = (await readdir(logDir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl"));
-  } catch {
+  } catch (error) {
+    if (options.strict) throw error;
     return [];
   }
   files.sort();

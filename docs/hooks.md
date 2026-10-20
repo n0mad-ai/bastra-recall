@@ -998,6 +998,16 @@ that blocks an identical recapture. Repeated identical answers are idempotent.
 Already promoted drafts cannot be rejected with this tool; use the existing
 undo workflow for those. A confirmation is evidence, not proof.
 
+`bastra drafts reject <id>... [--json]` lets the owner close named open drafts
+directly, including drafts that were never shown in `<draft-review>`. It closes
+them the same way a review rejection does: rejected state, no announcement, the
+retained fingerprint tombstone against identical recapture and the 180-day
+retention. The decision is recorded as `owner_review` on the draft, and the same
+text-free `draft_review_rejected` event (IDs and counts) is written. The command
+runs under the existing draft lock. Each ID is reported on its own line: rejected,
+already rejected, already promoted (use `bastra drafts undo`) or not found. The
+exit code is non-zero when any ID was promoted or not found.
+
 The old sentence-quote block remains enabled. A quote shown in the new block is
 removed only from the old harvest block in that same SessionStart; other old
 quotes remain eligible within the shared budget. The independent recall hint band keeps its existing rules.
@@ -2645,6 +2655,16 @@ mit dem vorhandenen Fingerprint-Sperrvermerk gegen identische Neuerfassung.
 Gleiche Antworten sind wiederholbar, ohne doppelte Wirkung. Bereits beförderte
 Entwürfe lassen sich hier nicht ablehnen; dafür bleibt der vorhandene
 Undo-Ablauf. Eine Bestätigung ist ein Indiz, kein Beweis.
+
+`bastra drafts reject <id>... [--json]` schließt benannte offene Entwürfe direkt
+durch den Besitzer, auch solche, die nie in `<draft-review>` gezeigt wurden. Das
+wirkt wie eine Ablehnung im Review: Status abgelehnt, keine Ankündigung, der
+Fingerprint-Sperrvermerk gegen identische Neuerfassung und 180 Tage Aufbewahrung.
+Die Entscheidung steht als `owner_review` am Entwurf; geschrieben wird dasselbe
+textfreie Ereignis `draft_review_rejected` (IDs und Zähler). Der Befehl läuft
+unter der vorhandenen Entwurfssperre. Jede ID wird einzeln gemeldet: abgelehnt,
+schon abgelehnt, schon befördert (dann `bastra drafts undo`) oder nicht gefunden.
+Der Exit-Code ist ungleich null, sobald eine ID befördert oder unbekannt war.
 
 Der alte Satz-Zitat-Block bleibt an. Ein im neuen Block gezeigtes Zitat entfällt
 nur im alten Harvest-Block desselben SessionStart; andere alte Zitate bleiben im gemeinsamen Budget zulässig.

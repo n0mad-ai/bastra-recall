@@ -47,7 +47,7 @@ Commands:
                              Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
-  drafts <list|purge|undo>         Inspect or clear local session drafts
+  drafts <list|purge|undo|reject>  Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
                              series reapplied onto the fresh install. One that
@@ -262,6 +262,8 @@ Usage:
   bastra drafts undo <id> [--json] [--vault <path>] [--force]
                                 Remove an unchanged promoted note; keep a 180-day tombstone
                                 --force permits removing a reviewed edited note
+  bastra drafts reject <id>... [--json]
+                                Close open drafts; keep a 180-day tombstone against recapture
 
 Drafts stay on this device, outside the vault. Secrets are redacted before
 storage. Unshown drafts with one evidence row expire after 7 days (unmeasured);
