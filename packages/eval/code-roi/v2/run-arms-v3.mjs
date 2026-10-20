@@ -112,6 +112,41 @@ const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathna
 // From the registration — not tunable here.
 const ARM_TIMEOUT_MS = 20 * 60_000;
 /**
+ * How long a timed-out arm gets to leave on SIGTERM before SIGKILL (#602).
+ * A CLI stuck in an uninterruptible wait, ignoring TERM or waiting on a
+ * runaway child of its own kept its slot forever: `close` never fired, the
+ * arm was neither finished nor charged, and the helping simply hung.
+ */
+export const ARM_KILL_GRACE_MS = 30_000;
+
+/**
+ * Arm the timeout on a child: SIGTERM at `timeoutMs`, SIGKILL `graceMs` later
+ * if it is still running. Returns the state the `close` handler reads —
+ * whether the arm timed out and whether it needed the escalation — and a
+ * `clear` to call once the child has closed.
+ */
+export function armTimeout(child, timeoutMs = ARM_TIMEOUT_MS, graceMs = ARM_KILL_GRACE_MS) {
+  const state = { timedOut: false, escalated: false };
+  let killer = null;
+  const timer = setTimeout(() => {
+    state.timedOut = true;
+    child.kill("SIGTERM");
+    killer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        state.escalated = true;
+        child.kill("SIGKILL");
+      }
+    }, graceMs);
+  }, timeoutMs);
+  return {
+    state,
+    clear() {
+      clearTimeout(timer);
+      if (killer !== null) clearTimeout(killer);
+    },
+  };
+}
+/**
  * The built-in tools every arm gets — Read, Grep, Glob and nothing that runs a
  * command.
  *
@@ -280,14 +315,10 @@ function runArm(
     const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.pipe(out);
     let stderr = "";
-    let timedOut = false;
     child.stderr.on("data", (d) => (stderr += d));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, ARM_TIMEOUT_MS);
+    const timeout = armTimeout(child);
     child.on("close", (code) => {
-      clearTimeout(timer);
+      timeout.clear();
       out.end(() => {
         // FINALISATION IS EARNED, NOT AUTOMATIC (#582 review). The rename used
         // to happen unconditionally, so a timed-out, budget-stopped or crashed
@@ -323,8 +354,13 @@ function runArm(
               ...(finished
                 ? {}
                 : {
-                    reason: timedOut
-                      ? "timeout"
+                    // `timeout_sigkill` names an arm that ignored SIGTERM
+                    // for the whole grace, so a pattern of stuck arms is
+                    // visible in the archive and not only as a hung helping.
+                    reason: timeout.state.timedOut
+                      ? timeout.state.escalated
+                        ? "timeout_sigkill"
+                        : "timeout"
                       : result !== null
                         ? `result_${result.subtype ?? "unknown"}`
                         : code === 0

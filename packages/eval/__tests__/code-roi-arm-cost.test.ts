@@ -21,6 +21,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -340,5 +341,46 @@ describe("a resumed helping reconstructs its spend from disk", () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a timed-out arm is forced down, not asked (#602)", () => {
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
+  const runnerModule = import("../code-roi/v2/run-arms-v3.mjs");
+
+  function closed(child: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
+    return new Promise((resolve) => child.on("close", (code, signal) => resolve({ code, signal })));
+  }
+
+  test("a child that ignores SIGTERM is SIGKILLed after the grace, and the escalation is recorded", async () => {
+    const { armTimeout } = await runnerModule;
+    // The stand-in for a stuck CLI: traps TERM to nothing and sleeps on.
+    const child = spawn("sh", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 100, 200);
+    const { signal } = await closed(child);
+    timeout.clear();
+    assert.equal(signal, "SIGKILL");
+    assert.deepEqual(timeout.state, { timedOut: true, escalated: true });
+  });
+
+  test("a child that leaves on SIGTERM is not escalated", async () => {
+    const { armTimeout } = await runnerModule;
+    const child = spawn("sh", ["-c", "sleep 60"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 100, 5_000);
+    const { signal } = await closed(child);
+    timeout.clear();
+    assert.equal(signal, "SIGTERM");
+    assert.deepEqual(timeout.state, { timedOut: true, escalated: false });
+  });
+
+  test("a child that finishes in time is left alone and the timers are cleared", async () => {
+    const { armTimeout, ARM_KILL_GRACE_MS } = await runnerModule;
+    assert.equal(ARM_KILL_GRACE_MS, 30_000);
+    const child = spawn("sh", ["-c", "exit 0"], { stdio: "ignore" });
+    const timeout = armTimeout(child, 5_000, 5_000);
+    const { code } = await closed(child);
+    timeout.clear();
+    assert.equal(code, 0);
+    assert.deepEqual(timeout.state, { timedOut: false, escalated: false });
   });
 });
