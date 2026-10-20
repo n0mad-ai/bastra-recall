@@ -47,11 +47,13 @@ const { diffLines } = await import(`${DIST}diff-lines.js`);
  * The same diff, turned around: what was added is removed and the old and new
  * sides trade places.
  *
- * Header lines (`diff --git`, `index`, `similarity`, mode lines) are carried
- * through as they are — `a/` and `b/` name the same path in every diff this
- * measurement produces, and rewriting them would only invent a difference.
- * What must be swapped is what the product actually reads: the `---`/`+++`
- * pair, the hunk ranges, and the sign of every body line.
+ * Header lines (`index`, `similarity`, mode lines) are carried through as
+ * they are. What must be swapped is what the product actually reads: the
+ * `---`/`+++` pair, the hunk ranges, and the sign of every body line. A
+ * RENAME (#603) is the one case where `a/` and `b/` name different paths, so
+ * its `rename from`/`rename to` pair trades places and the `diff --git`
+ * line's two sides are rebuilt from them — the rename lines carry each path
+ * exactly as git quoted it, so the header needs no path parsing of its own.
  *
  * REMOVALS COME BEFORE ADDITIONS in each changed run, the order git writes and
  * `git diff -R` preserves. It is not cosmetic: `changedLines` treats a `-`
@@ -73,6 +75,10 @@ export function reverseUnifiedDiff(diff) {
   // whichever came first and missed a marker that followed the second.
   // Double-reversing such a run then came back different from the original.
   let lastRun = null;
+  // Where the current file's `diff --git` line sits in `out`, and the path its
+  // `rename from` named, so a `rename to` can rewrite the header's sides.
+  let boundary = -1;
+  let renameFrom = null;
   const flush = () => {
     out.push(...removed, ...added);
     removed = [];
@@ -97,6 +103,24 @@ export function reverseUnifiedDiff(diff) {
       continue;
     }
     flush();
+    if (line.kind === "file-boundary") {
+      boundary = out.length;
+      renameFrom = null;
+      out.push(line.raw);
+      continue;
+    }
+    if (line.raw.startsWith("rename from ")) {
+      // Held back until its `rename to` arrives, so the swapped pair is
+      // still written in git's order: `from` first, then `to`.
+      renameFrom = line.raw.slice("rename from ".length);
+      continue;
+    }
+    if (line.raw.startsWith("rename to ") && renameFrom !== null) {
+      const renameTo = line.raw.slice("rename to ".length);
+      out.push(`rename from ${renameTo}`, `rename to ${renameFrom}`);
+      out[boundary] = `diff --git ${gitSide("a", renameTo)} ${gitSide("b", renameFrom)}`;
+      continue;
+    }
     if (line.kind === "old-header") {
       out.push(`+++ ${line.raw.slice(4)}`);
       continue;
@@ -114,6 +138,11 @@ export function reverseUnifiedDiff(diff) {
   }
   flush();
   return out.join("\n");
+}
+
+/** `a/path`, keeping git's quoting (`"a/we\303\244rd.ts"`) where the path has it. */
+function gitSide(prefix, path) {
+  return path.startsWith('"') ? `"${prefix}/${path.slice(1)}` : `${prefix}/${path}`;
 }
 
 /**

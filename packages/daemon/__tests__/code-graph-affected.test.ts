@@ -22,7 +22,7 @@ import {
   MAX_AFFECTED_FILES,
   PACKAGE_IMPORT,
 } from "../src/code-graph/affected.js";
-import { diffLines } from "../src/code-graph/diff-lines.js";
+import { diffLines, unquoteGitPath } from "../src/code-graph/diff-lines.js";
 import { workspaceModules } from "../src/code-graph/workspace-packages.js";
 import { externalRefLines } from "../src/code-graph/external-refs.js";
 import { createHash } from "node:crypto";
@@ -718,6 +718,103 @@ describe("changedLines: the unified diff parser (P1.2)", () => {
       "removed",
       "added",
     ]);
+  });
+});
+
+/**
+ * #604: git wraps an unusual path — a quote, a backslash, or under the default
+ * `core.quotepath=true` any non-ASCII byte — in double quotes with C-escapes
+ * inside. The file-identity check compared the RAW header against the plain
+ * `file`, so a quoted header never matched and the answer came back
+ * confidently empty with no whole-file fallback.
+ */
+describe("changedLines: git-quoted header paths (#604)", () => {
+  it("THE REPRODUCTION: a quoted header is matched against the plain path", () => {
+    const file = "weird name.ts";
+    const diff = [
+      `diff --git "a/${file}" "b/${file}"`,
+      `--- "a/${file}"`,
+      `+++ "b/${file}"`,
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, file), { lines: [1], mappable: true });
+    assert.deepEqual(changedLines(diff, "other.ts"), { lines: [], mappable: true });
+  });
+
+  it("undoes git's octal escaping of a non-ASCII path", () => {
+    // `ä` is the two UTF-8 bytes 0xC3 0xA4, which git prints as `\303\244`.
+    const diff = [
+      'diff --git "a/src/\\303\\244.ts" "b/src/\\303\\244.ts"',
+      '--- "a/src/\\303\\244.ts"',
+      '+++ "b/src/\\303\\244.ts"',
+      "@@ -3,1 +3,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "src/ä.ts"), { lines: [3], mappable: true });
+  });
+
+  it("matches a quoted `---` header when there is no `diff --git` line", () => {
+    const diff = ['--- "a/weird name.ts"', '+++ "b/weird name.ts"', "@@ -1,1 +1,1 @@", "-old", "+new"].join("\n");
+    assert.deepEqual(changedLines(diff, "weird name.ts"), { lines: [1], mappable: true });
+  });
+
+  it("unquoteGitPath: plain paths pass through, quoted ones lose the quotes and the C-escapes", () => {
+    assert.equal(unquoteGitPath("plain/path.ts"), "plain/path.ts");
+    assert.equal(unquoteGitPath('"a/weird name.ts"'), "a/weird name.ts");
+    assert.equal(unquoteGitPath('"say \\"hi\\".ts"'), 'say "hi".ts');
+    assert.equal(unquoteGitPath('"back\\\\slash\\ttab.ts"'), "back\\slash\ttab.ts");
+    assert.equal(unquoteGitPath('"\\303\\244\\303\\266.ts"'), "äö.ts");
+  });
+});
+
+/**
+ * #603: a pure rename has no `---`/`+++` pair and no hunk at all, so nothing
+ * in the body can be placed — yet every importer's specifier is now stale.
+ * That must be the whole-file answer, not a confident "no line changed".
+ */
+describe("changedLines: a pure rename (#603)", () => {
+  it("THE REPRODUCTION: a rename with no hunk is unmappable, so the caller takes the whole file", () => {
+    const diff = [
+      "diff --git a/old.ts b/new.ts",
+      "similarity index 100%",
+      "rename from old.ts",
+      "rename to new.ts",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "new.ts"), { lines: [], mappable: false });
+  });
+
+  it("a rename WITH a hunk still maps its lines as before", () => {
+    const diff = [
+      "diff --git a/old.ts b/new.ts",
+      "similarity index 90%",
+      "rename from old.ts",
+      "rename to new.ts",
+      "--- a/old.ts",
+      "+++ b/new.ts",
+      "@@ -4,1 +4,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "new.ts"), { lines: [4], mappable: true });
+  });
+
+  it("a pure rename of ANOTHER file in the same diff does not touch this file's answer", () => {
+    const diff = [
+      "diff --git a/old.ts b/moved.ts",
+      "similarity index 100%",
+      "rename from old.ts",
+      "rename to moved.ts",
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -1,1 +1,1 @@",
+      "-a",
+      "+b",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [1], mappable: true });
   });
 });
 
