@@ -206,7 +206,9 @@ It runs at your login with your normal user privileges, keeps the daemon warm,
 and asks Task Scheduler to restart it after a failure (one-minute interval,
 up to 255 attempts). `bastra doctor` warns when an installed task is not running.
 Updates refresh only bastra-managed tasks; `--staged` updates the definition
-without restarting your current daemon. Existing custom tasks are left alone
+without restarting your current daemon. On Windows, the new code becomes active
+after an explicit daemon restart, your next login, or a system restart; the warm
+task never exits just to apply it. Existing custom tasks are left alone
 unless you explicitly pass `--force`. Autostart remains off by default.
 This path has been checked on macOS using platform mocks; acceptance on a real
 Windows machine, including login and crash recovery, is still pending.
@@ -808,8 +810,10 @@ Anmeldung mit normalen Nutzerrechten und hält den Daemon bereit. Nach einem
 Fehler versucht die Aufgabenplanung den Neustart im Minutenabstand, bis zu
 255-mal. `bastra doctor` meldet einen installierten, aber gestoppten Task.
 Updates ändern nur von bastra verwaltete Tasks; `--staged` aktualisiert die
-Definition, ohne den laufenden Daemon neu zu starten. Eigene Tasks bleiben
-ohne ausdrückliches `--force` erhalten. Autostart bleibt standardmäßig aus.
+Definition, ohne den laufenden Daemon neu zu starten. Unter Windows wird der neue
+Code erst nach einem ausdrücklichen Daemon-Neustart, der nächsten Anmeldung oder
+einem Systemneustart aktiv; der warme Task beendet sich dafür nicht selbst.
+Eigene Tasks bleiben ohne ausdrückliches `--force` erhalten. Autostart bleibt standardmäßig aus.
 Geprüft wurde dieser Pfad auf macOS mit Plattform-Mocks; die Abnahme auf einem
 echten Windows-Rechner, einschließlich Anmeldung und Absturzerholung, steht aus.
 

@@ -662,10 +662,11 @@ test("bastra update: the closing question is asked by the installed cli, as `mod
     // No installed runtime, or one without a cli: nothing is started, nothing throws.
     assert.equal(askModelRecommendation(null, "pipe"), null);
     assert.equal(askModelRecommendation({ node: process.execPath, script: join(dir, "missing", "index.js"), version: null }, "pipe"), null);
-    // And cmdUpdate ends with it on both of its successful exits.
+    // The source-checkout exit must retain this real default even when an
+    // optional test callback is available. The installer exit is exercised
+    // through cmdUpdate with an ask spy in windows-update-runtime.test.ts.
     const src = await readFile(fileURLToPath(new URL("../src/cli/update.ts", import.meta.url)), "utf8");
-    assert.equal(src.split("askModelRecommendation(installed);\n    return 0;").length - 1, 1, "source-checkout exit");
-    assert.equal(src.split("askModelRecommendation(installed);\n  return 0;").length - 1, 1, "installer exit");
+    assert.equal(src.split("(io.ask ?? askModelRecommendation)(installed);\n    return 0;").length - 1, 1, "source-checkout exit");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
