@@ -267,7 +267,7 @@ describe("coverage map: the commands it collects from", () => {
     assert.equal(withCoverageEnv("NODE_V8_COVERAGE=/x npm test", "/r"), "NODE_V8_COVERAGE=/x npm test");
   });
 
-  it("isTestFile is the one rule the blocks and the fold share", () => {
+  it("isTestFile is the blocks' rule, __tests__ helpers included", () => {
     assert.ok(isTestFile("packages/core/__tests__/helpers.ts"));
     assert.ok(isTestFile("src/a.test.ts"));
     assert.ok(isTestFile("src/a.spec.js"));
@@ -424,6 +424,19 @@ describe("coverage map: reading in the hook", () => {
     assert.equal(readCoverageMapSync(repo), first, "same mtime and size: same object");
     await writeFile(coverageMapFileOf(repo), "{ broken", "utf8");
     assert.equal(readCoverageMapSync(repo), null);
+  });
+
+  it("the synchronous reader keeps one snapshot per repository", async () => {
+    const a = join(root, "sync-a");
+    const b = join(root, "sync-b");
+    for (const r of [a, b]) {
+      await ensureCoverageDir(r);
+      await writeFile(coverageMapFileOf(r), JSON.stringify(MAP), "utf8");
+    }
+    const first = readCoverageMapSync(a);
+    assert.ok(first);
+    assert.ok(readCoverageMapSync(b));
+    assert.equal(readCoverageMapSync(a), first, "switching repositories does not re-parse");
   });
 
   it("ageOf and the CLI status line", async () => {

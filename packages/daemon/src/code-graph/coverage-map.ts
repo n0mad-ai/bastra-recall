@@ -73,7 +73,12 @@ export function coverageMapFileOf(repoRoot: string): string {
   return join(coverageDirOf(repoRoot), COVERAGE_MAP_FILE_NAME);
 }
 
-/** One rule for what counts as a test, shared with the impact and boundary blocks. */
+/**
+ * What the impact and boundary blocks count as a test, `__tests__` helpers
+ * included. The fold uses a narrower rule on purpose (`foldProcess`): it
+ * attributes a process only to files named `*.test.*` / `*.spec.*`, since a
+ * helper under `__tests__` is loaded by many tests and is none of them.
+ */
 export function isTestFile(f: string): boolean {
   return f.includes("__tests__") || /\.(test|spec)\./.test(f);
 }
@@ -373,7 +378,8 @@ export function trackedByGit(repoRoot: string): boolean {
   try {
     const r = spawnSync("git", ["-C", repoRoot, "ls-files", "-z", "--", COVERAGE_DIR_NAME], {
       stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5_000,
+      // Runs in the Write/Edit lane before its budget check: short.
+      timeout: 1_000,
     });
     return r.stdout !== null && r.stdout.length > 0;
   } catch {
@@ -381,29 +387,33 @@ export function trackedByGit(repoRoot: string): boolean {
   }
 }
 
-let snapshot: { path: string; mtimeMs: number; size: number; map: CoverageMap | null } | null = null;
+/** Per repository, so switching between repositories does not re-parse; a few at most. */
+const snapshots = new Map<string, { mtimeMs: number; size: number; map: CoverageMap | null }>();
+const MAX_SNAPSHOTS = 8;
 
 /**
  * The map for the hot paths, synchronously, like the enabled-repos snapshot:
  * one `fstat` per call, re-parsed only when the file moved. The Write/Edit
- * lane runs on every write and cannot afford a parse each time.
+ * lane runs on every write and cannot afford a parse — or a `git` spawn —
+ * each time.
  */
 export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
   const path = coverageMapFileOf(repoRoot);
   const fd = openMapSync(repoRoot);
   if (fd === null) {
-    if (snapshot?.path === path) snapshot = null;
+    snapshots.delete(path);
     return null;
   }
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) return null;
-    if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
-      return snapshot.map;
-    }
+    const hit = snapshots.get(path);
+    if (hit !== undefined && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.map;
     const map =
       st.size > MAX_MAP_BYTES || trackedByGit(repoRoot) ? null : parseMap(readFileSync(fd, "utf8"));
-    snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, map };
+    snapshots.delete(path);
+    if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
+    snapshots.set(path, { mtimeMs: st.mtimeMs, size: st.size, map });
     return map;
   } catch {
     return null;
