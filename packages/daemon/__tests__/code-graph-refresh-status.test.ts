@@ -46,7 +46,7 @@ describe("refresh status wording", () => {
     );
     assert.deepEqual(lines, [
       "refresh paused: locked after 7 attempts: locked: /repo/graphify-out",
-      "next automatic attempt in 42 min — 'bastra code index' retries now",
+      "next automatic attempt in 42 min — 'bastra code index' tries now",
     ]);
     assert.match(refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T11:05:00Z" }), NOW)[1]!, /in 1 h 5 min/);
     assert.match(refreshStatusLines(status({ givenUp: true, nextAttemptAt: "2026-10-20T09:59:00Z" }), NOW)[1]!, /any moment now/);

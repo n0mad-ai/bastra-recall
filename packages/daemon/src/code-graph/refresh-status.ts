@@ -86,7 +86,7 @@ export function refreshStatusLines(s: RepoStatus, now: Date = new Date()): strin
   if (s.nextAttemptAt !== null) {
     return [
       `refresh paused${error}`,
-      `next automatic attempt ${describeDue(s.nextAttemptAt, now)} — 'bastra code index' retries now`,
+      `next automatic attempt ${describeDue(s.nextAttemptAt, now)} — 'bastra code index' tries now`,
     ];
   }
   const failures = s.failures > 0 ? ` after ${s.failures} failed build${s.failures === 1 ? "" : "s"}` : "";
