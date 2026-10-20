@@ -237,6 +237,36 @@ test("(b) a replay leaves no recall a real load_memory or save_memory would foll
   }
 });
 
+test("(b) a real recall before a replay stays the one a later load_memory follows, and replayed hits never reach the live map", async () => {
+  const d = await makeDaemon();
+  try {
+    const res = await fetch(`http://127.0.0.1:${d.port}/hook/recall`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "alpha bravo charlie", k: 5, tool_name: "UserPromptSubmit", session_id: "live-1" }),
+    });
+    const live = (await res.json()) as { recall_id?: string };
+    assert.equal(typeof live.recall_id, "string", JSON.stringify(live));
+    assert.equal(d.telemetry.recentRecallId(), live.recall_id, "the live recall is the latest one");
+    const lit: string[] = [];
+    d.telemetry.onRecalled = (hits) => lit.push(...hits.map((h) => h.id));
+    const corpus: ReplayCorpus = {
+      turns: [turn("s1", 1, "where is alpha bravo charlie?"), turn("s1", 2, "what about golf hotel india today?")],
+      loadedIds: new Set(),
+      files: 1,
+      oversized: 0,
+      sessions: 1,
+    };
+    const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "keep" });
+    await settle();
+    assert.ok(rows.flatMap((r) => r.hinted_ids ?? []).includes("alpha"), `the replay recalled: ${JSON.stringify(rows)}`);
+    assert.equal(d.telemetry.recentRecallId(), live.recall_id, "still the live recall after the replay");
+    assert.deepEqual(lit, [], "no replayed hit lit up the map");
+  } finally {
+    await d.close();
+  }
+});
+
 test("(b) unit: the sink routes a replay row by client or by session prefix, a live row stays in events-*", () => {
   const ts = "2026-10-20T10:00:00.000Z";
   assert.equal(eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "claude-code" } }), "/l/events-2026-10-20.jsonl");
