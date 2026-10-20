@@ -7,6 +7,8 @@ import { DocFreqMiniSearch } from "./doc-freq-index.js";
 import { rareTermFuzzy } from "./bm25-expansion.js";
 import { groupQueryTerms, groupedTokenize } from "./bm25-grouping.js";
 import { capBm25Query } from "./bm25-query-cap.js";
+import { BM25_FUZZY } from "./bm25-expansion.js";
+import { queryStems } from "./word-form.js";
 import type { CueProjection } from "./cue-sidecar.js";
 import type { CueIndexOptions, IndexDoc, RecallHit, RecallOptions } from "./search-types.js";
 import { matchedRecallWhen, anchorStrength } from "./search-anchor.js";
@@ -44,6 +46,11 @@ export {
   computeStaleness,
   applyStalenessMultiplier,
 } from "./search-staleness.js";
+
+/** #1194: weight of a stem relative to the query word it was cut from. The
+ *  contributor's 0.3 — a stem's prefix matches are a guess at the inflection,
+ *  not the word. */
+export const QUERY_STEM_WEIGHT = 0.3;
 
 /**
  * Field weights of the BM25 index — the "Search ranking" table in
@@ -256,14 +263,37 @@ export class SearchIndex {
     // #362 Phase 3: `bm25_no_fuzzy` schlägt die feinere Steuerung — wer den
     // schnellen Pfad anfordert, will keine Expansion, auch keine selektive.
     const fuzzyOption = opts.bm25_no_fuzzy ? { fuzzy: false } : fuzzy ? { fuzzy } : {};
+    // #1194: a query word LONGER than the stored form ("şablonlarında" vs a
+    // note's "şablonu") reaches nothing — prefix runs the wrong way and the
+    // ending exceeds the fuzzy budget. Only for a word the index does not
+    // hold at all, its affix-family stems join the query as prefix-only terms
+    // at QUERY_STEM_WEIGHT of the word. They are NOT query terms: anchor and
+    // authored-term checks below see `grouped.counts` alone, and a query
+    // whose every word is indexed sends the byte-identical call as before.
+    // Stems are an expansion, so `bm25_no_fuzzy` turns them off too.
+    const stems = new Map<string, number>();
+    if (!opts.bm25_no_fuzzy) {
+      for (const [term, count] of grouped.counts) {
+        if (this.mini.docFreq(term) > 0) continue;
+        for (const stem of queryStems(term)) {
+          if (grouped.counts.has(stem)) continue;
+          stems.set(stem, Math.max(stems.get(stem) ?? 0, count * QUERY_STEM_WEIGHT));
+        }
+      }
+    }
+    const stemOptions =
+      stems.size === 0
+        ? {}
+        : { fuzzy: (term: string) => (stems.has(term) ? false : fuzzy ? fuzzy(term) : BM25_FUZZY) };
     return {
-      lexQuery: grouped.query,
+      lexQuery: stems.size === 0 ? grouped.query : `${grouped.query} ${[...stems.keys()].join(" ")}`,
       searchOptions: {
         // Die Query ist bereits die Termliste — erneut zerlegen würde die
         // Dual-Emission des Identifier-Tokenizers ein zweites Mal anwenden.
         tokenize: groupedTokenize,
-        boostTerm: (term: string) => grouped.counts.get(term) ?? 1,
+        boostTerm: (term: string) => grouped.counts.get(term) ?? stems.get(term) ?? 1,
         ...fuzzyOption,
+        ...stemOptions,
       },
       queryTerms: new Set(grouped.counts.keys()),
       authoredTerms:
