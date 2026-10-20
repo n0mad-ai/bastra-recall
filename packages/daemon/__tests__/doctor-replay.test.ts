@@ -213,6 +213,25 @@ test("(b) a replayed reflex hit leaves no join anchor a real load_memory could c
   }
 });
 
+test("(b) a replay leaves no recall a real load_memory or save_memory would follow", async () => {
+  const d = await makeDaemon();
+  try {
+    assert.equal(d.telemetry.recentRecallId(), null, "fresh daemon: nothing to follow");
+    const corpus: ReplayCorpus = {
+      turns: [turn("s1", 1, "where is alpha bravo charlie?"), turn("s1", 2, "what about golf hotel india today?")],
+      loadedIds: new Set(),
+      files: 1,
+      sessions: 1,
+    };
+    const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "rid" });
+    await settle();
+    assert.ok(rows.flatMap((r) => r.hinted_ids ?? []).length >= 2, `recall and reflex both served: ${JSON.stringify(rows)}`);
+    assert.equal(d.telemetry.recentRecallId(), null, "the replay's recall ids stay out of the join state");
+  } finally {
+    await d.close();
+  }
+});
+
 test("(b) unit: the sink routes a replay row by client or by session prefix, a live row stays in events-*", () => {
   const ts = "2026-10-20T10:00:00.000Z";
   assert.equal(eventLogFile("/l", ts, { session_id: "abc", dimensions: { client: "claude-code" } }), "/l/events-2026-10-20.jsonl");

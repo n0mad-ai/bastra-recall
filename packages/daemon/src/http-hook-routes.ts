@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { markDraftDelivery } from './draft-delivery.js';
 import { cleanDraftField } from './draft-text.js';
 /**
@@ -522,7 +523,10 @@ export async function runHookRecall(
         );
       if (suppressionMode === "live") hits = usageSuppression.kept;
       const usageSuppressedTokensEst = usageSuppression.suppressed.reduce((n, s) => n + s.tokens_est, 0);
-      const recallId = telemetry.newRecallId();
+      // #702: a replay's id is minted outside the join state — through
+      // `newRecallId()` it would become the "latest recall" a real
+      // load_memory/save_memory within five minutes is booked against.
+      const recallId = replay ? randomUUID() : telemetry.newRecallId();
       if (!replay) telemetry.recordHookHints(recallId, hits);
       // #489: Ab hier ist die `recall_id` bekannt — die späte Stichprobe kann
       // geschrieben werden. Ein Sample, das schon eingetroffen ist, wird
