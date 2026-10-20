@@ -28,8 +28,31 @@ internal administrative endpoints outside `/api/v1` are outside this contract.
 ## Connect your Recall to a Custom GPT on web and phone
 
 Use your own public HTTPS address, for example `https://recall.your-domain.com`.
-It must lead to the daemon through a tunnel or reverse proxy. Generate your
-personalized Action file:
+It must lead to the daemon through a tunnel or reverse proxy. Before exposing
+it, set **`BASTRA_AUTH_LOOPBACK_SKIP=0`** and a strong **`BASTRA_API_TOKEN`** in
+the daemon's environment, then restart the daemon with those settings. Preserve
+the original public `Host` header when forwarding (for nginx, use
+`proxy_set_header Host $http_host;`). Publish **only `/api/v1/`**, blocking all
+other paths, including `/hook` and `/ui`.
+
+**Warning:** a proxy on the same machine can appear to the daemon as a local
+caller. nginx's default upstream Host, ngrok's `--host-header=rewrite`, or
+cloudflared's `httpHostHeader` can rewrite Host to `127.0.0.1` or `localhost`.
+With the default loopback exemption, that combination can bypass bearer auth,
+exposing API data and any forwarded hooks/UI. Disabling loopback skip is required;
+Host preservation and limiting the published paths are additional protections.
+
+Before importing the Action, test the public URL from outside your LAN:
+
+```sh
+curl -sS -o /dev/null -w '%{http_code}\n' https://recall.your-domain.com/api/v1/health
+# Required: 401 (no token)
+curl -sS -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $BASTRA_API_TOKEN" https://recall.your-domain.com/api/v1/health
+# Required: 200 (valid token)
+```
+
+Also verify that `/hook` and `/ui` are blocked by the proxy. Do not publish until
+these checks pass. Generate your personalized Action file:
 
 ```sh
 npm run openapi:generate -- --server-url https://recall.your-domain.com --output /tmp/my-recall-action.json
@@ -75,10 +98,11 @@ trailing-slash alias `/tasks/` behaves like `/tasks`.
   `review_draft`, `find_code`, `find_affected_files`, `floors`, `floors/affirm`,
   `floors/release`.
 - Missing GET routes: `floors`, `graph`, `graph/semantic`, `graph/node`.
-- Task routes already existed in the old spec, but incorrectly inherited the
-  general API bearer scheme and tunnel-facing server guidance. They now use a
-  distinct task credential scheme and explicitly document the local Host gate
-  and preview switch. They are absent from the GPT Action.
+- Task routes and their distinct `taskBearerAuth` scheme already existed in the
+  old spec. The generator preserves separate task credentials (named
+  `taskCredential` in the generated contract), documents the local Host gate and
+  preview switch, and excludes tasks from the GPT Action. The full REST contract
+  now defaults to a local server address instead of tunnel-facing guidance.
 - API version was stale (`0.8.6`); it now comes from the daemon package.
 - Memory/document input properties now follow the shared handler validators
   instead of the starter's duplicate partial schemas. Hand-written response

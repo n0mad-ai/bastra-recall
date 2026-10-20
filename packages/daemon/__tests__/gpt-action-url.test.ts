@@ -10,7 +10,7 @@ test("accepts public domains and IPs, normalizes the API suffix", () => {
   assert.equal(actionServerUrl("https://[2606:4700:4700::1111]"), "https://[2606:4700:4700::1111]/api/v1");
 });
 test("rejects addresses a cloud Action cannot reach", () => {
-  for (const host of ["localhost", "LOCALHOST.", "sub.localhost", "recall.local", "recall.lan", "recall.internal", "recall", "127.0.0.1", "127.1", "2130706433", "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.5", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "[2::1]", "[::1]", "[::]", "[fd00::1]", "[fe80::1]", "[::ffff:127.0.0.1]"]) {
+  for (const host of ["localhost", "LOCALHOST.", "sub.localhost", "recall.local", "home.arpa", "recall.home.arpa", "RECALL.HOME.ARPA.", "recall.lan", "recall.internal", "recall", "127.0.0.1", "127.1", "2130706433", "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.5", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "[2::1]", "[::1]", "[::]", "[fd00::1]", "[fe80::1]", "[::ffff:127.0.0.1]"]) {
     assert.throws(() => actionServerUrl(`https://${host}`), /Localhost and LAN/, host);
   }
   assert.throws(() => actionServerUrl("http://recall.example.com"), /HTTPS/);

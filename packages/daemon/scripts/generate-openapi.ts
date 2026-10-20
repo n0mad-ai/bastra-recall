@@ -67,6 +67,17 @@ export function discoverGetRoutes(text?: string): Map<string, string[]> {
     : ts.createSourceFile("surface.ts", text, ts.ScriptTarget.Latest, true);
   const routes = new Map<string, string[]>();
   walk(file, node => {
+    // Fail closed when route syntax changes: otherwise one new guard could be
+    // skipped while the remaining known routes still make generation succeed.
+    if (ts.isPropertyAccessExpression(node) && node.getText(file) === "u.pathname") {
+      const comparison = node.parent;
+      if (!ts.isBinaryExpression(comparison) || comparison.left !== node ||
+          comparison.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken ||
+          !ts.isStringLiteral(comparison.right) || !ts.isIfStatement(comparison.parent) ||
+          comparison.parent.expression !== comparison) {
+        throw new Error(`Unsupported HTTP GET pathname guard: ${comparison.getText(file)}`);
+      }
+    }
     if (!ts.isIfStatement(node) || !ts.isBinaryExpression(node.expression)) return;
     const condition = node.expression;
     if (condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken ||

@@ -67,3 +67,16 @@ test("a personalized GPT Action accepts the user's public HTTPS address without 
   assert.deepEqual(generatedArtifacts(), defaults);
   assert.deepEqual(action.paths, generateDocuments().action.paths);
 });
+
+test("GET discovery rejects unfamiliar pathname guards even when known routes remain", () => {
+  const known = 'if (u.pathname === "/api/v1/health") {}';
+  for (const guard of [
+    'u.pathname.startsWith("/api/v1/new")',
+    'u.pathname === NEW_ROUTE',
+    '"/api/v1/new" === u.pathname',
+    'u.pathname == "/api/v1/new"',
+    'u.pathname === "/api/v1/new" && enabled',
+  ]) {
+    assert.throws(() => discoverGetRoutes(`${known} if (${guard}) {}`), /Unsupported HTTP GET pathname guard/, guard);
+  }
+});

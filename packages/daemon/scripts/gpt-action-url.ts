@@ -20,7 +20,7 @@ export function actionServerUrl(raw: string): string {
     // unique-local, IPv4-mapped private addresses, and multicast.
     local = !/^[23][0-9a-f]{3}:/.test(host);
   } else {
-    local = !host.includes(".") || /(?:^|\.)(?:localhost|local|localdomain|internal|lan|home|onion)$/.test(host);
+    local = /(?:^|\.)home\.arpa$/.test(host) || !host.includes(".") || /(?:^|\.)(?:localhost|local|localdomain|internal|lan|home|onion)$/.test(host);
   }
   if (local) throw new Error("Localhost and LAN addresses cannot be reached by a cloud GPT Action. Use your public HTTPS domain/IP or an HTTPS tunnel.");
   const path = url.pathname.replace(/\/+$/, "");
