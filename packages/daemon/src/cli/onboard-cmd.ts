@@ -24,6 +24,7 @@ import {
   type Persona,
 } from "../onboarding.js";
 import { resolveVault } from "./helpers.js";
+import { replayAfterOnboarding } from "./doctor-replay.js";
 import type { ParsedArgs } from "./types.js";
 
 export async function cmdOnboard(args: ParsedArgs): Promise<number> {
@@ -145,6 +146,9 @@ async function saveInterview(vaultPath: string, persona: Persona, answers: Recor
       `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
       `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`,
   );
+  // #702 step 5: how recall will behave on this vault with this user's own
+  // prompts — a replay when transcripts exist, otherwise when to come back.
+  await replayAfterOnboarding(process.stdout);
   return 0;
 }
 

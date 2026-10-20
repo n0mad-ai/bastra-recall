@@ -133,6 +133,8 @@ Commands:
                              the copies it finds
   doctor [surface|all]       Check status of one or every surface
   doctor [surface|all] --fix Check status and repair missing/broken pieces
+  doctor --replay [--days N] Send your own past prompts through recall in
+                             shadow and report what it would have hinted
   status                     Check daemon and adapters status (supports --json, -q)
   logs                       Readable view of what the hooks and the daemon
                              recorded — one line per event, newest last
@@ -170,6 +172,10 @@ Options:
   --include-eval             With --stats: also count rows marked as eval/
                              synthetic traffic (excluded by default, #619)
   --fix                      With doctor: repair non-ok surfaces (on 'all', won't set up ones never installed)
+  --replay                   With doctor: replay your Claude Code prompts of the last
+                             --days N days (default 14) through the live prompt lane,
+                             nothing written; --json for the report as JSON,
+                             --compare <report.json> to print deltas to a saved one
   --no-stop-hook             Skip the Stop save-eval hook (registered by default)
   --stub                     Download the compiled hook client for Claude Code without asking (~70 MB)
   --no-stub                  Keep the node hook client — never download the compiled one (remembered)
@@ -337,6 +343,7 @@ Options:
 Usage:
   bastra doctor [surface|all]
   bastra doctor [surface|all] --fix
+  bastra doctor --replay [--days N] [--json] [--compare <report.json>]
 
 Checks the daemon, the MCP forwarder path, the hook commands, the skill and the
 statusline for one surface or all of them. A hook whose command points at a
@@ -348,11 +355,28 @@ language, onboarding, semantic recall, hooks and skill per client, opt-in
 extras) with the command that turns each one on. Off features never change the
 exit code, and --fix never switches one on.
 
+--replay (#702) answers a different question: how does recall behave on YOUR
+vault with YOUR prompts? It reads your Claude Code transcripts of the last N
+days (default 14), sends every user turn through the running daemon's prompt
+lane in shadow — session ids 'replay-…', no vault writes, telemetry in its own
+'replay-YYYY-MM-DD.jsonl' that no live readout counts — and prints the share
+of prompts with a hint, the slots taken by the ten most frequent notes, the
+share of system turns (task notifications, agent mail), the slots on notes the
+agent actually loaded, bridge fires per bridge and the p50/p95 latency. Without
+transcripts it says "not evaluable". Same transcripts and settings give the
+same report. To compare two settings profiles, run the daemon with the
+candidate env on another port and point the replay at it with
+BASTRA_DAEMON_URL, saving each --json report; --compare prints the deltas.
+
 ${SURFACE_ARG}
 Options:
   --fix       Repair missing or broken pieces. On 'all' this will not set up a
               surface that was never installed
   --vault <path>  Check against this vault instead of the configured one
+  --replay    Replay your own prompts through recall in shadow (see above)
+  --days <n>  With --replay: how many days of transcripts to read (default 14)
+  --json      With --replay: print the report as JSON
+  --compare <report.json>  With --replay: also print deltas to a saved report
 `,
 
   status: `bastra status — is the daemon up, and what is it serving

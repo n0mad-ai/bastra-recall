@@ -38,6 +38,7 @@ import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.j
 import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
+import { cmdDoctorReplay } from "./doctor-replay.js";
 import { configuredState, daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
@@ -81,6 +82,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     lines: null,
     stats: false,
     includeEval: false,
+    replay: false,
+    days: null,
+    compare: null,
     positional: [],
     errors: [],
   };
@@ -109,6 +113,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (a === "--follow" || a === "-f") result.follow = true;
     else if (a === "--stats") result.stats = true;
     else if (a === "--include-eval") result.includeEval = true;
+    else if (a === "--replay") result.replay = true;
+    else if (a === "--days") {
+      result.days = argv[++i] ?? null;
+    } else if (a.startsWith("--days=")) {
+      result.days = a.slice("--days=".length);
+    } else if (a === "--compare") {
+      result.compare = argv[++i] ?? null;
+    } else if (a.startsWith("--compare=")) {
+      result.compare = a.slice("--compare=".length);
+    }
     else if (a === "--since") {
       result.since = argv[++i] ?? null;
     } else if (a.startsWith("--since=")) {
@@ -413,6 +427,8 @@ export async function cmdUninstall(args: ParsedArgs): Promise<number> {
 }
 
 export async function cmdDoctor(args: ParsedArgs): Promise<number> {
+  // #702: the replay is its own report — the surface checks stay untouched.
+  if (args.replay) return cmdDoctorReplay(args);
   const surface = args.surface ?? "all";
   // An explicitly named surface may be installed from scratch by --fix; on the
   // default 'all' we only repair surfaces that already exist, never silently

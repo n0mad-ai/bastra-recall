@@ -35,6 +35,8 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--vault",
   "--origin",
   "--answers",
+  "--days",
+  "--compare",
 ]);
 
 /** Accepted on every command: pure documentation, no side effects. */
@@ -54,7 +56,10 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
     "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub", "--extension",
   ],
   uninstall: ["--dry-run"],
-  doctor: ["--fix", "--dry-run", "--vault", "--yes", "-y", "--with-stop-hook", "--no-stop-hook"],
+  doctor: [
+    "--fix", "--dry-run", "--vault", "--yes", "-y", "--with-stop-hook", "--no-stop-hook",
+    "--replay", "--days", "--compare", "--json",
+  ],
   update: [
     "--staged", "--force", "--dry-run", "--vault", "--yes", "-y",
     "--ollama", "--no-ollama", "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub",

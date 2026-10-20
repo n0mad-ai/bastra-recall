@@ -123,6 +123,12 @@ export interface ParsedArgs {
   // marked as `dimensions.client === "eval"` — excluded from the default
   // report so a probe run cannot dominate the context-tax numbers.
   includeEval: boolean;
+  // `doctor --replay [--days N] [--compare <report.json>]` (#702): send the
+  // user's own past prompts through the live prompt lane in shadow and report.
+  // Raw day count — `cmdDoctorReplay` owns parsing and the error message.
+  replay: boolean;
+  days: string | null;
+  compare: string | null;
   // All positional tokens, in order — for sub-commands like
   // `config set update.mode auto` that need more than command+surface.
   positional: string[];
