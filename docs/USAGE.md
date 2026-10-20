@@ -11,6 +11,22 @@ Set up your clients, bring in existing memories and use Bastra Recall in everyda
 For the Claude Code statusline and Claude/Codex terminal panels, see the
 [setup, controls and data limits](../packages/statusline/README.md#english).
 
+### Windows: semantic recall and documents
+
+Windows support is in progress ([#86](https://github.com/n0mad-ai/bastra-recall/issues/86)); real Windows acceptance remains open. These paths are checked on macOS with platform mocks.
+
+**Semantic recall:** Windows includes no bundled Ollama or automatic Ollama/model installation ([#84](https://github.com/n0mad-ai/bastra-recall/issues/84)). Install [Ollama](https://ollama.com) separately, start its server, and run:
+
+```powershell
+ollama pull embeddinggemma
+bastra embeddings on
+bastra doctor
+```
+
+Keep external Ollama running yourself. Alternatively, explicitly select OpenAI with `bastra config set embedding.provider openai` and supply `OPENAI_API_KEY` or `BASTRA_EMBEDDING_KEY` in the daemon environment, then restart the daemon. OpenAI sends recall queries and indexed memory text to api.openai.com. A key alone does not enable it. Without a working embedding provider, recall uses keyword search (BM25); `bastra doctor` reports the provider/model state and the Windows setup limitation.
+
+**Documents/OCR: macOS today, Windows planned** ([#85](https://github.com/n0mad-ai/bastra-recall/issues/85)). Windows has no supported document import/OCR backend yet. `find_document` and `read_document` can still search and read document text already extracted into the vault. `open_document` cannot launch the original on Windows; it returns a clear message and the path so you can open it manually. This does not perform OCR.
+
 ### Changes in 1.1.1
 
 - Searches for an old value keep that note visible and place its retrieved successor immediately ahead, including replacement chains. The older note keeps its relevance score.
@@ -576,6 +592,22 @@ Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recal
 Für die Claude-Code-Statusline und die Claude-/Codex-Terminal-Panels findest du
 [Einrichtung, Bedienung und Datengrenzen](../packages/statusline/README.md#deutsch)
 in der Panel-Anleitung.
+
+### Windows: semantischer Recall und Dokumente
+
+Windows-Unterstützung ist in Arbeit ([#86](https://github.com/n0mad-ai/bastra-recall/issues/86)); die Abnahme auf einem echten Windows-Rechner bleibt offen. Diese Abläufe werden auf macOS mit Plattform-Mocks geprüft.
+
+**Semantischer Recall:** Unter Windows wird Ollama nicht mitgeliefert und weder Ollama noch das Modell automatisch installiert ([#84](https://github.com/n0mad-ai/bastra-recall/issues/84)). Installiere [Ollama](https://ollama.com) separat, starte dessen Server und führe aus:
+
+```powershell
+ollama pull embeddinggemma
+bastra embeddings on
+bastra doctor
+```
+
+Halte externes Ollama selbst am Laufen. Alternativ wählst du OpenAI ausdrücklich mit `bastra config set embedding.provider openai`, setzt `OPENAI_API_KEY` oder `BASTRA_EMBEDDING_KEY` in der Daemon-Umgebung und startest den Daemon neu. OpenAI sendet Recall-Anfragen und den indexierten Notiztext an api.openai.com. Ein Schlüssel allein aktiviert es nicht. Ohne funktionierenden Embedding-Provider arbeitet Recall mit Stichwortsuche (BM25); `bastra doctor` nennt den Provider-/Modellzustand und die Windows-Einschränkung.
+
+**Dokumente/OCR: heute macOS, Windows geplant** ([#85](https://github.com/n0mad-ai/bastra-recall/issues/85)). Windows hat noch kein unterstütztes Backend für Dokumentimport/OCR. `find_document` und `read_document` können bereits extrahierten Dokumenttext im Vault weiterhin suchen und lesen. `open_document` kann das Original unter Windows nicht starten; es liefert eine klare Meldung und den Pfad zum manuellen Öffnen. Dabei findet keine OCR statt.
 
 ### Änderungen in 1.1.1
 

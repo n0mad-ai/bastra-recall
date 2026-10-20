@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 
-import { findDocument } from "../src/documents-handler.js";
+import { findDocument, readDocument, openDocument } from "../src/documents-handler.js";
 
 function memoryMarkdown(
   id: string,
@@ -125,6 +125,29 @@ test("docs_indexed respektiert den Sensitivity-Filter des Callers", async () => 
       { allowPrivate: true },
     );
     assert.equal(internal.docs_indexed, 1);
+  } finally {
+    await close();
+  }
+});
+
+
+test("Windows: opening reports missing support while extracted text stays searchable and readable", async () => {
+  const { vault, search, close } = await makeVault([
+    { name: "doc.md", content: memoryMarkdown("zebra-doc", "zebra handling", "doc") },
+  ]);
+  try {
+    const result = await openDocument(vault, { id: "zebra-doc" }, { platform: "win32" });
+    assert.equal(result.ok, false);
+    assert.ok(result.path);
+    if (!result.ok) {
+      assert.match(result.message, /Windows.*no supported backend/);
+      assert.match(result.message, /Open this path manually/);
+      assert.match(result.message, /already-extracted document text remain available/);
+    }
+    assert.equal(findDocument(search, vault, { query: "zebra handling" }).hits.length, 1);
+    assert.match(readDocument(vault, { id: "zebra-doc" })?.body ?? "", /Body for zebra handling/);
+    const missing = await openDocument(vault, { id: "unknown" }, { platform: "win32" });
+    assert.deepEqual(missing, { ok: false, message: "document not found: unknown" });
   } finally {
     await close();
   }

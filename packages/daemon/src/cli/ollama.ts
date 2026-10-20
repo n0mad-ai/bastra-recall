@@ -87,7 +87,7 @@ export async function ensureOllama(opts: { dryRun: boolean; mode: "auto" | "skip
         status: "unsupported",
         activated: false,
         message:
-          "automatic Ollama setup is macOS-only today (Windows: #84). Manual: install + start Ollama (https://ollama.com), pull the embeddinggemma model, then re-run: bastra embeddings on",
+          "automatic Ollama setup is macOS-only today; Windows has no bundled Ollama (#84). Manual: install + start external Ollama (https://ollama.com), run `ollama pull embeddinggemma`, then re-run: bastra embeddings on. Alternatively configure embedding.provider=openai with an API key. Until a provider works, recall is keyword-only (BM25).",
       };
     }
     if (opts.dryRun) {

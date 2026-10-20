@@ -332,6 +332,7 @@ export interface OllamaProbeResult {
  * exit code is untouched.
  */
 export function formatEmbeddingDoctorLines(i: {
+  platform?: NodeJS.Platform;
   choice: EmbeddingChoice;
   fileProvider: EmbeddingProviderName | undefined;
   envValue: string | undefined;
@@ -372,6 +373,15 @@ export function formatEmbeddingDoctorLines(i: {
     }
   } else {
     lines.push(`  ✓ ok: openai (source: ${choice.source}) — ${CLOUD_EGRESS_NOTE}`);
+  }
+
+  if ((i.platform ?? process.platform) === "win32") {
+    lines.push(
+      "  note: Windows includes no bundled Ollama or automatic model setup (#84). " +
+      "Install and start external Ollama, run `ollama pull embeddinggemma`, then `bastra embeddings on`; " +
+      "or explicitly configure OpenAI with `bastra config set embedding.provider openai` and OPENAI_API_KEY / BASTRA_EMBEDDING_KEY. " +
+      "Without a working embedding provider, recall is keyword-only (BM25).",
+    );
   }
 
   if (
