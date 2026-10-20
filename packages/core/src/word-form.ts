@@ -158,3 +158,54 @@ export function hasWordForm(tokens: ReadonlySet<string>, word: string): boolean 
   }
   return false;
 }
+
+// ── Query stems for the lexical arm (#1194) ─────────────────────────────
+
+/** A query word shorter than this gets no stems: its endings are the word. */
+export const QUERY_STEM_MIN_LETTERS = 7;
+/** Every stem keeps at least this many letters, or it prefix-matches noise. */
+export const QUERY_STEM_MIN_STEM_LETTERS = 5;
+// Prefix stems only strip endings; the English transitions reduce to these.
+const ENGLISH_ENDINGS = endings("s es ed ing");
+// The Latin families ARE mixed here, against the rule above. That rule guards
+// `sameWordForm`, where a shared ending pair equates two different words
+// (folder/folded). A stem is never equated with anything: it is a prefix
+// search term that keeps five letters of a word the index does not hold, and
+// whatever it reaches is still scored as a prefix match at 0.3 of the word.
+// Cutting an ending from the wrong language yields a stem that is either the
+// true stem (harmless) or a longer prefix that reaches less (harmless).
+const LATIN_ENDINGS: ReadonlySet<string> = new Set(
+  [GERMAN, FINNISH, TURKISH, ENGLISH_ENDINGS].flatMap((s) => [...s]).filter((e) => e !== ""),
+);
+const byLength = (a: string, b: string): number => b.length - a.length || (a < b ? -1 : 1);
+const SUFFIX_FAMILIES: readonly [RegExp, readonly string[]][] = [
+  [LATIN_RE, [...LATIN_ENDINGS].sort(byLength)],
+  [CYRILLIC_RE, [...RUSSIAN].filter(Boolean).sort(byLength)],
+  [JAPANESE_RE, [...JAPANESE].filter(Boolean).sort(byLength)],
+  [HANGUL_RE, [...KOREAN].filter(Boolean).sort(byLength)],
+  [HEBREW_RE, [...HEBREW].filter(Boolean).sort(byLength)],
+];
+
+/**
+ * Shorter forms of a folded, letters-only query word, for prefix matching
+ * against a stored form that is SHORTER than the query ("şablonlarında" →
+ * "şablon" reaches "şablonu"; "skriptillä" → "skripti"). Only the closed
+ * affix families above are stripped, never an arbitrary tail: "folder" must
+ * not become "fold". Words with digits or punctuation, words under
+ * `QUERY_STEM_MIN_LETTERS` and the abjads with prefixed articles get none.
+ * Longest ending first; the word itself is never returned.
+ */
+export function queryStems(word: string): string[] {
+  if (!LETTERS_ONLY_RE.test(word) || letterCount(word) < QUERY_STEM_MIN_LETTERS) return [];
+  const w = word.normalize("NFC");
+  const family = SUFFIX_FAMILIES.find(([re]) => re.test(w));
+  if (!family) return [];
+  const out: string[] = [];
+  for (const ending of family[1]) {
+    if (!w.endsWith(ending)) continue;
+    const stem = w.slice(0, -ending.length);
+    if (letterCount(stem) < QUERY_STEM_MIN_STEM_LETTERS || out.includes(stem)) continue;
+    out.push(stem);
+  }
+  return out;
+}
