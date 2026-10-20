@@ -928,6 +928,7 @@ describe("the mutation gate cannot mix two trees under one seed", () => {
     population_sha256: "abc",
     candidates: 1233,
     seed: 20260918,
+    target: 20,
   };
 
   test("the first run pins, a matching run passes, a moved HEAD is an error", () => {
@@ -941,10 +942,29 @@ describe("the mutation gate cannot mix two trees under one seed", () => {
   });
 
   test("every pinned field is checked, not just the commit", () => {
-    for (const key of ["repository", "population_sha256", "candidates", "seed"] as const) {
+    for (const key of ["repository", "population_sha256", "candidates", "seed", "target"] as const) {
       const changed = { ...pinned, [key]: "moved" };
       assert.equal(checkPopulation(pinned, changed).ok, false, `${key} drifted unnoticed`);
     }
+  });
+
+  test("a later --target cannot extend an evaluated sample (#592)", () => {
+    // The seed freezes the ORDER of the draw, not how far down it the sample
+    // goes. `--target 40` against an archive evaluated at 20 passed the pin
+    // and appended twenty more truth files to the scored sample.
+    const extended = checkPopulation(pinned, { ...pinned, target: 40 });
+    assert.equal(extended.ok, false);
+    assert.equal(extended.write, false);
+    assert.match(extended.why, /target=20/);
+    assert.match(extended.why, /now 40/);
+  });
+
+  test("an archive pinned before the target was part of the pin is not silently re-pinned", () => {
+    const { target: _target, ...legacy } = pinned;
+    const verdict = checkPopulation(legacy, pinned);
+    assert.equal(verdict.ok, false, "a missing target would otherwise pass any --target");
+    assert.equal(verdict.write, false);
+    assert.match(verdict.why, /"target": <n>/);
   });
 
   test("the population hash depends on the triples and their order", () => {
