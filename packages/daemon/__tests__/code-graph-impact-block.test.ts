@@ -19,6 +19,7 @@ import {
   unifiedDiff,
 } from "../src/code-graph/pending-diff.js";
 import type { ReadonlySessionState } from "../src/session-state.js";
+import { coverageMapFileOf } from "../src/code-graph/coverage-map.js";
 
 /**
  * The DELIVERED change-impact block (#606).
@@ -324,6 +325,51 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.equal(listed.length, MAX_IMPACT_FILES);
     assert.match(out.note.note, /… and 7 more/);
     assert.equal(out.note.listed.length, MAX_IMPACT_FILES);
+  });
+
+  it("names the tests that ran the changed functions when the repository has a coverage map, and nothing without one (#629)", async () => {
+    const repo = await freshRepo(root, "coverage");
+    const cache = new CodeGraphCache();
+    await cache.ensureLoaded(repo);
+    const call = () =>
+      impactNote({
+        filePath: join(repo, SAVE),
+        repoRoot: repo,
+        toolName: "Edit",
+        toolInput: EDIT_SAVE,
+        session: EMPTY_SESSION,
+        cache,
+        budgetMs: CONTENT_BUDGET_MS,
+      });
+    const without = await call();
+    assert.ok(without.note);
+    assert.doesNotMatch(without.note.note, /coverage map/);
+
+    await mkdir(dirname(coverageMapFileOf(repo)), { recursive: true });
+    await writeFile(
+      coverageMapFileOf(repo),
+      JSON.stringify({
+        version: 1,
+        foldedAt: new Date().toISOString(),
+        runs: 1,
+        tests: {
+          // Reaches saveMemory at runtime only — the graph has no edge for it.
+          "packages/daemon/__tests__/runtime.test.ts": { [SAVE]: ["saveMemory"] },
+          // The graph already lists this one; the line must not repeat it.
+          "packages/core/__tests__/save.test.ts": { [SAVE]: ["saveMemory"] },
+          // Loaded the file, ran nothing that changed.
+          "packages/core/__tests__/loads.test.ts": { [SAVE]: ["validateMemory"] },
+        },
+      }),
+      "utf8",
+    );
+    const withMap = await call();
+    assert.ok(withMap.note);
+    const line = withMap.note.note.split("\n").find((l) => l.includes("coverage map"));
+    assert.ok(line, withMap.note.note);
+    assert.match(line, /^Tests that ran the changed functions \(coverage map, \d+ min old\): packages\/daemon\/__tests__\/runtime\.test\.ts\.$/);
+    // The map adds a line, never a candidate: the listed files are the graph's alone.
+    assert.deepEqual(withMap.note.listed, without.note.listed);
   });
 
   it("puts production files before test files", async () => {

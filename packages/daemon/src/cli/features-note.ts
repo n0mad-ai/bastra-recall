@@ -25,6 +25,7 @@ import { ollamaModelPulled } from "./ollama.js";
 import { FRESH_VAULT_MAX, isOnboardingDone } from "../onboarding.js";
 import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-repos.js";
 import { getPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
+import { getCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 import { probeDaemon, resolveVault, type DaemonProbe } from "./helpers.js";
 import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
@@ -52,6 +53,7 @@ export interface FeatureState {
   reflex: { enabled: boolean; offBy?: string };
   codeAwareness: { repos: number; offByEnv: boolean };
   promptImpact: boolean;
+  coverageMap: boolean;
   docsMode: string;
   commons: boolean;
   bridges: boolean;
@@ -150,6 +152,10 @@ export function featureLines(s: FeatureState): string[] {
     ? row(ON, "change impact in prompts (experimental)", "on")
     : row(INFO, "change impact in prompts (experimental)", "off, not shown to help yet",
         "bastra config set promptImpact.enabled true"));
+  lines.push(s.coverageMap
+    ? row(ON, "coverage map from test runs (experimental)", "on — test commands run with NODE_V8_COVERAGE in enabled repositories")
+    : row(INFO, "coverage map from test runs (experimental)", "off",
+        "bastra config set coverageMap.enabled true"));
   lines.push(s.docsMode !== "off"
     ? row(ON, "product docs", s.docsMode)
     : row(INFO, "product docs", "off", "bastra config set docs.mode suggest"));
@@ -250,6 +256,7 @@ export async function collectFeatureState(
     reflex: reflexState(settings, env),
     codeAwareness: { repos: (await enabledRepos(undefined, env)).length, offByEnv: codeAwarenessDisabledByEnv(env) },
     promptImpact: await getPromptImpactEnabled(undefined, env),
+    coverageMap: await getCoverageMapEnabled(undefined, env),
     docsMode: settings.docs?.mode ?? "off",
     commons: settings.commons?.enabled ?? false,
     bridges: settings.sharedRecall?.enabled ?? false,

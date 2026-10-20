@@ -338,6 +338,37 @@ Details worth knowing:
   excluding lock checks and skipped runs.
 - macOS and Linux for now.
 
+**Coverage map from your own test runs (experimental, off by default).** The
+graph cannot see a test that reaches your change at runtime only — through a
+spawned daemon, the CLI, an HTTP call, a shared fixture. A coverage map can,
+and nobody has to run a suite to build it:
+
+```bash
+bastra config set coverageMap.enabled true
+```
+
+With that on, and only in repositories with code awareness, a test command the
+agent runs through Bash (`npm test`, `node --test`, `vitest`, `jest`,
+`tsx --test`) is rewritten to run with `NODE_V8_COVERAGE` set, so Node writes
+raw coverage into `.bastra-coverage/raw/` inside the repository (the directory
+ignores itself in git). Recall folds that in the background, at the same
+moments the graph refreshes, into `.bastra-coverage/coverage-map.json` — which
+tests executed which files and functions, paths and names only, never source —
+and deletes the raw files. The dependents block then carries one more line:
+"Tests that ran the changed functions (coverage map, 2 h old): …", at most
+five, ranked by how many of the changed functions each test executed, never as
+an instruction. `bastra code` and `bastra doctor` show whether a map exists and
+how old it is.
+
+Worth knowing before switching it on: the rewrite changes the command the agent
+wrote, which is why this is its own switch; a permission rule that matches on
+the command prefix sees the rewritten command; a test run costs about 40 %
+more wall time under coverage (measured on `packages/core`: 10.5–10.8 s plain,
+14.7–15.4 s with coverage) and leaves about 170 MB of raw output per run until
+the next fold; and a process that loads no test file of its own — a daemon a
+test spawned — cannot be attributed to its test and is dropped. Collection
+stops on its own if unfolded raw output reaches 1 GB.
+
 If something looks wrong, `bastra doctor` reports the state of every enabled
 repository, and `bastra code rebuild` repairs a broken map after asking.
 A busy build lock is retried after 10, 20, 40, 80, 160 and 320 seconds; further
@@ -854,6 +885,39 @@ Was du wissen solltest:
   erfolgreiche und fehlgeschlagene Builds, ohne Sperrprüfungen und ausgelassene
   Läufe.
 - Vorerst macOS und Linux.
+
+**Coverage-Karte aus den eigenen Testläufen (experimentell, standardmäßig aus).**
+Der Graph sieht keinen Test, der deine Änderung nur zur Laufzeit erreicht —
+über einen gestarteten Daemon, die CLI, einen HTTP-Aufruf, eine gemeinsame
+Fixture. Eine Coverage-Karte sieht das, und niemand muss dafür eine Suite
+laufen lassen:
+
+```bash
+bastra config set coverageMap.enabled true
+```
+
+Ist das an, und nur in Repositories mit Code-Awareness, wird ein Testbefehl, den
+der Agent über Bash ausführt (`npm test`, `node --test`, `vitest`, `jest`,
+`tsx --test`), so umgeschrieben, dass er mit gesetztem `NODE_V8_COVERAGE` läuft.
+Node schreibt dann rohe Coverage nach `.bastra-coverage/raw/` im Repository
+(das Verzeichnis ignoriert sich in git selbst). Recall faltet das im
+Hintergrund, zu denselben Zeitpunkten wie den Graph-Refresh, zu
+`.bastra-coverage/coverage-map.json` — welche Tests welche Dateien und
+Funktionen ausgeführt haben, nur Pfade und Namen, nie Quelltext — und löscht die
+Rohdaten. Der Abhängigkeiten-Block bekommt eine Zeile mehr: „Tests that ran
+the changed functions (coverage map, 2 h old): …", höchstens fünf, sortiert
+danach, wie viele der geänderten Funktionen ein Test ausgeführt hat, nie als
+Anweisung. `bastra code` und `bastra doctor` zeigen, ob eine Karte existiert und
+wie alt sie ist.
+
+Vor dem Einschalten wissenswert: Die Umschreibung ändert den Befehl, den der
+Agent geschrieben hat — deshalb ein eigener Schalter; eine Berechtigungsregel
+auf den Befehlsanfang sieht den umgeschriebenen Befehl; ein Testlauf braucht
+unter Coverage etwa 40 % mehr Zeit (gemessen an `packages/core`: 10,5–10,8 s
+ohne, 14,7–15,4 s mit) und hinterlässt bis zur nächsten Faltung rund 170 MB
+Rohdaten; und ein Prozess, der keine eigene Testdatei lädt — ein vom Test
+gestarteter Daemon — lässt sich keinem Test zuordnen und wird verworfen.
+Erreichen ungefaltete Rohdaten 1 GB, stoppt die Sammlung von selbst.
 
 Wenn etwas nicht stimmt: `bastra doctor` nennt den Zustand jedes aktivierten
 Repositories, und `bastra code rebuild` repariert eine kaputte Karte nach

@@ -45,6 +45,7 @@ import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
 import { graphDirOf, loadGraph } from "../code-graph/reader.js";
 import { externalRefLines } from "../code-graph/external-refs.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
+import { coverageMapStatus } from "../code-graph/coverage-map.js";
 import { scanFileState } from "../code-graph/build.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
 
@@ -591,6 +592,7 @@ async function printCodeGraphNote(): Promise<void> {
       if (manifest.lastError !== null) {
         process.stdout.write(`    last error: ${manifest.lastError}\n`);
       }
+      process.stdout.write(`    ${await coverageMapStatus(repo)} (experimental)\n`);
       // #582: the package boundary is the half of the graph Graphify does not
       // carry, and it fails SILENTLY — a changed id format costs every
       // cross-package answer while the graph still loads and looks fine.

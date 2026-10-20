@@ -123,6 +123,13 @@ export interface RefresherOptions {
    */
   onBuilt?: (repoRoot: string) => Promise<unknown> | void;
   /**
+   * Called on every trigger, before any queueing decision (#629). The coverage
+   * fold rides on the same four moments as the graph refresh but is not a
+   * build: it must run even when the tree is fresh and no build follows — a
+   * test run changes no source file. Fire and forget, errors swallowed.
+   */
+  onEnqueue?: (repoRoot: string, reason: RefreshReason) => void;
+  /**
    * Whether a repository may still be built (#585). Checked when a run is
    * about to start, so a repository disabled while a refresh was queued is
    * skipped instead of built. Defaults to always.
@@ -165,6 +172,7 @@ export class CodeGraphRefresher {
   private readonly lockRetryMs: number;
   private readonly onEvent: (event: RefreshEvent) => void;
   private readonly onBuilt: (repoRoot: string) => Promise<unknown> | void;
+  private readonly onEnqueue: (repoRoot: string, reason: RefreshReason) => void;
   private readonly allow: (repoRoot: string) => boolean;
   private readonly isFresh: (repoRoot: string) => Promise<boolean>;
   private stopped = false;
@@ -177,6 +185,7 @@ export class CodeGraphRefresher {
     this.lockRetryMs = opts.lockRetryMs ?? DEFAULT_LOCK_RETRY_MS;
     this.onEvent = opts.onEvent ?? (() => {});
     this.onBuilt = opts.onBuilt ?? (() => {});
+    this.onEnqueue = opts.onEnqueue ?? (() => {});
     this.allow = opts.allow ?? (() => true);
     this.isFresh = opts.isFresh ?? graphIsFresh;
   }
@@ -188,6 +197,11 @@ export class CodeGraphRefresher {
    */
   enqueue(repoRoot: string, reason: RefreshReason): void {
     if (this.stopped) return;
+    try {
+      this.onEnqueue(repoRoot, reason);
+    } catch {
+      // A listener must never be able to keep a refresh from being queued.
+    }
     const entry = this.entryOf(repoRoot);
     entry.lastReason = reason;
 

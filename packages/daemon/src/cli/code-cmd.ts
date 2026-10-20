@@ -31,6 +31,8 @@ import { gitPath, isGitRepo, repoRootSync } from "../code-graph/git-paths.js";
 import { graphDirOf, graphFileOf, GRAPH_DIR_NAME } from "../code-graph/reader.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
 import { enabledRepos, isRepoEnabled, setRepoEnabled } from "../code-graph/enabled-repos.js";
+import { coverageMapStatus } from "../code-graph/coverage-map.js";
+import { getCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { findExecutable, run } from "./exec.js";
 import { GRAPHIFY_PIN, installArgv, probeTool } from "../code-graph/graphify-tool.js";
@@ -106,6 +108,7 @@ async function cmdStatus(): Promise<number> {
     out(size === null ? "\n" : `, ${size} MB\n`);
     if (manifest.lastError !== null) out(`    last error: ${manifest.lastError}\n`);
     if (manifest.dirty) out("    a build did not finish — it will be retried\n");
+    out(`    ${await coverageMapStatus(repo)} (experimental${(await getCoverageMapEnabled()) ? "" : ", collection off: bastra config set coverageMap.enabled true"})\n`);
   }
   return 0;
 }

@@ -40,6 +40,7 @@ import { shortRepo } from "./unavailable-note.js";
 import { gitWatchPaths } from "./git-paths.js";
 import { enabledRepos, isRepoEnabledSync } from "./enabled-repos.js";
 import { codeGraphCache } from "./dependents-block.js";
+import { scheduleCoverageFold } from "./coverage-map.js";
 
 /** Directory names whose subtrees never trigger a refresh. */
 const IGNORED_SEGMENTS = SKIP_DIRS;
@@ -57,6 +58,9 @@ let refresher: CodeGraphRefresher | null = null;
 export function codeGraphRefresher(): CodeGraphRefresher {
   refresher ??= new CodeGraphRefresher({
     onBuilt: (repoRoot) => codeGraphCache().reloadIfChanged(repoRoot),
+    // #629: raw coverage left by the agent's test runs is folded at the same
+    // moments; the fold reads only its own directory and is a no-op without one.
+    onEnqueue: (repoRoot) => scheduleCoverageFold(repoRoot),
     allow: (repoRoot) => isRepoEnabledSync(repoRoot),
     onEvent: reportRefresh,
   });

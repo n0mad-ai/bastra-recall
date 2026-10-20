@@ -141,6 +141,7 @@ test("doctor: off names the command, on battery says what is deferred", () => {
     reflex: { enabled: true },
     codeAwareness: { repos: 0, offByEnv: false },
     promptImpact: false,
+    coverageMap: false,
     docsMode: "off",
     commons: false,
     bridges: false,

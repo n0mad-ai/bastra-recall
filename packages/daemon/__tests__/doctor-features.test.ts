@@ -41,6 +41,7 @@ function allOff(): FeatureState {
     reflex: { enabled: false, offBy: "reflex.enabled = false" },
     codeAwareness: { repos: 0, offByEnv: false },
     promptImpact: false,
+    coverageMap: false,
     docsMode: "off",
     commons: false,
     bridges: false,
@@ -61,6 +62,7 @@ function allOn(): FeatureState {
     reflex: { enabled: true },
     codeAwareness: { repos: 2, offByEnv: false },
     promptImpact: true,
+    coverageMap: true,
     docsMode: "suggest",
     commons: true,
     bridges: true,
@@ -136,6 +138,7 @@ test("optional features that are off are marked intentional, never with the off 
   const expected: Array<[string, RegExp]> = [
     ["code awareness (experimental)", /bastra code enable/],
     ["change impact in prompts (experimental)", /bastra config set promptImpact\.enabled true/],
+    ["coverage map from test runs (experimental)", /bastra config set coverageMap\.enabled true/],
     ["product docs", /bastra config set docs\.mode suggest/],
     ["Bastra Commons", /bastra commons enable/],
     ["shared recall bridges", /bastra bridges enable/],
@@ -241,6 +244,7 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   assert.equal(empty.semanticRecall.state, "off");
   assert.deepEqual(empty.reflex, { enabled: true });
   assert.equal(empty.promptImpact, false);
+  assert.equal(empty.coverageMap, false);
   assert.equal(empty.docsMode, "off");
 
   await writeFile(join(home, ".bastra", "cli-settings.json"), JSON.stringify({

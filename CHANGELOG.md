@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Code awareness (experimental, off by default): a coverage map collected from the test runs the agent already makes. With `bastra config set coverageMap.enabled true`, test commands (`npm test`, `node --test`, `vitest`, `jest`, `tsx --test`) in a repository with code awareness run with `NODE_V8_COVERAGE` into the git-ignored `.bastra-coverage/`; the raw output is folded in the background into a map of which tests executed which files and functions, paths only. The Write/Edit and task-boundary blocks add one line naming the tests that ran the changed functions, at most five, never as an instruction. `bastra code` and `bastra doctor` show whether a map exists and how old it is (#629, refs #668).
+
 ## [1.1.1] — 2026-10-17
 
 ### Security
