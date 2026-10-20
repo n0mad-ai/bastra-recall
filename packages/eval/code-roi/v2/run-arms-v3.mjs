@@ -528,8 +528,6 @@ export function prepareTreeOf(s, dir, outDir = OUT) {
   if (!reusable) rmSync(tree, { recursive: true, force: true });
   mkdirSync(tree, { recursive: true });
   mkdirSync(graphRoot, { recursive: true });
-  const marker = treeMarkerOf(s, outDir);
-  writeFileSync(marker.path, JSON.stringify(marker.expected, null, 2) + "\n");
   const tar = execFileSync("git", ["archive", "--format=tar", s.parent], {
     cwd: s.repo ?? REPO_SELF,
     maxBuffer: 1024 * 1024 * 1024,
@@ -546,6 +544,10 @@ export function prepareTreeOf(s, dir, outDir = OUT) {
         `to run rather than following it silently.`,
     );
   }
+  // The marker vouches for a COMPLETE tree, so it is written last (#593): a
+  // crash mid-extraction leaves no marker, and the next run discards the half.
+  const marker = treeMarkerOf(s, outDir);
+  writeFileSync(marker.path, JSON.stringify(marker.expected, null, 2) + "\n");
   return { tree, graphRoot };
 }
 
