@@ -114,6 +114,13 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     // and, like the rm and git rewrites, only for a call that proves it is
     // Claude Code: `updatedInput` is its contract, not Codex's.
     const rewritten = clientEvidence === "claude-code" ? await coverageRewrite(command, payload.cwd) : null;
+    // The rewrite leaves no mark in the transcript; this event is its trace.
+    if (rewritten !== null) {
+      await writeShadow("coverage_rewrite", {
+        session_id: payload.session_id ?? null,
+        dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+      });
+    }
     const stdout = rewritten === null
       ? "{}"
       : JSON.stringify({

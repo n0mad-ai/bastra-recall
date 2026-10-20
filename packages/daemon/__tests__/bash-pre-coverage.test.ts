@@ -5,7 +5,7 @@
  */
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -75,6 +75,30 @@ describe("bash-pre lane: coverage rewrite (#629)", () => {
     assert.equal(await coverageRewrite("npm test", join(home, "nowhere")), null);
     assert.equal(await coverageRewrite("npm test", undefined), null);
     await assert.rejects(stat(join(other, ".bastra-coverage")));
+  });
+
+  it("a rewrite leaves a coverage_rewrite telemetry event; a command run as written leaves none", async () => {
+    await setRepoEnabled(repo, true);
+    await setCoverageMapEnabled(true);
+    const logDir = join(home, "logs");
+    process.env.BASTRA_TELEMETRY = "on";
+    process.env.BASTRA_LOG_PATH = logDir;
+    try {
+      await runBashPreLane(payload("npm test"), "http://127.0.0.1:1");
+      await runBashPreLane(payload("npm run build"), "http://127.0.0.1:1");
+    } finally {
+      process.env.BASTRA_TELEMETRY = "off";
+      delete process.env.BASTRA_LOG_PATH;
+    }
+    const rows = (await Promise.all((await readdir(logDir)).map((f) => readFile(join(logDir, f), "utf8"))))
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { kind: string; session_id: string | null; dimensions?: { client?: string } });
+    const rewrites = rows.filter((r) => r.kind === "coverage_rewrite");
+    assert.equal(rewrites.length, 1);
+    assert.equal(rewrites[0]!.session_id, "s-cov");
+    assert.equal(rewrites[0]!.dimensions?.client, "claude-code");
   });
 
   it("switch on: a call that does not prove it is Claude Code (Codex, unmarked) runs as written", async () => {
