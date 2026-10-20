@@ -47,7 +47,7 @@ import {
   type CodeSymbol,
   type LoadedGraph,
 } from "./reader.js";
-import { diffLines, type DiffLine } from "./diff-lines.js";
+import { diffLines, unquoteGitPath, unquoteGitPaths, type DiffLine } from "./diff-lines.js";
 import { spansCovering, symbolSpans } from "./symbol-spans.js";
 
 /** Deepest hop followed. Two fans out multiplicatively and is opt-in. */
@@ -503,15 +503,30 @@ export function changedLines(diff: string, file: string): ChangedLines {
   const hasGitHeader = diff.includes("diff --git ");
   // The next new-side line to be consumed. 0 means "no hunk header yet".
   let next = 0;
+  // A `rename from`/`rename to` pair with no hunk after it is a PURE RENAME
+  // (#603): nothing in the body to place, yet every importer's specifier is
+  // now stale. That is a whole-file answer, not a confident "no line changed".
+  let renamed = false;
+  let hunks = 0;
+  const endFile = () => {
+    if (inFile && renamed && hunks === 0) mappable = false;
+    renamed = false;
+    hunks = 0;
+  };
 
   const lines = [...diffLines(diff)];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.kind === "file-boundary") {
-      inFile = line.raw.includes(` a/${file}`) || line.raw.includes(` b/${file}`);
+      endFile();
+      const header = unquoteGitPaths(line.raw);
+      inFile = header.includes(` a/${file}`) || header.includes(` b/${file}`);
       next = 0;
     } else if (line.kind === "old-header") {
-      if (!hasGitHeader) inFile = line.raw.endsWith(file) || line.raw.endsWith("/dev/null");
+      if (!hasGitHeader) {
+        const path = unquoteGitPath(line.raw.slice(4));
+        inFile = path.endsWith(file) || path === "/dev/null";
+      }
     } else if (line.kind === "new-header") {
       // The file is gone on the new side: nothing in the working tree to
       // place a line in. The whole file is the only honest answer.
@@ -519,6 +534,7 @@ export function changedLines(diff: string, file: string): ChangedLines {
     } else if (!inFile) {
       continue;
     } else if (line.kind === "hunk-header") {
+      hunks++;
       // `+c,0` is git's way of saying "between new lines c and c+1", so the
       // next line to be consumed is c+1 — unlike every other hunk, where the
       // header names the first line the hunk covers.
@@ -535,8 +551,11 @@ export function changedLines(diff: string, file: string): ChangedLines {
       }
     } else if (line.kind === "context" && next > 0) {
       next++;
+    } else if (line.kind === "other" && line.raw.startsWith("rename from ")) {
+      renamed = true;
     }
   }
+  endFile();
   return { lines: [...out], mappable };
 }
 
