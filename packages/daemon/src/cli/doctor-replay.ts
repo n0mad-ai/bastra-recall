@@ -34,7 +34,7 @@
  * on its deadline and the machine load, and the usage-based suppression reads
  * the live usage sidecar.
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import { request } from "node:http";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -147,21 +147,25 @@ export async function readClaudeTranscripts(
     }
     for (const name of names) {
       const path = join(dir, name);
-      try {
-        const st = await stat(path);
-        if (!st.isFile() || st.mtimeMs < sinceMs) continue;
-        // The Stop hook's cap: a file this large is read whole or not at all,
-        // and whole would hold the CLI's heap hostage.
-        if (st.size > MAX_TRANSCRIPT_BYTES) {
-          oversized += 1;
-          continue;
-        }
-      } catch {
-        continue;
-      }
+      // One handle for check and read, as in stop-transcript.ts: a stat on
+      // the path followed by a read of the path lets the file be swapped in
+      // between, past the size cap.
       let raw: string;
       try {
-        raw = await readFile(path, "utf8");
+        const fh = await open(path, "r");
+        try {
+          const st = await fh.stat();
+          if (!st.isFile() || st.mtimeMs < sinceMs) continue;
+          // The Stop hook's cap: a file this large is read whole or not at
+          // all, and whole would hold the CLI's heap hostage.
+          if (st.size > MAX_TRANSCRIPT_BYTES) {
+            oversized += 1;
+            continue;
+          }
+          raw = await fh.readFile({ encoding: "utf8" });
+        } finally {
+          await fh.close();
+        }
       } catch {
         continue;
       }
