@@ -423,9 +423,10 @@ describe("coverage map: reading in the hook", () => {
     } finally {
       process.env.PATH = path;
     }
-    // Not cached: once git answers, the map is read.
+    // The refusal is held for 30 s, the map never: once git answers after that, it is read.
     assert.equal(gitVerdict(repo), "untracked");
-    assert.ok(readCoverageMapSync(repo));
+    assert.equal(readCoverageMapSync(repo), null, "within 30 s git is not asked again");
+    assert.ok(readCoverageMapSync(repo, Date.now() + 31_000));
   });
 
   it("fails closed on a git that hangs: the timeout means no map, no line, and nothing cached", async () => {
@@ -446,9 +447,18 @@ describe("coverage map: reading in the hook", () => {
     } finally {
       process.env.PATH = path;
     }
-    // Same file, same mtime: had the unclear answer been cached, this would still be null.
-    const map = readCoverageMapSync(repo);
-    assert.ok(map, "the timeout left no cache entry");
+    // Within 30 s the hanging git is not waited out again: the next write is fast, and still no map.
+    process.env.PATH = `${bin}:/bin:/usr/bin`;
+    try {
+      const again = Date.now();
+      assert.equal(readCoverageMapSync(repo), null);
+      assert.ok(Date.now() - again < 500, "the refusal is cached, git is not spawned");
+    } finally {
+      process.env.PATH = path;
+    }
+    // Same file, same mtime, after the 30 s: had the map been cached as refused, this would still be null.
+    const map = readCoverageMapSync(repo, Date.now() + 31_000);
+    assert.ok(map, "the timeout left no map cache entry");
     assert.ok(coverageTestsLine(map, new Map([["src/search.ts", ["SearchIndex"]]]), new Set()));
   });
 

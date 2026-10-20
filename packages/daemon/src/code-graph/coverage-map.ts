@@ -413,6 +413,13 @@ export function gitVerdict(repoRoot: string): GitVerdict {
 /** Per repository, so switching between repositories does not re-parse; a few at most. */
 const snapshots = new Map<string, { mtimeMs: number; size: number; map: CoverageMap | null }>();
 const MAX_SNAPSHOTS = 8;
+/**
+ * A git that gave no clean answer (hung, missing, an error) is not asked again
+ * for this long: every Write/Edit would otherwise wait out the timeout once
+ * more. The map stays unread meanwhile — this caches the refusal, never the map.
+ */
+const UNKNOWN_RETRY_MS = 30_000;
+const unknownUntil = new Map<string, number>();
 
 /**
  * The map for the hot paths, synchronously, like the enabled-repos snapshot:
@@ -420,7 +427,7 @@ const MAX_SNAPSHOTS = 8;
  * lane runs on every write and cannot afford a parse — or a `git` spawn —
  * each time.
  */
-export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
+export function readCoverageMapSync(repoRoot: string, now = Date.now()): CoverageMap | null {
   const path = coverageMapFileOf(repoRoot);
   const fd = openMapSync(repoRoot);
   if (fd === null) {
@@ -433,8 +440,15 @@ export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
     const hit = snapshots.get(path);
     if (hit !== undefined && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.map;
     if (st.size > MAX_MAP_BYTES) return null;
+    if ((unknownUntil.get(path) ?? 0) > now) return null;
     const verdict = gitVerdict(repoRoot);
-    if (verdict === "unknown") return null; // asked again next time
+    if (verdict === "unknown") {
+      unknownUntil.delete(path);
+      if (unknownUntil.size >= MAX_SNAPSHOTS) unknownUntil.delete(unknownUntil.keys().next().value!);
+      unknownUntil.set(path, now + UNKNOWN_RETRY_MS);
+      return null;
+    }
+    unknownUntil.delete(path);
     const map = verdict === "tracked" ? null : parseMap(readFileSync(fd, "utf8"));
     snapshots.delete(path);
     if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
