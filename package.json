@@ -1,7 +1,7 @@
 {
   "name": "bastra-recall-monorepo",
   "version": "1.1.1",
-  "description": "Workspace root for bastra-recall: OSS daemon, MCP server, and shared ChatGPT/Codex/Claude skill — the open foundation under the Bastra Mac app.",
+  "description": "Workspace root for bastra-recall: OSS daemon, MCP server, and shared ChatGPT/Codex/Claude skill \u2014 the open foundation under the Bastra Mac app.",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -30,7 +30,9 @@
     "pack:check": "npm pack --dry-run --workspace=@bastra-recall/core && npm pack --dry-run --workspace=@bastra-recall/statusline && npm pack --dry-run --workspace=@bastra-recall/daemon && npm pack --dry-run --workspace=bastra-recall",
     "release:version": "node scripts/bump.mjs",
     "check:tap-drift": "node tools/check-tap-drift.mjs",
-    "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh"
+    "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh",
+    "openapi:generate": "node --import tsx packages/daemon/scripts/generate-openapi.ts",
+    "openapi:check": "node --import tsx packages/daemon/scripts/generate-openapi.ts --check"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
