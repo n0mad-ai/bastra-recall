@@ -40,7 +40,7 @@ import {
   type ReplayTurn,
 } from "../src/cli/doctor-replay.js";
 
-function memoryMarkdown(id: string, title: string, recallWhen: string[]): string {
+function memoryMarkdown(id: string, title: string, recallWhen: string[], extra: string[] = []): string {
   const ts = "2026-10-01T00:00:00.000Z";
   return [
     "---",
@@ -55,6 +55,7 @@ function memoryMarkdown(id: string, title: string, recallWhen: string[]): string
     "scope: replay-test",
     "recall_when:",
     ...recallWhen.map((r) => `  - ${r}`),
+    ...extra,
     `created: ${ts}`,
     `updated: ${ts}`,
     "---",
@@ -82,6 +83,7 @@ interface Daemon {
   port: number;
   vaultDir: string;
   logDir: string;
+  telemetry: Telemetry;
   close: () => Promise<void>;
 }
 
@@ -90,6 +92,13 @@ async function makeDaemon(): Promise<Daemon> {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-replay-logs-"));
   await writeFile(join(vaultDir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo charlie", ["alpha bravo charlie"]), "utf8");
   await writeFile(join(vaultDir, "delta.md"), memoryMarkdown("delta", "delta echo foxtrot", ["delta echo foxtrot"]), "utf8");
+  // A reflex memory: `/hook/reflex` serves it without any recall, so it is
+  // the one hint that only the reflex route could anchor in the join state.
+  await writeFile(
+    join(vaultDir, "golf.md"),
+    memoryMarkdown("golf", "golf hotel india", ["golf hotel india"], ["recall_mode: reflex"]),
+    "utf8",
+  );
   const vault = new Vault(vaultDir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -113,6 +122,7 @@ async function makeDaemon(): Promise<Daemon> {
     port: handle.port!,
     vaultDir,
     logDir,
+    telemetry,
     close: async () => {
       if (prevLog === undefined) delete process.env.BASTRA_LOG_PATH;
       else process.env.BASTRA_LOG_PATH = prevLog;
@@ -181,6 +191,24 @@ test("(a)+(b): a replay against a read-only vault changes nothing and files its 
   } finally {
     await chmod(d.vaultDir, 0o755).catch(() => {});
     for (const name of await readdir(d.vaultDir).catch(() => [] as string[])) await chmod(join(d.vaultDir, name), 0o644).catch(() => {});
+    await d.close();
+  }
+});
+
+test("(b) a replayed reflex hit leaves no join anchor a real load_memory could close", async () => {
+  const d = await makeDaemon();
+  try {
+    const corpus: ReplayCorpus = {
+      turns: [turn("s1", 1, "what about golf hotel india today?")],
+      loadedIds: new Set(),
+      files: 1,
+      sessions: 1,
+    };
+    const rows = await runReplay(corpus, postReplayTurn(`http://127.0.0.1:${d.port}`), { run: "rx" });
+    await settle();
+    assert.ok((rows[0].hinted_ids ?? []).includes("golf"), `the reflex fired in the replay: ${JSON.stringify(rows)}`);
+    assert.equal(d.telemetry.findHookHintFor("golf"), null, "no hook-hint anchor for the replayed reflex hit");
+  } finally {
     await d.close();
   }
 });

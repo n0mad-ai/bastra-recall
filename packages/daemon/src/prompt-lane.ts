@@ -365,7 +365,7 @@ export async function runPromptLane(
   const reflexPromise: Promise<ReflexResponse | null> = postJson<ReflexResponse>(
     selfBaseUrl,
     "/hook/reflex",
-    { context: prompt, project, session_id: payload.session_id ?? null },
+    { context: prompt, project, session_id: payload.session_id ?? null, client: clientEvidence },
     remainingMs,
   ).catch(() => null);
 
