@@ -9,7 +9,7 @@
  * section (src/cli/log-stats-code.ts) and both read the same folds, so a figure
  * cannot appear in one readout and not the other.
  */
-import { h, table, td, note, empty, h3, section, barCell, fmt, pct, ms } from "./telemetry-dom.js";
+import { h, table, td, note, empty, h3, section, barCell, fmt, pct } from "./telemetry-dom.js";
 
 export const UNAVAILABLE_REASONS = {
   off_env: "switched off for the session",
@@ -19,6 +19,17 @@ export const UNAVAILABLE_REASONS = {
   loading: "read in flight, call did not wait",
   cold: "on disk, not in memory yet",
 };
+
+/**
+ * A latency figure, or `n/a` when nothing was measured (#665) — the fold hands
+ * over null for an empty sample, and the shared `ms()` would print that as a
+ * dash, which reads like "no column", not "not timed". One decimal under
+ * 10 ms, where `ms()`'s rounding turned a 0.34 ms call into "0 ms".
+ */
+export function latency(v) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return "n/a";
+  return v < 10 ? `${v.toFixed(1)} ms` : `${Math.round(v)} ms`;
+}
 
 export function renderCodeAwareness(ca) {
   const title = "Code awareness (experimental)";
@@ -33,7 +44,7 @@ export function renderCodeAwareness(ca) {
   // every figure below readable as "nothing delivered" instead of throwing.
   const dl = a.delivered ?? {
     blocks: 0, dedupeHits: 0, byLane: [], byBasis: [],
-    filesNamed: 0, tokensTotal: 0, tokensMedian: 0, p50: 0, p90: 0,
+    filesNamed: 0, tokensTotal: 0, tokensMedian: 0, p50: null, p90: null,
   };
   // Split from one 9-column table into two (#601): calls/answered/nothing
   // found/unavailable on one side, latency/reach on the other — the combined
@@ -50,14 +61,16 @@ export function renderCodeAwareness(ca) {
       td(fmt(t.noAnswer), "dim"),
       td(fmt(t.unavailable), t.unavailable > 0 ? null : "dim")),
   );
-  const maxP50 = Math.max(1, ...a.tools.map((t) => t.p50));
+  const maxP50 = Math.max(1, ...a.tools.map((t) => t.p50 ?? 0));
   const latencyRows = a.tools.map((t) =>
     h("tr", null,
       td(t.tool),
-      barCell(t.p50, maxP50),
-      td(ms(t.p50)),
-      td(ms(t.p90), "dim"),
-      td(fmt(t.filesNamed), "dim")),
+      barCell(t.p50 ?? 0, maxP50),
+      td(latency(t.p50)),
+      td(latency(t.p90), "dim"),
+      // find_code names files only for a path-anchored query; a symbol query
+      // cannot, so 0 there would claim "named nothing" (#665).
+      td(t.tool === "find_code" && t.filesNamed === 0 ? "n/a" : fmt(t.filesNamed), "dim")),
   );
   // #601: the value column used to be right-aligned in an otherwise near-empty
   // table, so it drifted far from its "tool" label with a wide dead gap
@@ -86,8 +99,10 @@ export function renderCodeAwareness(ca) {
   // Matches TEMPORARY_TREE_LABEL in code-awareness-stats.ts: a throwaway tree
   // from the measurement harness is still listed below (nothing is hidden),
   // but it is not one of the user's own repositories, so it does not count
-  // toward "N repositories active".
-  const realRepoCount = a.repos.filter((r) => r.repo !== "(temporary tree)").length;
+  // toward "N repositories asked". Only repos with a tool call count (#665):
+  // the figure sits under "tool calls", and a repo that was merely refreshed
+  // made "1 repository active" appear next to 0 calls.
+  const askedRepoCount = a.repos.filter((r) => r.repo !== "(temporary tree)" && r.toolCalls > 0).length;
 
   // #601 follow-up: the figure row reuses the exact "tv-cols wide" grid the
   // table zone below uses — same two columns, same divider — so its middle
@@ -107,7 +122,7 @@ export function renderCodeAwareness(ca) {
       h(
         "div",
         { class: "tv-figs center" },
-        fig("tool calls", fmt(a.tools.reduce((n, t) => n + t.calls, 0)), `${realRepoCount} repositor${realRepoCount === 1 ? "y" : "ies"} active`),
+        fig("tool calls", fmt(a.tools.reduce((n, t) => n + t.calls, 0)), `${askedRepoCount} repositor${askedRepoCount === 1 ? "y" : "ies"} asked`),
         fig("answered", pct(a.tools.reduce((n, t) => n + t.ok, 0), a.tools.reduce((n, t) => n + t.calls, 0)), `${fmt(a.tools.reduce((n, t) => n + t.unavailable, 0))} unavailable`, true),
       ),
       h(
@@ -152,12 +167,15 @@ export function renderCodeAwareness(ca) {
                 h("tr", null, td("started"), td(fmt(rf.started))),
                 h("tr", null, td("ok"), td(fmt(rf.ok), rf.ok > 0 ? "ok" : null)),
                 h("tr", null, td("failed"), td(fmt(rf.failed), rf.failed > 0 ? "warn" : "dim")),
+                // #665: a start the daemon never finished — restart mid-build.
+                // Older reports have no bucket; `?? 0` keeps them rendering.
+                h("tr", null, td("interrupted"), td(fmt(rf.interrupted ?? 0), (rf.interrupted ?? 0) > 0 ? "warn" : "dim")),
                 h("tr", null, td("locked · skipped · given up"), td(`${fmt(rf.locked)} · ${fmt(rf.skipped)} · ${fmt(rf.givenUp)}`, "dim")),
-                h("tr", null, td("build duration p50 / p90"), td(`${ms(rf.p50)} / ${ms(rf.p90)}`)),
+                h("tr", null, td("build duration p50 / p90"), td(`${latency(rf.p50)} / ${latency(rf.p90)}`)),
               ],
             )
           : empty("no refresh run in this window"),
-        note("Build duration covers successful and failed builds; lock checks and skipped runs are excluded."),
+        note("Build duration covers successful and failed builds; lock checks and skipped runs are excluded. `interrupted` is a start with no outcome row — the daemon restarted mid-build."),
         rf.byReason.length ? note(`triggered by: ${rf.byReason.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`) : null,
         rf.failures.length ? note(`failures: ${rf.failures.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`, true) : null,
         h3("Repositories"),
@@ -176,7 +194,7 @@ export function renderCodeAwareness(ca) {
                 h("tr", null, td("by basis"), td(dl.byBasis.length ? dl.byBasis.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ") : "—", "left")),
                 h("tr", null, td("cost"), td(`${fmt(dl.tokensTotal)} tokens · ${fmt(dl.tokensMedian)} median`)),
                 h("tr", null, td("reach"), td(`${fmt(dl.filesNamed)} candidate file(s) named`)),
-                h("tr", null, td("latency p50 / p90"), td(`${ms(dl.p50)} / ${ms(dl.p90)}`)),
+                h("tr", null, td("latency p50 / p90"), td(`${latency(dl.p50)} / ${latency(dl.p90)}`)),
               ],
             )
           : empty("no block was delivered in this window"),

@@ -246,7 +246,10 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
     if (t.byUnavailableReason.length > 0) {
       lines.push(`    unavailable because: ${list(t.byUnavailableReason)}`);
     }
-    lines.push(`    latency: p50 ${t.p50.toFixed(1)}ms, p90 ${t.p90.toFixed(1)}ms · ${t.filesNamed} file(s) named`);
+    // find_code names files only when the query anchored on a path; for a
+    // symbol query 0 would claim "named nothing" where nothing could be named.
+    const named = t.tool === "find_code" && t.filesNamed === 0 ? "files named: n/a" : `${t.filesNamed} file(s) named`;
+    lines.push(`    latency: p50 ${latency(t.p50)}, p90 ${latency(t.p90)} · ${named}`);
   }
   // #606: the delivered half. Its own lines, not a row in the tool table — a
   // block Recall injected is not evidence that anyone calls the tool.
@@ -260,14 +263,14 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
     lines.push(
       `    cost: ${d.tokensTotal} tokens total, ${d.tokensMedian} median · ${d.filesNamed} file(s) named`,
     );
-    lines.push(`    latency: p50 ${d.p50.toFixed(1)}ms, p90 ${d.p90.toFixed(1)}ms`);
+    lines.push(`    latency: p50 ${latency(d.p50)}, p90 ${latency(d.p90)}`);
   }
   if (s.refresh.started > 0 || s.refresh.ok > 0) {
     lines.push(
       `  graph refresh: ${s.refresh.started} run(s) — ${s.refresh.ok} ok, ${s.refresh.failed} failed, ` +
-        `${s.refresh.locked} locked, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`,
+        `${s.refresh.locked} locked, ${s.refresh.interrupted} interrupted, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`,
     );
-    lines.push(`    build duration (successful or failed): p50 ${Math.round(s.refresh.p50)}ms, p90 ${Math.round(s.refresh.p90)}ms`);
+    lines.push(`    build duration (successful or failed): p50 ${latency(s.refresh.p50)}, p90 ${latency(s.refresh.p90)}`);
     if (s.refresh.byReason.length > 0) lines.push(`    triggered by: ${list(s.refresh.byReason)}`);
     if (s.refresh.failures.length > 0) lines.push(`    failures: ${list(s.refresh.failures)}`);
   }
@@ -282,6 +285,16 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
     }
   }
   return lines;
+}
+
+/**
+ * A latency figure, or `n/a` when nothing was measured (#665). One decimal
+ * under 10 ms: a 0.34 ms tool call rounded to "0 ms" claimed to have taken no
+ * time at all. Whole milliseconds above that, where a decimal is noise.
+ */
+export function latency(ms: number | null): string {
+  if (ms === null) return "n/a";
+  return ms < 10 ? `${ms.toFixed(1)} ms` : `${Math.round(ms)} ms`;
 }
 
 /** `a×3, b×1` — the same one-line shape the save and suppression lines use. */
