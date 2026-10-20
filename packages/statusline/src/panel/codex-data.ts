@@ -1,5 +1,5 @@
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import path from 'node:path';
-import os from 'node:os';
 import { RolloutSource, readRecallFeed, readVaultSize } from '../codex/source';
 import { PanelGitReader } from './git-status';
 import type { NeuralData } from './neural';
@@ -7,7 +7,7 @@ import type { NeuralData } from './neural';
 export class CodexLiveSource {
   private source: RolloutSource;
   private git = new PanelGitReader();
-  constructor(readonly session: string, file: string, readonly feedDirectory = path.join(os.homedir(), '.bastra', 'statusline')) {
+  constructor(readonly session: string, file: string, readonly feedDirectory = path.join(bastraDataDir(), 'statusline')) {
     this.source = new RolloutSource(file, session);
   }
   async poll(now = Date.now()): Promise<NeuralData> {

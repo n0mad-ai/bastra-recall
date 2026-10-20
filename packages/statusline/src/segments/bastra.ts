@@ -1,5 +1,5 @@
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pidAlive, readTickCache, writeTickCache } from "../utils/tick-cache";
@@ -19,7 +19,7 @@ import { pidAlive, readTickCache, writeTickCache } from "../utils/tick-cache";
  * nothing (never errors, never blanks).
  */
 
-const STATUSLINE_DIR = path.join(os.homedir(), ".bastra", "statusline");
+const STATUSLINE_DIR = path.join(bastraDataDir(), "statusline");
 
 export interface BastraInfo {
   state: "idle" | "running";

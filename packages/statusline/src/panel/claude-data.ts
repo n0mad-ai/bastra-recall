@@ -1,3 +1,4 @@
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import path from 'node:path';
 import os from 'node:os';
 import { mkdir, open, readFile, rename, writeFile } from 'node:fs/promises';
@@ -16,7 +17,7 @@ export interface ClaudePanelSnapshot {
 }
 const num = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 const percent = (v: unknown): number | null => { const n = num(v); return n !== null && n <= 100 ? n : null; };
-export const PANEL_DIR = path.join(os.homedir(), '.bastra', 'panels', 'claude');
+export const PANEL_DIR = path.join(bastraDataDir(), 'panels', 'claude');
 export function snapshotPath(session: string, directory = PANEL_DIR): string {
   if (typeof session !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(session)) throw new Error('Ungültige Claude-Session-ID');
   return path.join(directory, session + '.json');
@@ -146,7 +147,7 @@ export class ClaudeLiveSource {
   private git = new PanelGitReader();
   private file: string | null = null;
   private inode = 0; private offset = 0; private tail = Buffer.alloc(0); private discard = false;
-  constructor(readonly session: string, readonly directory = PANEL_DIR, readonly feedDirectory = path.join(os.homedir(), '.bastra', 'statusline')) {
+  constructor(readonly session: string, readonly directory = PANEL_DIR, readonly feedDirectory = path.join(bastraDataDir(), 'statusline')) {
     snapshotPath(session, directory); this.calls = new ClaudeCalls(session);
   }
   private async transcript(file: string): Promise<void> {

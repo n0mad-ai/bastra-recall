@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * bastra-recall update-check subsystem (#39).
  *
@@ -17,7 +18,6 @@
 import { request as httpsRequest } from "node:https";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectiveUpdateMode } from "./settings.js";
@@ -70,7 +70,7 @@ export function isOptedOut(): boolean {
 }
 
 export function cacheFilePath(): string {
-  return join(homedir(), ".bastra", "update-check.json");
+  return join(bastraDataDir(), "update-check.json");
 }
 
 /**
@@ -360,7 +360,7 @@ export function spawnStagedUpdate(): void {
 }
 
 function stagedMarkerPath(): string {
-  return join(homedir(), ".bastra", "update-staged.txt");
+  return join(bastraDataDir(), "update-staged.txt");
 }
 
 function todayISO(): string {

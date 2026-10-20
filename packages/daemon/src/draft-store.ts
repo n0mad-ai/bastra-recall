@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /** Local, bounded draft storage (#1084, phase A); never reads or writes a vault. */
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
@@ -48,7 +49,7 @@ const draftSchema = z.object({
 export type Draft = z.infer<typeof draftSchema>;
 
 export function draftsPath(): string {
-  return resolve(process.env.BASTRA_DRAFTS_PATH ?? join(homedir(), ".bastra", "drafts.json"));
+  return resolve(process.env.BASTRA_DRAFTS_PATH ?? join(bastraDataDir(), "drafts.json"));
 }
 
 /** Derived local cache shares the chosen draft store's lifetime and location. */

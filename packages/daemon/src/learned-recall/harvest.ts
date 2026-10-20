@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * Offline bridge harvester (#120). Reconstructs (far query → acted-on memory) pairs
  * from the telemetry log and mints learned bridges from them — the "minting" half of
@@ -15,7 +16,6 @@
 import { readdir, readFile, mkdir, writeFile, rename, unlink, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
 import { isSystemInjectedTurn, ownerPromptText } from "../system-turn.js";
@@ -64,7 +64,7 @@ export function occasionOf(e: { ts?: unknown; dimensions?: unknown }): string | 
 const UNKNOWN_OCCASION = "unknown";
 
 export function defaultLogDir(): string {
-  return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
+  return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
 }
 
 /** Read events-*.jsonl, optionally limited to `days`. Strict readers distinguish

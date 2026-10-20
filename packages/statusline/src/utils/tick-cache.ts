@@ -1,5 +1,5 @@
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 /**
@@ -16,9 +16,7 @@ import path from "node:path";
  * Concurrent writes are best-effort: a lost entry re-resolves on the next tick.
  */
 
-const CACHE_FILE = path.join(
-  os.homedir(),
-  ".bastra",
+const CACHE_FILE = path.join(bastraDataDir(),
   "statusline",
   "tick-cache.json",
 );

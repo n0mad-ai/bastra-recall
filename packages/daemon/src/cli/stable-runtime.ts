@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * Stable runtime for npx-based installs (#180).
  *
@@ -90,7 +91,7 @@ export interface RuntimeTarget {
 }
 
 export function stableRuntimeTarget(version: string, home: string = homedir()): RuntimeTarget {
-  const rootDir = join(home, ".bastra", "runtime", version);
+  const rootDir = join(bastraDataDir(home), "runtime", version);
   return {
     rootDir,
     forwarderPath: join(rootDir, "node_modules", "@bastra-recall", "daemon", "dist", "mcp-forwarder.js"),
@@ -194,7 +195,7 @@ export async function pruneOldRuntimes(target: RuntimeTarget): Promise<void> {
  */
 export async function removeRuntimeBase(home: string = homedir()): Promise<boolean> {
   try {
-    const dir = join(home, ".bastra", "runtime");
+    const dir = join(bastraDataDir(home), "runtime");
     if (!(await fileExists(dir))) return false;
     await rm(dir, { recursive: true, force: true });
     return true;
@@ -265,7 +266,7 @@ export function pinnedRuntimeVersion(fwd: string, home: string = homedir()): str
   // A Homebrew keg pins its version in the path exactly the same way.
   const keg = homebrewKeg(fwd);
   if (keg) return keg.version;
-  const base = join(home, ".bastra", "runtime") + sep;
+  const base = join(bastraDataDir(home), "runtime") + sep;
   const norm = fwd.split(/[\\/]+/).join(sep);
   if (!norm.startsWith(base)) return null;
   const rest = norm.slice(base.length);

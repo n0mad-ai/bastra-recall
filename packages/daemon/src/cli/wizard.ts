@@ -1,3 +1,4 @@
+import { hostPaths, type HostPathOptions } from "../platform-paths.js";
 /**
  * `bastra install` (no surface, on a terminal) — the guided setup wizard (#15).
  *
@@ -20,7 +21,7 @@
 import * as p from "@clack/prompts";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import { ADAPTERS } from "./registry.js";
 import { ensureHookStub } from "./stub-install.js";
 import {
@@ -76,25 +77,26 @@ export function shouldRunWizard(i: {
   return i.surface === null && i.interactive && !i.yes && !i.dryRun;
 }
 
-/** Filesystem traces that mean "this client exists on this machine". */
-const SURFACE_TRACES: Record<string, string[]> = {
-  "claude-code": [".claude.json", ".claude"],
-  codex: [".codex", "/Applications/ChatGPT.app"],
-  "claude-desktop": [
-    "Library/Application Support/Claude",
-    "/Applications/Claude.app",
-  ],
-  cursor: [".cursor", "/Applications/Cursor.app"],
-};
+/** Only registered adapters are selectable. ChatGPT shares the Codex adapter;
+ * Zed has no installer adapter yet and must not be offered as a working target. */
+export function surfaceTraces(opts: HostPathOptions = {}): Record<string, string[]> {
+  const clients = hostPaths(opts);
+  const platform = opts.platform ?? process.platform;
+  return {
+    "claude-code": [clients.claudeCodeConfig, clients.claudeCodeSettings.replace(/[\\/]settings\.json$/, "")],
+    codex: [clients.codexDir, ...(platform === "darwin" ? ["/Applications/ChatGPT.app"] : [])],
+    "claude-desktop": [clients.claudeDesktopDir, ...(platform === "darwin" ? ["/Applications/Claude.app"] : [])],
+    cursor: [clients.cursorDir, ...(platform === "darwin" ? ["/Applications/Cursor.app"] : [])],
+  };
+}
 
-export function detectSurfaces(home: string = homedir()): Record<string, boolean> {
-  const present: Record<string, boolean> = {};
-  for (const [surface, traces] of Object.entries(SURFACE_TRACES)) {
-    present[surface] = traces.some((t) =>
-      existsSync(isAbsolute(t) ? t : resolve(home, t)),
-    );
-  }
-  return present;
+export function detectSurfaces(
+  home: string = homedir(),
+  opts: Omit<HostPathOptions, "home"> & { exists?: (path: string) => boolean } = {},
+): Record<string, boolean> {
+  const exists = opts.exists ?? existsSync;
+  return Object.fromEntries(Object.entries(surfaceTraces({ ...opts, home }))
+    .map(([surface, traces]) => [surface, traces.some(exists)]));
 }
 
 export interface SurfaceChoice {
@@ -174,10 +176,11 @@ export function defaultVaultOption(
 }
 
 /** `~`/relative → absolute, for the custom-vault text input. Exported for tests. */
-export function expandUserPath(input: string, home: string = homedir()): string {
+export function expandUserPath(input: string, home: string = homedir(), platform: NodeJS.Platform = process.platform): string {
+  const { resolve } = platform === "win32" ? win32 : posix;
   const trimmed = input.trim();
   if (trimmed === "~") return home;
-  if (trimmed.startsWith("~/")) return resolve(home, trimmed.slice(2));
+  if (trimmed.startsWith("~/") || (platform === "win32" && trimmed.startsWith("~\\"))) return resolve(home, trimmed.slice(2));
   return resolve(trimmed);
 }
 

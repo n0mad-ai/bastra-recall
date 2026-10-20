@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { bastraDataDir } from "@bastra-recall/core/platform-paths";
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +65,7 @@ async function main(): Promise<void> {
     return;
   }
   const source = file ? new RolloutSource(path.resolve(file), session) : null;
-  const directory = path.join(os.homedir(), '.bastra', 'statusline');
+  const directory = path.join(bastraDataDir(), 'statusline');
   const color = !values['no-color'] && process.env.NO_COLOR === undefined;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;

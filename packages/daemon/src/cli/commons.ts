@@ -1,3 +1,4 @@
+import { bastraDataDir } from "../platform-paths.js";
 /**
  * `bastra commons` — Bastra Commons, der Community-Rezept-Vault.
  *
@@ -87,7 +88,7 @@ function noteCommonsOverride(action: string): void {
 }
 
 export function commonsPath(): string {
-  return process.env.BASTRA_COMMONS_PATH ?? join(homedir(), ".bastra", "commons");
+  return process.env.BASTRA_COMMONS_PATH ?? join(bastraDataDir(), "commons");
 }
 
 export async function cmdCommons(opts: { sub: string | null; positional?: string[] }): Promise<number> {

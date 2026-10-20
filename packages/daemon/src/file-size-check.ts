@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * Deterministischer Dateigrößen-Check im PreToolUse-Hook (Daniel, 19.07.2026).
  *
@@ -18,7 +19,6 @@
  * einen Split-VORSCHLAG vor spürbarem Wachstum, nie ein Auto-Split.
  */
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { envOff } from "./env.js";
 import { escapeAttr } from "./escape-attr.js";
@@ -135,7 +135,7 @@ function envNum(name: string, fallback: number): number {
  *  Mini-Read (pure stdlib) statt settings.ts-Import: der Hook hat 250 ms
  *  Budget und braucht exakt zwei Zahlen. Fehler → leeres Objekt. */
 export async function readSizeSettings(
-  settingsPath: string = join(homedir(), ".bastra", "cli-settings.json"),
+  settingsPath: string = join(bastraDataDir(), "cli-settings.json"),
 ): Promise<{ guide?: number; critical?: number; exemptPaths?: string[] }> {
   try {
     const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as {

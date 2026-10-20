@@ -1,3 +1,4 @@
+import { bastraDataDir } from "./platform-paths.js";
 /**
  * The row a hook CLIENT writes for a call the daemon never saw (#543).
  *
@@ -42,7 +43,6 @@
  */
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envOff, testRunLogDir } from "./env.js";
 
@@ -164,7 +164,7 @@ export async function writeClientTelemetry(
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
+      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(bastraDataDir(), "logs");
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
     const event = {
