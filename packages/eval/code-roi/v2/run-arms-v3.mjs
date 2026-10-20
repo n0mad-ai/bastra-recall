@@ -146,10 +146,11 @@ export function armTimeout(child, timeoutMs = ARM_TIMEOUT_MS, graceMs = ARM_KILL
     state.timedOut = true;
     killGroup(child, "SIGTERM");
     killer = setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) {
-        state.escalated = true;
-        killGroup(child, "SIGKILL");
-      }
+      // Only `close` (and the caller's clear) proves the pipes are closed.
+      // The leader can already have exited while a TERM-ignoring descendant
+      // still owns stdout/stderr; its exitCode says nothing about the group.
+      state.escalated = true;
+      killGroup(child, "SIGKILL");
     }, graceMs);
   }, timeoutMs);
   return {

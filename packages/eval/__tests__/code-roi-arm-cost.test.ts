@@ -373,6 +373,24 @@ describe("a timed-out arm is forced down, not asked (#602)", () => {
     assert.deepEqual(timeout.state, { timedOut: true, escalated: false });
   });
 
+  test("kills a surviving grandchild even after the group leader exits", { skip: process.platform === "win32" }, async () => {
+    const { armTimeout } = await runnerModule;
+    // The shell dies on TERM; its TERM-ignoring child keeps stdout open.
+    const child = spawn("sh", ["-c", "sh -c 'trap \"\" TERM; echo ready; exec sleep 5' & wait"], {
+      detached: true, stdio: ["ignore", "pipe", "pipe"],
+    });
+    const closing = closed(child);
+    await new Promise<void>((resolve) => child.stdout!.once("data", () => resolve()));
+    const timeout = armTimeout(child, 20, 100);
+    try {
+      await closing;
+      assert.deepEqual(timeout.state, { timedOut: true, escalated: true });
+    } finally {
+      timeout.clear();
+      try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already closed */ }
+    }
+  });
+
   test("a child that finishes in time is left alone and the timers are cleared", async () => {
     const { armTimeout, ARM_KILL_GRACE_MS } = await runnerModule;
     assert.equal(ARM_KILL_GRACE_MS, 30_000);
