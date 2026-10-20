@@ -48,7 +48,7 @@ export function isDaemonEnvKey(k: string): k is DaemonEnvKey {
 }
 
 /** Who started this daemon — from the markers its starter leaves in its env. */
-export type DaemonStartedBy = "forwarder" | "launchagent" | "systemd" | "direct";
+export type DaemonStartedBy = "forwarder" | "launchagent" | "scheduled-task" | "systemd" | "direct";
 
 /** Where the daemon's behaviour env came from:
  *  - `own`: its own process env (service unit, LaunchAgent, a shell) — not reshaped;
@@ -80,12 +80,12 @@ export function daemonSpawnEnv(
 }
 
 /** Read back by the daemon for /health. */
-export function daemonOrigin(env: NodeJS.ProcessEnv = process.env): { startedBy: DaemonStartedBy; envOrigin: DaemonEnvOrigin } {
+export function daemonOrigin(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): { startedBy: DaemonStartedBy; envOrigin: DaemonEnvOrigin } {
   if (env[STARTED_BY_ENV] === "forwarder") {
     const o = env[ENV_ORIGIN_ENV];
     return { startedBy: "forwarder", envOrigin: o === "client+settings" ? "client+settings" : "client" };
   }
-  if (isOnValue(env.BASTRA_AUTOSTART_MANAGED)) return { startedBy: "launchagent", envOrigin: "own" };
+  if (isOnValue(env.BASTRA_AUTOSTART_MANAGED)) return { startedBy: platform === "win32" ? "scheduled-task" : "launchagent", envOrigin: "own" };
   // systemd sets INVOCATION_ID for every unit it starts.
   if (typeof env.INVOCATION_ID === "string" && env.INVOCATION_ID !== "") return { startedBy: "systemd", envOrigin: "own" };
   return { startedBy: "direct", envOrigin: "own" };

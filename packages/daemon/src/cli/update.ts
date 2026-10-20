@@ -22,12 +22,11 @@ import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
-import { refreshManagedAutostart, stableNodeBin } from "./autostart.js";
+import { autostartService, refreshManagedAutostart, stableNodeBin } from "./autostart.js";
 import type { InstalledRuntime } from "./autostart.js";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
-const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
 export type InstallSource = "brew" | "npm-global" | "source" | "unknown";
 
@@ -378,11 +377,6 @@ function existsFile(path: string): string | null {
   return existsSync(path) ? path : null;
 }
 
-function launchAgentPresent(uid: string): boolean {
-  const r = spawnSync("/bin/launchctl", ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], { stdio: "pipe", timeout: 15_000 });
-  return r.status === 0;
-}
-
 export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   const mode = detectInstallMode();
   if (args.staged) {
@@ -685,32 +679,36 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("→ staged — daemon left running on old code (no restart mid-session)\n");
     process.stdout.write("  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\n");
     process.stdout.write("  New code goes live on the next daemon restart:\n");
-    process.stdout.write("    · automatically after 30 min idle (forwarder mode — a LaunchAgent daemon stays warm, #78), or\n");
-    process.stdout.write("    · now — run 'bastra update' without --staged (kickstarts a LaunchAgent daemon), or restart your AI clients\n");
+    process.stdout.write("    · automatically after 30 min idle (forwarder mode — an autostart daemon stays warm, #78), or\n");
+    process.stdout.write("    · now — run 'bastra update' without --staged (restarts the managed autostart daemon), or restart your AI clients\n");
     return 0;
   }
 
   process.stdout.write("→ restarting daemon\n");
-  const uid = String(process.getuid?.() ?? 0);
-  if (launchAgentPresent(uid)) {
+  const service = autostartService();
+  const state = await service?.status();
+  if (service && state?.loaded && process.platform === "darwin") {
     if (args.dryRun) {
-      process.stdout.write("  would kickstart LaunchAgent\n\n");
+      process.stdout.write("  would kickstart autostart service\n\n");
     } else {
-      const kick = spawnSync(
-        "/bin/launchctl",
-        ["kickstart", "-k", `gui/${uid}/${LAUNCH_AGENT_LABEL}`],
-        { stdio: "inherit", timeout: 15_000 },
-      );
-      if (kick.status === 0) process.stdout.write("  ✓ LaunchAgent kicked — daemon restarted with new code\n\n");
+      const kick = await service.kickstart();
+      if (kick.ok) process.stdout.write("  ✓ autostart service kicked — daemon restarted with new code\n\n");
       else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
     }
+  } else if (process.platform === "win32" && state?.managed) {
+    process.stdout.write("  managed Task Scheduler restart handled by autostart refresh\n\n");
   } else {
     // #528 — no claim about what is in memory here: this branch cannot restart
     // anything, so what a running daemon holds is asked below, not guessed.
-    process.stdout.write("  no LaunchAgent registered — nothing here can restart a running daemon\n");
+    process.stdout.write("  no running autostart service registered — restart a running daemon manually\n");
     process.stdout.write("  Restart it manually if the check below says it is needed:\n");
-    process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
-    process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
+    if (process.platform === "win32") {
+      process.stdout.write(`    Get-NetTCPConnection -LocalPort ${resolveDaemonEndpoint().port} | Select-Object OwningProcess\n`);
+      process.stdout.write("    Stop-Process -Id <pid>     # forwarder respawns it on the next call\n\n");
+    } else {
+      process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
+      process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
+    }
   }
 
   // #528 — the closing line and the restart report have to tell one story. In

@@ -41,7 +41,7 @@ Commands:
                              it never runs one).
   autostart <on|off|status>  Keep the daemon running permanently (off by
                              default — it otherwise starts on demand and shuts
-                             down after 30 min idle). 'on' writes a LaunchAgent;
+                             down after 30 min idle). 'on' installs a service;
                              a hand-written one is never replaced without --force
   tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm>
                              Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
@@ -425,9 +425,9 @@ Options:
 
 Usage:
   bastra autostart status     Show what is installed and what it points at
-  bastra autostart on         Install and load the LaunchAgent (macOS)
+  bastra autostart on         Install and start the managed service
   bastra autostart off        Unload and remove it
-  bastra autostart on --force Replace a LaunchAgent bastra did not write
+  bastra autostart on --force Replace a service bastra did not write
 
 Off by default. Without autostart the daemon starts when an AI client first
 calls it and shuts down again after 30 minutes idle — that is enough for
@@ -436,12 +436,14 @@ want the embedding model to stay warm, or simply want instant answers.
 
 'on' disables the idle shutdown, so the daemon stays up until you turn it off.
 
-A LaunchAgent that bastra did not write is left alone: it usually points
+A service that bastra did not write is left alone: it usually points
 somewhere on purpose (a source checkout, a custom model setup), and replacing
 it would break that. --force replaces it anyway.
 
-macOS only. On Linux the daemon keeps starting on demand; write a systemd user
-unit if you want it permanent.`,
+macOS uses a LaunchAgent; Windows uses a per-user Task Scheduler logon task
+with restart-on-failure. doctor reports a stopped task. Windows acceptance on
+a real machine is still pending. On Linux use on-demand start or a systemd
+user unit.`,
 
   update: `bastra update — upgrade, re-register, restart
 

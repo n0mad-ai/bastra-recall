@@ -184,6 +184,17 @@ Every adapter write is **idempotent** (re-runs are no-ops), **atomic** (tmp file
 
 ### Autostart and daemon ownership
 
+On Windows, the same opt-in commands manage a per-user Task Scheduler task:
+`bastra autostart on`, `bastra autostart status`, and `bastra autostart off`.
+It runs at your login with your normal user privileges, keeps the daemon warm,
+and asks Task Scheduler to restart it after a failure (one-minute interval,
+up to 255 attempts). `bastra doctor` warns when an installed task is not running.
+Updates refresh only bastra-managed tasks; `--staged` updates the definition
+without restarting your current daemon. Existing custom tasks are left alone
+unless you explicitly pass `--force`. Autostart remains off by default.
+This path has been checked on macOS using platform mocks; acceptance on a real
+Windows machine, including login and crash recovery, is still pending.
+
 On macOS, `bastra autostart on` installs an optional managed service;
 `bastra autostart status` checks it and `bastra autostart off` removes it.
 If the daemon is already healthy, clients use it immediately. Otherwise a
@@ -757,6 +768,18 @@ bash packages/skill/install-hook.sh   # registriert alle 7 Reflex-Layer-Hooks (S
 Jeder Adapter-Write ist **idempotent** (Re-Runs sind No-Ops), **atomar** (Tmp-File + Rename), **gesichert** (timestamped `.bak-…` neben dem Original) und **parse-safe** (kaputtes JSON bricht den Lauf ab statt es zu zerstören). Vault-Pfad-Auflösung in dieser Reihenfolge: `--vault <pfad>`-Flag → `BASTRA_VAULT_PATH`-ENV → Auto-Detect aus bestehender Claude- oder Codex-Registrierung. Greift nichts davon (frische Maschine), bietet ein interaktives `bastra install` an, `~/BastraVault` anzulegen; nicht-interaktive Läufe (gepiped, `--yes`, `--dry-run`) behalten die klare, deterministische Fehlermeldung.
 
 ### Autostart und Besitz des Daemons
+
+Unter Windows verwalten dieselben freiwilligen Befehle einen Task der
+Aufgabenplanung für den aktuellen Nutzer: `bastra autostart on`,
+`bastra autostart status` und `bastra autostart off`. Er startet bei deiner
+Anmeldung mit normalen Nutzerrechten und hält den Daemon bereit. Nach einem
+Fehler versucht die Aufgabenplanung den Neustart im Minutenabstand, bis zu
+255-mal. `bastra doctor` meldet einen installierten, aber gestoppten Task.
+Updates ändern nur von bastra verwaltete Tasks; `--staged` aktualisiert die
+Definition, ohne den laufenden Daemon neu zu starten. Eigene Tasks bleiben
+ohne ausdrückliches `--force` erhalten. Autostart bleibt standardmäßig aus.
+Geprüft wurde dieser Pfad auf macOS mit Plattform-Mocks; die Abnahme auf einem
+echten Windows-Rechner, einschließlich Anmeldung und Absturzerholung, steht aus.
 
 Auf macOS installiert `bastra autostart on` einen optionalen verwalteten Dienst;
 `bastra autostart status` prüft ihn, `bastra autostart off` entfernt ihn.

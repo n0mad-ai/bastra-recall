@@ -254,7 +254,7 @@ const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 function launchAgentOwnsDaemon(): boolean {
   const starter = daemonOrigin().startedBy;
   if (starter === "forwarder") return false;
-  if (starter === "launchagent") return true;
+  if (starter === "launchagent" || starter === "scheduled-task") return true;
   if (process.platform !== "darwin") return false;
   try {
     const uid = process.getuid?.() ?? 0;
