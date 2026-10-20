@@ -299,14 +299,21 @@ async function nextGeneration(gens: string, _unused: null): Promise<number> {
  * wedged for good. A marker older than {@link LOCK_STALE_MS} is abandoned by
  * the same definition the lock record itself uses.
  *
- * Removing it and claiming it again is two steps, so the takeover is decided
- * by one more `mkdir` first: a sibling named after the abandoned marker's
- * inode and mtime. Contenders that judged the same marker abandoned compete
- * for the same name and exactly one wins; a contender that looks later sees
- * either no marker (and claims it plainly) or the winner's fresh one, whose
- * identity is a different name. If the takeover process stops after claiming
- * that sibling but before removing the old marker, the marker stays blocked;
- * a later contender still needs manual recovery in that narrow window.
+ * THE MARKER IS NEVER MOVED OR REMOVED, and that is what makes the takeover
+ * safe (#1148). A takeover is a claim INSIDE the abandoned marker: one more
+ * `mkdir`, of `takeover-<mtime>` named after the marker's mtime the contender
+ * judged abandoned. Contenders that judged the same marker abandoned saw the
+ * same mtime, compete for the same name, and exactly one wins. Creating that
+ * entry bumps the marker's mtime, so a contender that looks a moment later
+ * sees a fresh marker and reports busy; a claimant that dies in turn leaves an
+ * entry that ages out like the marker itself, and the next contender claims
+ * the name of THAT mtime. There
+ * is no second step to be interrupted in, and no step that acts on a NAME
+ * while the directory behind it may have changed hands — which is what the
+ * previous scheme did: it claimed a sibling, REMOVED the marker and re-created
+ * it, and a process stopped between claiming and removing left a marker every
+ * later contender lost the sibling to, for good. A sibling left behind that
+ * way is ignored now and swept with its generation.
  */
 async function claimTurn(gens: string, name: string): Promise<boolean> {
   const marker = join(gens, name);
@@ -327,14 +334,16 @@ async function claimTurn(gens: string, name: string): Promise<boolean> {
     );
   }
   if (Date.now() - seen.mtimeMs < LOCK_STALE_MS) return false;
-  try {
-    await mkdir(join(gens, `${name}.abandoned-${seen.ino}-${Math.trunc(seen.mtimeMs)}`));
-    await rm(marker, { recursive: true, force: true });
-    await mkdir(marker);
-    return true;
-  } catch {
-    return false;
-  }
+  // Abandoned. The claim goes INSIDE the marker, never beside it: the path
+  // keeps naming this very directory for the rest of the generation, so no
+  // contender can ever act on a marker somebody else just won. Named after
+  // the mtime JUST SEEN, not after a count read afterwards: a count read
+  // after another contender's claim would be a different name, and two
+  // claims would both succeed.
+  return mkdir(join(marker, `takeover-${Math.trunc(seen.mtimeMs)}`)).then(
+    () => true,
+    () => false,
+  );
 }
 
 /**
@@ -352,7 +361,7 @@ async function pruneOldGenerations(gens: string, gen: number): Promise<void> {
   const names = await readdir(gens).catch(() => [] as string[]);
   await Promise.all(
     names.map(async (name) => {
-      // `<n>.abandoned-…` is the takeover of marker n and goes with it.
+      // `<n>.abandoned-…` is what a takeover before #1148 left beside marker n.
       const n = Number(name.replace(/\.abandoned-.*$/, ""));
       if (!Number.isInteger(n) || n < 1 || n > drop) return;
       try {
