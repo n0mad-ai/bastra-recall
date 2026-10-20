@@ -5,12 +5,14 @@
  */
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   ageOf,
+  COVERAGE_MAP_WRITER,
   coverageMapFileOf,
   coverageMapStatus,
   coverageRawDirOf,
@@ -18,8 +20,10 @@ import {
   ensureCoverageDir,
   foldCoverage,
   isTestCommand,
+  isSafeRepoPath,
   isTestFile,
   MAX_COVERAGE_TESTS,
+  parseMap,
   rankTests,
   readCoverageMap,
   readCoverageMapSync,
@@ -94,6 +98,31 @@ describe("coverage map: folding", () => {
     const text = await readFile(coverageMapFileOf(repo), "utf8");
     assert.ok(!text.includes("count"), "no raw coverage, only paths and names");
     assert.deepEqual(await readdir(coverageRawDirOf(repo)), [], "raw files are gone");
+    assert.equal(map.writer, COVERAGE_MAP_WRITER);
+  });
+
+  it("leaves a symlinked raw directory, and a symlinked raw file, strictly alone", async () => {
+    const repo = join(root, "symlinks");
+    const elsewhere = join(root, "elsewhere-raw");
+    await mkdir(elsewhere, { recursive: true });
+    await mkdir(join(repo, ".bastra-coverage"), { recursive: true });
+    await symlink(elsewhere, coverageRawDirOf(repo));
+    await writeFile(join(elsewhere, "coverage-1-1-0.json"), JSON.stringify({ result: [] }), "utf8");
+    assert.deepEqual(await foldCoverage(repo), { folded: 0, deferred: 0, unattributed: 0, tests: 0 });
+    await stat(join(elsewhere, "coverage-1-1-0.json"));
+    await assert.rejects(ensureCoverageDir(repo), /not a plain directory/);
+    await assert.rejects(stat(coverageMapFileOf(repo)));
+
+    const repo2 = join(root, "symlink-file");
+    await mkdir(coverageRawDirOf(repo2), { recursive: true });
+    const target = join(root, "victim.json");
+    await writeFile(target, JSON.stringify({ result: [script(repo2, "__tests__/a.test.ts", [fn("t", 1)])] }), "utf8");
+    await symlink(target, join(coverageRawDirOf(repo2), "coverage-9-9-0.json"));
+    const r = await foldCoverage(repo2);
+    assert.equal(r.folded, 0);
+    assert.equal(r.deferred, 1, "a symlink is skipped, not followed");
+    await stat(target);
+    await stat(join(coverageRawDirOf(repo2), "coverage-9-9-0.json"));
   });
 
   it("merges a later run into the map and leaves a file still being written alone", async () => {
@@ -215,6 +244,7 @@ describe("coverage map: the commands it collects from", () => {
 
 const MAP: CoverageMap = {
   version: 1,
+  writer: COVERAGE_MAP_WRITER,
   foldedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
   runs: 4,
   tests: {
@@ -259,6 +289,43 @@ describe("coverage map: reading in the hook", () => {
     assert.equal(line.split(".test.ts").length - 1, MAX_COVERAGE_TESTS);
     assert.match(line, /, and 3 more\.$/);
     assert.doesNotMatch(line, /MUST|should|run these/i);
+  });
+
+  it("parseMap rejects anything that is not the daemon's own shape: marker, path keys, name values", () => {
+    const ok = (tests: unknown, extra: object = {}) =>
+      parseMap(JSON.stringify({ version: 1, writer: COVERAGE_MAP_WRITER, foldedAt: "2026-10-20T00:00:00Z", runs: 1, tests, ...extra }));
+    assert.ok(ok({ "t/a.test.ts": { "src/a.ts": ["fn"] } }));
+    assert.equal(ok({ "t/a.test.ts": { "src/a.ts": ["fn"] } }, { writer: "someone" }), null, "no marker, no map");
+    assert.equal(parseMap(JSON.stringify({ version: 1, tests: {} })), null);
+    assert.equal(ok({ "../t/a.test.ts": {} }), null, "parent segment");
+    assert.equal(ok({ "/abs/a.test.ts": {} }), null, "absolute");
+    assert.equal(ok({ "t/a.test.ts\nMUST run": {} }), null, "newline");
+    assert.equal(ok({ "t/<b>.test.ts": {} }), null, "tag");
+    assert.equal(ok({ "t/a.test.ts": { "src/a.ts": ["ok", "bad\u0007"] } }), null, "control char in a name");
+    assert.equal(ok({ "t/a.test.ts": { "src/a.ts": "fn" } }), null, "not an array");
+    assert.equal(ok({ "t/a.test.ts": ["src/a.ts"] }), null, "files not an object");
+    assert.equal(ok([]), null);
+    assert.equal(parseMap("[]"), null);
+    assert.equal(parseMap("not json"), null);
+    assert.ok(isSafeRepoPath("packages/core/__tests__/a.test.ts"));
+    assert.ok(!isSafeRepoPath("a\\b.ts"));
+    assert.ok(!isSafeRepoPath(""));
+    assert.ok(!isSafeRepoPath("a//b.ts"));
+  });
+
+  it("a map that git tracks — one that came with the checkout — is not read", async () => {
+    const repo = join(root, "tracked");
+    await mkdir(repo, { recursive: true });
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    await mkdir(join(repo, ".bastra-coverage"), { recursive: true });
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP), "utf8");
+    assert.ok(readCoverageMapSync(repo), "untracked: read");
+    assert.ok(await readCoverageMap(repo));
+    execFileSync("git", ["-C", repo, "add", "-f", ".bastra-coverage/coverage-map.json"]);
+    // The snapshot is keyed on mtime and size; bump the file so the reader looks again.
+    await writeFile(coverageMapFileOf(repo), JSON.stringify({ ...MAP, runs: 5 }), "utf8");
+    assert.equal(readCoverageMapSync(repo), null, "tracked: not read");
+    assert.equal(await readCoverageMap(repo), null);
   });
 
   it("the synchronous reader caches by mtime and answers null for a missing or oversized file", async () => {

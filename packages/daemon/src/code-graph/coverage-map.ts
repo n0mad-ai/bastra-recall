@@ -39,10 +39,12 @@
  * mapped back to their first in-repo source at FILE grain only.
  */
 
+import { spawnSync } from "node:child_process";
 import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { escapeAttr } from "../escape-attr.js";
 
 export const COVERAGE_DIR_NAME = ".bastra-coverage";
 export const COVERAGE_MAP_FILE_NAME = "coverage-map.json";
@@ -113,12 +115,51 @@ export function withCoverageEnv(command: string, rawDir: string): string {
  */
 export async function ensureCoverageDir(repoRoot: string): Promise<void> {
   const dir = coverageDirOf(repoRoot);
+  if (!(await realDirectoryOrAbsent(dir)) || !(await realDirectoryOrAbsent(join(dir, RAW_DIR_NAME)))) {
+    throw new Error(`coverage map: ${dir} is not a plain directory`);
+  }
   await mkdir(join(dir, RAW_DIR_NAME), { recursive: true });
   const ignore = join(dir, ".gitignore");
   try {
     await stat(ignore);
   } catch {
     await writeFile(ignore, "*\n", "utf8");
+  }
+}
+
+/**
+ * The directories this module creates, writes to and deletes from must be
+ * what it made them: a symlink planted at `.bastra-coverage` or `raw` would
+ * turn the fold's `rm` and the map's write into operations elsewhere. So
+ * each is checked with `lstat` — absent, or a real directory — before any
+ * of that, and a raw file is deleted only when it is a regular file whose
+ * real path lies under the raw directory's real path.
+ */
+async function realDirectoryOrAbsent(path: string): Promise<boolean> {
+  try {
+    const st = await lstat(path);
+    return st.isDirectory() && !st.isSymbolicLink();
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
+
+async function coverageDirsSafe(repoRoot: string): Promise<boolean> {
+  const ok =
+    (await realDirectoryOrAbsent(coverageDirOf(repoRoot))) && (await realDirectoryOrAbsent(coverageRawDirOf(repoRoot)));
+  if (!ok) process.stderr.write(`[bastra-recall] coverage map: ${coverageDirOf(repoRoot)} is not a plain directory — left alone\n`);
+  return ok;
+}
+
+/** A regular, non-symlinked file whose real path is inside `rawReal`. */
+async function safeRawFile(path: string, rawReal: string): Promise<boolean> {
+  try {
+    const st = await lstat(path);
+    if (!st.isFile() || st.isSymbolicLink()) return false;
+    const real = await realpath(path);
+    return real.startsWith(rawReal + sep);
+  } catch {
+    return false;
   }
 }
 
@@ -142,8 +183,35 @@ export async function rawBytesOf(repoRoot: string): Promise<number> {
 
 // ─── The map ─────────────────────────────────────────────────────
 
+/**
+ * The map is read from inside the repository and its lines reach the agent's
+ * context, so it is untrusted input like any file in a checkout (#1232):
+ * every key must be a plain repo-relative path, every value a list of plain
+ * names, the file must carry the daemon's own marker, and it must not be
+ * tracked by git — a map that arrived with a clone is not one this daemon
+ * wrote. Anything else and the map is treated as absent.
+ */
+export const COVERAGE_MAP_WRITER = "bastra-recall";
+const MAX_KEY_LENGTH = 1024;
+const MAX_NAME_LENGTH = 256;
+/** Control characters and the four that open a tag, a quote or a fence. */
+const UNSAFE_CHARS = /[\u0000-\u001f\u007f<>"`]/;
+
+export function isSafeRepoPath(key: string): boolean {
+  if (key.length === 0 || key.length > MAX_KEY_LENGTH) return false;
+  if (UNSAFE_CHARS.test(key) || key.includes("\\")) return false;
+  if (isAbsolute(key) || key.startsWith("/")) return false;
+  return key.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
+
+function isSafeName(name: unknown): name is string {
+  return typeof name === "string" && name.length > 0 && name.length <= MAX_NAME_LENGTH && !UNSAFE_CHARS.test(name);
+}
+
 export interface CoverageMap {
   version: 1;
+  /** Who wrote it — {@link COVERAGE_MAP_WRITER}; a map without it is not read. */
+  writer: string;
   /** ISO time of the last fold. */
   foldedAt: string;
   /** Raw files folded in over the map's life. */
@@ -153,12 +221,13 @@ export interface CoverageMap {
 }
 
 function emptyMap(): CoverageMap {
-  return { version: 1, foldedAt: new Date(0).toISOString(), runs: 0, tests: {} };
+  return { version: 1, writer: COVERAGE_MAP_WRITER, foldedAt: new Date(0).toISOString(), runs: 0, tests: {} };
 }
 
-/** The map on disk, or null when there is none or it is unreadable. */
+/** The map on disk, or null when there is none, it is unreadable, invalid or git-tracked. */
 export async function readCoverageMap(repoRoot: string): Promise<CoverageMap | null> {
   try {
+    if (trackedByGit(repoRoot, coverageMapFileOf(repoRoot))) return null;
     const buf = await readFile(coverageMapFileOf(repoRoot));
     return parseMap(buf.byteLength > MAX_MAP_BYTES ? null : buf.toString("utf8"));
   } catch {
@@ -166,19 +235,51 @@ export async function readCoverageMap(repoRoot: string): Promise<CoverageMap | n
   }
 }
 
-function parseMap(text: string | null): CoverageMap | null {
+/** Strict: the shape above, every key a safe repo path, every value safe names. */
+export function parseMap(text: string | null): CoverageMap | null {
   if (text === null) return null;
   try {
     const raw = JSON.parse(text) as Partial<CoverageMap>;
-    if (raw.version !== 1 || typeof raw.tests !== "object" || raw.tests === null) return null;
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+    if (raw.version !== 1 || raw.writer !== COVERAGE_MAP_WRITER) return null;
+    if (typeof raw.tests !== "object" || raw.tests === null || Array.isArray(raw.tests)) return null;
+    const tests: Record<string, Record<string, string[]>> = {};
+    for (const [test, files] of Object.entries(raw.tests)) {
+      if (!isSafeRepoPath(test) || typeof files !== "object" || files === null || Array.isArray(files)) return null;
+      const entry: Record<string, string[]> = {};
+      for (const [file, names] of Object.entries(files as Record<string, unknown>)) {
+        if (!isSafeRepoPath(file) || !Array.isArray(names) || !names.every(isSafeName)) return null;
+        entry[file] = names;
+      }
+      tests[test] = entry;
+    }
     return {
       version: 1,
-      foldedAt: typeof raw.foldedAt === "string" ? raw.foldedAt : new Date(0).toISOString(),
-      runs: typeof raw.runs === "number" ? raw.runs : 0,
-      tests: raw.tests,
+      writer: COVERAGE_MAP_WRITER,
+      foldedAt: typeof raw.foldedAt === "string" && !UNSAFE_CHARS.test(raw.foldedAt) ? raw.foldedAt : new Date(0).toISOString(),
+      runs: typeof raw.runs === "number" && Number.isFinite(raw.runs) && raw.runs >= 0 ? raw.runs : 0,
+      tests,
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Is this file in git's index? A checkout that brought a map along is the
+ * one way an outsider's map reaches the reader; the daemon's own map lives in
+ * a directory that ignores itself. One short `git ls-files`; the sync reader
+ * caches it by the file's mtime. No git, or no repository: nothing is tracked.
+ */
+export function trackedByGit(repoRoot: string, file: string): boolean {
+  try {
+    const r = spawnSync("git", ["-C", repoRoot, "ls-files", "--error-unmatch", "--", file], {
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: 5_000,
+    });
+    return r.status === 0;
+  } catch {
+    return false;
   }
 }
 
@@ -203,7 +304,8 @@ export function readCoverageMapSync(repoRoot: string): CoverageMap | null {
     if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
       return snapshot.map;
     }
-    const map = st.size > MAX_MAP_BYTES ? null : parseMap(readFileSync(fd, "utf8"));
+    const map =
+      st.size > MAX_MAP_BYTES || trackedByGit(repoRoot, path) ? null : parseMap(readFileSync(fd, "utf8"));
     snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, map };
     return map;
   } catch {
@@ -238,9 +340,12 @@ export interface FoldResult {
 export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<FoldResult> {
   const rawDir = coverageRawDirOf(repoRoot);
   const result: FoldResult = { folded: 0, deferred: 0, unattributed: 0, tests: 0 };
+  if (!(await coverageDirsSafe(repoRoot))) return result;
   let names: string[];
+  let rawReal: string;
   try {
     names = (await readdir(rawDir)).filter((n) => n.startsWith("coverage-") && n.endsWith(".json"));
+    rawReal = await realpath(rawDir);
   } catch {
     return result;
   }
@@ -251,6 +356,10 @@ export async function foldCoverage(repoRoot: string, now = Date.now()): Promise<
   const done: string[] = [];
   for (const name of names) {
     const path = join(rawDir, name);
+    if (!(await safeRawFile(path, rawReal))) {
+      result.deferred++;
+      continue;
+    }
     let doc: { result?: RawScript[] };
     try {
       const st = await stat(path);
@@ -368,6 +477,7 @@ function sourceResolver(repoRoot: string): (abs: string) => string {
 
 async function writeMap(repoRoot: string, map: CoverageMap): Promise<void> {
   const file = coverageMapFileOf(repoRoot);
+  if (!(await coverageDirsSafe(repoRoot))) throw new Error("coverage map: directory not safe");
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   await writeFile(tmp, JSON.stringify(map), "utf8");
@@ -484,7 +594,7 @@ export function coverageTestsLine(
   const grain = shown[0]!.functions > 0 ? "the changed functions" : "these files";
   return (
     `Tests that ran ${grain} (coverage map, ${ageOf(map.foldedAt, now)}): ` +
-    shown.map((r) => r.test).join(", ") +
+    shown.map((r) => escapeAttr(r.test)).join(", ") +
     (rest > 0 ? `, and ${rest} more` : "") +
     "."
   );

@@ -350,6 +350,7 @@ describe("delivered change-impact block: what the agent sees", () => {
       coverageMapFileOf(repo),
       JSON.stringify({
         version: 1,
+        writer: "bastra-recall",
         foldedAt: new Date().toISOString(),
         runs: 1,
         tests: {
