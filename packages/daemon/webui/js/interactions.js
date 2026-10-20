@@ -183,5 +183,5 @@ export function createInteractions(canvas, renderer, sim, { onSelect, onHoverCha
     camera.y = ins.top + availH / 2 - ((minY + maxY) / 2) * scale;
   }
 
-  return { flyTo, flyToBounds, flyToCluster, step, fitAll, draggedCluster: () => dragCluster, setDragDelegate: (fn) => (dragDelegate = fn) };
+  return { flyTo, flyToBounds, flyToCluster, step, isFlying: () => flight !== null, fitAll, draggedCluster: () => dragCluster, setDragDelegate: (fn) => (dragDelegate = fn) };
 }

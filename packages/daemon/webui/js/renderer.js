@@ -37,6 +37,7 @@ export function createRenderer(canvas, sim, initialHues) {
   let filterFn = null; // active sidebar filter — non-matching nodes dim
   let decorFn = null; // view decor (ring guides, center emblem), world space
   let drawOrder = null; // node paint order (orbit view: back-to-front)
+  const sorted = []; // persistent depth-sorted copy of sim.nodes
   let overlayFn = null; // drawn after nodes (live supernovae) — every view
   let quietEdges = false; // ring view: no ambient edges, only the active node's
   let clusterLabels = true; // ring view draws names curved in the band instead
@@ -142,6 +143,12 @@ export function createRenderer(canvas, sim, initialHues) {
     ctx.translate(camera.x, camera.y);
     ctx.scale(camera.scale, camera.scale);
 
+    // viewport in world space (#324 culling): offscreen edges/nodes are skipped
+    const cullL = -camera.x / camera.scale;
+    const cullT = -camera.y / camera.scale;
+    const cullR = cullL + w / camera.scale;
+    const cullB = cullT + h / camera.scale;
+
     const active = activeSet();
     const pivotId = (hover ?? focus)?.id ?? null;
     if (pivotId !== lastPivotId) {
@@ -159,6 +166,15 @@ export function createRenderer(canvas, sim, initialHues) {
     ctx.lineWidth = 1 / camera.scale;
     for (const e of sim.edges) {
       if (e.s.ringHidden || e.t.ringHidden) continue; // drilled away (ring browser)
+      // both ends past the same viewport side → the strand cannot reach in.
+      // The margin covers a bent strand's bulge (≤ 90 / ≤ 9 % of its length).
+      {
+        const m = 100 + 3 / camera.scale + (bendCenter ? Math.abs(e.s.x - e.t.x) * 0.1 + Math.abs(e.s.y - e.t.y) * 0.1 : 0);
+        if (
+          (e.s.x < cullL - m && e.t.x < cullL - m) || (e.s.x > cullR + m && e.t.x > cullR + m) ||
+          (e.s.y < cullT - m && e.t.y < cullT - m) || (e.s.y > cullB + m && e.t.y > cullB + m)
+        ) continue;
+      }
       const isActive = pivotId !== null && (e.s.id === pivotId || e.t.id === pivotId);
       // second hop: the connections AT the strands' target nodes light up
       // too — dimmer, so the eye still reads the direct strands first
@@ -216,7 +232,17 @@ export function createRenderer(canvas, sim, initialHues) {
     // ── nodes ──
     // painter's order for the orbit view: back-to-front by depth, so front
     // nodes genuinely occlude the ones behind them
-    const nodeList = drawOrder ? [...sim.nodes].sort(drawOrder) : sim.nodes;
+    // Reuse storage, but refill in source order before the stable sort. Depth
+    // ties must paint exactly as a fresh [...sim.nodes].sort(drawOrder) would;
+    // refilling also observes in-place replacements at an unchanged length.
+    let nodeList = sim.nodes;
+    if (drawOrder) {
+      sorted.length = sim.nodes.length;
+      for (let i = 0; i < sim.nodes.length; i++) sorted[i] = sim.nodes[i];
+      nodeList = sorted.sort(drawOrder);
+    } else {
+      sorted.length = 0; // release node references when depth ordering is off
+    }
     for (const n of nodeList) {
       if (n.ringHidden) continue; // drilled away (ring browser)
       const fade = n.ringFade ?? 1; // fan-out crossfade multiplier
@@ -231,6 +257,12 @@ export function createRenderer(canvas, sim, initialHues) {
       // "what did this filter select" is visible at a glance
       const filterHit = !dimmed && filterFn !== null && filterFn(n);
       if (filterHit && n.kind !== "ghost") r *= 1 + Math.sin(now / 350 + n.idx * 1.7) * 0.14;
+      // Bound the effective (filter-pulsed) radius, salience breathing, bridge
+      // halos and beacon strokes. Live flashes/bolts are a separate pass and
+      // must still run when their source node is outside this viewport.
+      const cm = Math.max(r * 3.2 * 1.14, 60 / camera.scale,
+        r + 34 + 1.1 / camera.scale, r + 6 * (n.ringScale ?? 1) + 1 / camera.scale);
+      if (n.x < cullL - cm || n.x > cullR + cm || n.y < cullT - cm || n.y > cullB + cm) continue;
       const nodeAlpha = (dimmed ? theme.dim : 1) * fade;
       ctx.globalAlpha = nodeAlpha;
       const color = colorOf(n);
@@ -472,6 +504,8 @@ export function createRenderer(canvas, sim, initialHues) {
       const links = boltChainOf(sim, id);
       flashes.set(id, { color, born: now, life: lifeMs, boltAt: now, links, spill: spillOf(sim, links) });
     },
+    /** Active strands, beacons, filters and live notices keep their full cadence. */
+    hasLiveEffects: () => flashes.size > 0 || hover !== null || focus !== null || filterFn !== null || highlightFn !== null,
     setHover: (n) => (hover = n),
     setFocus: (n) => {
       if ((n?.id ?? null) !== (focus?.id ?? null)) focusSince = performance.now();
