@@ -62,7 +62,9 @@ export async function logDeliveredBlock(row: DeliveredBlockRow): Promise<void> {
       hits: row.files ?? 0,
       files: row.files ?? 0,
       truncated: row.truncated ?? false,
-      took_ms: row.tookMs ?? 0,
+      // Omitted, not 0, when nothing was timed (#665): the boundary lane passes
+      // no duration, and a 0 would enter the latency percentiles as "instant".
+      ...(row.tookMs !== undefined ? { took_ms: row.tookMs } : {}),
       repo: shortRepo(row.repo),
       surface: "delivered",
       delivered_lane: row.lane,
