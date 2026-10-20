@@ -428,6 +428,30 @@ describe("coverage map: reading in the hook", () => {
     assert.ok(readCoverageMapSync(repo));
   });
 
+  it("fails closed on a git that hangs: the timeout means no map, no line, and nothing cached", async () => {
+    const repo = join(root, "git-hangs");
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP), "utf8");
+    const bin = join(root, "hanging-bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(bin, "git"), "#!/bin/sh\nsleep 5\n", { mode: 0o755 });
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:/bin:/usr/bin`;
+    try {
+      const started = Date.now();
+      assert.equal(gitVerdict(repo), "unknown");
+      assert.ok(Date.now() - started < 4_000, "killed by the timeout, not waited out");
+      const changed = new Map([["src/search.ts", ["SearchIndex"]]]);
+      assert.equal(coverageTestsLine(readCoverageMapSync(repo), changed, new Set()), null, "no line");
+    } finally {
+      process.env.PATH = path;
+    }
+    // Same file, same mtime: had the unclear answer been cached, this would still be null.
+    const map = readCoverageMapSync(repo);
+    assert.ok(map, "the timeout left no cache entry");
+    assert.ok(coverageTestsLine(map, new Map([["src/search.ts", ["SearchIndex"]]]), new Set()));
+  });
+
   it("a tracked .Bastra-Coverage voids the map on a case-insensitive file system", async (t) => {
     const repo = join(root, "icase");
     await mkdir(join(repo, ".Bastra-Coverage"), { recursive: true });

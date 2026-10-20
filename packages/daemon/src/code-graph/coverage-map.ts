@@ -387,6 +387,11 @@ export function parseMap(text: string | null): CoverageMap | null {
  */
 export type GitVerdict = "untracked" | "tracked" | "unknown";
 
+/** Spawned, ran to its end, exited 0: no error, no signal (a timeout kills with one). */
+function ranClean(r: ReturnType<typeof spawnSync>): boolean {
+  return r.error === undefined && r.signal === null && r.status === 0 && r.stdout !== null;
+}
+
 export function gitVerdict(repoRoot: string): GitVerdict {
   const git = (args: string[]) =>
     spawnSync("git", ["-C", repoRoot, ...args], {
@@ -396,9 +401,9 @@ export function gitVerdict(repoRoot: string): GitVerdict {
     });
   try {
     const inside = git(["rev-parse", "--is-inside-work-tree"]);
-    if (inside.error !== undefined || inside.status !== 0 || inside.stdout.toString().trim() !== "true") return "unknown";
+    if (!ranClean(inside) || inside.stdout.toString().trim() !== "true") return "unknown";
     const r = git(["ls-files", "-z", "--", `:(icase)${COVERAGE_DIR_NAME}`]);
-    if (r.error !== undefined || r.status !== 0) return "unknown";
+    if (!ranClean(r)) return "unknown";
     return r.stdout.length === 0 ? "untracked" : "tracked";
   } catch {
     return "unknown";
