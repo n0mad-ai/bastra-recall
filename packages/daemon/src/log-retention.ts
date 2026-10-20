@@ -28,7 +28,10 @@ export const RETENTION_FLOOR_DAYS = 30;
 /** Kept days by default — 3x the curator window, so a slow vault keeps a margin. */
 export const RETENTION_DEFAULT_DAYS = 90;
 
-const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
+// #702: `bastra doctor --replay` writes its rows to `replay-<day>.jsonl` next
+// to the live logs. Same shape, same window — no reader mines them, so the
+// floor is not what keeps them, but a second clock would be one more setting.
+const EVENT_FILE = /^(?:events|replay)-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
 export interface RetentionResult {
   /** Files deleted in this pass. */
