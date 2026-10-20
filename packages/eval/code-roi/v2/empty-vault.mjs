@@ -40,7 +40,7 @@ import { randomUUID } from "node:crypto";
 
 const DAEMON_DIST = new URL("../../../daemon/dist/", import.meta.url);
 const { projectRecallResult } = await import(new URL("recall-batch.js", DAEMON_DIST).pathname);
-const { armsOf, currentScoreVersion } = await import(new URL("score-space.js", DAEMON_DIST).pathname);
+const { armsOf } = await import(new URL("score-space.js", DAEMON_DIST).pathname);
 const { toolSurfaceDenial } = await import(new URL("tool-defs.js", DAEMON_DIST).pathname);
 
 const EMPTY_VAULT_SURFACE = "search";
@@ -51,6 +51,14 @@ const EMPTY_VAULT_SURFACE = "search";
  * so no honesty flags; the dense arm available, so the fused score space with
  * its version; no project filter and no budget cut, so neither of their
  * fields. The arm never sees this object — only its projection below.
+ *
+ * "Dense arm available" was the first reading and it was wrong (#595 review):
+ * an empty vault has no vectors, so even with embeddings configured the dense
+ * arm comes back empty, `search.ts` reports `degraded: "vector-arm-empty"`, and
+ * `/hook/recall` then computes `promptFused = false`. The real answer is the
+ * one-armed one: `score_kind: "bm25"`, `score_arms: ["bm25"]`, `unfused: true`
+ * instead of `score_version`, plus the `degraded` reason. (Without embeddings
+ * the same answer, minus `degraded`.) The stub models the embeddings-on vault.
  */
 export function emptyVaultRecallPayload() {
   return {
@@ -58,9 +66,10 @@ export function emptyVaultRecallPayload() {
     vault_size: 0,
     latency_ms: 0,
     recall_id: randomUUID(),
-    score_kind: "rrf",
-    score_arms: armsOf({ hybridActive: true, commonsFused: false }),
-    score_version: currentScoreVersion(),
+    score_kind: "bm25",
+    score_arms: armsOf({ hybridActive: false, commonsFused: false }),
+    unfused: true,
+    degraded: "vector-arm-empty",
   };
 }
 

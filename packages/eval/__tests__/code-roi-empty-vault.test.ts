@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, isNoHome, isWeakResult } from "@bastra-recall/core";
+import { SearchIndex, Vault, isNoHome, isWeakResult } from "@bastra-recall/core";
 
 // @ts-expect-error — plain .mjs script, no declarations (#542).
 const { emptyVaultAnswer } = await import("../code-roi/v2/empty-vault.mjs");
@@ -26,7 +26,17 @@ async function productEmptyRecall(query: string): Promise<Record<string, unknown
   try {
     const vault = new Vault(root);
     await vault.init();
-    const hybridActiveAtRecall = true;
+    // The route's own derivation, over a real Search: what it reports as
+    // `degraded` and whether it counts as fused. No embeddings are wired here,
+    // so `promptFused` is false and no degradation reason is emitted.
+    const search = new SearchIndex(vault);
+    let degradedReason: string | undefined;
+    search.recall(query, {
+      onStage: (s: { name: string; meta?: Record<string, unknown> }) => {
+        if (s.name === "done" && typeof s.meta?.degraded === "string") degradedReason = s.meta.degraded;
+      },
+    });
+    const hybridActiveAtRecall = search.hasEmbeddings() && degradedReason === undefined;
     const { payload } = assembleHookRecallPayload({
       hits: [],
       candidatePool: [],
@@ -38,7 +48,7 @@ async function productEmptyRecall(query: string): Promise<Record<string, unknown
       noHome: isNoHome([], hybridActiveAtRecall),
       hookProject: null,
       hybridActiveAtRecall,
-      degradedReason: undefined,
+      degradedReason,
     });
     // The forwarder hands the wire payload to the projection untyped (it
     // arrives as JSON); the cast says the same here.
@@ -52,18 +62,23 @@ describe("the empty-vault recall stub is the product's answer (#595)", () => {
   test("its key set and key order equal the daemon's projection over an empty vault", async () => {
     const product = await productEmptyRecall("where is the config parsed");
     const stub = emptyVaultAnswer("recall", { query: "where is the config parsed" });
-    assert.deepEqual(Object.keys(stub), Object.keys(product));
-    const { recall_id: _s, ...stubRest } = stub;
+    // The stub models a vault with embeddings: there the dense arm is empty and
+    // the product adds `degraded: "vector-arm-empty"`. Without embeddings (the
+    // test vault) the same answer lacks exactly that key.
+    assert.equal(stub.degraded, "vector-arm-empty");
+    const { recall_id: _s, degraded: _d, ...stubRest } = stub;
     const { recall_id: _p, ...productRest } = product;
-    assert.deepEqual(stubRest, productRest, "every field but the per-call id is identical");
+    assert.deepEqual(Object.keys(stubRest), Object.keys(productRest));
+    assert.deepEqual(stubRest, productRest, "every field but the per-call id and the degraded reason is identical");
   });
 
   test("the fields the hand-built stub lacked are present", () => {
     const stub = emptyVaultAnswer("recall", { query: "q" });
     assert.equal(stub.query, "q", "the product leads with the query");
-    assert.equal(stub.score_kind, "rrf");
-    assert.deepEqual(stub.score_arms, ["bm25", "vector"]);
-    assert.equal(typeof stub.score_version, "string");
+    assert.equal(stub.score_kind, "bm25");
+    assert.deepEqual(stub.score_arms, ["bm25"]);
+    assert.equal(stub.unfused, true);
+    assert.equal("score_version" in stub, false, "no formula version on a raw scale");
     assert.equal(stub.vault_size, 0);
     assert.deepEqual(stub.hits, []);
     assert.equal("weak_result" in stub, false, "no hits, so no honesty flag — as the product");
