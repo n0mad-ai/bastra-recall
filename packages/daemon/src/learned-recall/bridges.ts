@@ -443,14 +443,10 @@ export class BridgePool {
     return this.expand(query, lang).added;
   }
 
-  /** #702: the ids of the bridges whose trigger matches `query` — the same
-   *  predicate `expansionsFor` fires on, so a replay report counts a fire
-   *  exactly where the recall widened (or, in shadow, would have widened). */
-  firedIds(query: string, lang: string | null = null): string[] {
-    return this.expand(query, lang).fired;
-  }
-
-  private expand(query: string, lang: string | null): { added: string[]; fired: string[] } {
+  /** `expansionsFor` plus #702's `fired`: the ids of the bridges whose trigger
+   *  matched — the same pass, so a replay report counts a fire exactly where
+   *  the recall widened (or, in shadow, would have widened). */
+  expand(query: string, lang: string | null = null): { added: string[]; fired: string[] } {
     const bridges = lang ? this.byLang.get(lang) : this.all;
     if (!bridges || bridges.length === 0) return { added: [], fired: [] };
     const queryTerms = new Set(distinctiveTerms(query));
@@ -509,7 +505,7 @@ export interface ExpansionResult {
   /** Whether `added` is in `query` (the pool is live). False in shadow: the
    *  fire is still logged, the ranking is unchanged. */
   applied: boolean;
-  /** #702: ids of the bridges whose trigger matched (`BridgePool.firedIds`).
+  /** #702: ids of the bridges whose trigger matched (`BridgePool.expand`).
    *  Empty without a pool or a match. */
   fired: string[];
 }
@@ -533,8 +529,7 @@ export function expandQuery(
   if (!pool) return { query, lang: null, added: [], applied: false, fired: [] };
   const configured = opts.configuredLang ?? null;
   const lang = configured ?? bridgeLanguage(query);
-  const added = pool.expansionsFor(query, configured);
-  const fired = pool.firedIds(query, configured);
+  const { added, fired } = pool.expand(query, configured);
   if (added.length === 0) return { query, lang, added: [], applied: false, fired };
   if (!pool.live) return { query, lang, added, applied: false, fired };
   // Trigger-Matching (expansionsFor) sah die VOLLE Query; nur die Basis des
