@@ -455,4 +455,22 @@ describe("coverage map: the switch", () => {
     assert.equal(await getCoverageMapEnabled(path, {}), false);
     assert.equal(await getCoverageMapEnabled(path, { BASTRA_COVERAGE_MAP: "on" }), true);
   });
+
+  it("is a known settings key: reading it warns about nothing", async () => {
+    const path = join(root, "settings-known", "cli-settings.json");
+    await mkdir(join(root, "settings-known"), { recursive: true });
+    await setCoverageMapEnabled(true, path);
+    const written: string[] = [];
+    const orig = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      assert.equal(await getCoverageMapEnabled(path, {}), true);
+    } finally {
+      process.stderr.write = orig;
+    }
+    assert.deepEqual(written.filter((w) => w.includes("unknown key")), []);
+  });
 });

@@ -269,6 +269,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "language",
   "code",
   "promptImpact",
+  "coverageMap",
   "archive",
   "battery",
   "daemon",
