@@ -36,7 +36,6 @@ import { request } from "node:http";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
-import { taskClientHeaders } from "../task-client-auth.js";
 import { normalizeTurns } from "../stop-transcript.js";
 import type { PromptHookTelemetry } from "../prompt-lane-telemetry.js";
 import { probeDaemon } from "./helpers.js";
@@ -272,8 +271,10 @@ function postReplay(
           port: url.port || 80,
           path: url.pathname,
           headers: {
+            // No task token: nothing is due in a replayed turn, and a daemon
+            // from before #702 runs the live route for the probe — with a
+            // token it would mark due tasks as delivered to "replay-probe".
             "Content-Type": "application/json; charset=utf-8",
-            ...taskClientHeaders(),
             "Content-Length": body.byteLength.toString(),
           },
           timeout: POST_TIMEOUT_MS,

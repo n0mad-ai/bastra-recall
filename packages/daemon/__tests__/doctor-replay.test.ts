@@ -20,6 +20,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type IncomingHttpHeaders } from "node:http";
 
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
@@ -27,6 +28,7 @@ import { startHttpServer } from "../src/http.js";
 import { eventLogFile } from "../src/telemetry-sink.js";
 import { isEvalTraffic } from "../src/telemetry-dimensions.js";
 import {
+  daemonSupportsReplay,
   formatReplayDiff,
   formatReplayReport,
   parseDays,
@@ -359,4 +361,34 @@ test("--days takes a whole number of days", () => {
   assert.equal(parseDays("3"), 3);
   assert.deepEqual(parseDays("x"), { error: "--days needs a whole number of days between 1 and 365, got 'x'" });
   assert.deepEqual(parseDays("0"), { error: "--days needs a whole number of days between 1 and 365, got '0'" });
+});
+
+test("the probe and the replayed turns carry no task token, so an old daemon delivers no due task to them", async () => {
+  const seen: IncomingHttpHeaders[] = [];
+  const server = createServer((req, res) => {
+    seen.push(req.headers);
+    req.resume();
+    req.on("end", () => {
+      // An old daemon: the bare hook document, no `{stdout, telemetry}`.
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const prev = { tasks: process.env.BASTRA_TASKS, token: process.env.BASTRA_TASK_TOKEN };
+  process.env.BASTRA_TASKS = "1";
+  process.env.BASTRA_TASK_TOKEN = "a".repeat(43);
+  try {
+    const port = (server.address() as { port: number }).port;
+    assert.equal(await daemonSupportsReplay(`http://127.0.0.1:${port}`), false, "the old daemon is refused");
+    await postReplayTurn(`http://127.0.0.1:${port}`)(turn("s1", 1, "where is alpha?"), "replay-x-s1");
+    assert.equal(seen.length, 2);
+    for (const h of seen) assert.equal(h["x-bastra-task-authorization"], undefined, JSON.stringify(h));
+  } finally {
+    if (prev.tasks === undefined) delete process.env.BASTRA_TASKS;
+    else process.env.BASTRA_TASKS = prev.tasks;
+    if (prev.token === undefined) delete process.env.BASTRA_TASK_TOKEN;
+    else process.env.BASTRA_TASK_TOKEN = prev.token;
+    await new Promise<void>((r) => server.close(() => r()));
+  }
 });
