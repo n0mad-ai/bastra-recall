@@ -35,6 +35,7 @@ import {
 import {
   COVERAGE_MAP_DEFAULT,
   getCoverageMapEnabled,
+  foldCoverageIfEnabled,
   setCoverageMapEnabled,
 } from "../src/code-graph/coverage-map-settings.js";
 import { readSettings } from "../src/settings.js";
@@ -565,6 +566,35 @@ describe("coverage map: reading in the hook", () => {
 });
 
 describe("coverage map: the switch", () => {
+  it("does not fold pending raw output while the switch or the repository is disabled", async () => {
+    const repo = join(root, "fold-disabled");
+    const raw = await rawFile(repo, "coverage-1-1-0.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "src/a.ts", [fn("a", 1)])],
+    });
+    const { setRepoEnabled } = await import("../src/code-graph/enabled-repos.js");
+    const old = process.env.BASTRA_COVERAGE_MAP;
+    try {
+      await setRepoEnabled(repo, true);
+      process.env.BASTRA_COVERAGE_MAP = "0";
+      await foldCoverageIfEnabled(repo);
+      await stat(raw);
+      await assert.rejects(stat(coverageMapFileOf(repo)));
+      process.env.BASTRA_COVERAGE_MAP = "1";
+      await setRepoEnabled(repo, false);
+      await foldCoverageIfEnabled(repo);
+      await stat(raw);
+      await assert.rejects(stat(coverageMapFileOf(repo)));
+      await setRepoEnabled(repo, true);
+      await foldCoverageIfEnabled(repo);
+      assert.ok(await readCoverageMap(repo));
+      await assert.rejects(stat(raw));
+    } finally {
+      await setRepoEnabled(repo, false);
+      if (old === undefined) delete process.env.BASTRA_COVERAGE_MAP;
+      else process.env.BASTRA_COVERAGE_MAP = old;
+    }
+  });
+
   it("is off by default, persists, and the env wins both ways", async () => {
     const path = join(root, "settings", "cli-settings.json");
     await mkdir(join(root, "settings"), { recursive: true });

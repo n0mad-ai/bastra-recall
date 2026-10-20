@@ -15,6 +15,8 @@
  */
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
 import { isOffValue, isOnValue } from "../env.js";
+import { foldCoverage } from "./coverage-map.js";
+import { isRepoEnabledSync } from "./enabled-repos.js";
 
 export const COVERAGE_MAP_DEFAULT = false;
 
@@ -30,4 +32,11 @@ export async function getCoverageMapEnabled(
 /** Persists the opt-in atomically, merging into existing settings. */
 export async function setCoverageMapEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({ ...current, coverageMap: { enabled: on } }));
+}
+
+/** Recheck when the debounce fires: the owner may have disabled collection
+ * since enqueue. Leave pending raw files and any existing map untouched. */
+export async function foldCoverageIfEnabled(repoRoot: string): Promise<unknown> {
+  if (!(await getCoverageMapEnabled()) || !isRepoEnabledSync(repoRoot)) return;
+  return foldCoverage(repoRoot);
 }
