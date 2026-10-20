@@ -37,6 +37,8 @@ export function createRenderer(canvas, sim, initialHues) {
   let filterFn = null; // active sidebar filter — non-matching nodes dim
   let decorFn = null; // view decor (ring guides, center emblem), world space
   let drawOrder = null; // node paint order (orbit view: back-to-front)
+  let sorted = []; // persistent depth-sorted copy of sim.nodes
+  let sortedFrom = null; // the sim.nodes array `sorted` was copied from
   let overlayFn = null; // drawn after nodes (live supernovae) — every view
   let quietEdges = false; // ring view: no ambient edges, only the active node's
   let clusterLabels = true; // ring view draws names curved in the band instead
@@ -142,6 +144,12 @@ export function createRenderer(canvas, sim, initialHues) {
     ctx.translate(camera.x, camera.y);
     ctx.scale(camera.scale, camera.scale);
 
+    // viewport in world space (#324 culling): offscreen edges/nodes are skipped
+    const cullL = -camera.x / camera.scale;
+    const cullT = -camera.y / camera.scale;
+    const cullR = cullL + w / camera.scale;
+    const cullB = cullT + h / camera.scale;
+
     const active = activeSet();
     const pivotId = (hover ?? focus)?.id ?? null;
     if (pivotId !== lastPivotId) {
@@ -159,6 +167,15 @@ export function createRenderer(canvas, sim, initialHues) {
     ctx.lineWidth = 1 / camera.scale;
     for (const e of sim.edges) {
       if (e.s.ringHidden || e.t.ringHidden) continue; // drilled away (ring browser)
+      // both ends past the same viewport side → the strand cannot reach in.
+      // The margin covers a bent strand's bulge (≤ 90 / ≤ 9 % of its length).
+      {
+        const m = 100 + 3 / camera.scale + (bendCenter ? Math.abs(e.s.x - e.t.x) * 0.1 + Math.abs(e.s.y - e.t.y) * 0.1 : 0);
+        if (
+          (e.s.x < cullL - m && e.t.x < cullL - m) || (e.s.x > cullR + m && e.t.x > cullR + m) ||
+          (e.s.y < cullT - m && e.t.y < cullT - m) || (e.s.y > cullB + m && e.t.y > cullB + m)
+        ) continue;
+      }
       const isActive = pivotId !== null && (e.s.id === pivotId || e.t.id === pivotId);
       // second hop: the connections AT the strands' target nodes light up
       // too — dimmer, so the eye still reads the direct strands first
@@ -216,12 +233,27 @@ export function createRenderer(canvas, sim, initialHues) {
     // ── nodes ──
     // painter's order for the orbit view: back-to-front by depth, so front
     // nodes genuinely occlude the ones behind them
-    const nodeList = drawOrder ? [...sim.nodes].sort(drawOrder) : sim.nodes;
+    // The sorted copy persists between frames: depths move a little per frame,
+    // so re-sorting the previous order is near-linear (TimSort on almost-sorted
+    // input) instead of a full n log n sort of a fresh copy.
+    let nodeList = sim.nodes;
+    if (drawOrder) {
+      if (sortedFrom !== sim.nodes || sorted.length !== sim.nodes.length) {
+        sortedFrom = sim.nodes;
+        sorted = [...sim.nodes];
+      }
+      nodeList = sorted.sort(drawOrder);
+    } else {
+      sorted = [];
+    }
     for (const n of nodeList) {
       if (n.ringHidden) continue; // drilled away (ring browser)
       const fade = n.ringFade ?? 1; // fan-out crossfade multiplier
       if (fade <= 0.02) continue;
       let r = drawRadius(n);
+      // glows (≤ 3.7 r, ≤ 60 px), beacon rings (r + 36) all fit inside this margin
+      const cm = Math.max(r * 3.7, 60 / camera.scale, r + 36);
+      if (n.x < cullL - cm || n.x > cullR + cm || n.y < cullT - cm || n.y > cullB + cm) continue;
       // a legend hover is a PREVIEW — while it lasts it outranks the active
       // filter and the focus neighborhood, else its nodes could never light up
       const dimmed = highlightFn !== null
@@ -472,6 +504,8 @@ export function createRenderer(canvas, sim, initialHues) {
       const links = boltChainOf(sim, id);
       flashes.set(id, { color, born: now, life: lifeMs, boltAt: now, links, spill: spillOf(sim, links) });
     },
+    /** A live-notice flash is still playing (frame loop: no idle throttle). */
+    hasLiveEffects: () => flashes.size > 0,
     setHover: (n) => (hover = n),
     setFocus: (n) => {
       if ((n?.id ?? null) !== (focus?.id ?? null)) focusSince = performance.now();

@@ -44,11 +44,54 @@ export function createRenderLoop({
   let warmupFrames = 0;
   let wasBusy = true;
 
+  // #324: idle throttle. A settled clouds view with no input, flight, flash or
+  // burst only breathes (ghost pulse, salience halo), so it redraws at ~30 fps.
+  // Every state change that matters (physics, transition, input) runs full rate.
+  const IDLE_FRAME_MS = 28;
+  const IDLE_AFTER_INPUT_MS = 1000;
+  let lastInput = -Infinity;
+  let lastFrame = -Infinity;
+  let rafId = 0;
+  const noteInput = () => (lastInput = performance.now());
+
   addEventListener("resize", () => renderer.resize());
   canvas.addEventListener("pointerdown", () => (userTouched = true));
   canvas.addEventListener("wheel", () => (userTouched = true), { passive: true });
+  for (const type of ["pointerdown", "pointermove", "pointerup", "wheel"]) {
+    canvas.addEventListener(type, noteInput, { passive: true });
+  }
+  addEventListener("keydown", noteInput);
+
+  // #324: a hidden tab draws nothing; coming back restarts the loop. Orbit time
+  // is absolute (now / 1000) and its drift clock clamps dt, so nothing jumps.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    } else if (!rafId) {
+      rafId = requestAnimationFrame(frame);
+    }
+  });
+
+  function isIdle(now) {
+    return (
+      !wasBusy &&
+      getView() === "clouds" &&
+      !getTransition() &&
+      !ringView.isAnimating() &&
+      !getInteractions().isFlying() &&
+      !renderer.hasLiveEffects() &&
+      orbitView.listBursts().length === 0 &&
+      now - lastInput > IDLE_AFTER_INPUT_MS
+    );
+  }
 
   function frame(now) {
+    if (isIdle(now) && now - lastFrame < IDLE_FRAME_MS) {
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+    lastFrame = now;
     const interactions = getInteractions();
     const transition = getTransition();
     if (transition) {
@@ -90,13 +133,13 @@ export function createRenderLoop({
     interactions.step(now);
     renderer.draw(now);
     minimap.draw();
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
 
   return {
     start() {
       getInteractions().fitAll();
-      requestAnimationFrame(frame);
+      if (!document.hidden) rafId = requestAnimationFrame(frame);
     },
     /** A freshly computed layout may claim the camera once: forget that the
      *  user ever grabbed it, and make sure the boot-warmup snap-fit can never
