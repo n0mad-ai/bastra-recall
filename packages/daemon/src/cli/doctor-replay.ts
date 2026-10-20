@@ -28,8 +28,11 @@
  * the report shows their share — a third of one contributor's "prompts".
  *
  * Every run uses a fresh session-id suffix, so the lane's per-session state
- * (dedup, backoff) starts empty each time and two replays of the same
- * transcripts against the same settings give the same report.
+ * (dedup, backoff) starts empty each time and, without a vector arm, two
+ * replays of the same transcripts against the same settings give the same
+ * report apart from latency and timeouts. With a vector arm the hits also hang
+ * on its deadline and the machine load, and the usage-based suppression reads
+ * the live usage sidecar.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { request } from "node:http";

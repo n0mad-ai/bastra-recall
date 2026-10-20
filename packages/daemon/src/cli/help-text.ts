@@ -363,8 +363,10 @@ lane in shadow — session ids 'replay-…', no vault writes, telemetry in its o
 of prompts with a hint, the slots taken by the ten most frequent notes, the
 share of system turns (task notifications, agent mail), the slots on notes the
 agent actually loaded, bridge fires per bridge and the p50/p95 latency. Without
-transcripts it says "not evaluable". Same transcripts and settings give the
-same report. To compare two settings profiles, run the daemon with the
+transcripts it says "not evaluable". Without a vector arm, same transcripts
+and settings give the same report apart from latency and timeouts; with an
+embedding provider, hits also depend on the vector deadline and machine load,
+and the usage-based suppression reads the live usage sidecar. To compare two settings profiles, run the daemon with the
 candidate env on another port and point the replay at it with
 BASTRA_DAEMON_URL, saving each --json report; --compare prints the deltas.
 
