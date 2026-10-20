@@ -35,6 +35,7 @@ import {
 import {
   COVERAGE_MAP_DEFAULT,
   getCoverageMapEnabled,
+  foldCoverageIfEnabled,
   setCoverageMapEnabled,
 } from "../src/code-graph/coverage-map-settings.js";
 import { readSettings } from "../src/settings.js";
@@ -70,6 +71,41 @@ async function rawFile(repo: string, name: string, doc: unknown, ageMs = 10_000)
 }
 
 describe("coverage map: folding", () => {
+  it("skips malformed raw shapes without starving valid test output", async () => {
+    const repo = join(root, "malformed");
+    const bad = [null, { result: {} }, { result: [null] }, { result: [{ functions: {} }] },
+      { result: [{ functions: [null] }] }, { result: [{ functions: [{ ranges: [null] }] }] }];
+    for (let i = 0; i < bad.length; i++) await rawFile(repo, `coverage-bad-${i}.json`, bad[i]);
+    await rawFile(repo, "coverage-valid.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "src/a.ts", [fn("a", 1)])],
+    });
+    const result = await foldCoverage(repo);
+    assert.equal(result.folded, 1);
+    assert.equal(result.deferred, bad.length);
+    assert.ok(await readCoverageMap(repo));
+  });
+
+  it("rejects named pipes without waiting for a writer", { skip: process.platform === "win32" }, async () => {
+    const repo = join(root, "fifo");
+    await ensureCoverageDir(repo);
+    execFileSync("mkfifo", [coverageMapFileOf(repo)]);
+    const moduleUrl = new URL("../src/code-graph/coverage-map.ts", import.meta.url).href;
+    const run = (code: string) => execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+      `import {readCoverageMapSync, readCoverageMap, foldCoverage} from ${JSON.stringify(moduleUrl)}; ${code}`,
+    ], { timeout: 3_000, encoding: "utf8" });
+    assert.equal(run(`console.log(readCoverageMapSync(${JSON.stringify(repo)}));`), "null\n");
+    assert.equal(run(`console.log(await readCoverageMap(${JSON.stringify(repo)}));`), "null\n");
+    await rm(coverageMapFileOf(repo));
+    execFileSync("mkfifo", [join(coverageRawDirOf(repo), "coverage-pipe.json")]);
+    assert.equal(JSON.parse(run(`console.log(JSON.stringify(await foldCoverage(${JSON.stringify(repo)})));`)).deferred, 1);
+    await mkdir(join(repo, "dist"));
+    execFileSync("mkfifo", [join(repo, "dist/x.js.map")]);
+    await rawFile(repo, "coverage-source-map.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "dist/x.js", [fn("a", 1)])],
+    });
+    assert.equal(JSON.parse(run(`console.log(JSON.stringify(await foldCoverage(${JSON.stringify(repo)})));`)).folded, 1);
+  });
+
   it("folds one process per test file: executed functions of in-repo files, paths only, raw deleted", async () => {
     const repo = join(root, "fold");
     await mkdir(repo, { recursive: true });
@@ -294,6 +330,47 @@ const MAP: CoverageMap = {
 };
 
 describe("coverage map: reading in the hook", () => {
+  it("invalidates a warm snapshot when git starts tracking the unchanged map", async () => {
+    const repo = join(root, "cached-then-tracked");
+    await mkdir(repo);
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP));
+    assert.ok(readCoverageMapSync(repo));
+    execFileSync("git", ["-C", repo, "add", "-f", ".bastra-coverage/coverage-map.json"]);
+    assert.equal(readCoverageMapSync(repo), null, "a cached map must still pass the tracked-file gate");
+  });
+
+  it("caches the verdict \"tracked\" too: no git process on a repeat read, and the map returns after git rm --cached", async (t) => {
+    if (process.platform === "win32") return t.skip("needs a sh git stub");
+    const repo = join(root, "tracked-cached");
+    await mkdir(repo);
+    execFileSync("git", ["-C", repo, "init", "-q"]);
+    await ensureCoverageDir(repo);
+    await writeFile(coverageMapFileOf(repo), JSON.stringify(MAP));
+    execFileSync("git", ["-C", repo, "add", "-f", ".bastra-coverage/coverage-map.json"]);
+    const realGit = execFileSync("sh", ["-c", "command -v git"]).toString().trim();
+    const bin = join(root, "git-counter-bin");
+    const log = join(root, "git-counter.log");
+    await mkdir(bin);
+    await writeFile(join(bin, "git"), `#!/bin/sh\necho x >> ${JSON.stringify(log)}\nexec ${JSON.stringify(realGit)} "$@"\n`, { mode: 0o755 });
+    const spawned = async () => ((await readFile(log, "utf8").catch(() => "")).match(/x/g) ?? []).length;
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${bin}:${oldPath}`;
+    try {
+      assert.equal(readCoverageMapSync(repo), null, "tracked: not read");
+      const first = await spawned();
+      assert.ok(first > 0, "the first read asks git");
+      assert.equal(readCoverageMapSync(repo), null);
+      assert.equal(readCoverageMapSync(repo), null);
+      assert.equal(await spawned(), first, "repeat reads of a tracked map spawn no git process");
+      execFileSync("git", ["-C", repo, "rm", "-q", "--cached", ".bastra-coverage/coverage-map.json"]);
+      assert.ok(readCoverageMapSync(repo), "untracked again: the map is read");
+    } finally {
+      process.env.PATH = oldPath;
+    }
+  });
+
   it("ranks by changed functions executed, then files, then name — and drops file-only hits once any test ran a function", () => {
     const ranked = rankTests(MAP, new Map([["src/search.ts", ["SearchIndex", "query"]]]));
     assert.deepEqual(ranked.map((r) => [r.test, r.functions, r.files, r.exercised]), [
@@ -550,6 +627,35 @@ describe("coverage map: reading in the hook", () => {
 });
 
 describe("coverage map: the switch", () => {
+  it("does not fold pending raw output while the switch or the repository is disabled", async () => {
+    const repo = join(root, "fold-disabled");
+    const raw = await rawFile(repo, "coverage-1-1-0.json", {
+      result: [script(repo, "t/a.test.ts", [fn("t", 1)]), script(repo, "src/a.ts", [fn("a", 1)])],
+    });
+    const { setRepoEnabled } = await import("../src/code-graph/enabled-repos.js");
+    const old = process.env.BASTRA_COVERAGE_MAP;
+    try {
+      await setRepoEnabled(repo, true);
+      process.env.BASTRA_COVERAGE_MAP = "0";
+      await foldCoverageIfEnabled(repo);
+      await stat(raw);
+      await assert.rejects(stat(coverageMapFileOf(repo)));
+      process.env.BASTRA_COVERAGE_MAP = "1";
+      await setRepoEnabled(repo, false);
+      await foldCoverageIfEnabled(repo);
+      await stat(raw);
+      await assert.rejects(stat(coverageMapFileOf(repo)));
+      await setRepoEnabled(repo, true);
+      await foldCoverageIfEnabled(repo);
+      assert.ok(await readCoverageMap(repo));
+      await assert.rejects(stat(raw));
+    } finally {
+      await setRepoEnabled(repo, false);
+      if (old === undefined) delete process.env.BASTRA_COVERAGE_MAP;
+      else process.env.BASTRA_COVERAGE_MAP = old;
+    }
+  });
+
   it("is off by default, persists, and the env wins both ways", async () => {
     const path = join(root, "settings", "cli-settings.json");
     await mkdir(join(root, "settings"), { recursive: true });

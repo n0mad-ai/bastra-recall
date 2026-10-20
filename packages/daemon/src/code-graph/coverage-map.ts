@@ -42,9 +42,11 @@
 import { spawnSync } from "node:child_process";
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { escapeAttr } from "../escape-attr.js";
+import { coverageIndexStamp } from "./coverage-map-index.js";
+import { parseRawCoverage, sourceResolver, type RawScript } from "./coverage-map-raw.js";
 
 export const COVERAGE_DIR_NAME = ".bastra-coverage";
 export const COVERAGE_MAP_FILE_NAME = "coverage-map.json";
@@ -138,6 +140,8 @@ export async function ensureCoverageDir(repoRoot: string): Promise<void> {
 
 /** `O_NOFOLLOW` where the platform has it; opening a symlink then fails with ELOOP. */
 const NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
+// O_NOFOLLOW alone still blocks on a FIFO before fstat can reject it.
+const READ_FLAGS = fsConstants.O_RDONLY | NOFOLLOW | (fsConstants.O_NONBLOCK ?? 0);
 
 /**
  * The directories this module writes to and deletes from must be what it
@@ -211,7 +215,7 @@ async function readRawFile(
 ): Promise<{ kind: "doc"; doc: { result?: RawScript[] } } | { kind: "settling" } | { kind: "unreadable"; ageMs: number } | { kind: "skip" }> {
   let fh;
   try {
-    fh = await open(path, fsConstants.O_RDONLY | NOFOLLOW);
+    fh = await open(path, READ_FLAGS);
   } catch {
     return { kind: "skip" };
   }
@@ -220,7 +224,8 @@ async function readRawFile(
     if (!st.isFile()) return { kind: "skip" };
     if (now - st.mtimeMs < RAW_SETTLE_MS) return { kind: "settling" };
     try {
-      return { kind: "doc", doc: JSON.parse(await fh.readFile("utf8")) as { result?: RawScript[] } };
+      const doc = parseRawCoverage(await fh.readFile("utf8"));
+      return doc === null ? { kind: "unreadable", ageMs: now - st.mtimeMs } : { kind: "doc", doc };
     } catch {
       return { kind: "unreadable", ageMs: now - st.mtimeMs };
     }
@@ -335,7 +340,7 @@ function openMapSync(repoRoot: string): number | null {
     if (!st.isDirectory() || st.isSymbolicLink()) return null;
     const expected = join(realpathSync.native(repoRoot), COVERAGE_DIR_NAME).normalize("NFC");
     if (realpathSync.native(dir).normalize("NFC") !== expected) return null;
-    return openSync(coverageMapFileOf(repoRoot), fsConstants.O_RDONLY | NOFOLLOW);
+    return openSync(coverageMapFileOf(repoRoot), READ_FLAGS);
   } catch {
     return null;
   }
@@ -411,7 +416,7 @@ export function gitVerdict(repoRoot: string): GitVerdict {
 }
 
 /** Per repository, so switching between repositories does not re-parse; a few at most. */
-const snapshots = new Map<string, { mtimeMs: number; size: number; map: CoverageMap | null }>();
+const snapshots = new Map<string, { mtimeMs: number; size: number; ctimeMs: number; index: string; map: CoverageMap | null }>();
 const MAX_SNAPSHOTS = 8;
 /**
  * A git that gave no clean answer (hung, missing, an error) is not asked again
@@ -437,10 +442,14 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) return null;
-    const hit = snapshots.get(path);
-    if (hit !== undefined && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.map;
-    if (st.size > MAX_MAP_BYTES) return null;
     if ((unknownUntil.get(path) ?? 0) > now) return null;
+    const hit = snapshots.get(path);
+    // Stamped before the verdict, for every verdict: a `git add` between the two
+    // then changes the stamp the snapshot is checked against, and "tracked" is
+    // cached too, so a tracked map costs no git process per read.
+    const index = coverageIndexStamp(repoRoot);
+    if (hit !== undefined && index !== null && hit.index === index && hit.mtimeMs === st.mtimeMs && hit.ctimeMs === st.ctimeMs && hit.size === st.size) return hit.map;
+    if (st.size > MAX_MAP_BYTES) return null;
     const verdict = gitVerdict(repoRoot);
     if (verdict === "unknown") {
       unknownUntil.delete(path);
@@ -452,7 +461,9 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
     const map = verdict === "tracked" ? null : parseMap(readFileSync(fd, "utf8"));
     snapshots.delete(path);
     if (snapshots.size >= MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value!);
-    snapshots.set(path, { mtimeMs: st.mtimeMs, size: st.size, map });
+    if (index !== null && coverageIndexStamp(repoRoot) === index) {
+      snapshots.set(path, { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, size: st.size, index, map });
+    }
     return map;
   } catch {
     return null;
@@ -462,11 +473,6 @@ export function readCoverageMapSync(repoRoot: string, now = Date.now()): Coverag
 }
 
 // ─── Folding ─────────────────────────────────────────────────────
-
-interface RawScript {
-  url?: string;
-  functions?: Array<{ functionName?: string; ranges?: Array<{ count?: number }> }>;
-}
 
 export interface FoldResult {
   /** Raw files folded in and deleted. */
@@ -595,27 +601,6 @@ function foldProcess(
  * mapping function offsets through the mappings would be the expensive half
  * of a source-map library for a name V8 already reports.
  */
-function sourceResolver(repoRoot: string): (abs: string) => string {
-  const cache = new Map<string, string>();
-  return (abs) => {
-    if (!/\.(js|mjs|cjs)$/.test(abs)) return abs;
-    const hit = cache.get(abs);
-    if (hit !== undefined) return hit;
-    let out = abs;
-    try {
-      const mapPath = `${abs}.map`;
-      const m = JSON.parse(readFileSync(mapPath, "utf8")) as { sources?: string[]; sourceRoot?: string };
-      const src = (m.sources ?? [])
-        .map((s) => resolve(dirname(mapPath), m.sourceRoot ?? "", s))
-        .find((s) => !relative(repoRoot, s).startsWith(".."));
-      if (src !== undefined) out = src;
-    } catch {
-      /* no map, or not one we can read: the .js path stands */
-    }
-    cache.set(abs, out);
-    return out;
-  };
-}
 
 async function writeMap(repoRoot: string, map: CoverageMap): Promise<void> {
   const dirs = await coverageDirs(repoRoot, true);

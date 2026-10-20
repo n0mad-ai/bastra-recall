@@ -41,6 +41,7 @@ import { gitWatchPaths } from "./git-paths.js";
 import { enabledRepos, isRepoEnabledSync } from "./enabled-repos.js";
 import { codeGraphCache } from "./dependents-block.js";
 import { scheduleCoverageFold } from "./coverage-map.js";
+import { foldCoverageIfEnabled } from "./coverage-map-settings.js";
 
 /** Directory names whose subtrees never trigger a refresh. */
 const IGNORED_SEGMENTS = SKIP_DIRS;
@@ -60,7 +61,7 @@ export function codeGraphRefresher(): CodeGraphRefresher {
     onBuilt: (repoRoot) => codeGraphCache().reloadIfChanged(repoRoot),
     // #629: raw coverage left by the agent's test runs is folded at the same
     // moments; the fold reads only its own directory and is a no-op without one.
-    onEnqueue: (repoRoot) => scheduleCoverageFold(repoRoot),
+    onEnqueue: (repoRoot) => scheduleCoverageFold(repoRoot, foldCoverageIfEnabled),
     allow: (repoRoot) => isRepoEnabledSync(repoRoot),
     onEvent: reportRefresh,
   });
