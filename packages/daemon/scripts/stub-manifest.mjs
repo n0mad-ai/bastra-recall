@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const CHECKSUM_FILE = /^(bastra-hook-([a-z0-9_]+-[a-z0-9_-]+))\.sha256$/;
+const CHECKSUM_FILE = /^(bastra-hook-([a-z0-9_]+-[a-z0-9_-]+)(?:\.exe)?)\.sha256$/;
 
 /** One checksum file → manifest entry, or null when the name or digest is off. */
 export function parseChecksumFile(name, text) {

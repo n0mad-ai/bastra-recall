@@ -33,12 +33,13 @@ import { parseArgs } from "../src/cli/commands.js";
 
 const HEX = "a".repeat(64);
 
-test("stubTarget maps the four shipped hosts and nothing else", () => {
+test("stubTarget maps the shipped hosts and nothing else", () => {
   assert.equal(stubTarget("darwin", "arm64"), "aarch64-apple-darwin");
   assert.equal(stubTarget("darwin", "x64"), "x86_64-apple-darwin");
   assert.equal(stubTarget("linux", "x64"), "x86_64-unknown-linux-gnu");
   assert.equal(stubTarget("linux", "arm64"), "aarch64-unknown-linux-gnu");
-  assert.equal(stubTarget("win32", "x64"), null, "Windows stays on the node client until its milestone");
+  assert.equal(stubTarget("win32", "x64"), "x86_64-pc-windows-msvc");
+  assert.equal(stubTarget("win32", "arm64"), null);
   assert.equal(stubTarget("linux", "ia32"), null);
 });
 
@@ -283,4 +284,34 @@ test("the manifest is found next to the stub in the desktop bundle layout (#957)
   const found = await readStubManifest(stubManifestPath(join(pkg, "stub", "bastra-hook")));
   assert.equal(found?.assets["aarch64-apple-darwin"]?.sha256, HEX);
   assert.equal(await readStubManifest(stubManifestPath(join(pkg, "elsewhere", "bastra-hook"))), null);
+});
+
+
+test("Windows checksum preserves .exe asset name without adding it to the target", () => {
+  const entry = parseChecksumFile("bastra-hook-x86_64-pc-windows-msvc.exe.sha256", `${HEX}  bastra-hook-x86_64-pc-windows-msvc.exe`);
+  assert.deepEqual(entry, { target: "x86_64-pc-windows-msvc", file: "bastra-hook-x86_64-pc-windows-msvc.exe", sha256: HEX });
+  const manifest = parseStubManifest(JSON.stringify(buildManifest("1.2.3", [entry])));
+  assert.equal(manifest?.assets["x86_64-pc-windows-msvc"].file, "bastra-hook-x86_64-pc-windows-msvc.exe");
+});
+
+test("Windows installer verifies the .exe download and retains Node fallback on failure", async () => {
+  const target = "x86_64-pc-windows-msvc" as const;
+  const file = `bastra-hook-${target}.exe`;
+  const bytes = Buffer.from("MZ fixture, never executed");
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  for (const fail of [false, true]) {
+    const f = await fixture({ version: "9.9.9", assets: { [target]: { file, sha256 } } });
+    const stubBin = `${f.stubBin}.exe`;
+    const result = await ensureHookStub({ ...inputs(f, "yes", false), target, stubBin }, {
+      fetch: (async (url: string | URL | Request) => {
+        assert.equal(String(url), stubAssetUrl("9.9.9", file));
+        return new Response(fail ? "wrong bytes" : bytes);
+      }) as typeof fetch,
+      log: () => undefined,
+    });
+    assert.equal(result.useStub, !fail);
+    assert.equal(result.status, fail ? "failed" : "installed");
+    assert.equal(existsSync(stubBin), !fail);
+    assert.equal(existsSync(`${stubBin}.partial`), false);
+  }
 });

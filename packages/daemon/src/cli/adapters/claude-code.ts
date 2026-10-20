@@ -1,3 +1,4 @@
+import { windowsHookToken } from "./command-paths.js";
 import { existsSync } from "node:fs";
 import {
   CLAUDE_CODE_CONFIG,
@@ -67,10 +68,11 @@ export type { HookDef, HookPlan } from "./claude-code-hooks.js";
 // #537: `stubPresent` is the selection made by the install step, not a disk
 // probe — `--no-stub` has to move the statusLine back to the node client too,
 // or the opt-out would be half taken.
-export function statuslineCommand(bin: string, stubPresent: boolean = existsSync(HOOK_STUB_BIN)): string {
+export function statuslineCommand(bin: string, stubPresent: boolean = existsSync(HOOK_STUB_BIN), platform: string = process.platform): string {
+  const token = platform === "win32" ? windowsHookToken : (s: string) => s;
   return stubPresent
-    ? `${HOOK_STUB_BIN} statusline --style=powerline`
-    : `node ${bin} --style=powerline`;
+    ? `${token(HOOK_STUB_BIN)} statusline --style=powerline`
+    : `node ${token(bin)} --style=powerline`;
 }
 
 function buildStatuslineBlock(command: string): Record<string, unknown> {

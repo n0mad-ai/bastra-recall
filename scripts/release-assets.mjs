@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 
 /** Exact asset names. GitHub normalizes the spaces in the .command names to dots. */
 export const REQUIRED_ASSETS = [
+  "bastra-hook-x86_64-pc-windows-msvc.exe",
+  "bastra-hook-x86_64-pc-windows-msvc.exe.sha256",
   "bastra-hook-x86_64-unknown-linux-gnu",
   "bastra-hook-aarch64-unknown-linux-gnu",
   "bastra-hook-x86_64-apple-darwin",

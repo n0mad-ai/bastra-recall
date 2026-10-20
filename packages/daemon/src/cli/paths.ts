@@ -1,6 +1,6 @@
 import { hostPaths } from "../platform-paths.js";
 /** Shared installer paths, including Codex/ChatGPT desktop (#15). */
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
@@ -33,7 +33,12 @@ export const PRE_TOOL_HOOK_BIN = resolve(DAEMON_DIST, "hook.js");
  *  (deno compile) — present on hosts that ran that task, absent on plain npm
  *  installs, so every consumer must fall back to the node client when this
  *  path does not exist. */
-export const HOOK_STUB_BIN = resolve(PACKAGE_ROOT, "stub", "bastra-hook");
+export function hookStubBin(packageRoot: string, platform: string = process.platform): string {
+  return platform === "win32"
+    ? win32.resolve(packageRoot, "stub", "bastra-hook.exe")
+    : resolve(packageRoot, "stub", "bastra-hook");
+}
+export const HOOK_STUB_BIN = hookStubBin(PACKAGE_ROOT);
 export const SESSION_HOOK_BIN = resolve(DAEMON_DIST, "session-hook.js");
 export const PROMPT_HOOK_BIN = resolve(DAEMON_DIST, "prompt-hook.js");
 export const TODO_HOOK_BIN = resolve(DAEMON_DIST, "todo-hook.js");
