@@ -64,7 +64,7 @@
     "@bastra-recall/core": "1.1.1",
     "@bastra-recall/statusline": "1.1.1",
     "@clack/prompts": "^1.8.1",
-    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
