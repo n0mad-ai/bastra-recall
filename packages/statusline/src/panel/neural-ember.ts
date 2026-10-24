@@ -5,6 +5,7 @@ import { gitLabel, timingLabel } from './details';
 import { CONTEXT_STOPS, contextLevel, contextWarning } from './context-level';
 import type { NeuralData } from './types';
 import type { PanelView } from './view';
+import { LOCALE, render, t, type PanelLang } from './i18n';
 export { toggleHit } from './view';
 
 type RGB = readonly [number, number, number];
@@ -23,9 +24,11 @@ const LIGHT: Skin = { INK: [247, 242, 233], BONE: [38, 29, 48], ASH: [112, 101, 
   SHADES: [[[70, 176, 96], [8, 108, 92]], [[208, 164, 16], [158, 104, 0]], [[232, 128, 34], [188, 68, 10]], [[222, 76, 74], [162, 18, 62]]] };
 // The active skin, set at the start of every render. INK is the canvas.
 let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED, SHADES } = DARK;
+// The active language, set with the skin.
+let LANG: PanelLang = 'de';
 /** The light skin's canvas, for the CLI to tint the pane around the panel. */
 export { LIGHT_CANVAS } from './view';
-/** What the CLI controls: the terminal's own background as the dark canvas, the compact view, the light skin. */
+/** What the CLI controls: the terminal's own background as the dark canvas, the compact view, the light skin, the language. */
 export type EmberView = PanelView;
 const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map(i => Math.round(a[i]! + (b[i]! - a[i]!) * Math.min(1, Math.max(0, t)))) as unknown as RGB;
 /** Cold storage (violet) warms up on its way into the context (gold). */
@@ -36,7 +39,7 @@ function spectrum(t: number): RGB {
 /** 0..1 fades in from the background, 1..2 overdrives towards white. */
 const glow = (c: RGB, level: number): RGB => level <= 1 ? mix(INK, c, level) : mix(c, BONE, level - 1);
 const clean = (v: string) => v.replace(/[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]/g, '');
-const number = (n: number | null | undefined) => typeof n === 'number' ? new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(n)) : '—';
+const number = (n: number | null | undefined) => typeof n === 'number' ? new Intl.NumberFormat(LOCALE[LANG], { maximumFractionDigits: 0 }).format(Math.round(n)) : '—';
 
 interface Cell { ch: string; fg: RGB; bg: RGB; bold: boolean }
 /** Fixed-size cell canvas: every row is exactly `w` columns, whatever is drawn. */
@@ -210,43 +213,44 @@ function funnel(grid: Grid, left: number, top: number, w: number, data: NeuralDa
     grid.text(left + x, top, number(value), value ? tone : ASH, true, left + limit);
     grid.text(left + x, top + 1, word, ASH, false, left + limit);
   };
-  stage(0, data.vault, 'Erinnerungen', mix(VIOLET, BONE, 0.45), found - 1);
-  stage(found, data.hits, 'gefunden', EMBER, loaded - 1);
-  stage(loaded, data.loads, 'geladen', GOLD, w);
-  grid.text(left, top + 7, 'im Vault', DUSK, false, left + found - 1);
-  grid.text(left + found, top + 7, 'seit deiner letzten Nachricht', DUSK, false, left + w);
+  stage(0, data.vault, t(LANG, 'recall.memories'), mix(VIOLET, BONE, 0.45), found - 1);
+  stage(found, data.hits, t(LANG, 'recall.found'), EMBER, loaded - 1);
+  stage(loaded, data.loads, t(LANG, 'recall.loaded'), GOLD, w);
+  grid.text(left, top + 7, t(LANG, 'recall.inVault'), DUSK, false, left + found - 1);
+  grid.text(left + found, top + 7, t(LANG, 'recall.sinceLast'), DUSK, false, left + w);
 }
 
-const mode = (data: NeuralData): string => data.mode === 'demo' ? 'Demo mit Beispieldaten'
-  : data.mode === 'live' ? (data.fresh ? `● ${data.client ?? 'claude'} live` : '○ wartet auf Daten') : 'Snapshot';
+const mode = (data: NeuralData): string => data.mode === 'demo' ? t(LANG, 'mode.demo')
+  : data.mode === 'live' ? (data.fresh ? `● ${data.client ?? 'claude'} live` : '○ ' + t(LANG, 'base.waiting')) : 'Snapshot';
 const reset = (at: number | null | undefined, now: number | undefined) => {
-  const text = resetCountdown(at, now).replace('RESET IN ', 'Reset ');
+  const text = resetCountdown(at, now, LANG).replace('RESET IN ', t(LANG, 'reset.prefix') + ' ');
   return text.slice(0, 1) + text.slice(1).toLowerCase();
 };
 const duration = (ms: number) => { const mins = Math.floor(ms / 60000); return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`; };
-const tokens = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(2).replace('.', ',') + ' Mio.' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.round(n));
-const DEMO_EXTRAS: Partial<NeuralData> = { usage5h: 38, loadedTitles: ['Beispiel: Deploy-Kette lokal', 'Beispiel: klare Borders statt Box-in-Box', 'Beispiel: Statusline-Mechanik'] };
+const tokens = (n: number) => n >= 1e6 ? t(LANG, 'session.million', { n: (n / 1e6).toFixed(2).replace('.', LANG === 'de' ? ',' : '.') }) : n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.round(n));
+const demoExtras = (): Partial<NeuralData> => ({ usage5h: 38, loadedTitles: [t(LANG, 'demo.title1'), t(LANG, 'demo.title2'), t(LANG, 'demo.title3')] });
 
 /**
  * Borderless truecolor panel: tinted bands for structure, dots for what Recall did.
  * Without `compact` it draws the full view and no switches; true/false draws the switches and that view.
  */
-export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true, { paper, compact, light }: EmberView = {}): string[] {
+export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true, { paper, compact, light, lang = 'de' }: EmberView = {}): string[] {
   width = Math.max(1, Math.floor(width));
+  LANG = lang;
   ({ INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED, SHADES } = light ? LIGHT : DARK);
   // Dark canvas is the terminal's own background, so pane padding and leftover pixels are part of the panel.
   if (!light && paper?.length === 3) INK = paper as unknown as RGB;
-  if (data.mode === 'demo') data = { ...DEMO_EXTRAS, ...data };
-  const [free = '—', total = '—'] = contextRemaining(data.contextFree, data.contextTotal).split(' FREI / ');
+  if (data.mode === 'demo') data = { ...demoExtras(), ...data, stage: t(LANG, 'demo.stage') };
+  const [free = '—', total = '—'] = contextRemaining(data.contextFree, data.contextTotal, LOCALE[LANG]).split(' FREI / ');
   if (width < 90) {
     const g = new Grid(width, 7);
     g.text(0, 0, '▂▄▆ bastra recall', GOLD, true);
     g.text(0, 1, mode(data), MAGENTA);
     g.text(0, 2, `${data.model} / ${data.project}`, BONE);
-    g.text(0, 3, `Kontext ${number(data.context)} %, ${free} frei`, GOLD);
-    g.text(0, 4, `5 Std ${number(data.usage5h)} %, 7 Tage ${number(data.usage)} %, ${reset(data.usageResetsAt, data.now)}`, EMBER);
-    g.text(0, 5, `${number(data.vault)} Erinnerungen, ${number(data.hits)} gefunden, ${number(data.loads)} geladen`, BONE);
-    g.text(0, 6, `${number(data.searches)} Suchen, ${number(data.saves)} gespeichert`, ASH);
+    g.text(0, 3, t(LANG, 'narrow.context', { context: number(data.context), free }), GOLD);
+    g.text(0, 4, t(LANG, 'narrow.limits', { usage5h: number(data.usage5h), usage: number(data.usage), reset: reset(data.usageResetsAt, data.now) }), EMBER);
+    g.text(0, 5, t(LANG, 'narrow.recall', { vault: number(data.vault), hits: number(data.hits), loads: number(data.loads) }), BONE);
+    g.text(0, 6, t(LANG, 'narrow.counts', { searches: number(data.searches), saves: number(data.saves) }), ASH);
     return g.lines(color);
   }
   const g = new Grid(width, compact ? 6 : 19), m = 3, end = width - m, panel = 44, px = end - panel;
@@ -269,7 +273,7 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   if (compact) {
     // One line: the three gauges, then the Recall chain as far as it fits
     let gx = m;
-    gx = g.text(gx, 2, 'Kontext ', ASH);
+    gx = g.text(gx, 2, t(LANG, 'label.context') + ' ', ASH);
     gx = g.text(gx, 2, `${number(data.context)} %`, data.context === null ? BONE : heat(data.context), true) + 2;
     heatBar(g, gx, 2, 10, data.context); gx += 14;
     const gauge = (name: string, value: number | null | undefined, from: RGB, to: RGB) => {
@@ -277,8 +281,8 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
       gx = g.text(gx, 2, `${number(value)} %`, typeof value === 'number' && value >= 90 ? HOT : BONE, true) + 2;
       bar(g, gx, 2, 10, value, from, to); gx += 14;
     };
-    gauge('5 Std', data.usage5h, MAGENTA, EMBER); gauge('7 Tage', data.usage, VIOLET, MAGENTA);
-    const chain: [string, string, RGB][] = [['Erinnerungen', number(data.vault), mix(VIOLET, BONE, 0.45)], ['gefunden', number(data.hits), EMBER], ['geladen', number(data.loads), GOLD]];
+    gauge(t(LANG, 'label.5h'), data.usage5h, MAGENTA, EMBER); gauge(t(LANG, 'label.7d'), data.usage, VIOLET, MAGENTA);
+    const chain: [string, string, RGB][] = [[t(LANG, 'recall.memories'), number(data.vault), mix(VIOLET, BONE, 0.45)], [t(LANG, 'recall.found'), number(data.hits), EMBER], [t(LANG, 'recall.loaded'), number(data.loads), GOLD]];
     let cx = end;
     for (const [word, value, tone] of chain.reverse()) {
       if (cx - word.length - value.length - 6 < gx) break;
@@ -291,8 +295,8 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
     funnel(g, m, 4, Math.min(72, area - (list ? list + 3 : 0)), data, frame);
     if (list && titles) {
       const lx = px - 3 - list;
-      g.text(lx, 4, 'Zuletzt geladen', ASH);
-      if (!titles.length) g.text(lx, 6, 'Noch nichts seit deiner letzten Nachricht', DUSK, false, lx + list);
+      g.text(lx, 4, t(LANG, 'base.lastLoaded'), ASH);
+      if (!titles.length) g.text(lx, 6, t(LANG, 'base.nothingSince'), DUSK, false, lx + list);
       titles.slice(-6).reverse().forEach((title, i) => {
         g.put(lx, 6 + i, '◆', mix(GOLD, MAGENTA, i / 5));
         g.text(lx + 2, 6 + i, title, i ? ASH : BONE, false, lx + list);
@@ -301,10 +305,10 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
 
     // Context and limits
     const tx = numerals(g, px, 4, data.context);
-    g.text(tx, 4, '% Kontext belegt', BONE, true);
-    g.text(tx, 5, `${free} frei`, ASH);
-    g.text(tx, 6, `von ${total}`, ASH);
-    const warning = contextWarning(data.context);
+    g.text(tx, 4, t(LANG, 'context.used'), BONE, true);
+    g.text(tx, 5, t(LANG, 'context.free', { free }), ASH);
+    g.text(tx, 6, t(LANG, 'context.of', { total }), ASH);
+    const warning = contextWarning(data.context, LANG);
     if (warning) g.text(tx, 7, warning, heat(data.context!), contextLevel(data.context) === 3, end);
     heatBar(g, tx, 8, end - tx, data.context);
     const limit = (y: number, name: string, value: number | null | undefined, at: number | null | undefined, from: RGB, to: RGB) => {
@@ -313,8 +317,8 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
       const start = g.textRight(end, y, reset(at, data.now), ASH);
       bar(g, px + 14, y, start - 2 - (px + 14), value, from, to);
     };
-    limit(10, '5 Std', data.usage5h, data.usage5hResetsAt, MAGENTA, EMBER);
-    limit(11, '7 Tage', data.usage, data.usageResetsAt, VIOLET, MAGENTA);
+    limit(10, t(LANG, 'label.5h'), data.usage5h, data.usage5hResetsAt, MAGENTA, EMBER);
+    limit(11, t(LANG, 'label.7d'), data.usage, data.usageResetsAt, VIOLET, MAGENTA);
   }
 
   // Recall band: what is happening now, and this turn's side counts
@@ -333,27 +337,28 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
     }
     return right;
   };
-  const counts: [string, string, RGB?][] = [['Suchen', number(data.searches), BONE], ['gespeichert', number(data.saves), BONE]];
-  if (data.errors) counts.push(['Fehler', number(data.errors), HOT]);
-  const stageEnd = pairs(row, end, [...counts, ['', timingLabel(data)]], ASH, ASH);
-  x = g.text(m + 14, row, data.stage, data.errors ? HOT : GOLD, false, stageEnd);
-  if (data.mode === 'demo') g.text(x + 3, row, 'keine Live-Messung', ASH, false, stageEnd);
+  const counts: [string, string, RGB?][] = [[t(LANG, 'recall.searches'), number(data.searches), BONE], [t(LANG, 'recall.saved'), number(data.saves), BONE]];
+  if (data.errors) counts.push([t(LANG, 'recall.errors'), number(data.errors), HOT]);
+  const stageEnd = pairs(row, end, [...counts, ['', timingLabel(data, LANG)]], ASH, ASH);
+  const stage = data.stageText && render(LANG, data.stageText) || data.stage;
+  x = g.text(m + 14, row, stage, data.errors ? HOT : GOLD, false, stageEnd);
+  if (data.mode === 'demo') g.text(x + 3, row, t(LANG, 'recall.noLiveMeasure'), ASH, false, stageEnd);
 
   if (compact) return g.lines(color);
 
   // Repository row in the same band below a hairline, then the session's cost on the plain canvas
   g.band(16, BAND); g.seam(17, BAND, INK, 3);
   const dim = mix(INK, ASH, 0.6), session: [string, string][] = [];
-  if (typeof data.durationMs === 'number') session.push(['Session', duration(data.durationMs)]);
-  session.push(['davon API', typeof data.apiDurationMs === 'number' ? duration(data.apiDurationMs) : '—']);
-  if (typeof data.linesAdded === 'number' && typeof data.linesRemoved === 'number') session.push(['Zeilen', `+${data.linesAdded} −${data.linesRemoved}`]);
+  if (typeof data.durationMs === 'number') session.push([t(LANG, 'session.session'), duration(data.durationMs)]);
+  session.push([t(LANG, 'session.api'), typeof data.apiDurationMs === 'number' ? duration(data.apiDurationMs) : '—']);
+  if (typeof data.linesAdded === 'number' && typeof data.linesRemoved === 'number') session.push([t(LANG, 'session.lines'), `+${data.linesAdded} −${data.linesRemoved}`]);
   const cost: [string, string][] = [];
-  if (typeof data.costUsd === 'number') cost.push(['Kosten', data.costUsd > 0 && data.costUsd < 0.01 ? '<$0.01' : `≈$${data.costUsd.toFixed(2)}`]);
-  else if (data.client === 'codex' && data.mode === 'live') cost.push(['Kosten', '—']);
-  if (typeof data.cacheHitRatio === 'number') cost.push(['Cache', `${Math.round(data.cacheHitRatio * 100)} %`]);
-  if (typeof data.cachedInputRatio === 'number') cost.push(['Cache-Eingabe', `${Math.round(data.cachedInputRatio * 100)} %`]);
-  if (typeof data.tokens === 'number') cost.push(['Gesamt', tokens(data.tokens) + ' Tokens']);
-  g.text(m, 16, gitLabel(data), data.git?.conflicts ? HOT : ASH, false, pairs(16, end, session, dim, ASH));
+  if (typeof data.costUsd === 'number') cost.push([t(LANG, 'session.cost'), data.costUsd > 0 && data.costUsd < 0.01 ? '<$0.01' : `≈$${data.costUsd.toFixed(2)}`]);
+  else if (data.client === 'codex' && data.mode === 'live') cost.push([t(LANG, 'session.cost'), '—']);
+  if (typeof data.cacheHitRatio === 'number') cost.push([t(LANG, 'session.cache'), `${Math.round(data.cacheHitRatio * 100)} %`]);
+  if (typeof data.cachedInputRatio === 'number') cost.push([t(LANG, 'session.cachedInput'), `${Math.round(data.cachedInputRatio * 100)} %`]);
+  if (typeof data.tokens === 'number') cost.push([t(LANG, 'session.total'), t(LANG, 'session.tokens', { n: tokens(data.tokens) })]);
+  g.text(m, 16, gitLabel(data, LANG), data.git?.conflicts ? HOT : ASH, false, pairs(16, end, session, dim, ASH));
   pairs(18, end, cost, dim, ASH);
   return g.lines(color);
 }

@@ -1,4 +1,6 @@
-export interface PanelView { paper?: readonly number[]; compact?: boolean; light?: boolean }
+import type { PanelLang } from './i18n';
+/** `lang` defaults to German; only Ember translates its strings so far. */
+export interface PanelView { paper?: readonly number[]; compact?: boolean; light?: boolean; lang?: PanelLang }
 export const LIGHT_CANVAS = [247, 242, 233] as const;
 /** Shared symbol positions; retain Ember's confirmed mouse target area. */
 export function toggleHit(width: number, x: number, y: number): 'view' | 'skin' | null {

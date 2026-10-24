@@ -1,3 +1,5 @@
+import { t, type PanelLang } from './i18n.js';
+
 /**
  * Context rot: a model attends worse the fuller its window is. Research describes a gradient, not an edge,
  * and measures it in tokens rather than in a share of the window, so these stops are a working convention
@@ -12,6 +14,7 @@ export function contextLevel(percent: number | null | undefined): 0 | 1 | 2 | 3 
 }
 
 /** The line a panel shows under the context readout; null while there is nothing to act on. */
-export function contextWarning(percent: number | null | undefined): string | null {
-  return [null, 'Qualität lässt nach', 'Bald neue Sitzung starten', 'Context Rot: neu starten'][contextLevel(percent)]!;
+export function contextWarning(percent: number | null | undefined, lang: PanelLang = 'de'): string | null {
+  const level = contextLevel(percent);
+  return level === 0 ? null : t(lang, level === 1 ? 'ctx.caution' : level === 2 ? 'ctx.warning' : 'ctx.critical');
 }

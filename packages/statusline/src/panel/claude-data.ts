@@ -4,6 +4,7 @@ import os from 'node:os';
 import { mkdir, open, readFile, rename, writeFile } from 'node:fs/promises';
 import { readRecallFeed, readVaultSize } from '../codex/source';
 import type { NeuralData } from './neural';
+import { stageFields, toolLabel, type PanelKey, type PanelText } from './i18n';
 import { PanelGitReader } from './git-status';
 
 export interface ClaudePanelSnapshot {
@@ -178,7 +179,7 @@ export class ClaudeLiveSource {
   }
   async poll(now = Date.now()): Promise<NeuralData> {
     const data: NeuralData = { mode: 'live', client: 'claude', project: 'Claude Code', model: 'Claude', context: null, usage: null, vault: null,
-      searches: null, hits: null, loads: null, saves: null, latency: null, usageResetsAt: null, contextTotal: null, contextFree: null, now, stage: 'Warte auf native Sitzungsdaten', active: false, recent: false, agentActive: false, errors: 0, fresh: false };
+      searches: null, hits: null, loads: null, saves: null, latency: null, usageResetsAt: null, contextTotal: null, contextFree: null, now, ...stageFields({ key: 'stage.waitingNative' }), active: false, recent: false, agentActive: false, errors: 0, fresh: false };
     const [feed, vault] = await Promise.all([readRecallFeed(this.feedDirectory, this.session), readVaultSize(this.feedDirectory)]);
     data.vault = vault;
     let agentWorking = false, turnEnded = false;
@@ -196,7 +197,7 @@ export class ClaudeLiveSource {
       if (native.sessionId !== this.session) return data;
       data.model = native.model; data.project = native.project;
       const age = now - native.ts;
-      if (age < 0 || age > 10000) { data.stage = 'Native Daten veraltet'; return data; }
+      if (age < 0 || age > 10000) { Object.assign(data, stageFields({ key: 'stage.nativeStale' })); return data; }
       data.context = percent(native.context); data.usage = percent(native.usage); data.fresh = true;
       data.usageResetsAt = num(native.usageResetsAt);
       data.contextTotal = num(native.contextTotal); data.contextFree = num(native.contextFree);
@@ -208,7 +209,7 @@ export class ClaudeLiveSource {
       data.git = await this.git.read(native.cwd, now);
       let transcriptOk = false;
       if (native.transcript) {
-        try { await this.transcript(native.transcript); transcriptOk = true; } catch { data.stage = 'Transcript nicht erreichbar'; }
+        try { await this.transcript(native.transcript); transcriptOk = true; } catch { Object.assign(data, stageFields({ key: 'stage.transcriptUnreachable' })); }
       }
       if (transcriptOk) {
         data.searches = this.calls.searches; data.hits = this.calls.hits; data.loads = this.calls.loads; data.saves = this.calls.saves; data.errors = this.calls.errors; data.latency = this.calls.ms;
@@ -219,18 +220,19 @@ export class ClaudeLiveSource {
         data.agentActive = !turnEnded && (agentWorking || this.calls.pendingTools.size > 0);
         const age = now - this.calls.lastAt;
         data.recent = !turnEnded && this.calls.lastAt > 0 && age >= 0 && age < 5000;
-        const names: Record<string, string> = { recall: 'Erinnerungen suchen', load_memory: 'Erinnerung laden', read_document: 'Dokument laden', save_memory: 'Erinnerung speichern', edit_memory: 'Erinnerung bearbeiten' };
+        const names: Record<string, PanelKey> = { recall: 'tool.recall', load_memory: 'tool.load_memory', read_document: 'tool.read_document', save_memory: 'tool.save_memory', edit_memory: 'tool.edit_memory' };
         const otherTool = [...this.calls.pendingTools.values()].at(-1);
-        data.stage = turnEnded ? (this.calls.errors ? `${this.calls.errors} fehlgeschlagene Aufrufe` : 'Recall bereit') :
-          pending ? ({ recall: 'Erinnerungen suchen', load_memory: 'Erinnerung laden', save_memory: 'Erinnerung speichern' }[pending.name] ?? pending.name) :
-          data.recent ? `Zuletzt: ${names[this.calls.lastTool!] ?? this.calls.lastTool}${this.calls.errors ? ' · Fehler' : ''}` :
-          otherTool ? `Claude aktiv · ${otherTool}` : agentWorking ? 'Claude arbeitet · Recall bereit' : this.calls.errors ? `${this.calls.errors} fehlgeschlagene Aufrufe` : 'Recall bereit';
+        const ready: PanelText = this.calls.errors ? { key: 'stage.failedCalls', vars: { n: this.calls.errors } } : { key: 'stage.ready' };
+        Object.assign(data, stageFields(turnEnded ? ready :
+          pending ? { key: 'stage.tool', ...toolLabel({ recall: 'tool.recall', load_memory: 'tool.load_memory', save_memory: 'tool.save_memory' }, pending.name) } :
+          data.recent ? { key: this.calls.errors ? 'stage.recentError' : 'stage.recent', ...toolLabel(names, this.calls.lastTool!) } :
+          otherTool ? { key: 'stage.claudeTool', vars: { tool: otherTool } } : agentWorking ? { key: 'stage.claudeWorking' } : ready));
       }
       if (!turnEnded && feed && feed.ts >= this.calls.startedAt && now - feed.ts >= 0 && now - feed.ts < 15000) {
-        if (feed.current_stage) { data.stage = feed.current_message ?? feed.current_stage; data.active = true; }
+        if (feed.current_stage) { Object.assign(data, stageFields({ key: 'stage.raw', vars: { text: feed.current_message ?? feed.current_stage } })); data.active = true; }
         else if (feed.last_phrase_at && now - feed.last_phrase_at >= 0 && now - feed.last_phrase_at < 5000 && (feed.recall_count ?? 0) > 0) {
           data.recent = true;
-          if (!this.calls.lastTool) data.stage = 'Zuletzt: Recall-Aktivität';
+          if (!this.calls.lastTool) Object.assign(data, stageFields({ key: 'stage.recentActivity' }));
         }
       }
       // The old footer reads this exact forwarder duration. Match both turn

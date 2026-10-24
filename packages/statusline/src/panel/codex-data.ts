@@ -3,6 +3,7 @@ import path from 'node:path';
 import { RolloutSource, readRecallFeed, readVaultSize } from '../codex/source';
 import { PanelGitReader } from './git-status';
 import type { NeuralData } from './neural';
+import { stageFields } from './i18n';
 
 export class CodexLiveSource {
   private source: RolloutSource;
@@ -34,8 +35,8 @@ export class CodexLiveSource {
       now, git, tokens: known ? s.tokens : null,
       durationMs: known && s.startedAt !== null ? Math.max(0, now - s.startedAt) : null,
       active, agentActive: known && s.active, recent,
-      stage: !known ? 'Codex-Transcript nicht verfügbar' : active ? feed!.current_message ?? feed!.current_stage! :
-        recent ? `Zuletzt: ${s.lastTool ?? 'Recall'}${s.errors ? ' · Fehler' : ''}` : s.active ? 'Codex aktiv · Recall bereit' : 'Recall bereit',
+      ...stageFields(!known ? { key: 'stage.codexUnavailable' } : active ? { key: 'stage.raw', vars: { text: feed!.current_message ?? feed!.current_stage! } } :
+        recent ? { key: s.errors ? 'stage.recentError' : 'stage.recent', vars: { tool: s.lastTool ?? 'Recall' } } : s.active ? { key: 'stage.codexActive' } : { key: 'stage.ready' }),
     };
     if (known && feed && s.turnStartedAt !== null && typeof feed.turn_id === 'number' &&
         Math.abs(feed.turn_id - s.turnStartedAt) < 10000 && feed.ts >= s.turnStartedAt &&

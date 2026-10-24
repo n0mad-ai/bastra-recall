@@ -1,4 +1,5 @@
 import type { PanelGit } from './git-status';
+import type { PanelText } from './i18n';
 
 export interface NeuralData {
   mode: 'demo' | 'snapshot' | 'live';
@@ -40,6 +41,8 @@ export interface NeuralData {
   saves: number | null;
   latency: number | null;
   stage: string;
+  /** Language-neutral form of `stage` for designs that translate; `stage` stays the German text. */
+  stageText?: PanelText;
 }
 
 export const NEURAL_DEMO: NeuralData = {

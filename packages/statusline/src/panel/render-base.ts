@@ -4,6 +4,7 @@ import type { PanelView } from './view';
 import { LIGHT_CANVAS } from './view';
 import { resetCountdown } from './reset-time';
 import { gitLabel, timingLabel, sessionLabel } from './details';
+import { t, type PanelLang } from './i18n.js';
 
 export type Tone = 'bg' | 'white' | 'soft' | 'frame' | 'cyan' | 'purple' | 'amber' | 'pink';
 export type Palette = Record<Tone, string>;
@@ -55,25 +56,26 @@ export function createRenderBase(palette: Palette, view: PanelView = {}) {
 export function headerSwitches(view: PanelView, r: ReturnType<typeof createRenderBase>['r']): Run[] {
   return view.compact === undefined ? [] : [r(`  ${view.light ? '◑' : '◐'}   ${view.compact ? '▴' : '▾'}`)];
 }
-export function loadedRows(data: NeuralData, r: ReturnType<typeof createRenderBase>['r']): Run[][] {
+export function loadedRows(data: NeuralData, r: ReturnType<typeof createRenderBase>['r'], lang: PanelLang = 'de'): Run[][] {
   const titles = data.loadedTitles;
-  return [[r('Zuletzt geladen', 'purple', true)], ...(!titles ? [[r('—')]] : !titles.length ?
-    [[r('Noch nichts seit deiner letzten Nachricht')]] : titles.slice(-6).reverse().map(title => [r('◆ ', 'purple'), r(title, 'white')]))];
+  return [[r(t(lang, 'base.lastLoaded'), 'purple', true)], ...(!titles ? [[r('—')]] : !titles.length ?
+    [[r(t(lang, 'base.nothingSince'))]] : titles.slice(-6).reverse().map(title => [r('◆ ', 'purple'), r(title, 'white')]))];
 }
 /** Six rows in each legacy design's own colours, with shared controls and real values. */
-export function compactRows(data: NeuralData, width: number, frame: number, color: boolean, view: PanelView, palette: Palette, title: string): string[] {
+export function compactRows(data: NeuralData, width: number, frame: number, color: boolean, view: PanelView, palette: Palette, title: string, lang: PanelLang = view.lang ?? 'de'): string[] {
   const { r, fit, ansi, number, count } = createRenderBase(palette, view);
   const controls = view.compact === undefined || width < 90 ? [] : headerSwitches({ ...view, compact: true }, r);
-  const mode = data.mode === 'demo' ? 'Demo' : data.mode === 'snapshot' ? 'Snapshot' : data.fresh ? `${data.client ?? 'claude'} live` : 'wartet auf Daten';
+  const mode = data.mode === 'demo' ? 'Demo' : data.mode === 'snapshot' ? 'Snapshot' : data.fresh ? `${data.client ?? 'claude'} live` : t(lang, 'base.waiting');
   const header = [...fit([r(title, 'cyan', true), r(` · ${data.model} / ${data.project}`, 'white')], Math.max(0, width - mode.length - (controls.length ? 9 : 1))), r(mode, 'pink'), ...controls];
-  const quota = `Kontext ${number(data.context)} % · 5 Std ${number(data.usage5h)} % · 7 Tage ${number(data.usage)} %`;
+  const quota = t(lang, 'base.quota', { context: number(data.context), usage5h: number(data.usage5h), usage: number(data.usage) });
+  const counters = t(lang, 'base.counters', { searches: count(data.searches), hits: count(data.hits), loads: count(data.loads), saves: count(data.saves) });
   const last = data.loadedTitles?.at(-1);
   const activity = data.mode === 'demo' || Boolean(data.active || data.recent);
   const dot = activity ? ['◉', '◎', '●', '◌'][frame % 4]! : '○';
   return [header, [r('─'.repeat(width), 'frame')],
-    [r(quota, 'amber'), r(` · ${resetCountdown(data.usageResetsAt, data.now)}`, 'soft')],
-    [r('Geladen: ', 'purple'), r(last ?? (data.loadedTitles ? 'noch nichts' : '—'), 'white')],
-    [r(dot + ' ', 'purple'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(` · ${count(data.searches)} Suchen · ${count(data.hits)} Treffer · ${count(data.loads)} geladen · ${count(data.saves)} gespeichert · ${timingLabel(data)}`, 'white')],
-    [r(gitLabel(data), 'cyan'), r(' · ' + sessionLabel(data), 'soft')],
+    [r(quota, 'amber'), r(` · ${resetCountdown(data.usageResetsAt, data.now, lang)}`, 'soft')],
+    [r(t(lang, 'base.loadedPrefix'), 'purple'), r(last ?? (data.loadedTitles ? t(lang, 'base.nothingYet') : '—'), 'white')],
+    [r(dot + ' ', 'purple'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(` · ${counters} · ${timingLabel(data, lang)}`, 'white')],
+    [r(gitLabel(data, lang), 'cyan'), r(' · ' + sessionLabel(data, lang), 'soft')],
   ].map(row => ansi(fit(row, width), color));
 }

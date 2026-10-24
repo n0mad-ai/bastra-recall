@@ -15,6 +15,8 @@ import { PaneFollower } from './panel/follow';
 import { panelAir } from './panel/view';
 import { ensureTarget } from './panel/ensure-target';
 import { installCodexPanelHook } from './panel/install-codex-hook';
+import { stageFields, type PanelKey } from './panel/i18n';
+import { panelLang } from './panel/lang-setting';
 
 // cmux's tab bar and terminal padding in points, measured on a pane sized by hand to its rows (373.7 pt for
 // 20 rows of 17 pt). Deriving it from a fresh split instead counts that pane's leftover partial row.
@@ -61,7 +63,7 @@ async function main(): Promise<void> {
     design: { type: 'string', default: 'orbital' },
     session: { type: 'string' }, follow: { type: 'string' }, fit: { type: 'string' }, compact: { type: 'boolean' }, light: { type: 'boolean' }, ensure: { type: 'boolean' },
     client: { type: 'string', default: 'claude' }, transcript: { type: 'string' },
-    'install-codex-hook': { type: 'boolean' },
+    'install-codex-hook': { type: 'boolean' }, lang: { type: 'string' },
   }});
   if (v.help) { console.log(`bastra-recall-panel — Live-Panels für Claude und Codex
 
@@ -77,6 +79,7 @@ async function main(): Promise<void> {
   --design ember         Randloses Glutfeld mit Verläufen
   --compact              Mit der kleinen Ansicht starten (Kopf-Symbol oder Taste m)
   --light                Mit dem hellen Skin starten (Kopf-Symbol oder Taste h)
+  --lang de|en           Sprache der Oberfläche (Standard: Recall-Spracheinstellung, de sonst en; bisher nur --design ember)
   --ensure               Für einen SessionStart-Hook: unter dem eigenen cmux-Pane öffnen, falls dort noch
                          kein Panel läuft; ohne Ausgabe, außerhalb von cmux ohne Wirkung
   --install-codex-hook   Codex-SessionStart-Autostart mit Sicherung einrichten; danach /hooks prüfen
@@ -87,11 +90,14 @@ async function main(): Promise<void> {
 
 --demo zeigt markierte Beispieldaten, keine Live-Nutzung.
 `); return; }
+  if (v.lang !== undefined && v.lang !== 'de' && v.lang !== 'en') throw new Error('--lang muss de oder en sein');
+  const lang = panelLang(v.lang);
   if (v['install-codex-hook']) {
     if (!['classic', 'orbital', 'ember'].includes(v.design)) throw new Error('Unbekanntes Design');
     const command = [process.execPath, fileURLToPath(import.meta.url), '--ensure', '--client', 'codex', '--design', v.design];
     if (v.compact) command.push('--compact');
     if (v.light) command.push('--light');
+    if (v.lang) command.push('--lang', v.lang); // without it, --ensure follows the Recall setting at each start
     await installCodexPanelHook(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), command);
     console.log('Codex-Autostart eingerichtet. Den neuen Hook in /hooks prüfen und vertrauen.'); return;
   }
@@ -124,6 +130,7 @@ async function main(): Promise<void> {
     if (v['no-color']) args.push('--no-color');
     if (v.compact) args.push('--compact');
     if (v.light) args.push('--light');
+    args.push('--lang', lang);
     const run = (a: string[]) => execFileSync('cmux', a, { encoding: 'utf8', timeout: 10000 });
     const list = () => JSON.parse(run(['--json', '--id-format', 'uuids', 'list-panes', '--workspace', workspace]));
     const source = list().panes?.find((p: any) => p.surface_ids?.some((id: string) => id.toLowerCase() === surface.toLowerCase()));
@@ -157,9 +164,9 @@ async function main(): Promise<void> {
   let live = v.session ? (v.client === 'claude' ? new ClaudeLiveSource(v.session) :
     new CodexLiveSource(v.session, v.transcript ?? await findRollout(codexHome, v.session))) : null;
   const follower = v.follow ? new PaneFollower(v.workspace!, v.follow) : null;
-  let bound: string | null = null, idle = '';
-  const waiting = (stage: string): NeuralData => ({ mode: 'live', fresh: false, project: '—', model: '—', context: null, usage: null, vault: null,
-    searches: null, hits: null, loads: null, saves: null, latency: null, stage });
+  let bound: string | null = null, idle: PanelKey = 'stage.noAgent';
+  const waiting = (stage: PanelKey): NeuralData => ({ mode: 'live', fresh: false, project: '—', model: '—', context: null, usage: null, vault: null,
+    searches: null, hits: null, loads: null, saves: null, latency: null, ...stageFields({ key: stage }) });
   const painter = new TerminalFrame();
   if (v.watch) process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?7l');
   const paper = v.watch && color ? await terminalBackground() : undefined;
@@ -185,17 +192,17 @@ async function main(): Promise<void> {
     if (follower) {
       const target = await follower.poll(), key = target ? target.client + ':' + target.sessionId : '';
       if (key !== bound) {
-        bound = key; live = null; idle = 'In diesem Tab läuft weder Claude noch Codex';
+        bound = key; live = null; idle = 'stage.noAgent';
         try {
           if (target) live = target.client === 'claude' ? new ClaudeLiveSource(target.sessionId) :
             new CodexLiveSource(target.sessionId, target.transcript ?? await findRollout(codexHome, target.sessionId));
-        } catch { idle = 'Codex-Transcript nicht gefunden'; }
+        } catch { idle = 'stage.codexNotFound'; }
       }
     }
     const data: NeuralData = v.demo ? NEURAL_DEMO : live ? await live.poll() : follower ? waiting(idle) : { ...JSON.parse(await readFile(v.snapshot!, 'utf8')), mode: 'snapshot' };
     if (stop) return;
     const columns = Math.max(1, process.stdout.columns ?? 130);
-    const lines = renderNeural(data, columns, frame++, color, v.design as NeuralDesign, { paper, compact, light });
+    const lines = renderNeural(data, columns, frame++, color, v.design as NeuralDesign, { paper, compact, light, lang });
     if (v.watch) {
       const output = painter.paint(lines, columns, process.stdout.rows ?? lines.length);
       if (output) process.stdout.write(output);
