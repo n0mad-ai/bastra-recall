@@ -94,6 +94,21 @@ const STRINGS = {
   'base.waiting': { de: 'wartet auf Daten', en: 'waiting for data' },
   'base.quota': { de: 'Kontext {context} % · 5 Std {usage5h} % · 7 Tage {usage} %', en: 'Context {context} % · 5 h {usage5h} % · 7 days {usage} %' },
   'base.counters': { de: '{searches} Suchen · {hits} Treffer · {loads} geladen · {saves} gespeichert', en: '{searches} searches · {hits} hits · {loads} loaded · {saves} saved' },
+  // Classic and orbital instrument panels (uppercase labels)
+  'neural.waiting': { de: 'LIVE / WARTE AUF DATEN', en: 'LIVE / WAITING FOR DATA' },
+  'neural.usage': { de: 'NUTZUNG', en: 'USAGE' },
+  'neural.used': { de: 'BELEGT', en: 'USED' },
+  'neural.consumed': { de: 'VERBRAUCHT', en: 'CONSUMED' },
+  'neural.free': { de: 'FREI', en: 'FREE' },
+  'neural.hits': { de: 'TREFFER', en: 'HITS' },
+  'neural.lexical': { de: 'LEXIKALISCH', en: 'LEXICAL' },
+  'neural.semantic': { de: 'SEMANTISCH', en: 'SEMANTIC' },
+  'neural.ranking': { de: 'RANKING', en: 'RANKING' },
+  'neural.active': { de: 'AKTIV', en: 'ACTIVE' },
+  'neural.afterglow': { de: 'NACHKLANG', en: 'AFTERGLOW' },
+  'neural.ready': { de: 'BEREIT', en: 'READY' },
+  'neural.demoWave': { de: 'DEMO-WELLE', en: 'DEMO WAVE' },
+  'neural.demoSignal': { de: 'DEMO-SIGNAL', en: 'DEMO SIGNAL' },
 } as const satisfies Record<string, Record<PanelLang, string>>;
 
 export type PanelKey = keyof typeof STRINGS;

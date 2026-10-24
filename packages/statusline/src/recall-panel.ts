@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   --design ember         Randloses Glutfeld mit Verläufen
   --compact              Mit der kleinen Ansicht starten (Kopf-Symbol oder Taste m)
   --light                Mit dem hellen Skin starten (Kopf-Symbol oder Taste h)
-  --lang de|en           Sprache der Oberfläche (Standard: Recall-Spracheinstellung, de sonst en; bisher nur --design ember)
+  --lang de|en           Sprache der Oberfläche (Standard: Recall-Spracheinstellung, de sonst en)
   --ensure               Für einen SessionStart-Hook: unter dem eigenen cmux-Pane öffnen, falls dort noch
                          kein Panel läuft; ohne Ausgabe, außerhalb von cmux ohne Wirkung
   --install-codex-hook   Codex-SessionStart-Autostart mit Sicherung einrichten; danach /hooks prüfen

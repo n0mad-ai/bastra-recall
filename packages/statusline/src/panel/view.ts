@@ -1,5 +1,5 @@
 import type { PanelLang } from './i18n';
-/** `lang` defaults to German; only Ember translates its strings so far. */
+/** `lang` defaults to German. */
 export interface PanelView { paper?: readonly number[]; compact?: boolean; light?: boolean; lang?: PanelLang }
 export const LIGHT_CANVAS = [247, 242, 233] as const;
 /** Shared symbol positions; retain Ember's confirmed mouse target area. */

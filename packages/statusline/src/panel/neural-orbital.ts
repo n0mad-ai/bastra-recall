@@ -1,6 +1,7 @@
 import { resetCountdown } from './reset-time';
 import { contextRemaining } from './context-remaining';
 import { gitLabel, sessionLabel, timingLabel } from './details';
+import { LOCALE, render, t } from './i18n';
 
 import type { NeuralData } from './types';
 import type { PanelView } from './view';
@@ -39,6 +40,8 @@ function reactor(frame: number, moving: boolean, width: number, r: ReturnType<ty
 export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true, view: PanelView = {}): string[] {
   width = Math.max(1, Math.floor(width));
   const { r, fit, ansi, digits, meter, number, count } = createRenderBase(C, view);
+  const lang = view.lang ?? 'de';
+  data = { ...data, stage: data.mode === 'demo' ? t(lang, 'demo.stage') : data.stageText && render(lang, data.stageText) || data.stage };
   if (view.compact || width < 56) return compactRows(data, width, frame, color, view, C, '⟐ Mnemosyne');
   const inner = width - 4;
   const cell = Math.floor((inner - 6) / 3);
@@ -51,11 +54,11 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   ]);
   rows.push(border('╭', '╮'));
   const heading = '⟐  B A S T R A  / /  M N E M O S Y N E';
-  const mode = data.mode === 'demo' ? 'DESIGN / DEMO' : data.mode === 'live' ? (data.fresh ? `${(data.client ?? 'claude').toUpperCase()} / LIVE` : 'LIVE / WARTE AUF DATEN') : 'DATA / SNAPSHOT';
+  const mode = data.mode === 'demo' ? 'DESIGN / DEMO' : data.mode === 'live' ? (data.fresh ? `${(data.client ?? 'claude').toUpperCase()} / LIVE` : t(lang, 'neural.waiting')) : 'DATA / SNAPSHOT';
   rows.push(content([...fit([r(heading, 'cyan', true)], Math.max(0, inner - mode.length - (view.compact === undefined ? 1 : 8))), r(mode, 'pink', true), ...headerSwitches(view, r)]));
   rows.push(content([r(data.model + (data.effort ? ' · ' + data.effort : ''), 'white', true), r('  /  '), r(data.project, 'soft'), r('   ∴   DEEP MEMORY INTERFACE', 'purple')]));
   rows.push(content([r('─'.repeat(inner), 'frame')]));
-  rows.push(cols([r('⌁  KONTEXT / NEURAL LOAD', 'cyan')], [r('⟐  RECALL / MEMORY CORE', 'pink')], [r('⌁  NUTZUNG / 7 TAGE', 'amber')]));
+  rows.push(cols([r(`⌁  ${t(lang, 'label.context').toUpperCase()} / NEURAL LOAD`, 'cyan')], [r('⟐  RECALL / MEMORY CORE', 'pink')], [r(`⌁  ${t(lang, 'neural.usage')} / ${t(lang, 'label.7d').toUpperCase()}`, 'amber')]));
   const ctx = digits(data.context), usage = digits(data.usage);
   const scanner = data.mode === 'demo' ? Math.floor(frame / 2) % 3 : -1;
   const orbit = reactor(frame, data.mode === 'demo' || Boolean(data.active || data.recent), cell, r);
@@ -65,21 +68,21 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
       line === 4 ? meter(percent, size - 1, tone) :
       [r('  ' + value[line - 1]! + (line === 3 ? ` % ${label}` : ''), tone, true)];
     rows.push(cols(
-      instrument(ctx, 'cyan', 'BELEGT', cell, data.context),
+      instrument(ctx, 'cyan', t(lang, 'neural.used'), cell, data.context),
       orbit[line]!,
-      instrument(usage, 'amber', 'VERBRAUCHT', third, data.usage),
+      instrument(usage, 'amber', t(lang, 'neural.consumed'), third, data.usage),
     ));
   }
-  rows.push(cols([r(contextRemaining(data.contextFree, data.contextTotal), 'cyan')], [r(`${number(data.vault)} ERINNERUNGEN  ·  `, 'white', true), r(['LEX', 'VECTOR', 'RANK'][scanner] ?? (data.active ? 'AKTIV' : data.recent ? 'NACHKLANG' : 'BEREIT'), 'pink')], [r(resetCountdown(data.usageResetsAt, data.now), 'amber')]));
+  rows.push(cols([r(contextRemaining(data.contextFree, data.contextTotal, LOCALE[lang]).replace('FREI', t(lang, 'neural.free')), 'cyan')], [r(`${number(data.vault)} ${t(lang, 'recall.memories').toUpperCase()}  ·  `, 'white', true), r(['LEX', 'VECTOR', 'RANK'][scanner] ?? t(lang, data.active ? 'neural.active' : data.recent ? 'neural.afterglow' : 'neural.ready'), 'pink')], [r(resetCountdown(data.usageResetsAt, data.now, lang), 'amber')]));
   rows.push(content([r('─'.repeat(inner), 'frame')]));
-  rows.push(content([r(gitLabel(data), data.git?.conflicts ? 'pink' : 'cyan'), r('   /   ', 'frame'), r(sessionLabel(data), 'soft')]));
-  rows.push(content([r(`5 Std ${number(data.usage5h)} % · ${resetCountdown(data.usage5hResetsAt, data.now)}`, 'amber'), r(`   /   API ${data.apiDurationMs == null ? '—' : Math.round(data.apiDurationMs / 1000) + ' s'}`, 'soft')]));
-  const stats = `${count(data.searches)} SUCHEN  →  ${count(data.hits)} TREFFER  →  ${count(data.loads)} GELADEN`;
-  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${count(data.saves)} GESPEICHERT`, 'cyan'), r('    ' + timingLabel(data), 'soft')]));
+  rows.push(content([r(gitLabel(data, lang), data.git?.conflicts ? 'pink' : 'cyan'), r('   /   ', 'frame'), r(sessionLabel(data, lang), 'soft')]));
+  rows.push(content([r(`${t(lang, 'label.5h')} ${number(data.usage5h)} % · ${resetCountdown(data.usage5hResetsAt, data.now, lang)}`, 'amber'), r(`   /   API ${data.apiDurationMs == null ? '—' : Math.round(data.apiDurationMs / 1000) + ' s'}`, 'soft')]));
+  const stats = `${count(data.searches)} ${t(lang, 'recall.searches').toUpperCase()}  →  ${count(data.hits)} ${t(lang, 'neural.hits')}  →  ${count(data.loads)} ${t(lang, 'recall.loaded').toUpperCase()}`;
+  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${count(data.saves)} ${t(lang, 'recall.saved').toUpperCase()}`, 'cyan'), r('    ' + timingLabel(data, lang), 'soft')]));
   const wave = data.mode === 'demo' || (data.mode === 'live' && Boolean(data.agentActive || data.active || data.recent)) ? Array.from({ length: 22 }, (_, i) =>
     ['⡀', '⣀', '⣄', '⣤', '⣦', '⣶', '⣾', '⣿'][Math.round((Math.sin(i / 3 + frame / 4) + 1) * 3.5)]).join('') : '─'.repeat(22);
-  rows.push(content([r(wave, 'purple'), r(data.mode === 'demo' ? '  DEMO-SIGNAL  /  ' : data.mode === 'live' ? '  LIVE  /  ' : '  SNAPSHOT  /  ', 'soft'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(data.mode === 'demo' ? '   ·   keine Live-Messung' : '', 'soft')]));
-  for (const row of loadedRows(data, r)) rows.push(content(row));
+  rows.push(content([r(wave, 'purple'), r(data.mode === 'demo' ? `  ${t(lang, 'neural.demoSignal')}  /  ` : data.mode === 'live' ? '  LIVE  /  ' : '  SNAPSHOT  /  ', 'soft'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(data.mode === 'demo' ? '   ·   ' + t(lang, 'recall.noLiveMeasure') : '', 'soft')]));
+  for (const row of loadedRows(data, r, lang)) rows.push(content(row));
   rows.push(border('╰', '╯'));
   return rows.map(row => ansi(fit(row, width), color));
 }
