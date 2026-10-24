@@ -43,10 +43,10 @@ Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every sess
 **Version 1.1.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
-  <img src="./assets/recall-demo.gif" alt="A terminal session: two questions, and Bastra Recall surfaces the matching decisions on its own. The status line at the bottom counts the calls, hits and milliseconds." width="100%" />
+  <a href="./assets/recall-demo.mp4"><img src="./assets/recall-demo.gif" alt="Real work in cmux: Claude Code and Codex retrieve memories with Bastra Recall, exchange findings and use expanded live Ember panels." width="100%" /></a>
 </p>
 
-<p align="center"><sub>Two questions, answered from a vault the assistant was never told to search. The bar at the bottom is Claude Code's status line.</sub></p>
+<p align="center"><sub>A real Claude Code + Codex session in cmux: both agents use Recall and exchange findings, with live Ember panels. Edited highlights. <a href="./assets/recall-demo.mp4">Watch the 1080p video.</a></sub></p>
 
 1.1.1 fixes successor ranking, reflex word forms, concurrent saves and locks, code-graph refresh costs, Linux watches, statusline updates and hint-block boundaries. Node 22–26 are supported. [Changelog](./CHANGELOG.md) · [statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
@@ -190,10 +190,10 @@ Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in je
 **Version 1.1.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
-  <img src="./assets/recall-demo.gif" alt="Eine Terminal-Sitzung: zwei Fragen, und Bastra Recall legt die passenden Entscheidungen von selbst vor. Die Statusleiste unten zählt Aufrufe, Treffer und Millisekunden." width="100%" />
+  <a href="./assets/recall-demo.mp4"><img src="./assets/recall-demo.gif" alt="Echte Arbeit in cmux: Claude Code und Codex laden Erinnerungen mit Bastra Recall, tauschen Befunde aus und nutzen vollständig geöffnete Ember-Panels mit Live-Daten." width="100%" /></a>
 </p>
 
-<p align="center"><sub>Zwei Fragen, beantwortet aus einem Vault, das der Assistent nicht durchsuchen sollte. Die Leiste unten ist die Statusleiste von Claude Code.</sub></p>
+<p align="center"><sub>Echte gemeinsame Arbeit von Claude Code und Codex in cmux: Beide nutzen Recall und tauschen Befunde aus, Ember zeigt Live-Daten. Gekürzte Aufnahme. <a href="./assets/recall-demo.mp4">Video in 1080p ansehen.</a></sub></p>
 
 1.1.1 korrigiert die Suchreihenfolge abgelöster Notizen, Wortformen im Reflex, gleichzeitiges Speichern und Sperren, Code-Graph-Kosten, Linux-Watches, Statusline und Hinweisblock-Grenzen. Node 22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
 
