@@ -77,6 +77,9 @@ Commands:
     [--origin <url>]         With 'token': also allowlist this browser Origin
                              (e.g. https://bastra.io) so the web app can reach
                              the daemon — no plist/env editing needed
+  oauth [list|revoke <id|all>]
+                             Remote MCP clients approved via OAuth (ChatGPT,
+                             claude.ai connectors); 'revoke' cuts one or all off
   code <enable|disable|index|rebuild|status>
                              Code awareness per repository (experimental):
                              shows an agent what depends on a file before it
@@ -569,6 +572,25 @@ so no plist or env editing is needed.
 Options:
   --origin <url>  Allowlist this browser Origin as well
   --json          Machine-readable output
+`,
+
+  oauth: `bastra oauth — remote MCP clients approved through the OAuth login
+
+Usage:
+  bastra oauth [list] [--json]
+  bastra oauth revoke <client_id>
+  bastra oauth revoke all
+
+ChatGPT and claude.ai custom connectors reach /api/v1/mcp with OAuth. Each
+one registers itself, and you approve it once by entering your API token
+('bastra token') on the daemon's login page. Their tokens only open the MCP
+door, never the other /api/v1 routes.
+
+  list     Every registered client: name, redirect host, grants, last token
+  revoke   Remove a client and all its tokens; takes effect on the next request
+
+Options:
+  --json   Machine-readable output
 `,
 
   commons: `bastra commons — community recipes as a second, read-only index

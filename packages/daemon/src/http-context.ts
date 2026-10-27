@@ -26,6 +26,7 @@ import { getApiToken, getCorsOrigins } from "./settings.js";
 import { corsAllowlistFromEnv, resolveCorsAllowlist } from "./http-auth.js";
 import type { HttpOptions } from "./http.js";
 import { envOff } from "./env.js";
+import { createOAuthState, type OAuthState } from "./oauth-server.js";
 
 export interface HttpServerContext {
   apiToken: string;
@@ -45,6 +46,8 @@ export interface HttpServerContext {
   semanticCache: { at: number; body: SemanticLayout } | null;
   /** The layout build in progress, shared by requests that arrive during it. */
   semanticInflight: Promise<SemanticLayout> | null;
+  /** #1279: in-flight OAuth logins, codes and the authorize-form throttle. */
+  oauth: OAuthState;
 }
 
 export async function createHttpServerContext(opts: HttpOptions): Promise<HttpServerContext> {
@@ -133,5 +136,6 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
     isHealthProbe: (url: string): boolean => url === "/health" || url === "/api/v1/health",
     semanticCache: null,
     semanticInflight: null,
+    oauth: createOAuthState(),
   };
 }

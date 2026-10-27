@@ -93,6 +93,7 @@ import { dispatchUiRoutes } from "./http-ui-routes.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
 import { codeGraphRefresher } from "./code-graph/service.js";
 import { dispatchApiSurface } from "./http-api-surface.js";
+import { dispatchOAuthWellKnown } from "./oauth-server.js";
 import { createHttpServerContext } from "./http-context.js";
 import { listenHttp } from "./http-listen.js";
 
@@ -220,6 +221,11 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // liveness pings (else a monitor, or bastra.io's admin bridge probing every
     // 60s, would keep us alive forever).
     if (!ctx.isHealthProbe(url)) { onActivity?.(); if (tasksEnabled()) requestTaskReconciliation(tasksPath()); }
+
+    // #1279: the OAuth discovery documents are public and secret-free; remote
+    // MCP clients fetch them through the tunnel, so they answer ahead of the
+    // rebinding gate below (oauth-server.ts).
+    if (dispatchOAuthWellKnown(req, res, method, url)) return;
 
     // DNS-Rebinding-Gate für alles außer /api/v1/* (dort schützt das Token):
     // die offenen Endpoints sind loopback-only by design — ein nicht-loopback

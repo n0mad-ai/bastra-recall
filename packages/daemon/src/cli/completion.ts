@@ -23,6 +23,7 @@ export const COMMANDS = [
   "embeddings",
   "models",
   "token",
+  "oauth",
   "commons",
   "bridges",
   "map",

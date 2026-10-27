@@ -27,6 +27,7 @@ import { isLoopback, isLoopbackHost, resolveCorsOrigin, gateApiRequest } from ".
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
 import { handleMcpHttp } from "./http-mcp.js";
+import { dispatchOAuthApi, mcpChallenge, verifyMcpBearer, MCP_PATH } from "./oauth-server.js";
 
 export interface ApiSurfaceCtx {
   vault: Vault;
@@ -62,6 +63,10 @@ export function dispatchApiSurface(
     return dispatchTaskHttp(req, res, method, url, defaultTaskContext(toolDeps, true));
   }
 
+  // #1279: register/authorize/token are how a remote client gets a token, so
+  // they answer before the bearer gate; each checks its own credentials.
+  if (dispatchOAuthApi(req, res, method, url, { apiToken: server.apiToken, state: server.oauth })) return true;
+
   const gate = gateApiRequest({
     reqOrigin,
     allowedOrigin,
@@ -78,14 +83,30 @@ export function dispatchApiSurface(
     sendJson(res, 403, { error: "origin not allowed" });
     return true;
   }
-  if (gate === 401) {
+  const isMcp = url.split("?", 1)[0] === MCP_PATH;
+  if (gate === 401 && !isMcp) {
     sendJson(res, 401, { error: "unauthorized" });
     return true;
   }
 
   // #1279: MCP over Streamable HTTP, behind the same gate as the REST tools.
-  if (url.split("?", 1)[0] === "/api/v1/mcp") {
-    handleMcpHttp(req, res, method, { toolDeps, documentWriteEnabled, ccSessionId: null });
+  // This route alone also takes an OAuth access token bound to it — that
+  // token opens nothing else under /api/v1/. A 401 here names the protected
+  // resource metadata, which is how an OAuth client finds the login.
+  if (isMcp) {
+    const mcpCtx = { toolDeps, documentWriteEnabled, ccSessionId: null };
+    if (gate === 200) {
+      handleMcpHttp(req, res, method, mcpCtx);
+      return true;
+    }
+    verifyMcpBearer(req)
+      .then((ok) => {
+        if (ok) return handleMcpHttp(req, res, method, mcpCtx);
+        const challenge = mcpChallenge(req, Boolean(req.headers.authorization));
+        if (challenge) res.setHeader("WWW-Authenticate", challenge);
+        sendJson(res, 401, { error: "unauthorized" });
+      })
+      .catch((err: Error) => sendJson(res, 500, { error: err.message }));
     return true;
   }
 

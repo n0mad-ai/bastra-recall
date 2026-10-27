@@ -71,6 +71,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   embeddings: [],
   models: [],
   token: ["--json", "--origin"],
+  oauth: ["--json"],
   commons: [],
   bridges: [],
   map: [],

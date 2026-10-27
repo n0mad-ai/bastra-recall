@@ -67,7 +67,7 @@ const MAY_EXIT_ON_BUSY_PORT = mayExitOnBusyPort(stdinState());
 // below. The daemon path runs only when NO CLI command is present.
 const CLI_COMMANDS = new Set([
   "install", "uninstall", "doctor", "update", "status",
-  "config", "embeddings", "models", "token", "commons", "bridges",
+  "config", "embeddings", "models", "token", "oauth", "commons", "bridges",
   "map", "ui", "import", "onboard", "feedback", "help", "version",
 ]);
 const firstArg = process.argv[2];
