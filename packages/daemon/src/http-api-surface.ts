@@ -26,6 +26,7 @@ import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js
 import { isLoopback, isLoopbackHost, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
+import { handleMcpHttp } from "./http-mcp.js";
 
 export interface ApiSurfaceCtx {
   vault: Vault;
@@ -79,6 +80,12 @@ export function dispatchApiSurface(
   }
   if (gate === 401) {
     sendJson(res, 401, { error: "unauthorized" });
+    return true;
+  }
+
+  // #1279: MCP over Streamable HTTP, behind the same gate as the REST tools.
+  if (url.split("?", 1)[0] === "/api/v1/mcp") {
+    handleMcpHttp(req, res, method, { toolDeps, documentWriteEnabled, ccSessionId: null });
     return true;
   }
 
