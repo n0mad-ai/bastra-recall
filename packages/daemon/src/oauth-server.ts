@@ -33,7 +33,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { isLoopbackHost, safeEqual } from "./http-auth.js";
 import { sendJson } from "./http-util.js";
-import { createGrant, getClient, refreshGrant, registerClient, verifyAccessToken } from "./oauth-store.js";
+import {
+  createGrant,
+  getClient,
+  refreshGrant,
+  registerClient,
+  revokeGrant,
+  sanitizeClientName,
+  verifyAccessToken,
+} from "./oauth-store.js";
 import { renderAuthorizePage, renderErrorPage } from "./oauth-page.js";
 
 export const MCP_PATH = "/api/v1/mcp";
@@ -42,15 +50,26 @@ const PRM_PATH = "/.well-known/oauth-protected-resource";
 const ASM_PATH = "/.well-known/oauth-authorization-server";
 const OAUTH_PREFIX = "/api/v1/oauth/";
 const PENDING_TTL_MS = 10 * 60_000;
-const MAX_PENDING = 50;
+/** Open logins per client. A full client evicts its own oldest, so anonymous
+ *  GETs against some other client_id never push out the user's open page. */
+const MAX_PENDING_PER_CLIENT = 5;
 const CODE_TTL_MS = 2 * 60_000;
-/** Brute-force throttle on the authorize form: this many wrong API tokens in
- *  the window lock the form for everyone until the oldest failure ages out.
- *  Global, not per IP: behind the tunnel every caller is the same loopback
- *  peer, and a forwarded-for header is whatever the caller says. */
-const MAX_FAILURES = 5;
+/** Brute force on the authorize form: a pending request dies after this many
+ *  wrong API tokens, so a guesser has to open a new one each time. Per
+ *  request, not global — an attacker's failures must not lock the user out. */
+const MAX_FAILURES_PER_REQUEST = 5;
+/** Backstop over all requests: far above anything a human mistypes, it caps
+ *  how fast a script cycling fresh requests can guess. Behind the tunnel every
+ *  caller is the same loopback peer, so there is no per-IP alternative. */
+const MAX_FAILURES_GLOBAL = 100;
 const FAILURE_WINDOW_MS = 15 * 60_000;
 const MAX_FORM_BYTES = 16 * 1024;
+/** The only places a login may send its code: the two products this door
+ *  exists for, plus loopback for local tools and tests. Open DCR redirects
+ *  would let anyone register an attacker URL under the name "ChatGPT" and
+ *  phish a consent; a fixed list closes that. */
+const REDIRECT_HOSTS = ["chatgpt.com", "chat.openai.com", "claude.ai", "claude.com"];
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1"];
 
 interface PendingAuth {
   client_id: string;
@@ -61,6 +80,7 @@ interface PendingAuth {
   resource: string;
   issuer: string;
   expires_at: number;
+  failures: number;
 }
 
 interface AuthCode {
@@ -74,11 +94,14 @@ interface AuthCode {
 export interface OAuthState {
   pending: Map<string, PendingAuth>;
   codes: Map<string, AuthCode>;
+  /** Codes already exchanged → the grant they produced, until they would have
+   *  expired. A second exchange means the code leaked: the grant goes too. */
+  used: Map<string, { grant_id: string; expires_at: number }>;
   failures: number[];
 }
 
 export function createOAuthState(): OAuthState {
-  return { pending: new Map(), codes: new Map(), failures: [] };
+  return { pending: new Map(), codes: new Map(), used: new Map(), failures: [] };
 }
 
 // ─── origin, resource, challenge ─────────────────────────────────
@@ -173,20 +196,34 @@ export function dispatchOAuthWellKnown(req: IncomingMessage, res: ServerResponse
 
 // ─── request helpers ─────────────────────────────────────────────
 
+/** Small bodies only; an oversized one is cut off at the socket — these are
+ *  public endpoints, nothing legitimate sends 16 KiB here. */
 function readRaw(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
     req.on("data", (chunk: Buffer) => {
       total += chunk.length;
-      if (total <= MAX_FORM_BYTES) chunks.push(chunk);
+      if (total > MAX_FORM_BYTES) {
+        reject(new Error("body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
     });
-    req.on("end", () => {
-      if (total > MAX_FORM_BYTES) reject(new Error("body too large"));
-      else resolve(Buffer.concat(chunks).toString("utf8"));
-    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+/** RFC 6749 §3.1: a parameter sent twice is an error, not "first one wins". */
+export function singleParams(params: URLSearchParams): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const [k, v] of params) {
+    if (Object.hasOwn(out, k)) return null;
+    out[k] = v;
+  }
+  return out;
 }
 
 /** OAuth bodies are form-encoded; a JSON body is tolerated for clients that
@@ -194,7 +231,11 @@ function readRaw(req: IncomingMessage): Promise<string> {
 async function readForm(req: IncomingMessage): Promise<Record<string, string>> {
   const raw = await readRaw(req);
   const type = (req.headers["content-type"] ?? "").split(";", 1)[0].trim().toLowerCase();
-  if (type !== "application/json") return Object.fromEntries(new URLSearchParams(raw));
+  if (type !== "application/json") {
+    const fields = singleParams(new URLSearchParams(raw));
+    if (!fields) throw new Error("duplicate parameter");
+    return fields;
+  }
   const obj = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
   return Object.fromEntries(Object.entries(obj).filter((e): e is [string, string] => typeof e[1] === "string"));
 }
@@ -204,8 +245,8 @@ function oauthError(res: ServerResponse, status: number, error: string, descript
   sendJson(res, status, description ? { error, error_description: description } : { error });
 }
 
-/** https anywhere, plain http only to the caller's own machine (spec:
- *  "localhost or HTTPS"); no fragments, no custom schemes. */
+/** https to one of {@link REDIRECT_HOSTS}, or plain http to loopback on any
+ *  port; no fragments, no userinfo, no other schemes or hosts. */
 export function allowedRedirectUri(raw: string): boolean {
   let u: URL;
   try {
@@ -213,9 +254,9 @@ export function allowedRedirectUri(raw: string): boolean {
   } catch {
     return false;
   }
-  if (u.hash) return false;
-  if (u.protocol === "https:") return true;
-  return u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  if (u.hash || u.username || u.password) return false;
+  if (u.protocol === "https:") return REDIRECT_HOSTS.includes(u.hostname) && u.port === "";
+  return u.protocol === "http:" && LOOPBACK_HOSTS.includes(u.hostname);
 }
 
 function redirectWith(res: ServerResponse, redirectUri: string, params: Record<string, string | null>): void {
@@ -296,7 +337,7 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
   }
   const uris = body.redirect_uris;
   if (!Array.isArray(uris) || uris.length === 0 || uris.length > 10 || !uris.every((u) => typeof u === "string" && allowedRedirectUri(u))) {
-    return oauthError(res, 400, "invalid_redirect_uri", "redirect_uris must be https (or http on localhost)");
+    return oauthError(res, 400, "invalid_redirect_uri", `redirect_uris must be https on ${REDIRECT_HOSTS.join(", ")} or http on localhost`);
   }
   const grantTypes = body.grant_types;
   if (grantTypes !== undefined && (!Array.isArray(grantTypes) || !grantTypes.includes("authorization_code"))) {
@@ -306,7 +347,7 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
   if (responseTypes !== undefined && (!Array.isArray(responseTypes) || responseTypes.some((t) => t !== "code"))) {
     return oauthError(res, 400, "invalid_client_metadata", "only response_type code is supported");
   }
-  const rawName = typeof body.client_name === "string" ? body.client_name.trim() : "";
+  const rawName = typeof body.client_name === "string" ? sanitizeClientName(body.client_name).trim() : "";
   const client = await registerClient({
     client_name: rawName.slice(0, 120) || "Unnamed client",
     redirect_uris: uris as string[],
@@ -325,33 +366,39 @@ async function handleRegister(req: IncomingMessage, res: ServerResponse): Promis
 }
 
 async function handleAuthorizeGet(res: ServerResponse, url: string, origin: string, state: OAuthState): Promise<void> {
-  const q = new URL(url, origin).searchParams;
+  const params = singleParams(new URL(url, origin).searchParams);
+  if (!params) return sendHtml(res, 400, renderErrorPage("Invalid sign-in request: a parameter was sent twice."));
+  const q = new URLSearchParams(params);
   const clientId = q.get("client_id") ?? "";
   const client = clientId ? await getClient(clientId) : null;
   if (!client) return sendHtml(res, 400, renderErrorPage("Unknown client. Remove the connector and add it again."));
   const requested = q.get("redirect_uri");
   const redirectUri = requested ?? (client.redirect_uris.length === 1 ? client.redirect_uris[0] : null);
-  // Never redirect to an address the client did not register (open redirect).
-  if (!redirectUri || !client.redirect_uris.includes(redirectUri)) {
+  // Never redirect to an address the client did not register (open redirect),
+  // nor to one the allowlist no longer covers.
+  if (!redirectUri || !client.redirect_uris.includes(redirectUri) || !allowedRedirectUri(redirectUri)) {
     return sendHtml(res, 400, renderErrorPage("The redirect address does not match this client's registration."));
   }
-  const stateParam = q.get("state");
-  const fail = (error: string, description: string) =>
-    redirectWith(res, redirectUri, { error, error_description: description, state: stateParam, iss: origin });
-  if (q.get("response_type") !== "code") return fail("unsupported_response_type", "response_type must be code");
+  // Before the user has consented, nothing redirects: a malformed request
+  // gets a page here, so this endpoint cannot be used to bounce a browser
+  // to the client's address with attacker-chosen error text.
+  const fail = (description: string) => sendHtml(res, 400, renderErrorPage(`Invalid sign-in request: ${description}.`));
+  if (q.get("response_type") !== "code") return fail("response_type must be code");
   const challenge = q.get("code_challenge") ?? "";
   if (q.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
-    return fail("invalid_request", "PKCE with code_challenge_method S256 is required");
+    return fail("PKCE with code_challenge_method S256 is required");
   }
   const canonical = origin + MCP_PATH;
   const resource = q.get("resource");
   if (resource !== null && normalizeResource(resource) !== canonical) {
-    return fail("invalid_target", `this server only issues tokens for ${canonical}`);
+    return fail(`this server only issues tokens for ${canonical}`);
   }
+  const stateParam = q.get("state");
 
   const now = Date.now();
   sweep(state.pending, now);
-  while (state.pending.size >= MAX_PENDING) state.pending.delete(state.pending.keys().next().value!);
+  const own = [...state.pending].filter(([, p]) => p.client_id === client.client_id);
+  for (const [key] of own.slice(0, Math.max(0, own.length - MAX_PENDING_PER_CLIENT + 1))) state.pending.delete(key);
   // The pending id doubles as the form's CSRF token: unguessable, bound to
   // the validated request server-side, single use. A foreign page can submit
   // the form only if it can read this page — which CSP and SOP prevent.
@@ -365,13 +412,14 @@ async function handleAuthorizeGet(res: ServerResponse, url: string, origin: stri
     resource: canonical,
     issuer: origin,
     expires_at: now + PENDING_TTL_MS,
+    failures: 0,
   });
   sendHtml(res, 200, renderAuthorizePage({ requestId: id, clientName: client.client_name, redirectUri, error: null }));
 }
 
 function lockedUntil(state: OAuthState, now: number): number | null {
   state.failures = state.failures.filter((t) => now - t < FAILURE_WINDOW_MS);
-  return state.failures.length >= MAX_FAILURES ? state.failures[0] + FAILURE_WINDOW_MS : null;
+  return state.failures.length >= MAX_FAILURES_GLOBAL ? state.failures[0] + FAILURE_WINDOW_MS : null;
 }
 
 async function handleAuthorizePost(req: IncomingMessage, res: ServerResponse, ctx: OAuthApiCtx): Promise<void> {
@@ -393,6 +441,11 @@ async function handleAuthorizePost(req: IncomingMessage, res: ServerResponse, ct
   }
   if (!ctx.apiToken || !safeEqual(form.api_token ?? "", ctx.apiToken)) {
     state.failures.push(now);
+    pending.failures += 1;
+    if (pending.failures >= MAX_FAILURES_PER_REQUEST) {
+      state.pending.delete(form.request);
+      return sendHtml(res, 401, renderErrorPage("Too many wrong tokens for this sign-in. Start the connection again."));
+    }
     return sendHtml(res, 401, renderAuthorizePage({
       requestId: form.request,
       clientName: pending.client_name,
@@ -433,20 +486,34 @@ async function handleToken(req: IncomingMessage, res: ServerResponse, origin: st
 
   let tokens;
   if (form.grant_type === "authorization_code") {
+    const now = Date.now();
+    sweep(state.used, now);
+    const reused = state.used.get(form.code ?? "");
+    if (reused) {
+      // OAuth 2.1 §4.1.3: a code presented twice was intercepted — whatever
+      // it already bought is revoked too.
+      state.used.delete(form.code);
+      await revokeGrant(reused.grant_id);
+      return oauthError(res, 400, "invalid_grant", "code was already used");
+    }
     const code = state.codes.get(form.code ?? "");
     // Single use, even when the exchange below fails: a code that met a wrong
     // verifier may have been intercepted.
     if (code) state.codes.delete(form.code);
-    if (!code || code.expires_at <= Date.now()) return oauthError(res, 400, "invalid_grant", "unknown or expired code");
+    if (!code || code.expires_at <= now) return oauthError(res, 400, "invalid_grant", "unknown or expired code");
     if (code.client_id !== clientId) return oauthError(res, 400, "invalid_grant", "code was issued to another client");
     if (form.redirect_uri !== undefined && form.redirect_uri !== code.redirect_uri) {
       return oauthError(res, 400, "invalid_grant", "redirect_uri does not match");
     }
-    if (!form.code_verifier || !safeEqual(s256(form.code_verifier), code.code_challenge)) {
+    // RFC 7636 §4.1: 43–128 characters from the unreserved set.
+    const verifier = form.code_verifier ?? "";
+    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || !safeEqual(s256(verifier), code.code_challenge)) {
       return oauthError(res, 400, "invalid_grant", "PKCE verification failed");
     }
     if (resource !== null && resource !== code.resource) return oauthError(res, 400, "invalid_target", "resource does not match");
-    tokens = await createGrant({ client_id: clientId, resource: code.resource, scope: SCOPE });
+    const created = await createGrant({ client_id: clientId, resource: code.resource, scope: SCOPE });
+    if (created) state.used.set(form.code, { grant_id: created.grantId, expires_at: code.expires_at });
+    tokens = created?.tokens ?? null;
   } else if (form.grant_type === "refresh_token") {
     tokens = await refreshGrant({ refresh_token: form.refresh_token ?? "", client_id: clientId, resource });
   } else {

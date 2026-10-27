@@ -8,7 +8,7 @@
  * revocation bites on the next call without a restart. The client has to run
  * the login again — with the API token — to get back in.
  */
-import { listClients, revokeClient } from "../oauth-store.js";
+import { listClients, revokeClient, sanitizeClientName } from "../oauth-store.js";
 
 export async function cmdOAuth(args: { sub: string | null; positional: string[]; json: boolean }): Promise<number> {
   const sub = args.sub ?? "list";
@@ -25,7 +25,9 @@ export async function cmdOAuth(args: { sub: string | null; positional: string[];
     for (const c of clients) {
       const hosts = [...new Set(c.redirect_uris.map((u) => new URL(u).host))].join(", ");
       process.stdout.write(
-        `${c.client_id}  ${c.client_name}\n` +
+        // Sanitised at registration already; again here for files written
+        // before that, or by hand — a name must not drive the terminal.
+        `${c.client_id}  ${sanitizeClientName(c.client_name)}\n` +
           `  redirect: ${hosts}\n` +
           `  registered ${c.created_at}, ${c.grants} grant(s)` +
           (c.last_used_at ? `, last token ${c.last_used_at}` : ", never approved") +

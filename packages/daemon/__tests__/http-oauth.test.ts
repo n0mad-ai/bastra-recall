@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
@@ -26,14 +26,15 @@ import type { OAuthClientInformationMixed, OAuthTokens } from "@modelcontextprot
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
-import { revokeClient } from "../src/oauth-store.js";
+import { registerClient, createGrant, revokeClient } from "../src/oauth-store.js";
+import { cmdOAuth } from "../src/cli/oauth-cmd.js";
 
 const TOKEN = "test-token-abcdef0123456789";
 process.env.BASTRA_API_TOKEN = TOKEN;
 
 const HOST = "recall.example.com";
 const ORIGIN = `https://${HOST}`;
-const REDIRECT = "https://client.example/callback";
+const REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
 
 interface Reply {
   status: number;
@@ -100,10 +101,10 @@ async function withServer(fn: (port: number, storePath: string) => Promise<void>
   }
 }
 
-async function register(port: number): Promise<string> {
+async function register(port: number, name = "Test <Client>"): Promise<string> {
   const r = await call(port, "POST", "/api/v1/oauth/register", {
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_name: "Test <Client>", redirect_uris: [REDIRECT], token_endpoint_auth_method: "none" }),
+    body: JSON.stringify({ client_name: name, redirect_uris: [REDIRECT], token_endpoint_auth_method: "none" }),
   });
   assert.equal(r.status, 201, r.text);
   return (JSON.parse(r.text) as { client_id: string }).client_id;
@@ -128,8 +129,8 @@ async function openAuthorize(port: number, clientId: string, challenge: string):
   });
   const r = await call(port, "GET", `/api/v1/oauth/authorize?${q}`);
   assert.equal(r.status, 200, r.text);
-  assert.match(r.text, /Test &lt;Client&gt;/, "client name shown, escaped");
-  assert.match(r.text, /client\.example/, "redirect host shown");
+  assert.match(r.text, /<strong>(Test &lt;Client&gt;|ChatGPT)<\/strong>/, "client name shown, escaped");
+  assert.match(r.text, /chatgpt\.com/, "redirect host shown");
   assert.match(String(r.headers["content-security-policy"]), /frame-ancestors 'none'/);
   const m = /name="request" value="([^"]+)"/.exec(r.text);
   assert.ok(m, "form carries the request id");
@@ -220,21 +221,37 @@ test("oauth: metadata documents describe resource and authorization server", asy
   });
 });
 
-test("oauth: dynamic registration accepts https redirects and refuses others", async () => {
+test("oauth: registration accepts only the allowlisted redirect hosts", async () => {
   await withServer(async (port) => {
     const ok = await call(port, "POST", "/api/v1/oauth/register", {
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: [REDIRECT, "http://localhost:3334/cb"] }),
+      body: JSON.stringify({
+        client_name: "ChatGPT",
+        redirect_uris: [REDIRECT, "https://claude.ai/api/mcp/auth_callback", "https://claude.com/cb", "https://chat.openai.com/cb", "http://localhost:3334/cb", "http://127.0.0.1:9/cb"],
+      }),
     });
-    assert.equal(ok.status, 201);
+    assert.equal(ok.status, 201, ok.text);
     const reg = JSON.parse(ok.text) as Record<string, unknown>;
     assert.equal(reg.token_endpoint_auth_method, "none");
     assert.ok(typeof reg.client_id === "string" && reg.client_id.length > 0);
     assert.equal(reg.client_secret, undefined, "public client — no secret");
-    for (const uris of [["http://client.example/cb"], ["javascript:alert(1)"], ["https://client.example/cb#frag"], []]) {
+    const refused = [
+      ["https://attacker.example/cb"],
+      ["https://chatgpt.com.attacker.example/cb"],
+      ["https://evil.chatgpt.com/cb"],
+      ["https://chatgpt.com:8443/cb"],
+      ["https://user@chatgpt.com/cb"],
+      ["http://chatgpt.com/cb"],
+      ["http://client.example/cb"],
+      ["javascript:alert(1)"],
+      ["https://chatgpt.com/cb#frag"],
+      [REDIRECT, "https://attacker.example/cb"],
+      [],
+    ];
+    for (const uris of refused) {
       const bad = await call(port, "POST", "/api/v1/oauth/register", {
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client_name: "x", redirect_uris: uris }),
+        body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: uris }),
       });
       assert.equal(bad.status, 400, `redirect_uris ${JSON.stringify(uris)} must be refused`);
     }
@@ -284,35 +301,82 @@ test("oauth: a wrong PKCE verifier is rejected and burns the code", async () => 
   });
 });
 
-test("oauth: the authorize page refuses PKCE-less and plain-challenge requests", async () => {
+test("oauth: before consent, a malformed request gets a page — never a redirect", async () => {
   await withServer(async (port) => {
     const clientId = await register(port);
-    const q = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT, state: "s" });
-    const r = await call(port, "GET", `/api/v1/oauth/authorize?${q}`);
-    assert.equal(r.status, 302);
-    assert.equal(new URL(String(r.headers.location)).searchParams.get("error"), "invalid_request");
-    const unregistered = new URLSearchParams({ ...Object.fromEntries(q), redirect_uri: "https://attacker.example/cb" });
-    const r2 = await call(port, "GET", `/api/v1/oauth/authorize?${unregistered}`);
-    assert.equal(r2.status, 400, "an unregistered redirect gets an error page, never a redirect");
-    assert.equal(r2.headers.location, undefined);
+    const base = { response_type: "code", client_id: clientId, redirect_uri: REDIRECT, state: "s" };
+    const { challenge } = pkce();
+    const cases: Record<string, string>[] = [
+      base, // no PKCE
+      { ...base, code_challenge: challenge, code_challenge_method: "plain" },
+      { ...base, response_type: "token", code_challenge: challenge, code_challenge_method: "S256" },
+      { ...base, code_challenge: challenge, code_challenge_method: "S256", resource: "https://other.example/mcp" },
+      { ...base, redirect_uri: "https://attacker.example/cb", code_challenge: challenge, code_challenge_method: "S256" },
+    ];
+    for (const params of cases) {
+      const r = await call(port, "GET", `/api/v1/oauth/authorize?${new URLSearchParams(params)}`);
+      assert.equal(r.status, 400, JSON.stringify(params));
+      assert.equal(r.headers.location, undefined, `no redirect for ${JSON.stringify(params)}`);
+    }
+    const dup = `/api/v1/oauth/authorize?${new URLSearchParams({ ...base, code_challenge: challenge, code_challenge_method: "S256" })}&client_id=${clientId}`;
+    const r = await call(port, "GET", dup);
+    assert.equal(r.status, 400, "a duplicated parameter is refused");
+    assert.match(r.text, /sent twice/);
   });
 });
 
-test("oauth: a wrong API token on the form is rejected, then throttled", async () => {
+test("oauth: wrong API tokens burn their own request, not the user's", async () => {
   await withServer(async (port) => {
     const clientId = await register(port);
-    const requestId = await openAuthorize(port, clientId, pkce().challenge);
-    for (let i = 0; i < 5; i++) {
-      const r = await approve(port, requestId, "wrong-token");
+    const users = await openAuthorize(port, clientId, pkce().challenge);
+    const attackers = await openAuthorize(port, await register(port, "ChatGPT"), pkce().challenge);
+    for (let i = 0; i < 4; i++) {
+      const r = await approve(port, attackers, "wrong-token");
       assert.equal(r.status, 401);
       assert.match(r.text, /Wrong API token/);
       assert.equal(r.headers.location, undefined);
     }
-    const locked = await approve(port, requestId, TOKEN);
-    assert.equal(locked.status, 429, "the correct token is refused too while the form is locked");
-    assert.ok(Number(locked.headers["retry-after"]) > 0);
+    const fifth = await approve(port, attackers, "wrong-token");
+    assert.equal(fifth.status, 401);
+    assert.match(fifth.text, /Start the connection again/);
+    assert.equal((await approve(port, attackers, TOKEN)).status, 400, "a burnt request stays dead, even with the right token");
+
+    const ok = await approve(port, users, TOKEN);
+    assert.equal(ok.status, 302, "the user's own request is untouched by the attacker's failures");
+    assert.ok(new URL(String(ok.headers.location)).searchParams.get("code"));
+
     const unknown = await call(port, "POST", "/api/v1/oauth/authorize", form({ request: "forged", api_token: TOKEN, action: "approve" }));
     assert.equal(unknown.status, 400, "a form without a live request id (CSRF) is refused");
+  });
+});
+
+test("oauth: the global backstop locks the form after 100 failures", async () => {
+  await withServer(async (port) => {
+    const clientId = await register(port);
+    for (let i = 0; i < 20; i++) {
+      const id = await openAuthorize(port, clientId, pkce().challenge);
+      for (let j = 0; j < 5; j++) assert.equal((await approve(port, id, "wrong")).status, 401);
+    }
+    const id = await openAuthorize(port, clientId, pkce().challenge);
+    const locked = await approve(port, id, TOKEN);
+    assert.equal(locked.status, 429);
+    assert.ok(Number(locked.headers["retry-after"]) > 0);
+  });
+});
+
+test("oauth: open logins are capped per client, so foreign GETs cannot evict the user's", async () => {
+  await withServer(async (port) => {
+    const userClient = await register(port);
+    const users = await openAuthorize(port, userClient, pkce().challenge);
+    const other = await register(port, "ChatGPT");
+    for (let i = 0; i < 60; i++) await openAuthorize(port, other, pkce().challenge);
+    assert.equal((await approve(port, users, TOKEN)).status, 302, "the user's page survives 60 foreign GETs");
+
+    const first = await openAuthorize(port, userClient, pkce().challenge);
+    const rest = [];
+    for (let i = 0; i < 5; i++) rest.push(await openAuthorize(port, userClient, pkce().challenge));
+    assert.equal((await approve(port, first, TOKEN)).status, 400, "the client's own oldest makes room");
+    assert.equal((await approve(port, rest[4], TOKEN)).status, 302);
   });
 });
 
@@ -326,7 +390,7 @@ test("oauth: deny redirects with access_denied", async () => {
   });
 });
 
-test("oauth: refresh rotates the tokens; a replayed refresh token revokes the grant", async () => {
+test("oauth: refresh rotates; the replaced token gets one grace use within 60 s, then revokes", async () => {
   await withServer(async (port) => {
     const { clientId, tokens } = await login(port);
     const refresh = (rt: string) =>
@@ -339,8 +403,78 @@ test("oauth: refresh rotates the tokens; a replayed refresh token revokes the gr
     assert.equal((await mcp(port, next.access_token, INIT)).status, 200);
     assert.equal((await mcp(port, tokens.access_token, INIT)).status, 401, "the replaced access token is dead");
 
-    assert.equal((await refresh(tokens.refresh_token)).status, 400, "an old refresh token is refused");
-    assert.equal((await mcp(port, next.access_token, INIT)).status, 401, "and its replay revoked the whole grant");
+    const grace = await refresh(tokens.refresh_token);
+    assert.equal(grace.status, 200, "a lost response / parallel worker gets one more rotation");
+    const third = JSON.parse(grace.text) as Tokens;
+    assert.equal((await mcp(port, third.access_token, INIT)).status, 200);
+
+    assert.equal((await refresh(tokens.refresh_token)).status, 400, "the grace is spent");
+    assert.equal((await mcp(port, third.access_token, INIT)).status, 401, "and the second replay revoked the whole grant");
+  });
+});
+
+test("oauth: a refresh replay after the grace window revokes the grant", async () => {
+  await withServer(async (port, storePath) => {
+    const { clientId, tokens } = await login(port);
+    const refresh = (rt: string) =>
+      call(port, "POST", "/api/v1/oauth/token", form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId }));
+    const next = JSON.parse((await refresh(tokens.refresh_token)).text) as Tokens;
+    const data = JSON.parse(await readFile(storePath, "utf8")) as { grants: { rotated_at: number }[] };
+    for (const g of data.grants) g.rotated_at = Date.now() - 61_000;
+    await writeFile(storePath, JSON.stringify(data), "utf8");
+    assert.equal((await refresh(tokens.refresh_token)).status, 400);
+    assert.equal((await mcp(port, next.access_token, INIT)).status, 401, "replay outside the window revokes");
+  });
+});
+
+test("oauth: a reused code revokes what it bought; a malformed verifier is refused", async () => {
+  await withServer(async (port) => {
+    const clientId = await register(port);
+    const { verifier, challenge } = pkce();
+    const approved = await approve(port, await openAuthorize(port, clientId, challenge));
+    const code = new URL(String(approved.headers.location)).searchParams.get("code")!;
+    const fields = { grant_type: "authorization_code", code, redirect_uri: REDIRECT, client_id: clientId, code_verifier: verifier };
+    const first = await call(port, "POST", "/api/v1/oauth/token", form(fields));
+    assert.equal(first.status, 200);
+    const tokens = JSON.parse(first.text) as Tokens;
+    const second = await call(port, "POST", "/api/v1/oauth/token", form(fields));
+    assert.equal(second.status, 400);
+    assert.equal((await mcp(port, tokens.access_token, INIT)).status, 401, "the first exchange's token is revoked");
+
+    const p2 = pkce();
+    const a2 = await approve(port, await openAuthorize(port, clientId, p2.challenge));
+    const code2 = new URL(String(a2.headers.location)).searchParams.get("code")!;
+    const short = await call(port, "POST", "/api/v1/oauth/token", form({ ...fields, code: code2, code_verifier: "short" }));
+    assert.equal(short.status, 400);
+    const dup = await call(port, "POST", "/api/v1/oauth/token", {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `${new URLSearchParams({ ...fields, code: code2, code_verifier: p2.verifier })}&client_id=${clientId}`,
+    });
+    assert.equal(dup.status, 400, "a duplicated form parameter is refused");
+  });
+});
+
+test("oauth: control characters never reach the terminal", async () => {
+  await withServer(async (port, storePath) => {
+    await register(port, "\u001b[31mEvil\u0007\u009bName");
+    const stored = await readFile(storePath, "utf8");
+    assert.ok(!/\\u001b|\\u0007|\\u009b/i.test(stored), "sanitised at registration");
+    assert.match(stored, /\[31mEvilName/);
+
+    // A file written by hand (or before the fix) is sanitised again on print.
+    const data = JSON.parse(stored) as { clients: { client_name: string }[] };
+    data.clients[0].client_name = "\u001b]0;pwned\u0007X";
+    await writeFile(storePath, JSON.stringify(data), "utf8");
+    let out = "";
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string) => { out += chunk; return true; }) as typeof process.stdout.write;
+    try {
+      assert.equal(await cmdOAuth({ sub: "list", positional: ["oauth", "list"], json: false }), 0);
+    } finally {
+      process.stdout.write = write;
+    }
+    assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(out), JSON.stringify(out));
+    assert.match(out, /\]0;pwnedX/);
   });
 });
 
@@ -416,5 +550,37 @@ test("oauth: the SDK's own client discovers, registers and connects", async () =
     });
   } finally {
     delete process.env.BASTRA_AUTH_LOOPBACK_SKIP;
+  }
+});
+
+test("oauth store: unused registrations expire, the cap evicts the oldest unused, no-op writes skip the disk", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-oauth-store-"));
+  const path = join(dir, "oauth.json");
+  try {
+    const kept = await registerClient({ client_name: "kept", redirect_uris: [REDIRECT] }, path);
+    assert.ok(kept && (await createGrant({ client_id: kept.client_id, resource: `${ORIGIN}/api/v1/mcp`, scope: "mcp" }, path)));
+    const ids: string[] = [];
+    for (let i = 0; i < 99; i++) ids.push((await registerClient({ client_name: `c${i}`, redirect_uris: [REDIRECT] }, path))!.client_id);
+    const extra = await registerClient({ client_name: "extra", redirect_uris: [REDIRECT] }, path);
+    assert.ok(extra, "at the cap, a new registration still succeeds");
+    let data = JSON.parse(await readFile(path, "utf8")) as { clients: { client_id: string; created_at: string }[] };
+    const present = new Set(data.clients.map((c) => c.client_id));
+    assert.equal(data.clients.length, 100);
+    assert.ok(present.has(kept.client_id), "a granted client is never evicted");
+    assert.ok(!present.has(ids[0]), "the oldest never-granted one made room");
+
+    // Ten minutes later every never-granted registration is gone.
+    for (const c of data.clients) c.created_at = new Date(Date.now() - 11 * 60_000).toISOString();
+    await writeFile(path, JSON.stringify(data), "utf8");
+    assert.equal(await revokeClient("nobody", path), 0);
+    data = JSON.parse(await readFile(path, "utf8")) as typeof data;
+    assert.deepEqual(data.clients.map((c) => c.client_id), [kept.client_id]);
+
+    const before = (await stat(path)).mtimeMs;
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(await revokeClient("nobody", path), 0);
+    assert.equal((await stat(path)).mtimeMs, before, "nothing changed, nothing written");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

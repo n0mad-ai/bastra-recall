@@ -92,6 +92,56 @@ preview is disabled unless `BASTRA_TASKS=1`. They remain documented in the full
 local REST contract. A normal tunnel cannot use them. The collection
 trailing-slash alias `/tasks/` behaves like `/tasks`.
 
+## Connect ChatGPT and claude.ai over MCP (OAuth)
+
+The daemon also serves MCP over Streamable HTTP at `/api/v1/mcp`. Claude Code
+and curl reach it with the same `Authorization: Bearer $BASTRA_API_TOKEN`
+header as the REST routes. ChatGPT custom connectors (developer mode) and
+claude.ai custom connectors cannot send a static header, so the daemon is also
+its own OAuth 2.1 authorization server for this one route (MCP authorization
+spec 2025-11-25: protected resource metadata, authorization server metadata,
+dynamic client registration, authorization code with PKCE S256, rotating
+refresh tokens, tokens bound to the MCP URL).
+
+The tunnel setup above applies unchanged (loopback skip off, Host preserved).
+In addition to `/api/v1/`, publish exactly these three GET paths — they are
+public discovery documents without secrets:
+
+- `/.well-known/oauth-protected-resource/api/v1/mcp`
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-authorization-server`
+
+For a cloudflared ingress rule, one regular expression covers them:
+`^/\.well-known/oauth-(protected-resource(/api/v1/mcp)?|authorization-server)$`.
+Keep every other path, including `/hook` and `/ui`, blocked.
+
+Connect:
+
+1. Make sure the daemon has an API token (`bastra token`).
+2. In ChatGPT, enable developer mode and create a connector; in claude.ai, add
+   a custom connector. Use `https://recall.your-domain.com/api/v1/mcp` as the
+   URL, choose OAuth, and leave client ID and secret empty. The client
+   registers itself.
+3. A browser page "Connect to Bastra Recall" opens on your domain. Check that
+   the redirect host shown is `chatgpt.com` or `claude.ai`, enter your API
+   token and approve.
+
+Redirects are restricted to a fixed allowlist: https on `chatgpt.com`,
+`chat.openai.com`, `claude.ai` and `claude.com`, plus plain http on
+`localhost` and `127.0.0.1` (any port) for local tools. Other clients cannot
+register. Five wrong tokens end a login attempt; the client has to start
+over.
+
+An OAuth access token opens `/api/v1/mcp` only, never the REST routes. Tokens
+are stored hashed in `~/.bastra/oauth.json`. Manage the approved clients from
+the terminal; a revocation takes effect on the next request:
+
+```sh
+bastra oauth list
+bastra oauth revoke <client_id>
+bastra oauth revoke all
+```
+
 ## Differences from the previous hand-written starter
 
 - Missing POST routes: `edit_memory`, `archive_memory`, `save_product_doc`,

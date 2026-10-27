@@ -11,22 +11,29 @@
  * from another process, and a revocation must bite on the very next request,
  * without a daemon restart. The file holds a handful of entries.
  *
- * Writes are serialised inside the process and land by rename, so a reader
- * never sees half a file. A CLI revoke racing a token refresh in the same
- * millisecond can still lose one of the two writes; for a single user that is
- * accepted rather than locked against.
+ * Writes take the cross-process path lock (path-lock.ts), because the daemon
+ * and `bastra oauth revoke` both write this file: without it a refresh landing
+ * next to a revoke could write the revoked grant back. Files land by rename,
+ * so a reader never sees half a file; a mutation that changed nothing does not
+ * write at all.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { bastraDataDir } from "./platform-paths.js";
+import { withPathLock } from "./path-lock.js";
 
 export const ACCESS_TTL_MS = 60 * 60_000;
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60_000;
 /** A registration that never led to a grant is dropped after this — DCR is an
  *  open door, so unused clients must not pile up. */
-const UNUSED_CLIENT_TTL_MS = 24 * 60 * 60_000;
+const UNUSED_CLIENT_TTL_MS = 10 * 60_000;
 const MAX_CLIENTS = 100;
+/** The refresh token replaced last is honoured once more within this window:
+ *  two parallel workers, or a rotation whose response was lost, must not cost
+ *  the user the connector. Later, or a second time, it counts as a leak. */
+const REFRESH_GRACE_MS = 60_000;
+const MAX_RETIRED = 10;
 
 export interface OAuthClient {
   client_id: string;
@@ -47,9 +54,13 @@ export interface OAuthGrant {
   access_expires_at: number;
   refresh_hash: string;
   refresh_expires_at: number;
-  /** The refresh token this one replaced. Presenting it again means a copy
-   *  leaked — the whole grant is revoked (OAuth 2.1 §4.3.1 rotation). */
+  /** The refresh token replaced by the last rotation, and when — the one
+   *  token the grace window applies to. */
   prev_refresh_hash: string | null;
+  rotated_at?: number;
+  /** Older refresh tokens. Presenting one means a copy leaked — the whole
+   *  grant is revoked (OAuth 2.1 §4.3.1 rotation). */
+  retired_hashes?: string[];
 }
 
 interface OAuthFile {
@@ -76,6 +87,13 @@ export function newToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
+/** C0/C1 control characters (ESC among them) out of a client-chosen name:
+ *  it is printed to a terminal by `bastra oauth list`. */
+export function sanitizeClientName(name: string): string {
+  // eslint-disable-next-line no-control-regex
+  return name.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
 async function load(path: string): Promise<OAuthFile> {
   try {
     const data = JSON.parse(await readFile(path, "utf8")) as Partial<OAuthFile>;
@@ -86,42 +104,55 @@ async function load(path: string): Promise<OAuthFile> {
   }
 }
 
+function granted(data: OAuthFile): Set<string> {
+  return new Set(data.grants.map((g) => g.client_id));
+}
+
 function prune(data: OAuthFile, now: number): void {
   data.grants = data.grants.filter((g) => g.refresh_expires_at > now);
-  const granted = new Set(data.grants.map((g) => g.client_id));
+  const used = granted(data);
   data.clients = data.clients.filter(
-    (c) => granted.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS,
+    (c) => used.has(c.client_id) || now - Date.parse(c.created_at) < UNUSED_CLIENT_TTL_MS,
   );
 }
 
-let queue: Promise<unknown> = Promise.resolve();
-
-/** Read-modify-write under the in-process queue; the file lands by rename. */
+/** Read-modify-write under the path lock; skips the write when nothing changed. */
 async function mutate<T>(path: string, fn: (data: OAuthFile, now: number) => T): Promise<T> {
-  const run = queue.then(async () => {
+  return withPathLock(path, async () => {
     const data = await load(path);
+    const before = JSON.stringify(data);
     const now = Date.now();
     prune(data, now);
     const result = fn(data, now);
-    await mkdir(dirname(path), { recursive: true });
-    const tmp = `${path}.tmp-${process.pid}`;
-    await writeFile(tmp, JSON.stringify(data, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-    await rename(tmp, path);
+    const after = JSON.stringify(data, null, 2);
+    if (JSON.stringify(data) !== before) {
+      await mkdir(dirname(path), { recursive: true });
+      const tmp = `${path}.tmp-${process.pid}`;
+      await writeFile(tmp, after + "\n", { encoding: "utf8", mode: 0o600 });
+      await rename(tmp, path);
+    }
     return result;
-  });
-  queue = run.catch(() => {});
-  return run;
+  }, { crossProcess: true });
 }
 
+/** At the cap the oldest never-granted registration makes room; only a file
+ *  full of clients the user actually approved refuses a new one. */
 export async function registerClient(
   meta: { client_name: string; redirect_uris: string[] },
   path = oauthStorePath(),
 ): Promise<OAuthClient | null> {
   return mutate(path, (data) => {
-    if (data.clients.length >= MAX_CLIENTS) return null;
+    if (data.clients.length >= MAX_CLIENTS) {
+      const used = granted(data);
+      const victim = data.clients
+        .filter((c) => !used.has(c.client_id))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+      if (!victim) return null;
+      data.clients = data.clients.filter((c) => c !== victim);
+    }
     const client: OAuthClient = {
       client_id: randomUUID(),
-      client_name: meta.client_name,
+      client_name: sanitizeClientName(meta.client_name),
       redirect_uris: meta.redirect_uris,
       created_at: new Date().toISOString(),
     };
@@ -149,7 +180,7 @@ function issueInto(grant: OAuthGrant, now: number): IssuedTokens {
 export async function createGrant(
   p: { client_id: string; resource: string; scope: string },
   path = oauthStorePath(),
-): Promise<IssuedTokens | null> {
+): Promise<{ grantId: string; tokens: IssuedTokens } | null> {
   return mutate(path, (data, now) => {
     if (!data.clients.some((c) => c.client_id === p.client_id)) return null;
     const grant: OAuthGrant = {
@@ -167,28 +198,42 @@ export async function createGrant(
     };
     const tokens = issueInto(grant, now);
     data.grants.push(grant);
-    return tokens;
+    return { grantId: grant.id, tokens };
   });
 }
 
-/** Rotates a refresh token. `null` = invalid; a replayed old token also
- *  revokes the grant it belonged to. */
+/** Drops one grant — used when its authorization code is presented twice. */
+export async function revokeGrant(grantId: string, path = oauthStorePath()): Promise<void> {
+  await mutate(path, (data) => {
+    data.grants = data.grants.filter((g) => g.id !== grantId);
+  });
+}
+
+/** Rotates a refresh token. `null` = invalid; a replayed old token (outside
+ *  the grace window, or used twice) also revokes the grant it belonged to. */
 export async function refreshGrant(
   p: { refresh_token: string; client_id: string; resource: string | null },
   path = oauthStorePath(),
 ): Promise<IssuedTokens | null> {
   const h = hashToken(p.refresh_token);
   return mutate(path, (data, now) => {
-    const replayed = data.grants.findIndex((g) => g.prev_refresh_hash === h);
-    if (replayed !== -1) {
-      data.grants.splice(replayed, 1);
+    const grant = data.grants.find((g) => g.refresh_hash === h || g.prev_refresh_hash === h || g.retired_hashes?.includes(h));
+    if (!grant) return null;
+    const inGrace = grant.prev_refresh_hash === h && now - (grant.rotated_at ?? 0) < REFRESH_GRACE_MS;
+    if (grant.refresh_hash !== h && !inGrace) {
+      data.grants = data.grants.filter((g) => g !== grant);
       return null;
     }
-    const grant = data.grants.find((g) => g.refresh_hash === h);
-    if (!grant || grant.client_id !== p.client_id || grant.refresh_expires_at <= now) return null;
+    if (grant.client_id !== p.client_id || grant.refresh_expires_at <= now) return null;
     if (p.resource !== null && p.resource !== grant.resource) return null;
     if (!data.clients.some((c) => c.client_id === grant.client_id)) return null;
+    // The token replaced before now retires for good; the one replaced now
+    // gets the grace window. A grace use therefore spends that token's grace.
+    if (grant.prev_refresh_hash) {
+      grant.retired_hashes = [...(grant.retired_hashes ?? []), grant.prev_refresh_hash].slice(-MAX_RETIRED);
+    }
     grant.prev_refresh_hash = grant.refresh_hash;
+    grant.rotated_at = now;
     return issueInto(grant, now);
   });
 }
