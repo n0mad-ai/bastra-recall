@@ -75,6 +75,7 @@ import {
 import { formatHintBlock, formatReflexBlock, type PromptReflexHit, type RecallHit } from "./prompt-format.js";
 import { writeTelemetry, type PromptHookTelemetry } from "./prompt-lane-telemetry.js";
 import { postJson } from "./prompt-loopback.js";
+import type { ConventionSource } from "./convention-source.js";
 import { runTaskStep } from "./prompt-task.js";
 
 // #680: classification, formatting, telemetry and the loopback call live in
@@ -157,6 +158,7 @@ export interface PromptLaneOptions {
    *  daemon's vault index. Absent = the active-conventions block says
    *  `revision=unknown` and cannot notice a revision change. */
   revisionOf?: (id: string) => Promise<string | null>;
+  conventionOf?: (id: string) => Promise<ConventionSource>;
 }
 
 interface ReflexResponse {
@@ -349,6 +351,7 @@ export async function runPromptLane(
       mode: "trivial",
       candidates: [],
       revisionOf: opts.revisionOf,
+      conventionOf: opts.conventionOf,
       surface: client,
     });
     const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].filter((b): b is string => b !== null);
@@ -740,6 +743,7 @@ export async function runPromptLane(
     mode: detectedMode,
     candidates: [...filtered, ...rawReflexHits.map((h) => ({ ...h, recall_mode: "reflex" }))],
     revisionOf: opts.revisionOf,
+    conventionOf: opts.conventionOf,
     surface: client,
   });
 

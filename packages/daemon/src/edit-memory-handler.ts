@@ -51,6 +51,7 @@
 import { z } from "zod";
 import {
   AUTO_RELATED_START,
+  ConventionValidatorSchema,
   memoryRevision,
   mutateMemoryFile,
   type Memory,
@@ -81,6 +82,7 @@ const FrontmatterPatch = z
     related: z.array(z.string()).optional(),
     confidence: z.number().min(0).max(1).optional(),
     valid_until: z.string().min(1).optional(),
+    validator: ConventionValidatorSchema.nullable().optional(),
   })
   .strict();
 
@@ -355,7 +357,9 @@ export async function editMemoryHandler(
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
         dropped = droppedListEntries(fm, args.frontmatter);
-        return { ...fm, ...(args.frontmatter ?? {}), updated: today };
+        const next = { ...fm, ...(args.frontmatter ?? {}), updated: today };
+        if (next.validator === null) delete next.validator;
+        return next;
       },
       body: (body) => {
         const next = applyBodyOps(body, args);

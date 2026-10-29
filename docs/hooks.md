@@ -974,12 +974,21 @@ when needed, the save and repair contexts are combined. Hook-active follow-ups
 do not repeat that evaluation. Exhaustion carries `session_known` and stops
 repair, without asserting a first-visible or repaired result.
 
-This is conditional on validator metadata already attached to the active
-convention. Normal production activation does not yet supply that metadata
-(#1323); tests declare it explicitly. The check matches task and generation,
-not the latest delivered bytes or changed validator parameters. Those remaining
-binding requirements keep #1275 open; ordinary messaging is not yet guaranteed
-to activate repair automatically.
+This is conditional on validator metadata declared in the convention
+frontmatter and attached to the active convention (#1323). The check matches task and generation, not the latest
+delivered bytes or changed validator parameters. Binding a receipt to later
+text changes remains a separate limitation; changing text still requires a new
+validation call.
+
+The optional declaration is `validator: {tool: validate_artifact, channel:
+discord-dm, limit: 2000, unit: utf16}`. Channel names remain free strings;
+`codepoints` is the other counting unit. `save_memory` and `edit_memory`
+(`frontmatter.validator`) can set it; explicit `null` removes it. Omission
+preserves an existing declaration on save. Old conventions without the field
+keep their behavior. Nothing infers a validator from prose or a channel name.
+The prompt/task, action reflex gate and real must-load paths bind the explicit
+metadata from the same source bytes as its revision. A prompt refresh or
+reload replaces changed metadata and removes a declaration that disappeared.
 
 **What you see (#757).** Claude Code has no agent-only channel on `Stop`: it
 prints `additionalContext` in full under "Stop hook feedback" (measured on
@@ -2944,12 +2953,20 @@ wiederholen diese Auswertung nicht. Das Erschöpfungsereignis trägt
 `session_known` und beendet die Reparatur, belegt aber weder das zuerst
 sichtbare noch ein repariertes Ergebnis.
 
-Voraussetzung sind bereits hinterlegte Validator-Metadaten an der aktiven
-Konvention. Die normale produktive Aktivierung setzt sie bislang nicht
-(#1323); Tests deklarieren sie ausdrücklich. Geprüft werden Aufgabe und
-Generation, nicht die zuletzt ausgelieferten Bytes oder geänderte
-Validator-Parameter. Diese Bindungslücken halten #1275 offen; normale
-Nachrichten aktivieren die Reparatur noch nicht garantiert automatisch.
+Voraussetzung ist die optionale Frontmatter-Deklaration der Konvention
+(#1323): `validator: {tool: validate_artifact, channel: discord-dm, limit: 2000,
+unit: utf16}`. Der Kanal bleibt frei wählbar, die andere Zähleinheit heißt
+`codepoints`. `save_memory` und `edit_memory` (`frontmatter.validator`) können
+das Feld setzen; explizites `null` entfernt es. Beim Save erhält Weglassen
+eine vorhandene Deklaration. Alte Konventionen ohne Feld bleiben gültig und
+verhalten sich unverändert. Aus Prosa wird kein Validator abgeleitet.
+
+Prompt/Task, Action-Reflex-Gate und Must-load-Aktivierung lesen Deklaration
+und Revision aus denselben Quelldatei-Bytes. Ein Prompt-Refresh oder erneutes
+Laden ersetzt geänderte Metadaten und entfernt weggefallene Deklarationen.
+Geprüft werden weiterhin Aufgabe und Generation, nicht zuletzt ausgelieferte
+Bytes oder geänderte Validator-Parameter. Textänderungen brauchen weiterhin
+einen neuen Beleg; der automatische Hash-Abgleich bleibt eine eigene Lücke.
 
 **Was du siehst (#757).** Claude Code hat bei `Stop` keinen Kanal nur für den
 Agenten: Es gibt `additionalContext` vollständig unter „Stop hook feedback"

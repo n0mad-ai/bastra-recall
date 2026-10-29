@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Conventions can declare an optional `validator: {tool, channel, limit, unit}`
+  in frontmatter. Save/edit/load and hook projections carry the declaration;
+  task and gate activation bind current source metadata and revision, enabling
+  bounded approved-copy repair without manually editing session state (#1323).
+
 - Optional generated startup instructions for Codex AGENTS.md and Claude Code
   CLAUDE.md, with separate installer consent, byte-preserving updates/removal,
   and doctor diagnosis of stale content and discovery limits. Convention replay

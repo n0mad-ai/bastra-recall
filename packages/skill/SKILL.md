@@ -116,7 +116,7 @@ Always `recall()` the title/topic first. If a near-duplicate exists, update it i
 
 - `str_replace` — swap one passage. `old_str` must occur exactly once; missing or ambiguous writes NOTHING and says which.
 - `append` — add a line at the end of the body (it lands before the auto-related block).
-- `frontmatter` — patch `summary`, `recall_when`, `tags`, `issues`, `related`, `confidence`, `valid_until`. Any other field is rejected.
+- `frontmatter` — patch `summary`, `recall_when`, `tags`, `issues`, `related`, `confidence`, `valid_until`, `validator` (`null` removes it). Any other field is rejected.
 
 `save_memory(overwrite=true)` stays for a full rewrite or for a field `edit_memory` does not cover.
 

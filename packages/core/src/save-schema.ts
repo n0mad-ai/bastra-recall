@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import type { MemoryLocator } from "./memory-locator.js";
-import { DerivedClaimSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
+import { ConventionValidatorSchema, DerivedClaimSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
 import { isPathSafeFolder } from "./save-text.js";
 
 /**
@@ -84,6 +84,8 @@ export const SaveMemoryInput = z.object({
    * it while loading the memory and leaves the note as it is.
    */
   derived_claims: z.array(DerivedClaimSchema).optional(),
+  /** Omit to preserve on overwrite; null explicitly removes the declaration. */
+  validator: ConventionValidatorSchema.nullable().optional(),
   related: z.array(z.string()).optional(),
   /**
    * Obsidian-Aliases (#188): Substrat-Plumbing, kein Agent-Knob — der Daemon

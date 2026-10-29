@@ -162,6 +162,42 @@
                       "valid_until": {
                         "type": "string",
                         "minLength": 1
+                      },
+                      "validator": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "tool": {
+                            "type": "string",
+                            "enum": [
+                              "validate_artifact"
+                            ]
+                          },
+                          "channel": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991
+                          },
+                          "unit": {
+                            "type": "string",
+                            "enum": [
+                              "codepoints",
+                              "utf16"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "tool",
+                          "channel",
+                          "limit",
+                          "unit"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "additionalProperties": false
@@ -1670,6 +1706,42 @@
                         "source"
                       ]
                     }
+                  },
+                  "validator": {
+                    "nullable": true,
+                    "type": "object",
+                    "properties": {
+                      "tool": {
+                        "type": "string",
+                        "enum": [
+                          "validate_artifact"
+                        ]
+                      },
+                      "channel": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true,
+                        "maximum": 9007199254740991
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": [
+                          "codepoints",
+                          "utf16"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "tool",
+                      "channel",
+                      "limit",
+                      "unit"
+                    ],
+                    "additionalProperties": false
                   },
                   "related": {
                     "type": "array",

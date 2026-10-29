@@ -6,7 +6,7 @@
  * 7 host bootstrap parity/difference -> #1119/#1314.
  *
  * Run from repository root with npm run test:convention-replay --workspace=@bastra-recall/daemon.
- * The normal root glob discovers this file but skips all seven assertions.
+ * The normal root glob discovers this file but skips the opt-in assertions.
  * The mock supplies invented retrieval DATA only; hook output comes from real
  * CLI programs and daemon lane functions. Never manufacture a deny or kernel.
  * #1303: the catch-all gate is wired at ADAPTER below — its real CLI runs beside
@@ -22,6 +22,13 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import matter from "gray-matter";
+import { Vault, memoryRevision } from "@bastra-recall/core";
+import { vaultConventionOf } from "../src/convention-source.js";
+import { callerSessionStore } from "../src/caller-session.js";
+import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
+import { runStopLane } from "../src/stop-lane.js";
+import { loadSessionState } from "../src/session-state.js";
 
 const enabled = process.env.CONVENTION_REPLAY === "1";
 const options = { skip: !enabled, timeout: 120_000 };
@@ -39,7 +46,8 @@ const vault = [
     summary: "Eingegangene Nachricht erst übersetzen; Entwurf vor Kopie prüfen.",
     body: "Erfundene Regel: Translate-only, dann draft-for-review, dann approved-copy. Kopie ohne Zitatpräfix; Zeichenzahl außerhalb des Kopierblocks. Verwende niemals fixture_send_message.",
     revision: "sha256:fixture-message-1", recall_mode: "reflex", write_origin: "user-directed", salience: 0.9,
-    recall_when: ["eingegangene Nachricht", "fixture_send_message"] },
+    recall_when: ["eingegangene Nachricht", "fixture_send_message"],
+    validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" } },
   { id: "fixture-start", title: "Erfundener Startkontext", type: "project-fact", scope: "all-projects",
     summary: "Die erfundene Farbliste hat drei Farben.", body: "Die erfundene Farbliste hat drei Farben.", revision: "sha256:fixture-start-1" },
 ];
@@ -75,8 +83,22 @@ async function fixture(projection = false) {
     import("../src/write-lane.js"), import("../src/bash-pre-lane.js"), import("../src/gate-lane.js"),
     import("../src/rule-kernel.js"),
   ]);
-  // The invented vault as the daemon's index; the lanes' own filters decide.
-  const index = vault.map(memory => ({ fm: memory, body: memory.body }) as unknown as Parameters<typeof actionReflexPool>[0][number]);
+  // Invented files through the real frontmatter loader, not injected session metadata.
+  const vaultRoot = join(dir, "vault");
+  await mkdir(join(vaultRoot, "memories"), { recursive: true });
+  for (const memory of vault) {
+    const { body, revision: _revision, ...fm } = memory;
+    const raw = matter.stringify(body, {
+      ...fm, topic_path: ["fixture"], tags: ["fixture"],
+      recall_when: "recall_when" in fm ? fm.recall_when : ["fixture rule"],
+      created: "2026-10-29", updated: "2026-10-29",
+    });
+    memory.revision = memoryRevision(raw);
+    await writeFile(join(vaultRoot, "memories", `${memory.id}.md`), raw);
+  }
+  const loadedVault = new Vault(vaultRoot);
+  await loadedVault.init();
+  const index = loadedVault.list();
   const gatePool = actionReflexPool(index);
   // #1305 ADAPTER: the daemon's vault index as the kernel source (data only;
   // the real collector and renderer decide). No floors, like /hook/session-context below.
@@ -108,7 +130,7 @@ async function fixture(projection = false) {
         // index (vaultRevisionOf); here the invented memories carry them as data.
         case "/hook/prompt": result = await runPromptLane(payload, null, base, undefined,
           () => [vault[2].id], { onTelemetry: row => promptRows.push(row),
-            revisionOf: async id => vault.find(memory => memory.id === id)?.revision ?? null }); break;
+            conventionOf: vaultConventionOf(loadedVault) }); break;
         case "/hook/write": result = await runWriteLane(payload, base, cwd); break;
         case "/hook/bash-pre": result = await runBashPreLane(payload, base); break;
         case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool,
@@ -237,6 +259,7 @@ async function fixture(projection = false) {
   }
   return { replay, prompt, tool, hook, requests, promptRows, dir, cwd, stateDir, set, startupProjection,
     async close() {
+      await loadedVault.stop();
       await new Promise<void>(resolve => server.close(() => resolve()));
       for (const [key, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -328,4 +351,31 @@ test("7 real installer provides an always-on startup projection and preserves re
     without: { gate: true, reflex: true, cadence: true, explicitMiss: true, active: true },
     with: { gate: true, reflex: true, cadence: true, explicitMiss: true, active: true } },
   "installer currently provides no always-on recall bootstrap: both startup projections are empty; require a real managed projection plus replay parity");
+});
+
+
+test("8 declared frontmatter validator activates through real prompt → approved-copy → repair → session receipt", options, async () => {
+  const f = await fixture();
+  try {
+    f.set("BASTRA_STOP_SAME_TURN", "1");
+    await f.prompt(ANNOUNCEMENT);
+    await f.prompt("ok");
+    const sid = "replay-fixture-conventions";
+    const state = await loadSessionState(sid);
+    assert.equal(state.activeTask?.kind, "approved-copy");
+    const rule = state.activeConventions?.find((c) => c.id === "fixture-message");
+    assert.deepEqual(rule?.validator, vault[2].validator);
+    assert.match(rule?.revision ?? "", /^sha256:/);
+    const text = "Hallo Alex, das erfundene Paket kommt morgen.";
+    const stop = (repeated = false) => runStopLane({ hook_event_name: "Stop", session_id: sid, cwd: f.cwd,
+      stop_hook_active: repeated, transcript: [{ role: "user", content: "ok" }, { role: "assistant", content: text }] }, "http://127.0.0.1:1");
+    assert.match(await stop(), /copy-repair/);
+    const validation = await callerSessionStore.run(sid, () => validateArtifactHandler({
+      text, channel: rule!.validator!.channel, limit: rule!.validator!.limit,
+      unit: rule!.validator!.unit, normalize: "none", rule: { id: rule!.id, revision: rule!.revision! },
+      task: { kind: state.activeTask!.kind, generation: state.activeTask!.generation },
+    }));
+    assert.equal(validation.receipt_stored, true);
+    assert.equal(await stop(true), "{}");
+  } finally { await f.close(); }
 });

@@ -12,9 +12,8 @@
  * Revisions are the byte revision of the memory file (`memoryRevision`), read
  * through the caller's `revisionOf`; a changed revision adds a reload line.
  */
-import { readFile } from "node:fs/promises";
-import type { Vault } from "@bastra-recall/core";
-import { memoryRevision } from "@bastra-recall/core";
+import type { Vault, ConventionValidator } from "@bastra-recall/core";
+import { vaultConventionOf, type ConventionSource } from "./convention-source.js";
 import { GATED_HINT_TYPES } from "./hook-recall-response.js";
 import { decideTask, taskSignals, type DetectedMode, type TaskKind } from "./prompt-classify.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
@@ -33,6 +32,7 @@ export interface TaskCandidate {
   type: string;
   matched_recall_when?: boolean;
   recall_mode?: string;
+  validator?: ConventionValidator;
 }
 
 export interface TaskStepInput {
@@ -43,6 +43,8 @@ export interface TaskStepInput {
   candidates: readonly TaskCandidate[];
   /** The file revision of a memory id; absent = revisions stay unknown. */
   revisionOf?: (id: string) => Promise<string | null>;
+  /** Authoritative paired metadata; production routes always provide this. */
+  conventionOf?: (id: string) => Promise<ConventionSource>;
   surface: string;
   now?: number;
 }
@@ -55,11 +57,8 @@ export function isTaskConvention(c: TaskCandidate): boolean {
 
 /** `revisionOf` over the daemon's vault index — one small file read per id. */
 export function vaultRevisionOf(vault: Pick<Vault, "get">): (id: string) => Promise<string | null> {
-  return async (id) => {
-    const m = vault.get(id);
-    if (!m?.filePath) return null;
-    return readFile(m.filePath, "utf8").then(memoryRevision, () => null);
-  };
+  const source = vaultConventionOf(vault);
+  return async (id) => (await source(id)).revision;
 }
 
 /**
@@ -109,16 +108,24 @@ async function step(input: TaskStepInput): Promise<string | null> {
 
   // Revisions are read outside the lock: the lock wraps the mutation only (#539).
   const revisions = new Map<string, string | null>();
-  if (input.revisionOf) {
+  const sources = new Map<string, ConventionSource>();
+  if (input.conventionOf || input.revisionOf) {
     const ids = [...new Set([...activeIds, ...activate, ...askAbout])];
-    const read = await Promise.all(ids.map(async (id) => [id, await input.revisionOf!(id).catch(() => null)] as const));
-    for (const [id, rev] of read) revisions.set(id, rev);
+    const read = await Promise.all(ids.map(async (id) => {
+      const source = input.conventionOf
+        ? await input.conventionOf(id).catch(() => ({ revision: null }))
+        : { revision: await input.revisionOf!(id).catch(() => null),
+            validator: input.candidates.find((c) => c.id === id)?.validator };
+      return [id, source] as const;
+    }));
+    for (const [id, source] of read) { revisions.set(id, source.revision); sources.set(id, source); }
   }
 
   const kindChanges = decision.next !== null && decision.next !== current;
   const revisionDrift = (snapshot.activeConventions ?? []).some((e) => {
     const rev = revisions.get(e.id);
-    return typeof rev === "string" && rev !== e.revision;
+    return revisions.has(e.id) && (rev !== e.revision ||
+      (input.conventionOf !== undefined && JSON.stringify(sources.get(e.id)?.validator) !== JSON.stringify(e.validator)));
   });
   const needsWrite =
     kindChanges || activate.length > 0 || decision.unclear || snapshot.taskQuestion !== undefined || revisionDrift;
@@ -139,9 +146,16 @@ async function step(input: TaskStepInput): Promise<string | null> {
     const changed: string[] = [];
     for (const e of s.activeConventions ?? []) {
       const rev = revisions.get(e.id);
-      if (typeof rev !== "string" || rev === e.revision) continue;
-      if (e.revision !== null) changed.push(e.id);
-      e.revision = rev;
+      if (!revisions.has(e.id)) continue;
+      if (rev !== e.revision && e.revision !== null) changed.push(e.id);
+      e.revision = rev ?? null;
+      if (input.conventionOf) {
+        const validator = sources.get(e.id)?.validator;
+        if (validator) e.validator = validator;
+        else delete e.validator;
+      } else if (rev !== snapshot.activeConventions?.find((c) => c.id === e.id)?.revision) {
+        delete e.validator;
+      }
     }
     if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
       s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen };
@@ -160,7 +174,11 @@ async function step(input: TaskStepInput): Promise<string | null> {
       if (typeof then === "string" && typeof nowRev === "string" && then !== nowRev && !changed.includes(id)) changed.push(id);
     }
     if (activate.length > 0) {
-      recordActiveConventions(s, activate.map((id) => ({ id, revision: revisions.get(id) ?? null, scope: "task" as const })), now);
+      recordActiveConventions(s, activate.map((id) => ({
+        id, revision: revisions.get(id) ?? null, scope: "task" as const,
+        validator: input.conventionOf ? sources.get(id)?.validator
+          : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
+      })), now);
     }
     if (decision.unclear) {
       s.taskQuestion = {

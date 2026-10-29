@@ -613,6 +613,36 @@ The save path rejects duplicate ids at the destination path unless `overwrite: t
 
 `overwrite: true` permits an update; it does not give a stale writer permission to replace a newer file. `saveMemory` compares the target again under an exclusive per-path commit claim. Concurrent or stale saves fail with `MemoryWriteConflictError` (`code: "BASTRA_WRITE_CONFLICT"`) and must retry from the current file. Callers that inspect provenance or ownership before saving pass the approved raw file as `expectedTarget` (`null` for a confirmed-absent target), extending the same comparison back to that inspection. See [Architecture: Write commit contract](./architecture.md#write-commit-contract).
 
+### Explicit convention validator (#1323)
+
+A convention may declare a mechanical check in optional frontmatter:
+
+```yaml
+validator:
+  tool: validate_artifact
+  channel: discord-dm
+  limit: 2000
+  unit: utf16
+```
+
+`tool` is `validate_artifact`; `channel` is any nonempty channel name supported
+by the existing copy-block validator, without a new channel enumeration.
+`limit` is a positive integer; `unit` is `codepoints` or `utf16`.
+This declaration stores data and never executes a tool automatically. Task,
+reflex/gate and must-load activation bind it to the convention ID and the file's
+current revision. The daemon reads metadata and revision from the same source
+bytes. A changed or removed declaration replaces the earlier active metadata
+on the next prompt refresh or real load; it is never inferred from prose.
+
+Absence means no declared validator and keeps all previous defaults. Old nodes
+remain valid without migration. Lenient load drops malformed optional validator
+metadata and marks the field as damaged in memory; the file is untouched.
+Save/edit reject malformed declarations. `save_memory` accepts the optional
+field and preserves it on overwrite when omitted. `edit_memory` accepts it in
+`frontmatter`. In either write API, explicit `validator: null` removes the field;
+this write instruction does not persist a null frontmatter value.
+`load_memory` includes the declaration in its normal and full frontmatter.
+
 ### Compatibility Promise (1.0)
 
 From 1.0 on, this schema is under a stated compatibility promise. The package version carries the contract.
