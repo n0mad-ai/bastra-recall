@@ -723,7 +723,9 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   process.stdout.write("→ restarting daemon\n");
   const service = (io.service ?? autostartService)(platform);
   const state = await service?.status();
-  if (service && state?.loaded && platform === "darwin") {
+  if (platform === "darwin" && state?.managed) {
+    process.stdout.write("  managed LaunchAgent restart handled by autostart refresh (bootout + bootstrap)\n\n");
+  } else if (service && state?.loaded && platform === "darwin") {
     if (args.dryRun) {
       process.stdout.write("  would kickstart autostart service\n\n");
     } else {

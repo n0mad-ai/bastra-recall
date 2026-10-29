@@ -562,3 +562,62 @@ test("#1326: node repoint preserves every custom env value and snapshots the exa
     assert.equal(await readFile(plist, "utf8"), unchanged, "snapshot failure must prevent mutation");
   });
 });
+
+test("#1329: shell opt-ins enter new services; existing plist values and custom env win", () => {
+  const shell = { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1", BASTRA_CUSTOM: "shell", UNRELATED_SECRET: "do-not-copy" };
+  const fresh = autostartEnv("/vault", process.execPath, null, "darwin", {}, shell);
+  assert.equal(fresh.BASTRA_TASKS, "1");
+  assert.equal(fresh.BASTRA_TRAINING_CAPTURE, "1");
+  assert.equal(fresh.UNRELATED_SECRET, undefined);
+  const existing = { BASTRA_TASKS: "0", BASTRA_CUSTOM: "persisted", CUSTOM: "keep", PATH: "/custom/bin" };
+  const again = autostartEnv("/vault", process.execPath, null, "darwin", existing, shell);
+  for (const [key, value] of Object.entries(existing)) assert.equal(again[key], value, key);
+  assert.equal(again.BASTRA_TRAINING_CAPTURE, "1");
+  assert.equal(autostartEnv("/vault", process.execPath, null, "darwin", {}, {}).BASTRA_TASKS, undefined);
+});
+
+test("#1329: unchanged runtime still persists missing shell opt-ins and bootstraps the plist", async () => {
+  await withKegFixture(async ({ old, plist, launchctl, plutil, log }) => {
+    const before = await readState(plist, launchctl, plutil);
+    const outcome = await refreshManagedAutostart(() => {}, {
+      target: { node: process.execPath, script: old.script, version: old.version }, reload: true,
+      plistFile: plist, launchctl, plutil, platform: "darwin",
+      env: { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1" },
+    });
+    assert.equal(outcome.ok, true, outcome.detail);
+    const after = await readState(plist, launchctl, plutil);
+    assert.deepEqual(after.env, { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1", ...before.env });
+    const calls = await readFile(log, "utf8");
+    assert.ok(calls.indexOf("bootout") >= 0 && calls.indexOf("bootstrap") > calls.indexOf("bootout"), calls);
+    assert.doesNotMatch(calls, /kickstart/);
+  });
+});
+
+test("#1329: updater never kickstarts a managed service after refresh reloaded it", async (t) => {
+  const { cmdUpdate } = await import("../src/cli/update.js");
+  const { parseArgs } = await import("../src/cli/commands.js");
+  t.mock.method(process.stdout, "write", () => true);
+  let refreshes = 0;
+  let kicks = 0;
+  const state = { exists: true, managed: true, loaded: true, path: "fixture", program: [], env: {}, endpoint: null, danglingProgram: false, missingProgramPath: null };
+  const rc = await cmdUpdate(parseArgs(["update"]), {
+    platform: "darwin", cliPath: "/unknown/location/update.js",
+    install: async () => 0, reapply: () => {}, ask: () => null,
+    refresh: async (_, opts) => { assert.equal(opts.reload, true); refreshes++; return { ok: true, detail: "reloaded" }; },
+    service: () => ({ status: async () => state, install: async () => ({ ok: true, detail: "" }), uninstall: async () => ({ ok: true, detail: "" }), kickstart: async () => { kicks++; return { ok: true, detail: "" }; } }),
+  });
+  assert.equal(rc, 0);
+  assert.equal(refreshes, 1);
+  assert.equal(kicks, 0, "bootout+bootstrap is the reload; kickstart cannot load changed plist env");
+});
+
+test("#1329: readState reports launchd's loaded opt-ins separately from the plist", async () => {
+  await withKegFixture(async ({ dir, plist, plutil }) => {
+    const launchctl = join(dir, "loaded-env-launchctl");
+    await writeFile(launchctl, "#!/bin/sh\nprintf 'job = {\\n\\tenvironment = {\\n\\t\\tBASTRA_TASKS => 0\\n\\t\\tBASTRA_TRAINING_CAPTURE => 1\\n\\t}\\n}\\n'\n", { mode: 0o755 });
+    const state = await readState(plist, launchctl, plutil);
+    assert.equal(state.loaded, true);
+    assert.deepEqual(state.loadedEnv, { BASTRA_TASKS: "0", BASTRA_TRAINING_CAPTURE: "1" });
+    assert.notEqual(state.env.BASTRA_TASKS, "0", "plist and launchd env are distinct evidence");
+  });
+});
