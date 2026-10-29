@@ -297,6 +297,18 @@ export interface OAuthApiCtx {
   state: OAuthState;
 }
 
+// Public token acquisition routes are an explicit allowlist, before the
+// bearer gate. Each handler applies its own OAuth validation/consent checks.
+type PublicOAuthRoute = (req: IncomingMessage, res: ServerResponse, url: string, origin: string, ctx: OAuthApiCtx) => Promise<void>;
+const PUBLIC_OAUTH_ROUTES = new Map<string, ReadonlyMap<string, PublicOAuthRoute>>([
+  ["register", new Map([["POST", (req, res) => handleRegister(req, res)]])],
+  ["authorize", new Map([
+    ["GET", (_req, res, url, origin, ctx) => handleAuthorizeGet(res, url, origin, ctx.state)],
+    ["POST", (req, res, _url, _origin, ctx) => handleAuthorizePost(req, res, ctx)],
+  ])],
+  ["token", new Map([["POST", (req, res, _url, origin, ctx) => handleToken(req, res, origin, ctx.state)]])],
+]);
+
 /** Ahead of the bearer gate: these endpoints ARE how a client gets a token. */
 export function dispatchOAuthApi(
   req: IncomingMessage,
@@ -313,18 +325,14 @@ export function dispatchOAuthApi(
     return true;
   }
   const endpoint = path.slice(OAUTH_PREFIX.length);
-  const run = (p: Promise<void>) => {
-    p.catch((err: Error) => {
-      if (!res.headersSent) oauthError(res, 400, "invalid_request", err.message);
-    });
+  const methods = PUBLIC_OAUTH_ROUTES.get(endpoint);
+  const route = methods?.get(method);
+  if (!route) {
+    sendJson(res, methods ? 405 : 404, { error: "not found" });
     return true;
-  };
-  if (endpoint === "register" && method === "POST") return run(handleRegister(req, res));
-  if (endpoint === "authorize" && method === "GET") return run(handleAuthorizeGet(res, url, origin, ctx.state));
-  if (endpoint === "authorize" && method === "POST") return run(handleAuthorizePost(req, res, ctx));
-  if (endpoint === "token" && method === "POST") return run(handleToken(req, res, origin, ctx.state));
-  sendJson(res, endpoint === "register" || endpoint === "authorize" || endpoint === "token" ? 405 : 404, {
-    error: "not found",
+  }
+  route(req, res, url, origin, ctx).catch((err: Error) => {
+    if (!res.headersSent) oauthError(res, 400, "invalid_request", err.message);
   });
   return true;
 }

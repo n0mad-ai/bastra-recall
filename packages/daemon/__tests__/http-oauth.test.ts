@@ -617,3 +617,29 @@ test("oauth store: unused registrations expire, the cap evicts the oldest unused
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("oauth: exact public route allowlist rejects methods, subpaths and forged consent", async () => {
+  await withServer(async (port, storePath) => {
+    for (const endpoint of ["register", "authorize", "token"]) {
+      for (const method of ["PUT", "DELETE", "PATCH"]) {
+        assert.equal((await call(port, method, `/api/v1/oauth/${endpoint}`)).status, 405);
+      }
+      for (const suffix of ["/extra", "-forged"]) {
+        assert.equal((await call(port, "POST", `/api/v1/oauth/${endpoint}${suffix}`)).status, 404);
+      }
+    }
+    for (const path of ["/api/v1/memories", "/api/v1/status", "/api/v1/oauth-forged/authorize"]) {
+      assert.equal((await call(port, "GET", path)).status, 401, path);
+    }
+    assert.equal((await mcp(port, null, INIT)).status, 401);
+    const clientId = await register(port);
+    const { challenge } = pkce();
+    const requestId = await openAuthorize(port, clientId, challenge);
+    assert.equal((await approve(port, requestId, "")).status, 401);
+    assert.equal((await approve(port, "forged-request", TOKEN)).status, 400);
+    assert.equal((await approve(port, requestId, "forged-token")).status, 401);
+    assert.equal((await approve(port, requestId, TOKEN)).status, 302);
+    const store = JSON.parse(await readFile(storePath, "utf8"));
+    assert.equal(store.grants.length, 0, "consent alone never creates a grant without code+PKCE exchange");
+  });
+});
