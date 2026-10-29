@@ -382,18 +382,42 @@ export async function runCuratorPass(
   }
 }
 
+interface ReflexCandidate {
+  id: string;
+  title: string;
+  count: number;
+  reason?: "user-directed-frustration";
+}
+
 /**
  * #217 Phase 2: Reflex-Kandidaten aus der Telemetrie — Memories, die im
  * Fenster wiederholt (≥ BASTRA_REFLEX_PROMOTION_MIN, default 3) nach einem
  * Recall acted_on waren und noch nicht reflex sind. `events` ist für Tests
  * injizierbar; default liest das echte Event-Log (30 Tage).
+ * #1308 adds user-directed, high-salience frustration without usage demand.
+ * That source is proposed once per id, sharing the persistent suggestion map;
+ * the telemetry source retains its 30-day cooldown. Never changes frontmatter.
  */
 export async function collectReflexCandidates(
   vault: VaultLike,
   state: CuratorState,
   nowMs: number,
   events?: TelemetryEvent[],
-): Promise<{ id: string; title: string; count: number }[]> {
+): Promise<ReflexCandidate[]> {
+  const out: ReflexCandidate[] = [];
+  const frustrationIds = new Set<string>();
+  for (const mem of vault.list()) {
+    const fm = mem.fm;
+    const id = str(fm.id);
+    if (!id || fm.write_origin !== "user-directed" ||
+        typeof fm.salience !== "number" || !(fm.salience >= 0.8) ||
+        fm.emotion !== "frustration" || fm.recall_mode !== undefined ||
+        fm.superseded_by || fm.obsolete === true) continue;
+    frustrationIds.add(id);
+    // Also respects a previous telemetry suggestion, even beyond its cooldown.
+    if (Object.hasOwn(state.reflex_suggested ?? {}, id)) continue;
+    out.push({ id, title: str(fm.title) ?? id, count: 0, reason: "user-directed-frustration" });
+  }
   // logDirFor (nicht der harvest-Default): honoriert NEXUS_LOG_PATH + das
   // Legacy-Verzeichnis ~/.nexus-recall/logs — sonst liest die Promotion auf
   // Migrations-Layouts ein leeres Verzeichnis (Review-Finding #217).
@@ -403,12 +427,11 @@ export async function collectReflexCandidates(
     counts.set(r.memoryId, (counts.get(r.memoryId) ?? 0) + 1);
   }
   const min = Math.max(1, envInt("BASTRA_REFLEX_PROMOTION_MIN", 3));
-  const out: { id: string; title: string; count: number }[] = [];
   for (const [id, count] of counts) {
-    if (count < min) continue;
+    if (count < min || frustrationIds.has(id)) continue;
     const mem = vault.get(id);
     if (!mem) continue;
-    if (mem.fm.recall_mode === "reflex") continue;
+    if (mem.fm.recall_mode === "reflex" || mem.fm.superseded_by || mem.fm.obsolete === true) continue;
     const suggestedAt = state.reflex_suggested?.[id];
     if (suggestedAt && nowMs - Date.parse(suggestedAt) < SUGGEST_COOLDOWN_MS) continue;
     out.push({ id, title: str(mem.fm.title) ?? id, count });
@@ -417,9 +440,10 @@ export async function collectReflexCandidates(
   return out.slice(0, REFLEX_MAX_PER_PASS);
 }
 
-export function formatReflexCandidateBlock(c: { id: string; title: string; count: number }): string {
+export function formatReflexCandidateBlock(c: ReflexCandidate): string {
+  const evidence = c.reason ?? `${c.count} acted-on recalls in 30d`;
   return [
-    `<reflex-candidate memory-id="${escapeAttr(c.id)}" evidence="${c.count} acted-on recalls in 30d">`,
+    `<reflex-candidate memory-id="${escapeAttr(c.id)}" evidence="${evidence}">`,
     `Ask the user whether to promote "${c.title}" to reflex recall — it would ` +
       `then self-inject (budgeted, max 2/turn) whenever one of its recall_when ` +
       `triggers hard-matches a prompt. ONLY on an explicit yes: load_memory` +
@@ -610,9 +634,10 @@ async function runCuratorPassInner(
     // Pass nicht.
     try {
       const blocks: string[] = [];
+      const reflexIds: string[] = [];
       for (const c of await collectReflexCandidates(deps.vault, nextState, nowMs, events ?? undefined)) {
         blocks.push(formatReflexCandidateBlock(c));
-        nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [c.id]: nowIso };
+        reflexIds.push(c.id);
       }
       for (const c of await collectAdoptionCandidates(deps.vault, nextState, nowMs)) {
         blocks.push(formatAdoptionCandidateBlock(c));
@@ -626,7 +651,15 @@ async function runCuratorPassInner(
           [cluster.key]: nowIso,
         };
       }
-      if (blocks.length > 0) await writePendingSuggestion(blocks.join("\n"));
+      if (blocks.length > 0) await writePendingSuggestion(blocks.join("\n"), {
+        onPersisted: () => {
+          // #1308: a best-effort relay return alone is not delivery evidence.
+          // Failed/disabled writes must not permanently consume a candidate.
+          for (const id of reflexIds) {
+            nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [id]: nowIso };
+          }
+        },
+      });
     } catch {
       /* suggestions are best-effort */
     }

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   successful lookup with no matching `recall_when` explicitly says that no
   stored rule matched. A repeated user correction without a subsequent
   `save_memory` gets one existing same-turn save reminder per session (#1307).
+- The curator proposes reflex recall once for user-directed frustration memories
+  with salience at least 0.8 and no recall mode, excluding superseded or obsolete
+  memories. Promotion still requires explicit user confirmation (#1308).
 
 - Codex 0.162.1: the one-time must-load/reflex gate and fork registration,
   with preparation-only hints on unverified runtimes, preserved wrappers,

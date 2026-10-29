@@ -5,7 +5,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -51,6 +52,50 @@ test("pending-suggestions (#48): write → consume-once round-trip, stale entrie
     if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
     else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("writePendingSuggestion onPersisted acknowledges only successfully stored relay rows", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-ack-"));
+  const path = join(dir, "pending.json");
+  const previousPath = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  const previousRelay = process.env.BASTRA_PENDING_RELAY;
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = path;
+  let acknowledgments = 0;
+  const persistedRows: unknown[] = [];
+  const opts = { onPersisted: () => {
+    acknowledgments++;
+    persistedRows.push(JSON.parse(readFileSync(path, "utf8")));
+  } };
+  try {
+    process.env.BASTRA_PENDING_RELAY = "off";
+    await writePendingSuggestion("persist me", opts);
+    assert.equal(acknowledgments, 0);
+    process.env.BASTRA_PENDING_RELAY = "on";
+    await writeFile(path, "invalid JSON");
+    await writePendingSuggestion("persist me", opts);
+    assert.equal(acknowledgments, 0, "skipped unreadable file is not acknowledged");
+    await rm(path);
+    await writePendingSuggestion("persist me", opts);
+    assert.equal(acknowledgments, 1);
+    await writePendingSuggestion("persist me", opts);
+    assert.equal(acknowledgments, 2, "a successfully persisted refresh is acknowledged too");
+    assert.equal(persistedRows.length, 2, "both acknowledgments could already read the persisted row");
+    for (const rows of persistedRows as Array<Array<{ blocks: string }>>) {
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].blocks, "persist me");
+    }
+    await rm(path);
+    await writeFile(path, "directory blocker");
+    process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(path, "pending.json");
+    await writePendingSuggestion("persist me", opts);
+    assert.equal(acknowledgments, 2, "failed filesystem write is not acknowledged");
+  } finally {
+    if (previousPath === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = previousPath;
+    if (previousRelay === undefined) delete process.env.BASTRA_PENDING_RELAY;
+    else process.env.BASTRA_PENDING_RELAY = previousRelay;
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
