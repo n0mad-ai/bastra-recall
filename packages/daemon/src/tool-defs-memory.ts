@@ -23,6 +23,21 @@ interface ToolDef {
 /** Read tools: no vault mutation, safe to run unsupervised. */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false } as const;
 
+/** Shared save/edit wire declaration; null deliberately removes the validator. */
+const VALIDATOR_INPUT = {
+  anyOf: [{
+    type: "object", additionalProperties: false,
+    properties: {
+      tool: { type: "string", enum: ["validate_artifact"] },
+      channel: { type: "string", minLength: 1 },
+      limit: { type: "integer", minimum: 1 },
+      unit: { type: "string", enum: ["codepoints", "utf16"] },
+    },
+    required: ["tool", "channel", "limit", "unit"],
+  }, { type: "null" }],
+  description: "Explicit mechanical validator for this convention. Omit to preserve on overwrite; null removes it. No validator is inferred from prose or channel names.",
+};
+
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
     name: "recall",
@@ -397,6 +412,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "spends the strongest signal on text that is indexed anyway. " +
             "Name the situation, not the content.",
         },
+        validator: VALIDATOR_INPUT,
         verify_cmd: {
           type: "string",
           description:
@@ -635,7 +651,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "- append: add text at the end of the body (it lands before the " +
       "auto-related block, never inside it).\n" +
       "- frontmatter: patch summary, recall_when, tags, issues, related, " +
-      "confidence or valid_until. Nothing else — id, scope, type, sensitivity " +
+      "confidence, valid_until or validator (null removes it). Nothing else — id, scope, type, sensitivity " +
       "and write_origin are rejected here and belong to save_memory or a " +
       "dedicated tool. A list field (recall_when, tags, issues, related) " +
       "REPLACES the whole list: to add a trigger, send the existing entries " +
@@ -693,6 +709,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             related: { type: "array", items: { type: "string" } },
             confidence: { type: "number" },
             valid_until: { type: "string" },
+            validator: VALIDATOR_INPUT,
           },
         },
         expected_revision: {

@@ -21,6 +21,7 @@ import { MUST_LOAD_SCORE } from "./prompt-lane.js";
 /** Ein Reflex-Treffer aus dem Kandidatenpool, in der Form, die
  *  `/hook/recall` seit 20.08. als `reflex_hits` liefert. */
 export interface PoolReflexHit {
+  validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;
   type: string;
@@ -60,6 +61,7 @@ export function collectPoolReflexHits(
       score: c.score,
       matched_recall_when: false as const,
       recall_mode: "reflex" as const,
+      ...(mem.fm.validator ? { validator: mem.fm.validator } : {}),
     }];
   });
 }

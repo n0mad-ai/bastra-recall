@@ -56,6 +56,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // (19.08. incident — see prompt-lane.ts).
   const leanHits = hits.map((h) => withSupersession({
     ...toLeanHit(h),
+    ...(vault.get(h.id)?.fm.validator ? { validator: vault.get(h.id)!.fm.validator } : {}),
     matched_recall_when: h.matched_recall_when ?? false,
     // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
     // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist

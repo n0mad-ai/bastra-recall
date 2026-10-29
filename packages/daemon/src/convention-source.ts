@@ -1,0 +1,28 @@
+/** #1323: read revision and validator from the SAME authoritative file bytes.
+ * The index locates the file; a stale cached frontmatter must not pair a new
+ * revision with an old (or removed) declaration. Never infer one from prose. */
+import { readFile } from "node:fs/promises";
+import { parseMemory, memoryRevision, type Memory, type Vault, type ConventionValidator } from "@bastra-recall/core";
+
+export interface ConventionSource {
+  revision: string | null;
+  validator?: ConventionValidator;
+}
+
+export async function readConventionSource(memory: Pick<Memory, "filePath" | "fm"> | undefined): Promise<ConventionSource> {
+  if (!memory?.filePath) return { revision: null };
+  try {
+    const raw = await readFile(memory.filePath, "utf8");
+    const revision = memoryRevision(raw);
+    // Invalid optional metadata is absent, just as on lenient vault load.
+    try {
+      const parsed = parseMemory(raw, memory.filePath, 0);
+      const validator = parsed.fm.id === memory.fm.id ? parsed.fm.validator : undefined;
+      return { revision, ...(validator ? { validator } : {}) };
+    } catch { return { revision }; }
+  } catch { return { revision: null }; }
+}
+
+export function vaultConventionOf(vault: Pick<Vault, "get">): (id: string) => Promise<ConventionSource> {
+  return (id) => readConventionSource(vault.get(id));
+}

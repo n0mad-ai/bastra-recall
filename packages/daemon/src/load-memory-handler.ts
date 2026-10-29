@@ -3,11 +3,11 @@
  * Split out of tool-handlers.ts (#680, file-size convention); tool-handlers
  * re-exports everything, so the existing import paths keep working.
  */
-import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { memoryRevision, stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
+import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
+import { readConventionSource } from "./convention-source.js";
 import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
@@ -85,6 +85,7 @@ const LEAN_FRONTMATTER_KEYS = [
   // #467: the formula is relevant to applying the memory; its value is a
   // separate, ephemeral `derived` block returned by load_memory.
   "derived_claims",
+  "validator",
 ] as const;
 
 /** Projiziert die volle Frontmatter auf die lean-Teilmenge. Unbekannte/
@@ -180,20 +181,21 @@ export async function loadMemoryHandler(
   // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
   // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
   // wäre kein Vergleich, sondern eine Vermutung.
-  const revision = await readFile(m.filePath, "utf8")
-    .then(memoryRevision)
-    .catch(() => undefined);
+  const source = await readConventionSource(m);
+  const revision = source.revision ?? undefined;
   // #1305: a real load (not an explicit lean dismissal) that answers a
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" ? undefined : { revision: revision ?? null },
+    parsed.data.verbosity === "lean" ? undefined : source,
   );
 
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).
   const full = parsed.data.verbosity === "full";
-  const fm = m.fm as unknown as Record<string, unknown>;
+  const fm: Record<string, unknown> = { ...m.fm };
+  delete fm.validator;
+  if (source.validator) fm.validator = source.validator;
   // verify-Loop: ein Commons-Rezept, das geladen (und gleich angewendet)
   // wird, bringt seine Evidenz + die Aufforderung mit, das Ergebnis zu
   // verewigen — der Agent schließt den Kreis am Ort des Geschehens.

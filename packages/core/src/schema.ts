@@ -1,4 +1,5 @@
 import { z } from "zod";
+import matter from "gray-matter";
 import { truncateSummaryTo, SUMMARY_MAX } from "./summary.js";
 import { rescueFrontmatter, repairRequired } from "./frontmatter-rescue.js";
 
@@ -150,6 +151,15 @@ export function coerceAliases(v: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** #1323: an explicit mechanical check; prose never activates a validator. */
+export const ConventionValidatorSchema = z.object({
+  tool: z.literal("validate_artifact"),
+  channel: z.string().trim().min(1),
+  limit: z.number().int().positive(),
+  unit: z.enum(["codepoints", "utf16"]),
+}).strict();
+export type ConventionValidator = z.infer<typeof ConventionValidatorSchema>;
+
 export const FrontmatterSchema = z.object({
   id: z.string().min(1).refine(isPathSafeComponent, { message: pathSafeMessage }),
   title: z.string().min(1),
@@ -270,6 +280,7 @@ export const FrontmatterSchema = z.object({
   verify_cmd: z.string().min(1).optional(),
   /** #467 follow-up — formulas; the values stay in their sources. */
   derived_claims: z.array(DerivedClaimSchema).optional(),
+  validator: ConventionValidatorSchema.optional(),
   obsolete: z.boolean().optional(),
   replaces: z.string().optional(),
   superseded_by: z.string().optional(),
@@ -374,8 +385,13 @@ export function parseMemory(
   filePath: string,
   mtime: number,
 ): Memory {
-  // gray-matter is dynamically imported by the caller to keep this module pure-ish
-  throw new Error("Use parseMemoryWith(matter, raw, filePath, mtime) instead");
+  // gray-matter caches parsed data by raw bytes. Lenient repair mutates its
+  // input, so give each file/read an owned copy: fallback ids/dates must not
+  // leak from a source probe (mtime 0) into a later real vault load.
+  return parseMemoryWith((input) => {
+    const parsed = matter(input);
+    return { data: structuredClone(parsed.data), content: parsed.content };
+  }, raw, filePath, mtime);
 }
 
 /**

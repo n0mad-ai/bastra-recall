@@ -1,18 +1,20 @@
 /** #1311 R3: invented DM through real prompt, validation, receipt and Stop lanes.
- * Only recall/reflex responses and the convention's validator metadata are fixtures.
+ * Only retrieval responses are fixtures; metadata comes from a real vault file.
  * P2: a later edited artifact still accepts the prior task/generation receipt;
  * Stop intentionally does not compare a transcript-derived artifact hash.
  */
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Vault, saveMemory } from "@bastra-recall/core";
+import { vaultConventionOf } from "../src/convention-source.js";
 import { callerSessionStore } from "../src/caller-session.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runStopLane } from "../src/stop-lane.js";
-import { loadSessionState, mutateSessionState } from "../src/session-state.js";
+import { loadSessionState } from "../src/session-state.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
 
 const ANNOUNCE = "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, pourrais-tu confirmer la visite fictive demain ?";
@@ -21,10 +23,12 @@ const CONVENTION = {
   id: "invented-dm-convention", title: "Invented DM convention", type: "workflow", scope: "all-projects",
   summary: "Translate, draft, then validate the approved DM before copy.", score: 150,
   matched_recall_when: true, recall_mode: "reflex",
+  validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" } as const,
 };
 let root = "";
 let base = "";
 let server: Server;
+let vault: Vault;
 const saved = new Map<string, string | undefined>();
 
 before(async () => {
@@ -37,6 +41,14 @@ before(async () => {
     saved.set(key, process.env[key]);
     process.env[key] = value;
   }
+  const vaultRoot = join(root, "vault");
+  await mkdir(vaultRoot);
+  await saveMemory(vaultRoot, { id: CONVENTION.id, title: CONVENTION.title, type: "workflow",
+    summary: CONVENTION.summary, body: "Translate, draft, validate approved copy.",
+    scope: "all-projects", topic_path: ["fixture"], tags: ["fixture"], recall_when: ["eingegangene Nachricht"],
+    validator: CONVENTION.validator });
+  vault = new Vault(vaultRoot);
+  await vault.init();
   server = createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => raw += chunk);
@@ -56,6 +68,7 @@ before(async () => {
 });
 
 after(async () => {
+  await vault.stop();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   for (const [key, value] of saved) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -65,19 +78,14 @@ after(async () => {
 
 async function prompt(sid: string, text: string): Promise<string> {
   return runPromptLane({ hook_event_name: "UserPromptSubmit", session_id: sid, prompt: text, cwd: root }, null, base, undefined, () => [CONVENTION.id], {
-    revisionOf: async () => "sha256:invented-dm-1",
+    conventionOf: vaultConventionOf(vault),
   });
 }
 
 async function approved(sid: string): Promise<void> {
   assert.match(await prompt(sid, ANNOUNCE), /draft-for-review/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
-  // The real task lane binds the invented convention; supply its validator metadata.
-  await mutateSessionState(sid, (state) => {
-    const convention = state.activeConventions?.find((c) => c.id === CONVENTION.id);
-    assert.ok(convention);
-    convention.validator = { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" };
-  });
+  assert.deepEqual((await loadSessionState(sid)).activeConventions?.find((c) => c.id === CONVENTION.id)?.validator, CONVENTION.validator);
   assert.match(await prompt(sid, "ok"), /approved-copy/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "approved-copy");
 }

@@ -50,6 +50,7 @@ const ALTERNATIVE_SPLIT_RE = new RegExp(
 );
 
 export interface ReflexHit {
+  validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;
   type: string;
@@ -339,6 +340,7 @@ const toReflexHit = (m: ReflexMatch): ReflexHit => ({
   scope: m.memory.fm.scope,
   summary: truncateSummary(m.memory.fm.summary),
   matched_phrase: m.phrase,
+  ...(m.memory.fm.validator ? { validator: m.memory.fm.validator } : {}),
 });
 
 export function handleHookReflex(

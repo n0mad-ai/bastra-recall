@@ -32,12 +32,13 @@
  * over the Bash lane's `allow` + `updatedInput` (precedence deny > defer > ask >
  * allow, code.claude.com/docs/en/hooks). The retry runs the rm shim again.
  */
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Memory, Vault } from "@bastra-recall/core";
-import { memoryRevision, stripAutoRelatedSection } from "@bastra-recall/core";
+import { stripAutoRelatedSection } from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
+import { readConventionSource } from "./convention-source.js";
 import { envFirst, envInt, envOff } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
 import { hookAgent, hookGateAvailable, hookClientEvidence } from "./hook-surface.js";
@@ -176,7 +177,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   const reflexCandidates = matched.length > 0 ? await servedReflex(matched) : [];
   // #1305: a delivered reflex rule is in force from here on, at this revision.
   const reflexRevisions = new Map(
-    await Promise.all(reflexCandidates.map(async (m) => [m.memory.fm.id, await revisionOf(m.memory)] as const)),
+    await Promise.all(reflexCandidates.map(async (m) => [m.memory.fm.id, await readConventionSource(m.memory)] as const)),
   );
 
   let claimedMustLoad: PendingMustLoad[] = [];
@@ -197,7 +198,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       if (claimedReflex.length > 0) {
         for (const m of claimedReflex) denied.add(m.memory.fm.id);
         state.deniedReflex = [...denied].slice(-DENIED_REFLEX_CAP);
-        recordActiveConventions(state, claimedReflex.map((m) => ({ id: m.memory.fm.id, revision: reflexRevisions.get(m.memory.fm.id) ?? null })));
+        recordActiveConventions(state, claimedReflex.map((m) => ({ id: m.memory.fm.id, ...(reflexRevisions.get(m.memory.fm.id) ?? { revision: null }) })));
       }
     }
     if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
@@ -277,11 +278,6 @@ async function redeliverKernel(
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text },
   });
-}
-
-async function revisionOf(m: Memory): Promise<string | null> {
-  if (!m.filePath) return null;
-  return readFile(m.filePath, "utf8").then(memoryRevision, () => null);
 }
 
 function matchActionReflex(pool: readonly Memory[], toolName: string, input: Record<string, unknown>): ReflexMatch[] {

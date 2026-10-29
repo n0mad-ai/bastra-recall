@@ -563,11 +563,12 @@ const CLAIMED_MUST_LOAD_CAP = 20;
 
 /** #1305: put conventions in force (mutates in place). A convention set again
  *  moves to the newest position with its current revision. #1306: it keeps
- *  the scope and validator it was first set with — a session-wide rule does
- *  not become task-bound because a task named it too. */
+ *  its original scope — a session-wide rule does
+ *  not become task-bound because a task named it too. Validator metadata is
+ *  replaced authoritatively; omission removes an earlier declaration. */
 export function recordActiveConventions(
   state: SessionState,
-  set: ReadonlyArray<{ id: string; revision: string | null; scope?: "task" }>,
+  set: ReadonlyArray<{ id: string; revision: string | null; scope?: "task"; validator?: ConventionValidator }>,
   now: number = Date.now(),
 ): void {
   if (set.length === 0) return;
@@ -582,7 +583,7 @@ export function recordActiveConventions(
       revision: e.revision,
       setAt: now,
       ...(scope ? { scope } : {}),
-      ...(old?.validator ? { validator: old.validator } : {}),
+      ...(e.validator ? { validator: e.validator } : {}),
     });
   }
   state.activeConventions = kept.slice(-ACTIVE_CONVENTIONS_CAP);
@@ -650,7 +651,7 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
  */
 export async function clearPendingMustLoad(
   memId: string,
-  activate?: { revision: string | null },
+  activate?: { revision: string | null; validator?: ConventionValidator },
 ): Promise<void> {
   if (!memId) return;
   try {
@@ -675,7 +676,7 @@ export async function clearPendingMustLoad(
           if (rest.length > 0) state.claimedMustLoad = rest;
           else delete state.claimedMustLoad;
         }
-        if ((pending || claimed) && activate) recordActiveConventions(state, [{ id: memId, revision: activate.revision }]);
+        if ((pending || claimed || state.activeConventions?.some((c) => c.id === memId)) && activate) recordActiveConventions(state, [{ id: memId, ...activate }]);
       });
     }
   } catch {
