@@ -127,8 +127,8 @@ test("configured state: LaunchAgent env with the daemon.env pins on top; nothing
   assert.equal(pins?.fingerprint, configFingerprint(SERVICE_ENV));
   assert.deepEqual(pins?.sources, ["daemon.env in ~/.bastra/cli-settings.json"]);
 
-  // The managed plist as bastra writes it holds no behaviour setting.
-  const agentEnv = autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", "http://127.0.0.1:26723");
+  // Without shell opt-ins the managed plist has no behaviour setting (#1329).
+  const agentEnv = autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", "http://127.0.0.1:26723", "darwin", {}, {});
   const agent = configuredState(undefined, agentEnv);
   assert.equal(agent?.fingerprint, configFingerprint({}));
   assert.deepEqual(agent?.sources, ["the bastra LaunchAgent env"]);
@@ -144,7 +144,7 @@ test("the plist's env is read back for the comparison", { skip: process.platform
   const plist = join(dir, "agent.plist");
   await writeFile(
     plist,
-    renderPlist({ ...autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", null), BASTRA_TRIGGER_EXPAND: "0" }, ["/opt/homebrew/bin/node", plist]),
+    renderPlist({ ...autostartEnv("/Users/a/vault", "/opt/homebrew/bin/node", null, "darwin", {}, {}), BASTRA_TRIGGER_EXPAND: "0" }, ["/opt/homebrew/bin/node", plist]),
     "utf8",
   );
   const state = await readState(plist);

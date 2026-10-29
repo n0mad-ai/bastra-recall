@@ -435,9 +435,8 @@ test("#531 the managed LaunchAgent freezes the port the daemon must bind, and ke
     assert.equal(refreshed.BASTRA_HTTP_PORT, "26723");
   }
 
-  // An agent written with no endpoint configured anywhere stays as narrow as
-  // it always was.
-  const bare = autostartEnv("/vault", "/opt/homebrew/bin/node", endpointToPersist(null, resolveDaemonEndpoint({ HOME: "/tmp" })));
+  // No configured endpoint and an explicitly empty shell leave the port unset.
+  const bare = autostartEnv("/vault", "/opt/homebrew/bin/node", endpointToPersist(null, resolveDaemonEndpoint({ HOME: "/tmp" })), "darwin", {}, {});
   assert.equal("BASTRA_HTTP_PORT" in bare, false);
 });
 
