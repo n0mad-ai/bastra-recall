@@ -112,3 +112,30 @@ test("missing or invalid validator outcomes are unverified attempts, never failu
   assert.equal(rows[0].followed, "unknown");
   assert.match(renderConventions(rows), /validator-attempts=3 failed-validations=1 unverified-validations=2/);
 });
+
+test("exhausted repairs retain reported lower-bound attempts and explicit unknown attribution", () => {
+  const rows = aggregateConventions([
+    event("non_conformance", "known", { reason: "repair_exhausted", task_id: "task-1", generation: 4, attempts: 2 }),
+    // The existing stop producer may put a fallback UUID in session_id;
+    // without explicit session_known=true it cannot establish a session.
+    { kind: "non_conformance", ts, session_id: "known", reason: "repair_exhausted", task_id: "task-2", generation: 5, attempts: 1 },
+    event("non_conformance", null, { reason: "repair_exhausted", task_id: "task-3" }),
+    event("non_conformance", "unrelated", { reason: "different_reason", attempts: 9 }),
+  ]);
+  assert.equal(rows.length, 2);
+  const known = rows.find(row => row.session === "known")!;
+  assert.equal(known.repairExhausted, 1);
+  assert.equal(known.reportedRepairAttempts, 2);
+  assert.equal(known.unverifiedRepairAttemptCounts, 0);
+  assert.equal(known.followed, "unknown");
+  assert.deepEqual([...known.repaired], ["exhausted"]);
+  assert.equal(known.firstVisible.size, 0);
+  const unknown = rows.find(row => !row.session_known)!;
+  assert.equal(unknown.repairExhausted, 2);
+  assert.equal(unknown.reportedRepairAttempts, 1);
+  assert.equal(unknown.unverifiedRepairAttemptCounts, 1);
+  assert.equal(unknown.followed, "unknown");
+  const output = renderConventions(rows);
+  assert.match(output, /session=known .*generation=4 first-visible=unknown repaired=exhausted/);
+  assert.match(output, /total .*repair-exhausted=3 repair-attempts-reported-lower-bound=3 repair-attempt-counts-unknown=1/);
+});
