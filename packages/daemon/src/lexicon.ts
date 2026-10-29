@@ -506,3 +506,40 @@ export function draftReplyCues(): string[] {
 export function quoteHeaderCues(): string[] {
   return loadCues("quote-header", Object.values(DEFAULT_QUOTE_HEADER_CUES_BY_LANGUAGE).flat());
 }
+
+
+/** #1328: recipient intent, copy requests and review labels remain extensible data. */
+export const DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "(?:nachricht|frage|antwort)\\s+(?:[\\p{L}]+\\s+){0,5}an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
+    "an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*\\s+(?:schicken|senden|schreiben)",
+  ],
+  en: [
+    "(?:send|forward)\\s+(?:the\\s+)?(?:message|question|reply)\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
+    "write\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*(?![\\p{L}\\p{N}_./-])",
+  ],
+};
+const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["englisch(?:e\\p{L}*\\s+fassung)?", "(?:ü|ue)bersetz\\p{L}*"],
+  en: ["english\\s+(?:version|copy|text)", "translate(?:\\s+it)?"],
+};
+const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],
+  en: ["but", "shorter", "wrong", "correct", "revise", "change"],
+};
+const ASSISTANT_REVIEW_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
+  en: ["german\\s+draft(?:\\s+for\\s+review)?"],
+};
+export function sendPersonCues(): string[] { return loadCues("send-person", Object.values(DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE).flat()); }
+export function targetCopyCues(): string[] { return loadCues("target-copy", Object.values(TARGET_COPY_CUES).flat()); }
+export function copyRevisionCues(): string[] { return loadCues("copy-revision", Object.values(COPY_REVISION_CUES).flat()); }
+export function assistantReviewCues(): string[] { return loadCues("assistant-review", Object.values(ASSISTANT_REVIEW_CUES).flat()); }
+
+/** Short recipient follow-ups need a correspondence context to avoid file-writing cues. */
+const RECIPIENT_FOLLOWUP_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["(?<![./])@?[\\p{L}][\\p{L}\\p{N}_-]*\\s+schreiben"],
+};
+export function recipientFollowupCues(): string[] {
+  return loadCues("recipient-followup", Object.values(RECIPIENT_FOLLOWUP_CUES).flat());
+}

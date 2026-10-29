@@ -6,6 +6,10 @@
  */
 import {
   approvedCopyCues,
+  sendPersonCues,
+  recipientFollowupCues,
+  targetCopyCues,
+  copyRevisionCues,
   composeVerbCues,
   correspondenceCues,
   cueRegex,
@@ -229,6 +233,10 @@ export interface TaskSignals {
   ack: boolean;
   /** An explicit approval phrase ("freigegeben", "approved copy"). */
   approvedCopy: boolean;
+  sendPerson?: boolean;
+  recipientFollowup?: boolean;
+  targetCopy?: boolean;
+  revision?: boolean;
 }
 
 export function taskSignals(prompt: string): TaskSignals {
@@ -244,6 +252,10 @@ export function taskSignals(prompt: string): TaskSignals {
     approval: bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare),
     ack: own.length > 0 && cueRegex(taskApprovalCues(), true).test(own),
     approvedCopy: has(approvedCopyCues()),
+    sendPerson: has(sendPersonCues()),
+    recipientFollowup: has(recipientFollowupCues()),
+    targetCopy: has(targetCopyCues()),
+    revision: has(copyRevisionCues()),
   };
 }
 
@@ -257,6 +269,8 @@ export interface TaskContext {
   hitActive: boolean;
   /** This prompt surfaced a new topic outside the active conventions. */
   hitOther?: boolean;
+  /** A correspondence rule is active, pending clarification, or surfaced now. */
+  correspondenceActive?: boolean;
 }
 
 /** `next` null keeps the state; `unclear` asks the user with the choice line. */
@@ -280,6 +294,11 @@ export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
   if (sig.translate) return { next: "translate-only", unclear: false };
   if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
   if (sig.approval && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
+  if (sig.targetCopy && !sig.revision && !sig.quoted &&
+      (ctx.current === "draft-for-review" || (sig.ack && ctx.correspondenceActive))) {
+    return { next: "approved-copy", unclear: false };
+  }
+  if (sig.sendPerson || (sig.recipientFollowup && ctx.correspondenceActive)) return { next: "draft-for-review", unclear: false };
   if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
   if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
   if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };

@@ -71,6 +71,7 @@ import { noteSessionForHarvest } from "./session-harvest.js";
 import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
 import { appendProductDocHint, correctionReminderSuggestions, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
 import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
+import { recordReviewDraft } from "./stop-task.js";
 import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
@@ -154,6 +155,7 @@ export async function runStopLane(
   } catch {
     turns = null;
   }
+  await recordReviewDraft(payload.session_id, turns ?? []).catch(() => {});
   await parkBoundaryNote(payload, turns ?? []).catch(() => {});
   // #675: book the session for the after-session harvest (a daemon job reads
   // the transcript once the session has gone quiet — nothing of it runs here).

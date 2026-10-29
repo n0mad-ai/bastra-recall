@@ -84,6 +84,9 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const decision = decideTask(taskSignals(input.prompt), {
     current,
     questionOpen,
+    correspondenceActive: (snapshot.activeConventions ?? []).some(c => c.validator) ||
+      (questionOpen && (snapshot.taskQuestion?.conventions?.length ?? 0) > 0) ||
+      input.candidates.some(c => isTaskConvention(c) && c.validator),
     mode: input.mode,
     hitActive: input.candidates.some((c) => activeIds.has(c.id)),
     // No recall hit is not evidence of a new subject: terse edit requests
