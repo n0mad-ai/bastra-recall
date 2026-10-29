@@ -47,7 +47,7 @@ import { randomUUID } from "node:crypto";
 import { envFirst, envOff, testRunLogDir } from "./env.js";
 
 /** Every lane a client can run. One entry per hook registration. */
-export type ClientLane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
+export type ClientLane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo" | "gate";
 
 /** What the node thin clients stamp so their rows are recognizable as client
  *  rows (`-thin`) and can be folded. `prompt-hook.ts` and `hook.ts` carry their
@@ -144,6 +144,15 @@ export const CLIENT_ROW_BASE: Record<ClientLane, Record<string, unknown>> = {
     top_score: null,
     hint_tokens_est: 0,
     backoff_streak: 0,
+  },
+  // #1303: the gate never decided — the call passed. The client adds
+  // `non_conformance` (`gate_timeout` or `gate_unavailable`).
+  gate: {
+    kind: "gate_hook_call",
+    tool_name: null,
+    outcome: "pass",
+    must_load_ids: [],
+    reflex_ids: [],
   },
 };
 

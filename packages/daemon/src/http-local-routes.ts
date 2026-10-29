@@ -34,6 +34,7 @@ import { runBashPreLane, type BashHookPayload } from "./bash-pre-lane.js";
 import { runBashFailLane, type BashFailPayload } from "./bash-fail-lane.js";
 import { recallWriteTool, runSaveNoticeLane, type SaveNoticePayload } from "./save-notice-lane.js";
 import { dispatchLaneRoutes } from "./http-lane-routes.js";
+import { cachedActionReflexPool } from "./gate-lane.js";
 import { distinctiveTokensForActedOn, type ToolDeps } from "./tool-handlers.js";
 import { handleHookCare } from "./webui.js";
 import { listConventions, detectTaxonomyDrift } from "./taxonomy.js";
@@ -269,7 +270,8 @@ export function dispatchLocalRoutes(
     parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "SessionStart",
       additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
     res.once("finish", due.record); return JSON.stringify(parsed);
-  }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"))) return true;
+  }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
+  () => cachedActionReflexPool(vault))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

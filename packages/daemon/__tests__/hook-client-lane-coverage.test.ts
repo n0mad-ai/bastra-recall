@@ -80,6 +80,8 @@ const PAYLOAD: Record<ClientLane, Record<string, unknown>> = {
     tool_name: "TodoWrite",
     tool_input: { todos: [{ content: "measure the lane", status: "pending" }] },
   },
+  // #1303: any tool reaches the gate; nothing is filtered client-side.
+  gate: { hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/tmp/bastra-gate/app.ts" } },
 };
 
 /** A port nothing listens on, so the POST fails the way a down daemon makes it

@@ -177,7 +177,7 @@ function windowsSettings(): Record<string, unknown> {
 test("a Windows install registers every lane — doctor does not call it broken", () => {
   const settings = windowsSettings();
   assert.deepEqual(missingRequiredHookRegistrations(settings), []);
-  assert.equal(registeredHookBins(settings).size, 7);
+  assert.equal(registeredHookBins(settings).size, 8);
 });
 
 test("the executed path of a Windows command comes back native, so the #321 check runs there too", async () => {

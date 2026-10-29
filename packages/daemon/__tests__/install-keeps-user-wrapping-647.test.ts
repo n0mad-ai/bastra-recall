@@ -134,10 +134,15 @@ test("Claude Code: a wrapped registration on the stub is still seen as registere
   };
   const plan = planHookEntries("install", hooks, { includeStop: false, stubPresent: true });
   for (const c of Object.values(plan.after).flatMap((e) => commandsOf(e as unknown[]))) {
+    // #1303: the gate lane is new in this install — it had no wrapper to keep.
+    if (c.endsWith(" gate")) {
+      assert.equal(c, `BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} gate`);
+      continue;
+    }
     assert.ok(c.startsWith(`BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer ${HOOK_STUB_BIN} `), c);
   }
   assert.deepEqual(missingRequiredHookRegistrations(plan.after), [], "doctor: no required lane missing");
-  assert.equal(registeredHookBins(plan.after).size, 6, "doctor: every required lane registered");
+  assert.equal(registeredHookBins(plan.after).size, 7, "doctor: every required lane registered");
   const again = planHookEntries("install", plan.after, { includeStop: false, stubPresent: true });
   assert.deepEqual(again.after, plan.after, "idempotent");
 });

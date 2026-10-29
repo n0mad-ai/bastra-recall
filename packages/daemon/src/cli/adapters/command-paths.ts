@@ -189,7 +189,7 @@ export function runsOurHookRunner(cmd: string, files: string[], clientMarker: st
     return files.includes(fileOf(script)) && (marked || words[at + 2] === `--client=${clientMarker.split("=")[1]}` || script.includes("/daemon/dist/"));
   }
   if (/^bastra-hook(\.exe)?$/.test(program)) {
-    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "") &&
+    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop", "gate"]).has(words[at + 1] ?? "") &&
       (stubSubcommand === undefined || words[at + 1] === stubSubcommand);
   }
   const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);

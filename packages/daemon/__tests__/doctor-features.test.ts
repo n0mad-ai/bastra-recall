@@ -297,12 +297,13 @@ test("claude-code: disableAllHooks, a missing Stop hook and a missing skill reac
   await writeFile(join(home, ".claude", "settings.json"), JSON.stringify({
     disableAllHooks: true,
     hooks: {
-      SessionStart: [{ matcher: "startup|resume|clear|compact", ...lane("session") }],
+      SessionStart: [{ matcher: "startup|resume|clear|compact|fork", ...lane("session") }],
       UserPromptSubmit: [lane("prompt")],
       PreToolUse: [
         { matcher: "Write|Edit|MultiEdit|NotebookEdit", ...lane("write") },
         { matcher: "TodoWrite|TaskCreate|ExitPlanMode", ...lane("todo") },
         { matcher: "Bash", ...lane("bash-pre") },
+        { matcher: "*", ...lane("gate") },
       ],
       PostToolUse: [{ matcher: "Bash", ...lane("bash-fail") }, { matcher: SAVE_NOTICE_MATCHER, ...lane("bash-fail") }],
       PostToolUseFailure: [{ matcher: "Bash", ...lane("bash-fail") }],

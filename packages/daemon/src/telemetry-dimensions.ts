@@ -80,6 +80,8 @@ export const HOOK_SOURCES = [
   "bash-fail",
   "save-notice",
   "todo",
+  // #1303: the catch-all PreToolUse gate.
+  "gate",
   "mcp",
   // #265: der geteilte Session-Assembler. Kein Hook, aber eine eigene
   // Oberfläche — ohne eigenen Wert wären seine Recalls von denen des

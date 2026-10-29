@@ -56,8 +56,10 @@ import {
   takeBoundary,
   takeParkedBoundary,
   wasEmitConsumed,
+  bookPendingMustLoad,
   type TakenBoundary,
 } from "./session-state.js";
+import { isGatedHint } from "./hook-recall-response.js";
 import {
   MUST_LOAD_SCORE,
   SCORE_FLOOR,
@@ -599,6 +601,12 @@ export async function runPromptLane(
   let suppressedTokensEst = 0;
   let consumedForEmit = false;
   let recallBlock: string | null = null;
+  // #1303: the hints the catch-all gate holds the next tool call for. Claude
+  // Code only — the deny is its contract — and never for a shadow replay.
+  const gateActive = client === "claude-code" && !replay;
+  const gatedRecall = new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []);
+  // A reflex hit is user-wired by definition; only its type decides.
+  const gatedReflex = new Set(gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []);
   if (recallHits.length > 0) {
     // #161 empty-streak backoff (see session-state.ts): unconsumed injection
     // streaks widen the cadence; any load of an emitted candidate resets.
@@ -627,6 +635,7 @@ export async function runPromptLane(
       client,
       resp?.degraded,
       resp?.recall_id,
+      gatedRecall,
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
@@ -639,7 +648,7 @@ export async function runPromptLane(
     }
   }
 
-  const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client) : null;
+  const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null;
   const impact = await impactPromise;
 
   // #572: the task-boundary block the last Stop parked for THIS session.
@@ -665,6 +674,7 @@ export async function runPromptLane(
   // taken, not against the snapshot read before the recall — the other four
   // lanes write the same file in the meantime.
   if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null || takeBoundaryNow) {
+    const gateBlockId = `prompt:${startedAt.toString(36)}`;
     const recallIds = recallHits.map((h) => h.id);
     const impactKey = impact.dedupeKey;
     await mutateSessionState(sessionId, (s) => {
@@ -687,6 +697,9 @@ export async function runPromptLane(
       if (recallBlock) {
         for (const h of recallHits) bumpShown(s, h.id);
       }
+      // #1303: beside the shown-state, the must-load the gate will claim —
+      // again only for what reached the transcript.
+      bookPendingMustLoad(s, [...gatedReflex, ...(recallBlock ? gatedRecall : [])], gateBlockId);
     });
   }
   // The assignment happens inside the mutation callback, which TypeScript's

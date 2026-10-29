@@ -57,6 +57,7 @@ class BastraRecall < Formula
     bin.install_symlink libexec/"packages/daemon/dist/todo-hook.js" => "bastra-recall-todo-hook"
     bin.install_symlink libexec/"packages/daemon/dist/bash-pre-hook.js" => "bastra-recall-bash-pre-hook"
     bin.install_symlink libexec/"packages/daemon/dist/bash-fail-hook.js" => "bastra-recall-bash-fail-hook"
+    bin.install_symlink libexec/"packages/daemon/dist/gate-hook.js" => "bastra-recall-gate-hook"
     bin.install_symlink libexec/"packages/daemon/dist/stop-hook.js" => "bastra-recall-stop-hook"
     bin.install_symlink libexec/"packages/statusline/bin/claude-powerline" => "bastra-statusline"
   end

@@ -62,6 +62,8 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
     ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
     ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
+    // #1303: the gate's evidence that the user dictated the rule.
+    ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
   }, vault));
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
   // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die

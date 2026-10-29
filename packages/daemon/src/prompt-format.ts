@@ -21,7 +21,18 @@ export interface RecallHit {
   /** P0/#360: how firmly the prompt's own words anchor the memory's
    *  triggers; absent when no trigger term matched at all. */
   anchor_strength?: "strong" | "weak";
+  /** #148: the hit matched on its hand-written `recall_when` (#1303 gate). */
+  matched_recall_when?: boolean;
+  /** #1303: who wrote the memory — the gate's user-directed evidence. */
+  write_origin?: "user-directed" | "agent-session" | "capture-review";
 }
+
+/**
+ * #1303: the wording a gated id carries — and only a gated id. The gate lane
+ * interrupts the next tool call once; anything stronger ("hints, not
+ * obligations" aside) would describe a gate that does not exist.
+ */
+export const MUST_LOAD_MARK = " [must-load: the next tool call is interrupted once until loaded or dismissed]";
 
 /** #217 Reflex-Lane: lean hit vom /hook/reflex-Endpoint. */
 export interface PromptReflexHit {
@@ -35,14 +46,15 @@ export interface PromptReflexHit {
 
 // ─── formatting ─────────────────────────────────────────────────────────────
 
-function formatHintLine(h: RecallHit, hideScore = false): string {
+function formatHintLine(h: RecallHit, hideScore = false, gated?: ReadonlySet<string>): string {
   const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
+  const mark = gated?.has(h.id) ? MUST_LOAD_MARK : "";
   // P0: Auf der unfused Skala ist die Zahl nicht vergleichbar — weder mit den
   // Bändern noch zwischen zwei Aufrufen. Sie wegzulassen ist ehrlicher, als
   // eine Größenordnung zu zeigen, die zum Vergleichen einlädt.
   return hideScore
-    ? `- ${h.id} (${h.type}): ${summary}`
-    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
+    ? `- ${h.id} (${h.type}): ${summary}${mark}`
+    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}${mark}`;
 }
 
 export function formatHintBlock(
@@ -61,6 +73,8 @@ export function formatHintBlock(
   // marker) that step 1 already ran — a second `recall` on the same intent
   // would only return the same candidates as another payload.
   recallId?: string,
+  /** #1303: ids the gate lane holds the next tool call for. */
+  gated?: ReadonlySet<string>,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const idAttr = recallId ? ` recall_id="${escapeAttr(recallId)}"` : "";
@@ -110,7 +124,7 @@ export function formatHintBlock(
     // Wortwahl, die die Write-Lane bereits benutzt.
     sections.push(unfusedHeadline("this prompt", unfusedReasonFor(degraded)));
     sections.push("");
-    for (const h of hits) sections.push(formatHintLine(h, true));
+    for (const h of hits) sections.push(formatHintLine(h, true, gated));
   }
 
   if (required.length > 0) {
@@ -124,7 +138,7 @@ export function formatHintBlock(
           `${CANDIDATES_ONLY_NOTICE} load_memory(id) the relevant ones before responding ` +
           `(hints, not obligations; honor an explicit count or scope from the user):`,
     );
-    for (const h of required) sections.push(formatHintLine(h));
+    for (const h of required) sections.push(formatHintLine(h, false, gated));
   }
 
   if (optional.length > 0) {
@@ -132,7 +146,7 @@ export function formatHintBlock(
     sections.push(
       `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only if title/summary directly relates:`,
     );
-    for (const h of optional) sections.push(formatHintLine(h));
+    for (const h of optional) sections.push(formatHintLine(h, false, gated));
   }
 
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
@@ -142,7 +156,13 @@ export function formatHintBlock(
  * #217 Reflex-Block: eigener trigger="reflex"-Frame, damit das Modell die
  * Herkunft (vom User verdrahteter Trigger, kein Score-Ranking) erkennt.
  */
-export function formatReflexBlock(hits: PromptReflexHit[], project: string | null, surface = "claude-code"): string {
+export function formatReflexBlock(
+  hits: PromptReflexHit[],
+  project: string | null,
+  surface = "claude-code",
+  /** #1303: ids the gate lane holds the next tool call for. */
+  gated?: ReadonlySet<string>,
+): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="reflex"${projAttr}>`;
   const sections: string[] = [
@@ -151,7 +171,7 @@ export function formatReflexBlock(hits: PromptReflexHit[], project: string | nul
   ];
   for (const h of hits) {
     const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-    sections.push(`- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}`);
+    sections.push(`- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}${gated?.has(h.id) ? MUST_LOAD_MARK : ""}`);
   }
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), `</recall-hints>`].join("\n");
 }

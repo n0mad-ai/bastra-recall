@@ -12,7 +12,9 @@ moment Claude is about to act, fail, or stop. The agent reads the hook output
 as `additionalContext` and can `load_memory(id)` the hits before proceeding.
 
 All hooks are **non-blocking**: they never set `block: true`. Worst case they
-emit `{}` and Claude continues unaffected. They share three discipline rules:
+emit `{}` and Claude continues unaffected. The one exception is the gate lane
+(#1303, below): it may interrupt a tool call **once**, and only after its claim
+is on disk. They share three discipline rules:
 
 - Hard wall-clock budget, **per lane** (#305 — see the table below).
 - Any failure path emits `{}` and exits 0.
@@ -33,6 +35,7 @@ slow answer.
 | `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `PreToolUse` gate (every tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
 
 `#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
@@ -95,6 +98,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
+| `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (every tool)                          | One-time must-load and action-time reflex deny (#1303)    |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recall's own write tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Save notice: one line that says what was saved or edited |
 | `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optional autonomous save-eval at end of session (#35); SessionEnd books the finished session for the harvest (#675) |
@@ -108,7 +112,7 @@ Default shape written by `bastra install claude-code`:
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
       }
     ],
@@ -129,6 +133,10 @@ Default shape written by `bastra install claude-code`:
       {
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-pre-hook", "timeout": 2 }]
+      },
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "bastra-recall-gate-hook", "timeout": 2 }]
       }
     ],
     "PostToolUse": [
@@ -656,6 +664,50 @@ topics (a Discord bot token, avatar corners, UI layout) that shared a path
 token with the command. The static STOP / CAUTION / reversible-form text is
 unconditional. `bash_hook_call` carries `dropped_unanchored_count`. To have a
 rule appear here, give it a `recall_when` that names the command.
+
+#### `bastra-recall-gate-hook` (#1303, Claude Code only)
+
+**Existing installations:** after updating, run `bastra install claude-code`
+again to register the gate and add `fork` to the SessionStart matcher. Until then,
+`bastra doctor` reports the missing gate registration and `fork` matcher.
+
+Registered on `PreToolUse` with the matcher `*`, so it sees every tool call
+("`*`, `""`, or omitted — Match all", code.claude.com/docs/en/hooks). It runs
+in parallel with the other PreToolUse lanes; when two of them decide, Claude
+Code applies "deny > defer > ask > allow" (same page), so the gate's deny wins
+over the Bash lane's archive-shim `allow`, and the retry runs the shim as
+usual. Two jobs, one locked state write per call:
+
+- **Must-load.** The prompt and session lanes book a hint as pending when its
+  type is `user-preference`, `meta-working` or `workflow` and its own trigger
+  matched, it is wired as reflex, or the user dictated it
+  (`write_origin: user-directed`). Only those lines carry
+  "must-load: the next tool call is interrupted once until loaded or
+  dismissed". The next tool call claims every pending id and is denied once;
+  the reason names the ids and says "load_memory(id) or dismiss via
+  load_memory(id, verbosity:'lean')". The retry goes through, loaded or not.
+  A successful `load_memory(id)` releases the id in every session (#1301).
+  Subagent calls do not claim a must-load: a subagent never saw the hint.
+- **Action-time reflex.** A reflex memory with `write_origin: user-directed`,
+  `salience` ≥ 0.8 and no `superseded_by` is matched against the action: tool
+  name, paths, query and Bash command (under 8 KB, never file contents). A
+  match denies once per memory and session, with the rule's body in the
+  reason, or "degraded: load_memory(id)" when the body is over the budget.
+  The pool is cached in the daemon and rebuilt on every vault change;
+  `BASTRA_REFLEX=off` silences it like the prompt reflex.
+
+Always passes: every Recall MCP tool (`mcp__bastra-recall__*`, also the
+plugin form `mcp__plugin_…_bastra-recall__*`) and a `ToolSearch` whose query
+mentions bastra. Codex payloads always pass (#1304).
+
+Fail-open: a deny goes out only after the claim reached the disk. A state
+write that fails, a gate timeout, an unreachable daemon or the kill switch
+answer `{}`, and the call runs. Each of these leaves a `gate_hook_call` row with
+`non_conformance` (`state_write_failed`, `gate_timeout`, `gate_unavailable`).
+A deny also writes a `gate_hook_call` row; a plain pass writes none. A deny is
+not a load and not a surfaced hint: it reports nothing to `/hook/hinted` and
+creates no usage, so #515 never reads it as "used". A load the agent makes
+after a deny is an ordinary load.
 
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 
@@ -1639,7 +1691,9 @@ scheitert oder aufhört. Der Agent liest die Hook-Ausgabe als
 weitermacht.
 
 Alle Hooks sind **nicht blockierend**: Sie setzen nie `block: true`. Im
-schlimmsten Fall geben sie `{}` aus und Claude arbeitet unverändert weiter. Sie
+schlimmsten Fall geben sie `{}` aus und Claude arbeitet unverändert weiter. Die
+einzige Ausnahme ist die Gate-Lane (#1303, unten): Sie darf einen Toolaufruf
+**einmal** unterbrechen, und nur, wenn ihr Anspruch auf der Platte steht. Sie
 teilen drei Disziplinregeln:
 
 - Festes Zeitbudget (Wall-Clock), **pro Lane** (#305 — siehe Tabelle unten).
@@ -1662,6 +1716,7 @@ langsame Antwort.
 | `UserPromptSubmit` — Retrieval / generisch / keine | 600 ms | 300 ms | 2 % |
 | `UserPromptSubmit` — Assertion | **1000 ms** | 900 ms | 5 % |
 | `PreToolUse` Plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `PreToolUse` Gate (jedes Tool, #1303) | 500 ms | — | — |
 | `Stop` | 1000 ms | — | — |
 
 Die ursprüngliche Formulierung von `#305` war „die Obergrenze auf 200 ms
@@ -1730,6 +1785,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (jede Nutzernachricht)                  | Lookup-Reflex (#33)                                       |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destruktiv/riskant)               | Sicherheits-Recall vor destruktiven Shell-Befehlen (#34)  |
+| `bastra-recall-gate-hook`         | `PreToolUse`       | `*` (jedes Tool)                          | Einmaliges Must-Load- und Reflex-Deny am Toolaufruf (#1303) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recalls eigene Schreib-Tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Speicherzeile: eine Zeile, die sagt, was gespeichert oder bearbeitet wurde |
 | `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optionale autonome Speicherbewertung am Session-Ende (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
@@ -1743,7 +1799,7 @@ Standardform, die `bastra install claude-code` schreibt:
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 3 }]
       }
     ],
@@ -1764,6 +1820,10 @@ Standardform, die `bastra install claude-code` schreibt:
       {
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-pre-hook", "timeout": 2 }]
+      },
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "bastra-recall-gate-hook", "timeout": 2 }]
       }
     ],
     "PostToolUse": [
@@ -2279,6 +2339,55 @@ einen Pfadbestandteil mit dem Befehl teilte. Der feste Text STOP / CAUTION /
 reversible Form geht immer raus. `bash_hook_call` trägt
 `dropped_unanchored_count`. Damit eine Regel hier erscheint, braucht sie ein
 `recall_when`, das den Befehl nennt.
+
+#### `bastra-recall-gate-hook` (#1303, nur Claude Code)
+
+**Bestehende Installationen:** Nach dem Update `bastra install claude-code`
+erneut ausführen, um das Gate zu registrieren und `fork` zum SessionStart-Matcher
+hinzuzufügen. Bis dahin meldet `bastra doctor` die fehlende Gate-Registrierung
+und den fehlenden `fork`-Matcher.
+
+Registriert auf `PreToolUse` mit dem Matcher `*`, sieht also jeden Toolaufruf
+(„`*`, `""`, or omitted — Match all", code.claude.com/docs/en/hooks). Sie läuft
+parallel zu den anderen PreToolUse-Lanes. Entscheiden zwei davon, gilt bei
+Claude Code „deny > defer > ask > allow" (dieselbe Seite): Das Deny des Gates
+schlägt das `allow` des Archiv-Shims der Bash-Lane, und der erneute Aufruf
+läuft wie gewohnt durch den Shim. Zwei Aufgaben, ein gesperrter
+State-Schreibvorgang pro Aufruf:
+
+- **Must-Load.** Prompt- und Session-Lane buchen einen Hinweis als offen, wenn
+  sein Typ `user-preference`, `meta-working` oder `workflow` ist und sein
+  eigener Trigger getroffen hat, er als Reflex verdrahtet ist oder der Nutzer
+  ihn diktiert hat (`write_origin: user-directed`). Nur diese Zeilen tragen
+  „must-load: the next tool call is interrupted once until loaded or
+  dismissed". Der nächste Toolaufruf beansprucht alle offenen IDs und wird
+  einmal verweigert. Die Begründung nennt die IDs und sagt „load_memory(id) or
+  dismiss via load_memory(id, verbosity:'lean')". Der erneute Aufruf geht
+  durch, geladen oder nicht. Ein erfolgreiches `load_memory(id)` löst die ID in
+  allen Sessions (#1301). Aufrufe von Subagenten beanspruchen kein Must-Load,
+  denn ein Subagent hat den Hinweis nie gesehen.
+- **Reflex am Toolaufruf.** Ein Reflex-Memory mit `write_origin:
+  user-directed`, `salience` ≥ 0,8 und ohne `superseded_by` wird gegen die
+  Handlung geprüft: Toolname, Pfade, Query und Bash-Befehl (unter 8 KB, nie
+  Dateiinhalte). Ein Treffer verweigert einmal pro Memory und Session, mit dem
+  Body der Regel in der Begründung oder „degraded: load_memory(id)", wenn der
+  Body das Budget übersteigt. Der Pool liegt im Daemon-Cache und wird bei jeder
+  Vault-Änderung neu gebaut. `BASTRA_REFLEX=off` schaltet ihn ab wie den
+  Prompt-Reflex.
+
+Immer durch: jedes Recall-MCP-Tool (`mcp__bastra-recall__*`, auch die
+Plugin-Form `mcp__plugin_…_bastra-recall__*`) und ein `ToolSearch`, dessen
+Query bastra nennt. Codex-Payloads gehen immer durch (#1304).
+
+Fail-open: Ein Deny geht nur raus, wenn der Anspruch auf der Platte steht. Ein
+fehlgeschlagener State-Schreibvorgang, ein Gate-Timeout, ein nicht erreichbarer
+Daemon oder der Kill-Switch liefern `{}`, und der Aufruf läuft. Jeder dieser
+Fälle schreibt eine `gate_hook_call`-Zeile mit `non_conformance`
+(`state_write_failed`, `gate_timeout`, `gate_unavailable`). Ein Deny schreibt
+ebenfalls eine `gate_hook_call`-Zeile, ein schlichtes Durchlassen keine. Ein
+Deny ist weder ein Load noch ein eingeblendeter Hinweis: Er meldet nichts an
+`/hook/hinted` und erzeugt keine Nutzung, #515 liest ihn also nie als „used".
+Ein Load nach einem Deny ist ein gewöhnlicher Load.
 
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 

@@ -9,7 +9,8 @@
  * The normal root glob discovers this file but skips all seven assertions.
  * The mock supplies invented retrieval DATA only; hook output comes from real
  * CLI programs and daemon lane functions. Never manufacture a deny or kernel.
- * When #1303 adds a catch-all hook, wire its real CLI/lane at ADAPTER below.
+ * #1303: the catch-all gate is wired at ADAPTER below — its real CLI runs beside
+ * each tool lane's CLI, as Claude Code runs matching PreToolUse hooks in parallel.
  * Test 7 observes actual installer-created host startup instructions separately
  * from hook output. It makes no assertion about an unexecuted model following them.
  */
@@ -69,10 +70,12 @@ async function fixture(projection = false) {
   set("BASTRA_HOOK_TIMEOUT_MS", "5000");
   set("BASTRA_PROMPT_HOOK_MODE", "all");
   // Import only in opt-in runs, after isolation variables are set.
-  const [{ runSessionLane }, { runPromptLane }, { runWriteLane }, { runBashPreLane }] = await Promise.all([
+  const [{ runSessionLane }, { runPromptLane }, { runWriteLane }, { runBashPreLane }, { runGateLane, actionReflexPool }] = await Promise.all([
     import("../src/session-lane.js"), import("../src/prompt-lane.js"),
-    import("../src/write-lane.js"), import("../src/bash-pre-lane.js"),
+    import("../src/write-lane.js"), import("../src/bash-pre-lane.js"), import("../src/gate-lane.js"),
   ]);
+  // The invented vault as the daemon's reflex pool; the lane's own filter decides.
+  const gatePool = actionReflexPool(vault.map(memory => ({ fm: memory, body: memory.body }) as unknown as Parameters<typeof actionReflexPool>[0][number]));
   const requests: RequestRow[] = [];
   const errors: unknown[] = [];
   const promptRows: Array<{ detected_mode: string }> = [];
@@ -100,6 +103,7 @@ async function fixture(projection = false) {
           () => [vault[2].id], { onTelemetry: row => promptRows.push(row) }); break;
         case "/hook/write": result = await runWriteLane(payload, base, cwd); break;
         case "/hook/bash-pre": result = await runBashPreLane(payload, base); break;
+        case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool }); break;
         case "/hook/session-context": result = { data: { recalls: [
           { scope: "user-preference", resp: recall("", true) },
           { scope: "all-projects", resp: recall("", true) },
@@ -184,8 +188,13 @@ async function fixture(projection = false) {
     } finally { clearTimeout(timer); }
   }
   const prompt = (text: string) => hook("prompt-hook.ts", { hook_event_name: "UserPromptSubmit", prompt: text });
-  const tool = (tool_name: string, tool_input: object) => hook(tool_name === "Bash" ? "bash-pre-hook.ts" : "hook.ts",
-    { hook_event_name: "PreToolUse", tool_name, tool_input });
+  // Claude Code runs every matching PreToolUse hook in parallel and a deny
+  // wins over any allow/updatedInput (code.claude.com/docs/en/hooks).
+  const tool = async (tool_name: string, tool_input: object): Promise<Output> => {
+    const input = { hook_event_name: "PreToolUse", tool_name, tool_input };
+    const [gate, lane] = await Promise.all([hook("gate-hook.ts", input), hook(tool_name === "Bash" ? "bash-pre-hook.ts" : "hook.ts", input)]);
+    return denied(gate) ? gate : lane;
+  };
   async function replay() {
     const start = await hook("session-hook.ts", { hook_event_name: "SessionStart", source: "compact" });
     assert.ok(context(start).includes(vault[3].id), "setup: lexical-only compact start must reach real session formatter");

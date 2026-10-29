@@ -141,6 +141,24 @@ export interface SessionState {
    * because compact and clear drop that text from the context as well.
    */
   constants?: Record<string, string>;
+  /**
+   * #1303: must-load ids the prompt or session lane put in front of the agent,
+   * waiting for the gate lane. The first gated tool call claims every entry
+   * (one deny per hint block); `load_memory(id)` removes the id from every
+   * session (#1301). `block` names the hint block the id was shown in.
+   */
+  pendingMustLoad?: PendingMustLoad[];
+  /** #1303: reflex memories the gate already denied once in this session. */
+  deniedReflex?: string[];
+  /** #1303: tool calls the gate lane has seen in this session. */
+  toolCalls?: number;
+}
+
+/** #1303: one must-load id waiting for the gate lane. */
+export interface PendingMustLoad {
+  id: string;
+  block: string;
+  at: number;
 }
 
 /**
@@ -176,6 +194,9 @@ export interface ReadonlySessionState {
   readonly touchedOverflow?: boolean;
   readonly saveEvalDelivered?: readonly string[];
   readonly constants?: Readonly<Record<string, string>>;
+  readonly pendingMustLoad?: readonly Readonly<PendingMustLoad>[];
+  readonly deniedReflex?: readonly string[];
+  readonly toolCalls?: number;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -278,6 +299,17 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       }
       state.constants = constants;
     }
+    // #1303: the gate lane's claims — same reason, every lane's save carries them.
+    if (Array.isArray(parsed.pendingMustLoad)) {
+      state.pendingMustLoad = parsed.pendingMustLoad.filter(
+        (e): e is PendingMustLoad =>
+          !!e && typeof e.id === "string" && typeof e.block === "string" && typeof e.at === "number",
+      );
+    }
+    if (Array.isArray(parsed.deniedReflex)) {
+      state.deniedReflex = parsed.deniedReflex.filter((id): id is string => typeof id === "string");
+    }
+    if (typeof parsed.toolCalls === "number") state.toolCalls = parsed.toolCalls;
     return state;
   } catch {
     return { shown: {} };
@@ -308,21 +340,26 @@ export async function saveSessionState(sessionId: string, state: SessionState): 
  * A lane still reads the state early — its filtering decisions need it — and
  * only the write-back moves in here, expressed as a delta. In-process
  * locking is enough: every lane is served by the same daemon process.
+ *
+ * #1303: resolves to whether the state reached the disk. Most lanes ignore it
+ * (the state is a dedup cache); the gate lane denies only after `true`, so a
+ * claim it could not persist never turns into an interruption.
  */
 export async function mutateSessionState(
   sessionId: string,
   mutate: (state: SessionState) => void,
-): Promise<void> {
-  if (!sessionId) return;
-  await withPathLock(sessionFile(sessionId), async () => {
+): Promise<boolean> {
+  if (!sessionId) return false;
+  return withPathLock(sessionFile(sessionId), async () => {
     const state = await readSessionState(sessionId);
     mutate(state);
-    await writeSessionState(sessionId, state);
+    return writeSessionState(sessionId, state);
   });
 }
 
-/** The bare atomic write. Only ever called with the session lock held. */
-async function writeSessionState(sessionId: string, state: SessionState, dir = sessionStateDir()): Promise<void> {
+/** The bare atomic write. Only ever called with the session lock held.
+ *  Never throws; `false` when the state did not reach the disk. */
+async function writeSessionState(sessionId: string, state: SessionState, dir = sessionStateDir()): Promise<boolean> {
   try {
     // mode 0700/0600: on Linux os.tmpdir() is world-writable (/tmp), so a
     // private dir + owner-only files block symlink/TOCTOU races from other
@@ -340,8 +377,59 @@ async function writeSessionState(sessionId: string, state: SessionState, dir = s
     }
     await writeFile(tmp, JSON.stringify(onDisk), { encoding: "utf8", mode: 0o600 });
     await rename(tmp, target);
+    return true;
   } catch {
     // dedup state is non-essential — never break the hot path
+    return false;
+  }
+}
+
+/** #1303: bound on waiting must-load ids — a hint block carries at most a handful. */
+const PENDING_MUST_LOAD_CAP = 20;
+
+/**
+ * #1303: book must-load ids shown in hint block `block` (mutates in place).
+ * An id already waiting keeps its first entry, so one hint is never claimed
+ * twice for being shown twice.
+ */
+export function bookPendingMustLoad(state: SessionState, ids: readonly string[], block: string, now: number = Date.now()): void {
+  if (ids.length === 0) return;
+  const pending = state.pendingMustLoad ?? [];
+  const waiting = new Set(pending.map((e) => e.id));
+  for (const id of ids) {
+    if (waiting.has(id)) continue;
+    waiting.add(id);
+    pending.push({ id, block, at: now });
+  }
+  state.pendingMustLoad = pending.slice(-PENDING_MUST_LOAD_CAP);
+}
+
+/**
+ * #1301/#1303: a successful `load_memory(id)` releases `id` in EVERY session
+ * state that still holds it — the caller's session is not reliably known on
+ * every transport. Fail-open by design: another session's load releases this
+ * session's claim without proving this session read the body. Never throws.
+ */
+export async function clearPendingMustLoad(memId: string): Promise<void> {
+  if (!memId) return;
+  try {
+    const dir = sessionStateDir();
+    const needle = JSON.stringify(memId);
+    for (const name of await readdir(dir)) {
+      if (!name.endsWith(".json")) continue;
+      const raw = await readFile(path.join(dir, name), "utf8").catch(() => "");
+      // Cheap pre-check before the lock: most sessions never held this id.
+      if (!raw.includes(needle)) continue;
+      const sessionId = name.slice(0, -".json".length);
+      await mutateSessionState(sessionId, (state) => {
+        if (state.pendingMustLoad === undefined) return;
+        const rest = state.pendingMustLoad.filter((e) => e.id !== memId);
+        if (rest.length > 0) state.pendingMustLoad = rest;
+        else delete state.pendingMustLoad;
+      });
+    }
+  } catch {
+    // Missing directory or an unreadable state: nothing to release.
   }
 }
 

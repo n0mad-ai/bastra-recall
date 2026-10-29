@@ -54,21 +54,22 @@ function allCommands(stubPresent: boolean): string[] {
 
 // ─── every lane is on the stub ───────────────────────────────────────────────
 
-test("all seven lanes register across all ten hook entries when the binary is there", () => {
+test("all eight lanes register across all eleven hook entries when the binary is there", () => {
   const cmds = allCommands(true);
-  assert.equal(cmds.length, 10, `expected ten hook entries, got ${cmds.length}`);
+  assert.equal(cmds.length, 11, `expected eleven hook entries, got ${cmds.length}`);
   for (const cmd of cmds) {
     assert.ok(cmd.startsWith(`${CC}${HOOK_STUB_BIN} `), `still on node: ${cmd}`);
   }
   const subs = cmds.map((c) => c.slice(CC.length + HOOK_STUB_BIN.length + 1)).sort();
   // #675: SessionEnd rides the stop lane, so "stop" appears twice. The save
   // notice rides the post-tool client beside the two Bash entries.
-  assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-fail", "bash-pre", "prompt", "session", "stop", "stop", "todo", "write"]);
+  // #1303: the catch-all gate is the eighth lane.
+  assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-fail", "bash-pre", "gate", "prompt", "session", "stop", "stop", "todo", "write"]);
 });
 
 test("without the binary every lane falls back to its node client", () => {
   const cmds = allCommands(false);
-  assert.equal(cmds.length, 10);
+  assert.equal(cmds.length, 11);
   for (const cmd of cmds) assert.ok(cmd.startsWith(`${CC}node /`), `not the node client: ${cmd}`);
 });
 
@@ -92,8 +93,8 @@ test("doctor-level registration check requires PostToolUseFailure:Bash", () => {
   assert.deepEqual(missingRequiredHookRegistrations(legacy), ["PostToolUseFailure:Bash"]);
   assert.equal(
     registeredHookBins(legacy).size,
-    7,
-    "the old binary-only 7/7 count cannot detect the missing event registration",
+    8,
+    "the old binary-only 8/8 count cannot detect the missing event registration",
   );
 });
 
@@ -115,7 +116,7 @@ function stubSettings(): Record<string, unknown> {
 
 test("registeredHookBins counts stub-registered lanes (the 3/7 doctor bug)", () => {
   const found = registeredHookBins(stubSettings());
-  assert.equal(found.size, 7, `expected 7/7, got ${found.size}: ${[...found.keys()].join(", ")}`);
+  assert.equal(found.size, 8, `expected 8/8, got ${found.size}: ${[...found.keys()].join(", ")}`);
   for (const f of HOOK_FILES) assert.ok(found.has(f), `not detected: ${f}`);
 });
 
@@ -144,7 +145,7 @@ test("checkHookPaths validates the stub binary, not a node path that is not ther
   assert.deepEqual(clean, [], `a present stub must be clean, got: ${clean.join(" | ")}`);
 
   const missing = await checkHookPaths(found, { exists: async () => false, running: "0.9.1" });
-  assert.equal(missing.length, 7, "a deleted stub binary must be reported for every lane");
+  assert.equal(missing.length, 8, "a deleted stub binary must be reported for every lane");
   for (const problem of missing) {
     assert.match(problem, /MISSING/);
     assert.ok(problem.includes(HOOK_STUB_BIN), `the stub path belongs in the report: ${problem}`);

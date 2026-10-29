@@ -24,6 +24,31 @@ export interface HookRecallHit {
   /** P0: how strong that trigger anchor is — `strong` = two exact trigger
    *  terms or one rare one. */
   anchor_strength?: "strong" | "weak";
+  /** Present only when the user wired the memory to self-inject. */
+  recall_mode?: "reflex";
+  /** #1303: who wrote the memory (#158). The gate books a must-load only for
+   *  a rule the user dictated, wired or anchored by its own trigger. */
+  write_origin?: "user-directed" | "agent-session" | "capture-review";
+}
+
+/** #1303: the hint types a must-load gate may hold an action for. */
+export const GATED_HINT_TYPES: ReadonlySet<string> = new Set(["user-preference", "meta-working", "workflow"]);
+
+/**
+ * #1303: does this emitted hint become a pending must-load? Only rule-shaped
+ * types, and only with evidence the rule belongs here: its own trigger
+ * matched, the user wired it as reflex, or the user dictated it.
+ */
+export function isGatedHint(h: {
+  type: string;
+  matched_recall_when?: boolean;
+  recall_mode?: string;
+  write_origin?: string;
+}): boolean {
+  return (
+    GATED_HINT_TYPES.has(h.type) &&
+    (h.matched_recall_when === true || h.recall_mode === "reflex" || h.write_origin === "user-directed")
+  );
 }
 
 export interface HookRecallResponse {

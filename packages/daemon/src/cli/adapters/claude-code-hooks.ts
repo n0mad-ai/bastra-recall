@@ -16,6 +16,7 @@ import {
   TODO_HOOK_BIN,
   BASH_PRE_HOOK_BIN,
   BASH_FAIL_HOOK_BIN,
+  GATE_HOOK_BIN,
   STOP_HOOK_BIN,
 } from "../paths.js";
 import {
@@ -89,7 +90,9 @@ const SESSION_END_HOOK_DEF: HookDef = {
 // into the chat. Live-validated → default on; opt out with --no-stop-hook.
 export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
   const defs: HookDef[] = [
-    { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
+    // #1303: `fork` too — a forked session is a new session id that starts
+    // from a copied transcript (code.claude.com/docs/en/hooks, SessionStart).
+    { event: "SessionStart", matcher: "startup|resume|clear|compact|fork", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
     { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", bin: PRE_TOOL_HOOK_BIN, timeout: 2, note: "bastra-recall PreToolUse hook", stubSubcommand: "write" },
     // #506: `TodoWrite` alone was a dead matcher. Claude Code 2.1.268 replaced
@@ -113,6 +116,11 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     // `ExitPlanMode` carries it as `plan` (markdown) when it is presented.
     { event: "PreToolUse", matcher: "TodoWrite|TaskCreate|ExitPlanMode", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506/#698)", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
+    // #1303: the catch-all gate. `"*"` matches every tool ("`*`, `""`, or
+    // omitted — Match all", code.claude.com/docs/en/hooks). It runs in
+    // parallel with the lanes above; a deny wins over their allow
+    // (precedence deny > defer > ask > allow, same page).
+    { event: "PreToolUse", matcher: "*", bin: GATE_HOOK_BIN, timeout: 2, note: "bastra-recall gate hook (one-time must-load and reflex deny, #1303)", stubSubcommand: "gate" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     // The line that says what was saved or edited, right under the collapsed
@@ -177,7 +185,7 @@ function buildHookEntry(
 // __bastraRecall marker (e.g. older hand-added ones).
 export const OUR_HOOK_FILES = [
   "hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js",
-  "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js",
+  "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js", "gate-hook.js",
 ];
 export const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((f) => f !== "stop-hook.js");
 
@@ -314,7 +322,7 @@ export async function checkHookPaths(
 }
 
 // Which of our hook bins are actually registered, across every event, mapped to
-// the command that runs them — doctor reports N/7 coverage from the keys and
+// the command that runs them — doctor reports N/8 coverage from the keys and
 // checks the paths from the values (#321).
 export function registeredHookBins(hooks: Record<string, unknown>): Map<string, string> {
   return new Map(registeredHookCommands(hooks));
@@ -525,7 +533,7 @@ export async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse×2, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
+        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×4, PostToolUse×2, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
         backupPath: backupPath ?? undefined,
         note,
       }

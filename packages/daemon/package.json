@@ -26,6 +26,7 @@
     "bastra-recall-todo-hook": "./dist/todo-hook.js",
     "bastra-recall-bash-pre-hook": "./dist/bash-pre-hook.js",
     "bastra-recall-bash-fail-hook": "./dist/bash-fail-hook.js",
+    "bastra-recall-gate-hook": "./dist/gate-hook.js",
     "bastra-recall-stop-hook": "./dist/stop-hook.js"
   },
   "main": "./dist/index.js",
@@ -40,7 +41,7 @@
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "npm run prepare:package-assets && tsc && chmod +x dist/index.js dist/mcp-forwarder.js dist/bridge.js dist/hook.js dist/session-hook.js dist/prompt-hook.js dist/todo-hook.js dist/bash-pre-hook.js dist/bash-fail-hook.js dist/stop-hook.js dist/cli.js && node ../../scripts/write-build-revision.mjs dist",
+    "build": "npm run prepare:package-assets && tsc && chmod +x dist/index.js dist/mcp-forwarder.js dist/bridge.js dist/hook.js dist/session-hook.js dist/prompt-hook.js dist/todo-hook.js dist/bash-pre-hook.js dist/bash-fail-hook.js dist/gate-hook.js dist/stop-hook.js dist/cli.js && node ../../scripts/write-build-revision.mjs dist",
     "prepare:package-assets": "node scripts/prepare-package-assets.mjs",
     "prepack": "npm run prepare:package-assets",
     "start": "node dist/index.js",

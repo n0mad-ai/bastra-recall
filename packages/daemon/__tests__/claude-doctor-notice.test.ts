@@ -28,7 +28,7 @@ async function doctor(scenario: string): Promise<DoctorResult> {
         includeStop: scenario !== 'optional-stop', stubPresent: false,
         mapBin: path => join(home, basename(path)),
       }).after;
-      for (const file of ['session-hook.js', 'prompt-hook.js', 'hook.js', 'todo-hook.js', 'bash-pre-hook.js', 'bash-fail-hook.js', 'stop-hook.js'])
+      for (const file of ['session-hook.js', 'prompt-hook.js', 'hook.js', 'todo-hook.js', 'bash-pre-hook.js', 'bash-fail-hook.js', 'stop-hook.js', 'gate-hook.js'])
         await writeFile(join(home, file), '// invented fixture');
       if (scenario !== 'healthy' && scenario !== 'missing-bash')
         hooks.PostToolUse = hooks.PostToolUse.filter(row => !row.matcher?.includes('save_memory'));

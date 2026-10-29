@@ -120,12 +120,17 @@ test("#305: no two client lanes write the same event kind", async () => {
   // rows now, so there is one table for both client shapes instead of a copy
   // per file — see hook-client-telemetry.ts.
   const entries = Object.entries(CLIENT_ROW_BASE).map(([lane, base]) => [lane, String(base.kind)]);
-  assert.equal(entries.length, 7, `expected one row shape per client lane, got ${JSON.stringify(entries)}`);
+  assert.equal(entries.length, 8, `expected one row shape per client lane, got ${JSON.stringify(entries)}`);
   const kinds = entries.map(([, kind]) => kind);
   assert.equal(new Set(kinds).size, kinds.length, `two lanes share one event kind: ${JSON.stringify(entries)}`);
   for (const [lane, kind] of entries) {
     // Every client kind must be one the readout counts as a lane; the prompt
     // hook is the one that splits into trigger classes instead.
+    // #1303: the gate writes a row only on a deny or a non-conformance — a
+    // plain pass is silent, because the lane runs on every tool call. Its rows
+    // are therefore no latency/failure series, and the #305 gate would read
+    // them as a lane that fails on every call. Counted by `non_conformance`.
+    if (kind === "gate_hook_call") continue;
     assert.ok(
       kind === "prompt_hook_call" || GATE_LANE_BY_KIND[kind] !== undefined,
       `${lane} writes \`${kind}\`, which no lane of the release gate counts`,

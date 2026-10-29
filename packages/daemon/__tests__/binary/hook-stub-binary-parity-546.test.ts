@@ -64,6 +64,7 @@ const LANES: Array<{ lane: ClientLane; kind: string; nodeClient: string }> = [
   { lane: "bash-pre", kind: "bash_hook_call", nodeClient: "bash-pre-hook.ts" },
   { lane: "bash-fail", kind: "bash_fail_hook_call", nodeClient: "bash-fail-hook.ts" },
   { lane: "stop", kind: "save_eval_call", nodeClient: "stop-hook.ts" },
+  { lane: "gate", kind: "gate_hook_call", nodeClient: "gate-hook.ts" },
 ];
 
 /** The stdin each lane expects — nothing here may be filtered out client-side,
@@ -93,6 +94,8 @@ const PAYLOAD: Record<ClientLane, Record<string, unknown>> = {
     tool_name: "TodoWrite",
     tool_input: { todos: [{ content: "measure the lane", status: "pending" }] },
   },
+  // #1303: any tool reaches the gate; nothing is filtered client-side.
+  gate: { hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/tmp/bastra-gate/app.ts" } },
 };
 
 /**

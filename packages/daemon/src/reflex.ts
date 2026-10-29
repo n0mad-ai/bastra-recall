@@ -182,7 +182,7 @@ export interface ReflexNearMiss {
 const NEAR_MISS_MAX = 3;
 const MISSING_TOKENS_MAX = 3;
 
-interface ReflexMatch {
+export interface ReflexMatch {
   memory: Memory;
   phrase: string;
   matches: number;
@@ -204,13 +204,22 @@ interface ReflexMatch {
  * Vault-Filter), `sensitivity: private` fällt heraus, weil der Hook-Pfad
  * `allow_private` nie setzt. Was dieser Filter verwirft, kann also auch nicht
  * als Hit auftauchen — die Lane verliert durch das Vorziehen nichts.
+ *
+ * #1303: ein Memory mit `superseded_by` ist durch ein neueres ersetzt — eine
+ * alte Fassung einer Regel darf nicht mehr selbst feuern, auch wenn die
+ * Archivierung (`obsolete`) noch aussteht.
  */
 export function reflexPool(vault: Vault): Memory[] {
-  return vault.list().filter(
-    (m) =>
-      m.fm.recall_mode === "reflex" &&
-      m.fm.obsolete !== true &&
-      m.fm.sensitivity !== "private",
+  return vault.list().filter(isReflexPoolMember);
+}
+
+/** Die eine Pool-Bedingung, auch für Pools, die nicht aus einem Vault kommen. */
+export function isReflexPoolMember(m: Memory): boolean {
+  return (
+    m.fm.recall_mode === "reflex" &&
+    m.fm.obsolete !== true &&
+    m.fm.sensitivity !== "private" &&
+    !m.fm.superseded_by
   );
 }
 
@@ -231,13 +240,22 @@ export function collectReflexHits(
   context: string,
   budget: number,
 ): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[]; nearMisses: ReflexNearMiss[] } {
+  return matchReflexPool(reflexPool(vault), context, budget);
+}
+
+/** #1303: dieselbe Pipeline über einen schon gefilterten Pool — die Gate-Lane
+ *  hält ihren eigenen, engeren Pool im Cache. */
+export function matchReflexPool(
+  pool: readonly Memory[],
+  context: string,
+  budget: number,
+): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[]; nearMisses: ReflexNearMiss[] } {
   // One spelling and case fold on both sides (core fold.ts): an NFD prompt
   // from macOS or a Turkish "İ" meets its trigger.
   const contextTokenList = tokenizeWithIdentifiers(context).map(foldTerm);
   const contextTokens = new Set(contextTokenList);
   // Tokenfolge für den wörtlichen Phrasen-Match (siehe phraseMatchesContext).
   const contextSequence = ` ${contextTokenList.join(" ")} `;
-  const pool = reflexPool(vault);
   const matched: ReflexMatch[] = [];
   // #565: Beinahe-Treffer — die Memories, deren bester Trigger den Kontext
   // teilweise traf. Nur aus dem, was das Token-AND oben ohnehin zählt.

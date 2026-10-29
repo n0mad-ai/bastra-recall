@@ -7,6 +7,7 @@ import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
 import type { ConventionLean, RecallHit } from "./session-hook-http.js";
 import { escapeAttr } from "./escape-attr.js";
+import { MUST_LOAD_MARK } from "./prompt-format.js";
 
 export const SCORE_FLOOR = 30;
 
@@ -67,6 +68,8 @@ export function formatBlock(
   /** #490: WARUM einarmig. `cold-model` nur, wenn der Koordinator das Modell
    *  als nicht resident gemeldet hat — sonst bleibt es bei der alten Aussage. */
   unfusedReason: UnfusedReason = "off",
+  /** #1303: ids the gate lane holds the next tool call for. */
+  gated?: ReadonlySet<string>,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const srcAttr = source ? ` source="${escapeAttr(source)}"` : "";
@@ -85,7 +88,7 @@ export function formatBlock(
         `load_memory(id) the ones relevant to what the user actually asks for. ` +
         `These are hints, not obligations.`,
     );
-    for (const h of unbanded) sections.push(formatHintLine(h, true));
+    for (const h of unbanded) sections.push(formatHintLine(h, true, gated));
   }
 
   if (required.length > 0) {
@@ -99,7 +102,7 @@ export function formatBlock(
           `These are hints, not obligations: load only what fits, don't batch-load the list, ` +
           `and if the user requested a specific number or scope, honor that over this list.`,
     );
-    for (const h of required) sections.push(formatHintLine(h));
+    for (const h of required) sections.push(formatHintLine(h, false, gated));
   }
 
   if (optional.length > 0) {
@@ -107,14 +110,14 @@ export function formatBlock(
     sections.push(
       `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only when the user prompt directly touches the topic:`,
     );
-    for (const h of optional) sections.push(formatHintLine(h));
+    for (const h of optional) sections.push(formatHintLine(h, false, gated));
   }
 
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
 }
 
-function formatHintLine(h: RecallHit, hideScore = false): string {
-  const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
+function formatHintLine(h: RecallHit, hideScore = false, gated?: ReadonlySet<string>): string {
+  const summary = (h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary) + (gated?.has(h.id) ? MUST_LOAD_MARK : "");
   // P0: Auf der unfused Skala ist die Zahl weder mit den Bändern noch zwischen
   // zwei Aufrufen vergleichbar — gleiche Wahl wie in prompt-lane.ts.
   return hideScore

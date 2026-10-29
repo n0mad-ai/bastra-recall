@@ -44,6 +44,7 @@ export const PROMPT_HOOK_BIN = resolve(DAEMON_DIST, "prompt-hook.js");
 export const TODO_HOOK_BIN = resolve(DAEMON_DIST, "todo-hook.js");
 export const BASH_PRE_HOOK_BIN = resolve(DAEMON_DIST, "bash-pre-hook.js");
 export const BASH_FAIL_HOOK_BIN = resolve(DAEMON_DIST, "bash-fail-hook.js");
+export const GATE_HOOK_BIN = resolve(DAEMON_DIST, "gate-hook.js");
 export const STOP_HOOK_BIN = resolve(DAEMON_DIST, "stop-hook.js");
 
 // Statusline lives in the sibling workspace in source/Homebrew installs.

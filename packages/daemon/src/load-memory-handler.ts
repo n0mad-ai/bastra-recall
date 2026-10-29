@@ -8,7 +8,7 @@ import { z } from "zod";
 import { memoryRevision, stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
-import { touchLoadedMarker } from "./session-state.js";
+import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -172,6 +172,11 @@ export async function loadMemoryHandler(
   // file so the next hook invocation knows the agent has consumed this
   // memory and the dedup clock should restart.
   fireAndForget(touchLoadedMarker(parsed.data.id));
+  // #1301/#1303: a successful load (or a lean dismissal) releases the gate's
+  // pending must-load for this id in EVERY session — the caller's session is
+  // not known on every transport. Awaited so a tool call right after the load
+  // does not meet a claim the load already answered; it never throws.
+  await clearPendingMustLoad(parsed.data.id);
 
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).

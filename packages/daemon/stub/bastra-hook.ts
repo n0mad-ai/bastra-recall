@@ -48,7 +48,7 @@ const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
 type Lane = ClientLane;
 const LANES = new Set<Lane>([
-  "prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo",
+  "prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo", "gate",
 ]);
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
 /** EVERY lane logs its own failure (#543). The three lanes added in #369 were
@@ -81,6 +81,8 @@ function laneBudgetMs(lane: string): number {
   if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", STOP_BUDGET_MS);
   if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
   if (lane === "prompt") return envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
+  // #1303: the gate runs on EVERY tool call and answers from session state.
+  if (lane === "gate") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
   return HOOK_TIMEOUT_MS;
 }
 
@@ -105,6 +107,10 @@ function readStdin(): Promise<string> {
 }
 
 let stdoutEmitted = false;
+/** #1303: what the kill switch needs to leave the gate's failure row. */
+let callStartedAt = Date.now();
+let callSessionId: string | null = null;
+let failureRowWritten = false;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
@@ -193,7 +199,7 @@ function classifyError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeou
 }
 
 async function main(): Promise<void> {
-  const startedAt = Date.now();
+  const startedAt = callStartedAt;
   const lane = (process.argv[2] ?? "") as Lane;
   if (!LANES.has(lane)) {
     // Unknown subcommand: fail open like every other path — a misregistered
@@ -210,6 +216,7 @@ async function main(): Promise<void> {
     return emitOnce("{}");
   }
   payload = decorateHookPayload(payload);
+  callSessionId = payload.session_id ?? null;
 
   // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
   // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
@@ -265,12 +272,15 @@ async function main(): Promise<void> {
     const e = err as NodeJS.ErrnoException;
     emitOnce("{}");
     const status = classifyError(e);
+    if (failureRowWritten) return;
+    failureRowWritten = true;
     await writeClientTelemetry(
       lane,
       {
         daemon_url: url,
         status,
         error: status === "error" ? (e.message ?? String(err)) : null,
+        ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
         ...(lane === "write"
           ? { tool_name: payload.tool_name ?? "", file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null }
           : {}),
@@ -301,7 +311,17 @@ if (process.argv[2] === "version") {
 } else {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    process.exit(0);
+    if (process.argv[2] !== "gate" || failureRowWritten) process.exit(0);
+    // #1303: the gate passed the call without deciding — that is a
+    // non-conformance and must leave its row, like a transport timeout.
+    failureRowWritten = true;
+    void writeClientTelemetry(
+      "gate",
+      { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
+      callStartedAt,
+      callSessionId,
+      STUB_VERSION,
+    ).finally(() => process.exit(0));
   }, laneBudgetMs(process.argv[2] ?? "") + 50);
   killSwitch.unref?.();
 

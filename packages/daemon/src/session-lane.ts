@@ -49,7 +49,8 @@ import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { appendModelSessionNotice } from "./model-session-notice.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
+import { bookPendingMustLoad, bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
+import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
@@ -149,7 +150,9 @@ export interface SessionPayload {
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
-  source?: "startup" | "resume" | "clear" | "compact";
+  /** #1303: `fork` — a new session id started from a copied transcript;
+   *  handled like `startup` (nothing to release, the new id has no state). */
+  source?: "startup" | "resume" | "clear" | "compact" | "fork";
 }
 
 /**
@@ -658,6 +661,9 @@ export async function runSessionLane(
   // #462: der Recall-Block einmal gebaut, damit er als eigener Posten messbar
   // ist — bisher gab es EINE Zahl für zehn Teile.
   let recallBlock = "";
+  // #1303: the hints the catch-all gate holds the next tool call for (Claude
+  // Code only — the deny is its contract).
+  const gated = new Set(client === "claude-code" ? top.filter(isGatedHint).map((h) => h.id) : []);
   if (top.length === 0 && pinnedBlock === "" && extras === "") {
     if (status === "ok") status = "no-hits";
     // stays "{}"
@@ -681,6 +687,7 @@ export async function runSessionLane(
       // #490: Ehrlichkeit im Block. Einarmig UND das Modell war kalt → sag
       // genau das, statt „semantic search is off" zu behaupten.
       denseCold ? "cold-model" : "off",
+      gated,
     );
     injected = pinnedHead + recallBlock + extras;
     out = JSON.stringify({
@@ -759,6 +766,8 @@ export async function runSessionLane(
     try {
       await mutateSessionState(payload.session_id, (s) => {
         for (const h of top) bumpShown(s, h.id);
+        // #1303: beside the shown-state, the must-load the gate will claim.
+        bookPendingMustLoad(s, [...gated], `session:${startedAt.toString(36)}`);
       });
     } catch {
       // State is an optional dedup cache. Never discard the context that was
