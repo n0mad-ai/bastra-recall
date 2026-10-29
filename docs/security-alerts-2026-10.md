@@ -1,5 +1,40 @@
 # Dependency security assessment / Sicherheitsbewertung der Abhängigkeiten
 
+## Reassessment — 2026-10-29 / Neubewertung
+
+The six reviewed Dependabot updates (#1315–#1320) are merged: zod 4.6.6,
+body-parser 2.4.0, @hono/node-server 2.1.5, qs 6.17.1, ip-address 10.7.5
+and fast-uri 3.1.9. GitHub reports no open Dependabot alerts after these
+merges. `npm audit fix` (without `--force`) additionally updates the
+development-only node-forge from 1.4.0 to the now-available 1.4.2. The
+historical statement below that forge has no patch is therefore superseded.
+
+The full development audit still reports **two high findings**, for
+`@anthropic-ai/mcpb` and its nested zod 3.25.76, under
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+The latest MCPB release 2.1.2 still requires zod `^3.25.67`; npm reports no
+compatible fix. A forced Zod 4 override would cross MCPB's supported major
+version and is not applied. MCPB validates bundle manifests during local
+packaging; this dependency is absent from the production tree. The prior
+published-package override/argparse limitations below still apply. No
+advisory is suppressed or dismissed, and an empty Dependabot list does not
+mean the full development audit is clean.
+
+Die sechs geprüften Dependabot-Updates (#1315–#1320) sind integriert;
+GitHub meldet danach keine offenen Dependabot-Warnungen. Zusätzlich hebt
+`npm audit fix` ohne `--force` das reine Entwicklungswerkzeug node-forge
+von 1.4.0 auf das inzwischen verfügbare 1.4.2. Die frühere Aussage unten,
+es gebe keinen Forge-Patch, ist damit überholt.
+
+Das vollständige Entwicklungs-Audit meldet weiterhin **zwei hohe Befunde**:
+MCPB und dessen verschachteltes zod 3.25.76. Auch das neueste MCPB 2.1.2
+verlangt Zod 3; ein kompatibler Patch wird nicht angeboten. Ein erzwungener
+Wechsel auf Zod 4 erfolgt nicht. Betroffen ist die lokale Manifestprüfung
+beim Paketbau, nicht der Produktions-Abhängigkeitsbaum. Die unten
+beschriebenen Einschränkungen bei veröffentlichten Paketen/argparse gelten
+weiter. Keine Warnung wird unterdrückt oder geschlossen; eine leere
+Dependabot-Liste bedeutet kein sauberes vollständiges Entwicklungs-Audit.
+
 ## English
 
 Assessment date: 2026-10-09. These changes upgrade dependencies; no dependency
