@@ -132,3 +132,26 @@ Elternpaket `@anthropic-ai/mcpb` rot. Das Produktions-Audit des Repo-Lockfiles
 ist sauber. Scorecard kann weiter eine OSV-Warnung zählen, bis ein Patch oder
 eine ausdrücklich freigegebene Ausnahme vorliegt. Diese Änderungen
 unterdrücken oder schließen keine Warnung automatisch.
+
+## OAuth CodeQL 127/128 — 2026-10-29
+
+The public OAuth dispatcher now selects handlers from an explicit, exact
+endpoint-and-method allowlist before the bearer gate. The successful CodeQL
+analysis of commit `75f3acab` closed both `js/user-controlled-bypass` alerts
+as fixed; neither alert was dismissed. Unknown OAuth subpaths still return
+404 and unsupported methods 405; protected API routes still require a token.
+
+The OAuth validation and consent checks remain unchanged: GET authorize
+validates the registered client, redirect allowlist and PKCE challenge; POST
+requires a live pending CSRF request and uses `safeEqual` against the API token.
+Only the subsequent valid authorization-code/PKCE exchange creates a grant.
+The OAuth HTTP suite covers method/subpath confusion, missing credentials,
+forged consent and the successful login flow.
+
+Der öffentliche OAuth-Dispatcher wählt seine Handler jetzt über eine explizite
+Allowlist aus genauem Endpunkt und HTTP-Methode vor der Bearer-Prüfung.
+Der erfolgreiche CodeQL-Lauf für `75f3acab` hat beide Warnungen als behoben
+geschlossen; keine wurde als Fehlalarm verworfen. Unbekannte Unterpfade,
+unzulässige Methoden und geschützte API-Routen behalten ihr bisheriges Verhalten.
+Die Prüfungen von Client, Redirect, PKCE, laufender CSRF-Anfrage und API-Token
+bleiben erhalten und sind durch HTTP-Regressionen abgesichert.
