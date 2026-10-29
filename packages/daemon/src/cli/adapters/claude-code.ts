@@ -85,19 +85,23 @@ function buildStatuslineBlock(command: string): Record<string, unknown> {
   };
 }
 
-// Recognise our statusLine — by marker (our writes) or by command path
-// (hand-configured ones that predate the marker).
-function isOurStatusline(sl: unknown): boolean {
+// Only the explicit marker or a complete supported command grants ownership.
+// A checkout path alone also matches foreign consumers such as the Ember feed.
+export function isOurStatusline(sl: unknown): boolean {
   if (typeof sl !== "object" || sl === null) return false;
   const s = sl as Record<string, unknown>;
-  if (s.__bastraRecall === true || s.__nexusRecall === true) return true;
+  if (s.__bastraRecall === true) return true;
   const cmd = typeof s.command === "string" ? s.command : "";
-  return (
-    cmd.includes("bastra-statusline") ||
-    cmd.includes("/statusline/dist/index.mjs") ||
-    cmd.includes("/statusline/bin/claude-powerline") ||
-    (cmd.includes("statusline") && cmd.includes("bastra"))
-  );
+  const tokens = cmd.match(/"[^"\n]+"|'[^'\n]+'|[^\s]+/g)?.map((t) => t.replace(/^["']|["']$/g, "")) ?? [];
+  if (tokens.some((t) => /[;&|`$<>\n]/.test(t))) return false;
+  const executable = tokens[0]?.replaceAll("\\", "/").split("/").pop();
+  if (/^bastra-hook(?:\.exe)?$/.test(executable ?? "")) {
+    return tokens[1] === "statusline" && tokens.slice(2).every((arg) => /^--style=(?:powerline|plain)$/.test(arg));
+  }
+  if (!/^node(?:\.exe)?$/.test(executable ?? "")) return false;
+  if (tokens.slice(2).some((arg) => !/^--style=(?:powerline|plain)$/.test(arg))) return false;
+  const script = tokens[1]?.replaceAll("\\", "/") ?? "";
+  return /\/statusline\/(?:dist\/index\.mjs|bin\/claude-powerline)$/.test(script);
 }
 
 function statuslineMatches(sl: unknown, command: string): boolean {
@@ -113,19 +117,20 @@ type StatuslineStepStatus =
   | "installed" | "already-installed" | "would-install" | "foreign-kept"
   | "removed" | "not-present" | "would-remove" | "error";
 
-async function patchClaudeCodeStatusline(
+export async function patchClaudeCodeStatusline(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean },
+  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean; settingsPath?: string },
 ): Promise<{ status: StatuslineStepStatus; detail: string; backupPath?: string }> {
   // opts.bin: the path to REGISTER (stable-runtime copy when active, #180).
   // Build/existence is still checked against the source STATUSLINE_BIN — the
   // copy mirrors it and may not exist yet under dry-run.
+  const settingsPath = opts.settingsPath ?? CLAUDE_CODE_SETTINGS;
   const command = statuslineCommand(opts.bin ?? STATUSLINE_BIN, opts.stubPresent);
   if (action === "install" && !(await fileExists(STATUSLINE_BIN))) {
     return { status: "error", detail: `statusline not built: ${STATUSLINE_BIN} — run 'npm run build'` };
   }
 
-  const read = await readJsonConfig(CLAUDE_CODE_SETTINGS);
+  const read = await readJsonConfig(settingsPath);
   if ("error" in read) return { status: "error", detail: read.error };
   const data = read.data;
   const existing = data.statusLine;
@@ -146,13 +151,16 @@ async function patchClaudeCodeStatusline(
       return { status: "would-install", detail: `${verb} statusLine → ${command}` };
     }
 
-    const backupPath = await backupConfig(CLAUDE_CODE_SETTINGS);
+    if (present && !isOurStatusline(existing)) {
+      console.log(`replacing foreign statusLine ${(existing as Record<string, unknown>).command ?? "(unknown command)"}`);
+    }
+    const backupPath = await backupConfig(settingsPath);
     // An update owns the command, but the user owns their refresh cadence.
     // Also preserve an omitted interval (event-driven rendering).
     data.statusLine = present && isOurStatusline(existing)
       ? { ...(existing as Record<string, unknown>), type: "command", command, __bastraRecall: true }
       : buildStatuslineBlock(command);
-    await atomicWriteJson(CLAUDE_CODE_SETTINGS, data);
+    await atomicWriteJson(settingsPath, data);
     const how = !present ? "powerline, refreshInterval 1s" : isOurStatusline(existing) ? "path updated" : "replaced foreign";
     return { status: "installed", detail: `statusLine registered (${how})`, backupPath: backupPath ?? undefined };
   }
@@ -163,9 +171,9 @@ async function patchClaudeCodeStatusline(
   }
   if (opts.dryRun) return { status: "would-remove", detail: "would remove bastra statusLine" };
 
-  const backupPath = await backupConfig(CLAUDE_CODE_SETTINGS);
+  const backupPath = await backupConfig(settingsPath);
   delete data.statusLine;
-  await atomicWriteJson(CLAUDE_CODE_SETTINGS, data);
+  await atomicWriteJson(settingsPath, data);
   return { status: "removed", detail: "bastra statusLine removed", backupPath: backupPath ?? undefined };
 }
 
@@ -433,7 +441,7 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
       ? "missing (run 'bastra install' to add it)"
       : isOurStatusline(sl)
         ? "present (bastra)"
-        : "present (foreign — run 'bastra install --yes' to replace it)";
+        : `present (foreign: ${(sl as Record<string, unknown>).command ?? "unknown command"})`;
   }
 
   // Daemon
