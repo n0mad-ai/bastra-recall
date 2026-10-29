@@ -43,7 +43,7 @@ function args(positional: string[], dryRun = false): ParsedArgs {
     since: null,
     source: null,
     lines: null,
-    stats: false,
+    stats: false, conventions: false,
     includeEval: false,
     replay: false,
     days: null,

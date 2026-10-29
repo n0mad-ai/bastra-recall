@@ -184,6 +184,7 @@ export async function writeClientTelemetry(
       // here made every client row unmatchable and left the readout pairing
       // rows by timestamp alone, across sessions.
       session_id: sessionId ?? randomUUID(),
+      ...(lane === "gate" ? { session_known: sessionId !== null } : {}),
       hook_version: hookVersion,
       // #352: null = never asked (skip-gate) — false is reserved for a path
       // that actually POSTed and got no response.

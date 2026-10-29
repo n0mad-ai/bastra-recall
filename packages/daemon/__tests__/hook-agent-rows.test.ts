@@ -46,6 +46,7 @@ const NOT_HOOK_REACHABLE: Record<string, string> = {
 /** Kinds a hook path writes that carry no `dimensions` at all — no client,
  *  no hook_source, so no agent either. */
 const UNDIMENSIONED: Record<string, string> = {
+  convention_shown: "/hook/hinted acknowledges session + delivered memory IDs only; feedback carries no agent/client evidence, so attribution stays unknown",
   hook_reflex: "reflex fast-lane row (#217): has never carried dimensions",
   recall_episode: "closes a load that may come from another caller (MCP load_memory); the act does not own it",
   hint_followed_shadow: "join shadow over an earlier hint; same ownership question as recall_episode",

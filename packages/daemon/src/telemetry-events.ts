@@ -42,7 +42,9 @@ export type TelemetryEvent =
   | CodeToolCallEvent
   | CodeGraphRefreshEvent
   | ReadDocumentEvent
-  | ReceiptUnattributedEvent;
+  | ReceiptUnattributedEvent
+  | ConventionShownEvent
+  | ConventionValidationEvent;
 
 /**
  * Pro-Stage-Timings eines Recalls (#38) plus die Querykosten-Merkmale aus
@@ -290,6 +292,7 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
 export type LoadOrigin = "hook" | "recall" | "direct";
 
 export interface LoadMemoryEvent extends BaseEvent {
+  session_known?: boolean;
   kind: "load_memory";
   id: string;
   found: boolean;
@@ -621,3 +624,27 @@ export type {
   HookRecallEvent,
   HookReflexEvent,
 } from "./telemetry-events-hook.js";
+
+/** Actual hook delivery, independent of token matching or turn availability. */
+export interface ConventionShownEvent extends BaseEvent {
+  kind: "convention_shown";
+  session_known: boolean;
+  memory_ids: string[];
+}
+
+/** Each validator attempt, including failures. IDs/hashes only; no artifact text. */
+export interface ConventionValidationEvent extends BaseEvent {
+  kind: "convention_validation";
+  caller_session: string | null;
+  session_known: boolean;
+  artifact_sha256: string;
+  channel: string;
+  receipt: string | null;
+  receipt_stored: boolean;
+  result: "pass" | "fail";
+  error_codes: string[];
+  task_kind: string | null;
+  generation: number | null;
+  rule_id: string | null;
+  rule_revision: string | null;
+}

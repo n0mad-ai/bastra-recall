@@ -33,6 +33,38 @@ Deny is runtime-confirmed for Bash/exec_command and view_image; existing-process
 write_stdin has no fresh boundary, and Hosted WebSearch is excluded. Other
 local tools are documented, not separately runtime-certified. See [Codex setup](./CODEX.md#gate-evidence-and-compatibility-1304).
 
+### Convention evidence per session (#1313)
+
+Run `bastra logs --conventions` (last seven days), or
+`bastra logs --conventions --since 1d`, to read existing event logs offline.
+Each session has one line: distinct memory IDs shown and successfully delivered
+by `load_memory`, gate denials/timeouts, exact-wording stored matches found by
+the after-session harvest (`said-again`), and validator receipts. A repeated
+memory gets its own indented line linking its stored match to shown/loaded
+observations in that session. Only IDs and hashes are logged, never repeated
+quotes or artifact text; the usage sidecar format stays unchanged.
+
+`session_known=false` is an unknown-attribution bucket, never a guessed session
+or a cross-session join. Old load events without delivery evidence remain
+unverified. Harvest matches prove a rule existed at harvest time; whether it
+already existed when the user repeated it stays `unknown`. Missing shown/load
+observations are also `unknown`, rather than proof that delivery never happened.
+
+`followed: receipt` means a successful validator receipt was stored for that
+caller's task; `deny-cleared` means the same session subsequently loaded every
+memory required by one must-load denial. A plain gate pass, a different
+session's load, a reflex denial, or token overlap cannot establish either.
+These are mechanical evidence labels, not semantic compliance judgments.
+Without either evidence, `followed` is `unknown`.
+
+Task kind, rule revision, context generation, first-visible result and repaired
+result appear separately when logged; absent fields stay `unknown`. A receipt
+alone proves neither final delivery nor a successful repair. Gate, load and
+validator attempt counts retain blocked, failed and unverified attempts; they
+are separate series, not an end-to-end success fraction. Eval-marked events are
+excluded unless `--include-eval` is supplied. Historical `receipt_unattributed`
+rows have a separate counter so they are not added to modern validator attempts.
+
 ### Budgets and the release threshold (#305)
 
 One budget across lanes that do different amounts of work was the wrong shape:
@@ -1887,6 +1919,39 @@ Registrierungen oder Hinweis-Marker als defekt. Geänderte Definitionen in
 view_image belegt; write_stdin bestehender Prozesse hat keine neue Grenze,
 Hosted WebSearch ist ausgenommen. Andere lokale Werkzeuge sind dokumentiert,
 aber nicht einzeln zur Laufzeit geprüft. Siehe [Codex-Einrichtung](./CODEX.md#gate-belege-und-kompatibilität-1304).
+
+### Konventionsbelege pro Session (#1313)
+
+`bastra logs --conventions` liest die letzten sieben Tage offline;
+`bastra logs --conventions --since 1d` begrenzt das Fenster. Pro Session stehen
+getrennt: verschiedene gezeigte Memory-IDs (`shown`), nachweislich ausgelieferte
+Loads (`loaded`), Gate-Denials und Timeouts, beim Harvest gefundene gespeicherte
+Wortlauttreffer (`said-again`) und Validator-Receipts. Wiederholte Memories
+bekommen eine eingerückte Zeile mit den gezeigten und geladenen Belegen derselben
+Session. Geloggt werden IDs und Hashes, keine Zitate oder Artefakttexte.
+Das Usage-Sidecar-Format bleibt gleich.
+
+`session_known=false` sammelt unbekannte Zuordnungen; daraus entsteht kein Join
+zwischen Sessions. Alte Loads ohne Auslieferungsbeleg bleiben ungeprüft. Ein
+Harvest-Treffer beweist nur den gespeicherten Stand beim Harvest. Ob die Regel
+schon beim ursprünglichen Nutzerturn existierte, bleibt `unknown`; fehlende
+Shown-/Load-Belege beweisen ebenfalls keine unterbliebene Auslieferung.
+
+`followed: receipt` heißt: Eine erfolgreiche Validierung wurde für den Task des
+bekannten Aufrufers gespeichert. `deny-cleared` heißt: Dieselbe Session hat
+anschließend alle Memories eines Must-load-Denials geladen. Ein bloßer Pass,
+ein Load einer anderen Session, ein Reflex-Denial oder Wortüberlappung reichen
+nicht. Diese Etiketten sind mechanische Belege, keine semantische Bewertung.
+Ohne solche Belege bleibt `followed` auf `unknown`.
+
+Taskart, Regelrevision, Kontextgeneration, erstes sichtbares Ergebnis und spätere
+Reparatur stehen getrennt, soweit geloggt; sonst steht dort `unknown`. Ein
+Receipt belegt weder die endgültige Auslieferung noch eine erfolgreiche
+Reparatur. Gate-, Load- und Validator-Versuche zählen blockierte, fehlerhafte und
+ungeprüfte Fälle weiter. Die getrennten Reihen ergeben keine End-to-End-Quote.
+Eval-Zeilen bleiben ohne `--include-eval` ausgeschlossen. Historische
+`receipt_unattributed`-Events haben einen eigenen Zähler und werden nicht als
+zusätzliche Validator-Versuche gezählt.
 
 ### Budgets und die Freigabeschwelle (#305)
 

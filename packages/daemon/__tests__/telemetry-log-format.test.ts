@@ -81,6 +81,8 @@ async function drive(t: Telemetry): Promise<string[]> {
   // Two windows left open, so the snapshot carries its Set → array shape.
   t.recordLoadedMemory({ memory_id: "m2", distinctive_tokens: ["delta", "epsilon"], hook_hint: null, session_id: "sess-a" });
   t.recordSurfacedHints([{ memory_id: "m5", distinctive_tokens: ["omega"] }], "sess-b");
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
 
   return [t.runId(), turnA, turnB, turnB2].filter((x): x is string => typeof x === "string");
 }
@@ -106,8 +108,21 @@ test("event log and join-state snapshot keep their byte format (#1039)", async (
     assert.deepEqual(files, ["events-2026-10-04.jsonl", "join-state.json"]);
     const log = normalize(await readFile(join(logDir, files[0]!), "utf8"), ids);
     const joinState = normalize(await readFile(join(logDir, files[1]!), "utf8"), ids);
-    assert.deepEqual(log.split("\n"), EXPECTED_LOG);
-    assert.equal(joinState, EXPECTED_JOIN_STATE);
+    // #1313 adds delivery events and session slots. Keep the historical rows
+    // and snapshot fields byte-pinned, and assert the additive fields explicitly.
+    const lines = log.split("\n");
+    const shown = lines.filter(line => line && JSON.parse(line).kind === "convention_shown");
+    assert.deepEqual(shown.map(line => JSON.parse(line)), [
+      { kind: "convention_shown", ts: "2026-10-04T12:00:00.000Z", session_id: "sess-a", session_known: true, memory_ids: ["m4"] },
+      { kind: "convention_shown", ts: "2026-10-04T12:00:00.000Z", session_id: "sess-b", session_known: true, memory_ids: ["m5"] },
+    ]);
+    assert.deepEqual(lines.filter(line => !shown.includes(line)), EXPECTED_LOG);
+    const snapshot = JSON.parse(joinState);
+    assert.deepEqual(snapshot.sessionHookHints, []);
+    delete snapshot.sessionHookHints;
+    assert.equal(snapshot.loadedMemories[0].session_id, "sess-a");
+    for (const memory of snapshot.loadedMemories) delete memory.session_id;
+    assert.equal(JSON.stringify(snapshot), EXPECTED_JOIN_STATE);
   } finally {
     mock.timers.reset();
     await rm(logDir, { recursive: true, force: true });

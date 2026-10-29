@@ -113,7 +113,7 @@ export async function loadMemoryHandler(
   const own = deps.search.loadFull(parsed.data.id);
   const m = own ?? deps.commonsSearch?.loadFull(parsed.data.id);
   const fromCommons = !own && m !== undefined;
-  const hookHint = deps.telemetry.findHookHintFor(parsed.data.id);
+  const hookHint = deps.telemetry.findHookHintFor(parsed.data.id, ctx?.sessionId ?? callerSessionStore.getStore() ?? null);
   const followsRecall = deps.telemetry.recentRecallId();
   const servedBy = deps.telemetry.findRecallFor(parsed.data.id, ctx?.sessionId ?? callerSessionStore.getStore() ?? null); // #1128-capture
   // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
@@ -142,6 +142,7 @@ export async function loadMemoryHandler(
             }
           : {}),
         caller_session: ctx?.sessionId ?? callerSessionStore.getStore() ?? null,
+        session_known: !!(ctx?.sessionId ?? callerSessionStore.getStore()),
       }),
     );
 
@@ -165,7 +166,7 @@ export async function loadMemoryHandler(
     hook_hint: hookHint
       ? { recall_id: hookHint.recall_id, score: hookHint.score }
       : null,
-    session_id: ctx?.sessionId ?? null,
+    session_id: ctx?.sessionId ?? callerSessionStore.getStore() ?? null,
   });
 
   // Reset-signal for the hook's per-session dedup (#32): touch a marker

@@ -122,6 +122,7 @@ test("a quote the vault already holds is dropped before the cap and counted as s
     assert.doesNotMatch(pending[0].blocks, /sign the tag/);
     assert.match(pending[0].blocks, /written by hand/);
     assert.equal((await harvestEvents(dir))[0].stored_count, 1);
+    assert.deepEqual((await harvestEvents(dir))[0].stored_memory_ids, ["release-tags-signed"]);
   });
 });
 

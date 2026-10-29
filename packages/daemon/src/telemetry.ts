@@ -42,6 +42,7 @@ import type {
   TelemetryEvent,
   IdScanEvent,
   ReceiptUnattributedEvent,
+  ConventionValidationEvent,
   RecallEvent,
   LoadMemoryEvent,
   SaveMemoryEvent,
@@ -163,8 +164,8 @@ export class Telemetry {
    * load_memory(id) can report whether (and where) the id was hinted to the
    * user. Most-recent hint wins on collision.
    */
-  recordHookHints(recall_id: string, hits: Array<{ id: string; score?: number }>): void {
-    this.joins.recordHookHints(recall_id, hits);
+  recordHookHints(recall_id: string, hits: Array<{ id: string; score?: number }>, session_id?: string | null): void {
+    this.joins.recordHookHints(recall_id, hits, session_id);
   }
 
   /** #1128-capture: see `JoinState.recordRecallHits`. */
@@ -196,8 +197,8 @@ export class Telemetry {
    * Returns the recall_id + rank if this id was hinted in the last
    * HOOK_HINT_WINDOW_MS. Lazy-evicts the entry on miss.
    */
-  findHookHintFor(id: string): { recall_id: string; rank: number; score: number | null } | null {
-    return this.joins.findHookHintFor(id);
+  findHookHintFor(id: string, session_id?: string | null): { recall_id: string; rank: number; score: number | null } | null {
+    return this.joins.findHookHintFor(id, session_id);
   }
 
   rotateTurn(sessionId: string | null): string | null {
@@ -365,6 +366,11 @@ export class Telemetry {
       session_id: this.sessionId,
       ...payload,
     });
+  }
+
+  async logConventionValidation(payload: Omit<ConventionValidationEvent, "kind" | "ts" | "session_id">): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({ kind: "convention_validation", ts: new Date().toISOString(), session_id: this.sessionId, ...payload });
   }
 
   /** #1310: see {@link ReceiptUnattributedEvent}. */

@@ -69,13 +69,25 @@ export async function validateArtifactHandler(args: Record<string, unknown>, dep
   const caller = callerSessionStore.getStore();
   const session_known = typeof caller === "string" && caller.length > 0;
   const base = { ...result, rendered: renderForChat(result), session_known };
-  if (result.receipt === null) return { ...base, receipt_stored: false };
+  const finish = async <T extends { receipt_stored: boolean }>(output: T): Promise<T> => {
+    await deps?.telemetry?.logConventionValidation?.({
+      caller_session: session_known ? caller : null, session_known,
+      artifact_sha256: result.artifact_sha256, channel: result.channel,
+      receipt: result.receipt, receipt_stored: output.receipt_stored,
+      result: result.receipt === null ? "fail" : "pass",
+      error_codes: result.errors.map((error) => error.code),
+      task_kind: input.task?.kind ?? null, generation: input.task?.generation ?? null,
+      rule_id: input.rule?.id ?? null, rule_revision: input.rule?.revision ?? null,
+    }).catch(() => {});
+    return output;
+  };
+  if (result.receipt === null) return finish({ ...base, receipt_stored: false });
   if (!session_known) {
     await deps?.telemetry?.logReceiptUnattributed({ channel: result.channel, transport: caller === undefined ? "stdio" : "forwarded" }).catch(() => {});
-    return { ...base, receipt_stored: false, receipt_note: UNATTRIBUTED_NOTE };
+    return finish({ ...base, receipt_stored: false, receipt_note: UNATTRIBUTED_NOTE });
   }
   const outcome = await storeReceipt(caller, { ...result, receipt: result.receipt }, input.task);
-  return outcome === "stored"
+  return finish(outcome === "stored"
     ? { ...base, receipt_stored: true }
-    : { ...base, receipt_stored: false, receipt_note: RECEIPT_NOTES[outcome] };
+    : { ...base, receipt_stored: false, receipt_note: RECEIPT_NOTES[outcome] });
 }
