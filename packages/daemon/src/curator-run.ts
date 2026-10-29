@@ -634,9 +634,10 @@ async function runCuratorPassInner(
     // Pass nicht.
     try {
       const blocks: string[] = [];
+      const reflexIds: string[] = [];
       for (const c of await collectReflexCandidates(deps.vault, nextState, nowMs, events ?? undefined)) {
         blocks.push(formatReflexCandidateBlock(c));
-        nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [c.id]: nowIso };
+        reflexIds.push(c.id);
       }
       for (const c of await collectAdoptionCandidates(deps.vault, nextState, nowMs)) {
         blocks.push(formatAdoptionCandidateBlock(c));
@@ -650,7 +651,15 @@ async function runCuratorPassInner(
           [cluster.key]: nowIso,
         };
       }
-      if (blocks.length > 0) await writePendingSuggestion(blocks.join("\n"));
+      if (blocks.length > 0) await writePendingSuggestion(blocks.join("\n"), {
+        onPersisted: () => {
+          // #1308: a best-effort relay return alone is not delivery evidence.
+          // Failed/disabled writes must not permanently consume a candidate.
+          for (const id of reflexIds) {
+            nextState.reflex_suggested = { ...(nextState.reflex_suggested ?? {}), [id]: nowIso };
+          }
+        },
+      });
     } catch {
       /* suggestions are best-effort */
     }

@@ -226,7 +226,12 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  */
 export async function writePendingSuggestion(
   blocks: string,
-  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string; deferOnBusy?: boolean } = {},
+  opts: {
+    lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string; deferOnBusy?: boolean;
+    /** Called only after a successful atomic relay write (also for refreshes).
+     *  Disabled relay, skipped writes and failures never acknowledge persistence. */
+    onPersisted?: () => void;
+  } = {},
 ): Promise<void> {
   if (!pendingRelayEnabled()) return;
   const lane: PendingLane = opts.lane ?? "recency";
@@ -321,6 +326,7 @@ export async function writePendingSuggestion(
         );
       }
       await writePendingRows(path, kept);
+      opts.onPersisted?.();
       }, { crossProcess: true, noQueue: true, takeOverStale: true });
       if (ran) return;
       if (opts.deferOnBusy) {

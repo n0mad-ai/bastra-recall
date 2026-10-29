@@ -360,6 +360,40 @@ test("reflex promotion (#1308): proposals persist across curator passes without 
   });
 });
 
+test("reflex promotion (#1308): disabled or failed relay can retry before permanent dedup", async () => {
+  for (const failure of ["disabled", "write-error"]) {
+    await withFixture(async (root, deps) => {
+      deps.vault = fakeVault([frustrationMemory()]);
+      const parent = join(root, "relay");
+      const pendingPath = join(parent, "pending.json");
+      await withEnv("BASTRA_PENDING_SUGGESTIONS_PATH", pendingPath, async () => {
+        await runCuratorPass(deps, { force: true, nowMs: NOW });
+        if (failure === "write-error") await writeFile(parent, "not a directory");
+        await withEnv("BASTRA_PENDING_RELAY", failure === "disabled" ? "off" : "on", async () => {
+          const result = await runCuratorPass(deps, { force: true, nowMs: T_ACT });
+          assert.equal(result.error, undefined);
+        });
+        assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, undefined, failure);
+        if (failure === "write-error") await rm(parent);
+        await withEnv("BASTRA_PENDING_RELAY", "on", async () => {
+          const result = await runCuratorPass(deps, { force: true, nowMs: T_ACT + 1000 });
+          assert.equal(result.error, undefined);
+          const rows = JSON.parse(await readFile(pendingPath, "utf8"));
+          assert.equal(rows.length, 1);
+          assert.match(rows[0].blocks, /user-directed-frustration/);
+          const suggestedAt = (await loadCuratorState(root)).reflex_suggested?.frustration;
+          assert.equal(suggestedAt, new Date(T_ACT + 1000).toISOString());
+          await rm(pendingPath);
+          await runCuratorPass(deps, { force: true, nowMs: T_ACT + 90 * 86_400_000 });
+          assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, suggestedAt);
+          await assert.rejects(readFile(pendingPath), { code: "ENOENT" });
+          assert.equal(deps.vault.get("frustration")?.fm.recall_mode, undefined);
+        });
+      });
+    });
+  }
+});
+
 test("intake adoption (#217): repeatedly used imported memories become candidates, natives and cooldown excluded", async () => {
   const vault = fakeVault([
     { id: "intake-hot", title: "Imported hot", created: iso(60), topic_path: ["imported", "carnexus"], related: [] },
