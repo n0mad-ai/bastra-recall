@@ -193,6 +193,7 @@ test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATT
     siblings: ["deploy-checklist"],
     verify_cmd: "npm test",
     derived_claims: [{ id: "steps", resolver: "count.markdown-numbered-list.v1", source: "ops/runbook.md", expect: 4 }],
+    validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" },
     superseded_by: "new-runbook",
     salience: 0.5,
     emotion: "risk",
