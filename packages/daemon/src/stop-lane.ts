@@ -70,7 +70,8 @@ import { loadSessionState, mutateSessionState, parkBoundary } from "./session-st
 import { noteSessionForHarvest } from "./session-harvest.js";
 import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
 import { appendProductDocHint, correctionReminderSuggestions, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
-import { formatSameTurnBlock, sameTurnNotice } from "./stop-lane-same-turn.js";
+import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
+import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -101,7 +102,31 @@ export async function runStopLane(
     return "{}";
   }
   if (payload.hook_event_name !== "Stop") return "{}";
-  if (payload.stop_hook_active === true) return "{}";
+  // #1311: bounded repair for an approved-copy task without a valid receipt.
+  // It sits before the loop guard on purpose — the follow-up Stop it causes is
+  // `stop_hook_active` — and bounds itself: two requests per task, then one
+  // non-conformance row. An ordinary Stop must still book harvest, park its
+  // boundary and evaluate saves; only hook-active follow-ups skip that work.
+  const repair = await checkStopRepair(payload).catch(() => null);
+  let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
+  if (repair?.action === "request") {
+    repairOutput = {
+      systemMessage: repairNotice(await getPrimaryLanguage().catch(() => undefined)),
+      hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatRepairBlock(repair.attempt, REPAIR_MAX_ATTEMPTS) },
+    };
+  }
+  if (repair?.action === "exhausted") {
+    await appendStopEvent("non_conformance", {
+      session_id: payload.session_id ?? null,
+      session_known: typeof payload.session_id === "string" && payload.session_id.length > 0,
+      reason: "repair_exhausted",
+      task_id: repair.taskId,
+      generation: repair.generation,
+      attempts: repair.attempts,
+      latency_ms_total: Date.now() - startedAt,
+    });
+  }
+  if (payload.stop_hook_active === true) return repairOutput ? JSON.stringify(repairOutput) : "{}";
 
   // Code awareness (#581): the end of a turn is a good moment to refresh the
   // graph, so the next turn starts from a current one.
@@ -147,8 +172,9 @@ export async function runStopLane(
   // validated in lexicon.ts — but per-cue validation cannot see a join-time
   // RegExp compile error, and a future detector may throw. A broken Stop
   // evaluation must degrade to `{}`, never take the hook down.
+  let normalOutput = "{}";
   try {
-    return await evaluateStop(payload, selfBaseUrl, startedAt, turns);
+    normalOutput = await evaluateStop(payload, selfBaseUrl, startedAt, turns);
   } catch (err) {
     try {
       await writeTelemetry({
@@ -166,8 +192,18 @@ export async function runStopLane(
     } catch {
       /* telemetry must never break the hook */
     }
-    return "{}";
   }
+  if (!repairOutput) return normalOutput;
+  // Both messages share Claude Code's existing same-turn channel. Preserve the
+  // save hint and its persistence rather than replacing it with repair alone.
+  const normal = JSON.parse(normalOutput) as { systemMessage?: string; hookSpecificOutput?: { additionalContext?: string } };
+  return JSON.stringify({
+    systemMessage: [normal.systemMessage, repairOutput.systemMessage].filter(Boolean).join("\n"),
+    hookSpecificOutput: {
+      hookEventName: "Stop",
+      additionalContext: [normal.hookSpecificOutput?.additionalContext, repairOutput.hookSpecificOutput.additionalContext].filter(Boolean).join("\n\n"),
+    },
+  });
 }
 
 /**
@@ -457,7 +493,24 @@ interface StopHookTelemetry {
   skipped_reason?: string;
 }
 
-async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
+/** #1311: the approved-copy repair gave up — two requests, still no receipt. */
+interface StopNonConformance {
+  session_id?: string | null;
+  session_known: boolean;
+  reason: "repair_exhausted";
+  task_id: string;
+  generation: number;
+  attempts: number;
+  latency_ms_total: number;
+}
+
+function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
+  return appendStopEvent("save_eval_call", payload);
+}
+
+/** #1311: one JSONL row of this lane — `save_eval_call`, or the repair path's
+ *  `non_conformance`. Best-effort, never throws. */
+async function appendStopEvent(kind: string, payload: StopHookTelemetry | StopNonConformance): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
@@ -467,7 +520,7 @@ async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
     // only when the payload carried none.
     const { session_id: payloadSessionId, ...rest } = payload;
     const event = {
-      kind: "save_eval_call",
+      kind,
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,

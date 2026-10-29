@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeTurns, runStopLane, type ClaudeStopPayload } from "../src/stop-lane.js";
 import { formatSameTurnBlock } from "../src/stop-lane-same-turn.js";
+import { mutateSessionState, taskIdFor } from "../src/session-state.js";
 
 const DECISION_TRANSCRIPT = [
   { role: "user", content: "we compared both options. decided: we go with the queue, not polling" },
@@ -159,6 +160,8 @@ test("#662 — Codex, no session id and BASTRA_STOP_SAME_TURN=0 keep the pending
 });
 
 test("#662 — a Stop raised by a Stop hook is never re-evaluated (loop guard)", async () => {
+  // #1311: still true for every session outside an approved-copy task that
+  // requires a validator — the repair case below is the one exception.
   await withSandbox({}, async () => {
     assert.equal(await stop({ session_id: "cc-662-loop", stop_hook_active: true }), "{}");
   });
@@ -194,5 +197,28 @@ test("#1307 a subsequent save_memory prevents the correction reminder; a prior s
     assert.match(prose.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
     const unrelated = JSON.parse(await stop({ session_id: "correction-old", transcript: [...CORRECTION_TRANSCRIPT, { role: "user", content: "Build a calendar widget" }] }));
     assert.doesNotMatch(unrelated.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
+  });
+});
+
+test("#1311 — approved-copy without receipt passes the loop guard twice, then terminates", async () => {
+  await withSandbox({}, async () => {
+    const sid = "cc-1311-loop";
+    await mutateSessionState(sid, (s) => {
+      s.activeTask = { id: taskIdFor("approved-copy", 1000), kind: "approved-copy", since: 1000, generation: 0 };
+      s.activeConventions = [{
+        id: "nachrichtenkonvention", revision: null, setAt: 1000, scope: "task",
+        validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" },
+      }];
+    });
+    for (const attempt of [1, 2]) {
+      const out = JSON.parse(await stop({ session_id: sid, stop_hook_active: attempt > 1 })) as {
+        decision?: string;
+        hookSpecificOutput?: { additionalContext?: string };
+      };
+      assert.equal(out.decision, undefined);
+      assert.match(out.hookSpecificOutput?.additionalContext ?? "", /approved-copy without validated receipt/);
+    }
+    assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");
+    assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");
   });
 });

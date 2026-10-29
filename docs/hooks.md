@@ -955,6 +955,32 @@ restatements, with emphasis), and replaces the duplicate frustration reminder.
 An actual `save_memory` tool call after the correction suppresses the reminder;
 a prior save or a prose mention does not. Other delivery paths stay unchanged.
 
+**Approved-copy repair (#1311).** One exception to the loop guard: when the
+session is in an `approved-copy` task and an active convention names a
+validator, but the session holds no `validate_artifact` receipt for the
+running task and generation (#1310), the Stop hands back
+`approved-copy without validated receipt: run validate_artifact on the final
+text before delivering; later edits need a new receipt` as `additionalContext`,
+also on a `stop_hook_active` Stop. This happens at most twice per task and
+generation (an edited text does not reset the count); the next Stop writes one
+`non_conformance` event with `reason: "repair_exhausted"` and returns `{}`.
+The count ends with the task and on compact, clear and fork. It is never a
+`decision: "block"`, and Codex, payloads without a session id and
+`BASTRA_STOP_SAME_TURN=0` get no repair. A receipt proves mechanical format,
+not that the sent text is the validated one.
+
+The initial Stop still records harvest/boundary work and evaluates save hints;
+when needed, the save and repair contexts are combined. Hook-active follow-ups
+do not repeat that evaluation. Exhaustion carries `session_known` and stops
+repair, without asserting a first-visible or repaired result.
+
+This is conditional on validator metadata already attached to the active
+convention. Normal production activation does not yet supply that metadata
+(#1323); tests declare it explicitly. The check matches task and generation,
+not the latest delivered bytes or changed validator parameters. Those remaining
+binding requirements keep #1275 open; ordinary messaging is not yet guaranteed
+to activate repair automatically.
+
 **What you see (#757).** Claude Code has no agent-only channel on `Stop`: it
 prints `additionalContext` in full under "Stop hook feedback" (measured on
 Claude Code 2.1.286; `suppressOutput` has no effect, and `decision: "block"`
@@ -2896,6 +2922,34 @@ Hinweis ersetzt den doppelten Frust-Hinweis. Ein tatsächlicher
 `save_memory`-Werkzeugaufruf nach der Korrektur unterdrückt den Hinweis; ein
 früherer Aufruf oder eine bloße Erwähnung im Text tut das nicht. Andere
 Übergabewege bleiben unverändert.
+
+**Reparatur bei freigegebenem Text (#1311).** Eine Ausnahme vom Loop-Schutz:
+Ist die Session in einer `approved-copy`-Aufgabe, verlangt eine aktive
+Konvention einen Validator und hat die Session für die laufende Aufgabe und
+Generation keinen `validate_artifact`-Beleg (#1310), gibt der Stop
+`approved-copy without validated receipt: run validate_artifact on the final
+text before delivering; later edits need a new receipt` als
+`additionalContext` zurück, auch bei einem Stop mit `stop_hook_active`. Das
+passiert höchstens zweimal pro Aufgabe und Generation (ein geänderter Text
+setzt den Zähler nicht zurück); der nächste Stop schreibt ein
+`non_conformance`-Ereignis mit `reason: "repair_exhausted"` und gibt `{}`
+zurück. Der Zähler endet mit der Aufgabe und bei compact, clear und fork. Es
+ist nie ein `decision: "block"`; Codex, Payloads ohne Session-ID und
+`BASTRA_STOP_SAME_TURN=0` bekommen keine Reparatur. Ein Beleg beweist das
+mechanische Format, nicht dass der gesendete Text der geprüfte ist.
+
+Der erste Stop erhält Harvest, Boundary und Save-Auswertung; Save- und
+Reparaturhinweise werden bei Bedarf kombiniert. Hook-aktive Folge-Stops
+wiederholen diese Auswertung nicht. Das Erschöpfungsereignis trägt
+`session_known` und beendet die Reparatur, belegt aber weder das zuerst
+sichtbare noch ein repariertes Ergebnis.
+
+Voraussetzung sind bereits hinterlegte Validator-Metadaten an der aktiven
+Konvention. Die normale produktive Aktivierung setzt sie bislang nicht
+(#1323); Tests deklarieren sie ausdrücklich. Geprüft werden Aufgabe und
+Generation, nicht die zuletzt ausgelieferten Bytes oder geänderte
+Validator-Parameter. Diese Bindungslücken halten #1275 offen; normale
+Nachrichten aktivieren die Reparatur noch nicht garantiert automatisch.
 
 **Was du siehst (#757).** Claude Code hat bei `Stop` keinen Kanal nur für den
 Agenten: Es gibt `additionalContext` vollständig unter „Stop hook feedback"

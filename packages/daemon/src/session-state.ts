@@ -173,6 +173,17 @@ export interface SessionState {
   /** #1310: successful `validate_artifact` receipts of the running task
    *  (receipt-store.ts). Only hashes and parameters, never artifact text. */
   receipts?: ArtifactReceipt[];
+  /** #1311: Stop-lane repair requests for the running task (stop-repair.ts).
+   *  Counted per task and generation, not per artifact hash, so an edit does
+   *  not reset the cap; it expires with the task like `receipts`. */
+  repairAttempts?: RepairAttempts;
+}
+
+/** #1311: how often the Stop lane asked task `taskId` in `generation` for a receipt. */
+export interface RepairAttempts {
+  taskId: string;
+  generation: number;
+  count: number;
 }
 
 /** #1306: the task state. `generation` rises on compact, clear and fork. */
@@ -282,6 +293,7 @@ export interface ReadonlySessionState {
   readonly activeTask?: Readonly<ActiveTask>;
   readonly taskQuestion?: Readonly<TaskQuestion>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
+  readonly repairAttempts?: Readonly<RepairAttempts>;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -420,6 +432,11 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
           typeof r.unit === "string" && typeof r.at === "number",
       );
     }
+    // #1311: the repair counter — same reason, or every other lane's save would reset the cap.
+    const repair = parsed.repairAttempts;
+    if (repair && typeof repair.taskId === "string" && typeof repair.generation === "number" && typeof repair.count === "number") {
+      state.repairAttempts = { taskId: repair.taskId, generation: repair.generation, count: repair.count };
+    }
     const question = parsed.taskQuestion;
     if (question && typeof question.at === "number" && typeof question.generation === "number") {
       const conventions = Array.isArray(question.conventions)
@@ -472,13 +489,24 @@ export async function saveSessionState(sessionId: string, state: SessionState): 
 export async function mutateSessionState(
   sessionId: string,
   mutate: (state: SessionState) => void,
+  options: { noQueue?: boolean; deadline?: number } = {},
 ): Promise<boolean> {
   if (!sessionId) return false;
-  return withPathLock(sessionFile(sessionId), async () => {
+  const expired = () => options.deadline !== undefined && Date.now() >= options.deadline;
+  const apply = async () => {
+    if (expired()) return false;
     const state = await readSessionState(sessionId);
+    // Response-path claims must not start a late mutation after their budget.
+    if (expired()) return false;
     mutate(state);
+    if (expired()) return false;
     return writeSessionState(sessionId, state);
-  });
+  };
+  // Busy means no claim, rather than a queued write after the hook returned.
+  if (options.noQueue) {
+    return (await tryWithPathLock(sessionFile(sessionId), apply, { noQueue: true })) ?? false;
+  }
+  return withPathLock(sessionFile(sessionId), apply);
 }
 
 /** The bare atomic write. Only ever called with the session lock held.
@@ -567,7 +595,7 @@ const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>(["translate-only", "dr
  * task and its conventions survive (the rule kernel restores the bodies); an
  * open "task unclear" question does not — it was asked of a context that is
  * gone. #1310: neither do receipts — they were validated in the old
- * generation. Never throws.
+ * generation. #1311: nor does the repair counter bound to them. Never throws.
  */
 export async function bumpTaskGeneration(sessionId: string, now: number = Date.now()): Promise<void> {
   if (!sessionId) return;
@@ -577,6 +605,7 @@ export async function bumpTaskGeneration(sessionId: string, now: number = Date.n
       state.activeTask = { ...task, generation: task.generation + 1 };
       delete state.taskQuestion;
       delete state.receipts;
+      delete state.repairAttempts;
     });
   } catch {
     // A missed bump only leaves an old question answerable; it never blocks the start.
