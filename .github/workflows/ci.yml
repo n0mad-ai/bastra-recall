@@ -66,6 +66,17 @@ jobs:
       - name: Test
         run: npm test
 
+      # #1302: intentionally red until the convention gate is implemented.
+      # Make this a required gate once #1303 and the remaining expectations pass.
+      - name: Convention replay (expected red baseline)
+        id: convention-replay
+        continue-on-error: true
+        run: npm run test:convention-replay --workspace=@bastra-recall/daemon
+
+      - name: Report convention replay outcome
+        if: always()
+        run: echo 'Convention replay result — ${{ steps.convention-replay.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Update-check tests
         run: npm run test:update
 

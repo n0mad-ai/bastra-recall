@@ -46,6 +46,7 @@
     "start": "node dist/index.js",
     "check:types": "tsc --noEmit && tsc -p tsconfig.scripts.json && tsc -p tsconfig.tests.json",
     "test": "node scripts/run-tests.mjs",
+    "test:convention-replay": "node scripts/run-convention-replay.mjs",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
     "stress:save62": "node --import tsx scripts/stress-save-62.mjs",
