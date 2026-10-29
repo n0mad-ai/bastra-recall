@@ -128,7 +128,7 @@ test("exhausted repairs retain reported lower-bound attempts and explicit unknow
   assert.equal(known.reportedRepairAttempts, 2);
   assert.equal(known.unverifiedRepairAttemptCounts, 0);
   assert.equal(known.followed, "unknown");
-  assert.deepEqual([...known.repaired], ["exhausted"]);
+  assert.deepEqual([...known.repaired], []);
   assert.equal(known.firstVisible.size, 0);
   const unknown = rows.find(row => !row.session_known)!;
   assert.equal(unknown.repairExhausted, 2);
@@ -136,6 +136,6 @@ test("exhausted repairs retain reported lower-bound attempts and explicit unknow
   assert.equal(unknown.unverifiedRepairAttemptCounts, 1);
   assert.equal(unknown.followed, "unknown");
   const output = renderConventions(rows);
-  assert.match(output, /session=known .*generation=4 first-visible=unknown repaired=exhausted/);
+  assert.match(output, /session=known .*generation=4 first-visible=unknown repaired=unknown/);
   assert.match(output, /total .*repair-exhausted=3 repair-attempts-reported-lower-bound=3 repair-attempt-counts-unknown=1/);
 });

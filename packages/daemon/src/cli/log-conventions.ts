@@ -140,7 +140,6 @@ export function aggregateConventions(events: Event[]): ConventionSession[] {
     }
     if (repairExhausted) {
       row.repairExhausted++;
-      row.repaired.add("exhausted");
       // The stop producer reports its bounded attempt count, not a complete
       // end-to-end attempt ledger. Keep this series separate and lower-bound.
       if (typeof e.attempts === "number" && Number.isInteger(e.attempts) && e.attempts >= 0) row.reportedRepairAttempts += e.attempts;

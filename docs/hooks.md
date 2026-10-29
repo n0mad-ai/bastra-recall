@@ -65,7 +65,8 @@ are separate series, not an end-to-end success fraction. Eval-marked events are
 excluded unless `--include-eval` is supplied. Historical `receipt_unattributed`
 rows have a separate counter so they are not added to modern validator attempts.
 Explicit `non_conformance` / `repair_exhausted` rows remain visible as
-`repair-exhausted` and `repaired=exhausted`. Their logged attempts are a separate
+`repair-exhausted`; `repaired` stays `unknown` without an explicit result.
+Their logged attempts are a separate
 `repair-attempts-reported-lower-bound` series; missing counts stay explicitly
 unknown. They establish neither first-visible correctness nor positive
 `followed` evidence. Attribution requires explicit `session_known=true`.
@@ -1982,7 +1983,8 @@ Eval-Zeilen bleiben ohne `--include-eval` ausgeschlossen. Historische
 `receipt_unattributed`-Events haben einen eigenen Zähler und werden nicht als
 zusätzliche Validator-Versuche gezählt.
 Explizite `non_conformance`-/`repair_exhausted`-Zeilen bleiben als
-`repair-exhausted` und `repaired=exhausted` sichtbar. Ihre geloggten Versuche
+`repair-exhausted` sichtbar; `repaired` bleibt ohne expliziten Ergebnisbeleg
+`unknown`. Ihre geloggten Versuche
 stehen separat unter `repair-attempts-reported-lower-bound`; fehlende Zähler
 bleiben ausdrücklich unbekannt. Das belegt weder das erste sichtbare Ergebnis
 noch positives `followed`. Nur explizites `session_known=true` erlaubt die
