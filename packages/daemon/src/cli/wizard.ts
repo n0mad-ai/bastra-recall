@@ -586,6 +586,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
         vaultPath,
         force: false,
         withStopHook: stopHook,
+        withBootstrap: args.withBootstrap,
         useStub,
       });
       results.push({ surface, r });

@@ -1,3 +1,4 @@
+import { ensureBootstrap, describeBootstrap } from "../bootstrap.js";
 import { codexGateSupported, CODEX_GATE_MIN_VERSION } from "../../codex-gate-capability.js";
 import { windowsHookToken } from "./command-paths.js";
 /**
@@ -370,12 +371,17 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   if (skillPlan.status === "error") return { status: "error", message: `skill: ${skillPlan.detail}`, configPath };
   if (hookPlan.status === "error") return { status: "error", message: `hooks: ${hookPlan.detail}`, configPath };
 
+  const bootstrapPlan = await ensureBootstrap("codex", "install", { ...opts, dryRun: true });
+  if (bootstrapPlan.error) return { status: "error", message: bootstrapPlan.detail, configPath };
+
   // #506 — the `^update_plan$` hook above is dead unless Codex's planning tool
   // is switched on; it ships off by default since Codex rust-v0.152.0.
   const planToolPlan = await ensureCodexPlanTool("install", { dryRun: true, configPath });
   if (planToolPlan.status === "error") return { status: "error", message: `plan tool: ${planToolPlan.detail}`, configPath };
 
   if (opts.dryRun) {
+    const bootstrap = await ensureBootstrap("codex", "install", opts);
+    if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
     const lines = [
       runtime.note ? `runtime: ${runtime.note}` : "",
       mcpMatches ? "mcp: already matches" : `mcp: would register '${SERVER_KEY}' through codex mcp`,
@@ -383,6 +389,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
       `hooks: ${hookPlan.detail}`,
       hookPlan.note ?? "",
       `plan tool: ${planToolPlan.detail}`,
+      `bootstrap: ${bootstrap.detail}`,
     ].filter(Boolean);
     return { status: "would-install", message: lines.join("\n  · "), configPath };
   }
@@ -408,8 +415,10 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   const planTool = await ensureCodexPlanTool("install", { dryRun: false, configPath });
   if (planTool.status === "error") return { status: "error", message: `plan tool: ${planTool.detail}`, configPath, backupPath: mcpBackup };
 
+  const bootstrap = await ensureBootstrap("codex", "install", opts);
+  if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
   const planToolUnchanged = planTool.status !== "enabled";
-  const unchanged = mcpMatches && skill.status === "already-installed" && hooks.status === "already-installed" && planToolUnchanged;
+  const unchanged = mcpMatches && skill.status === "already-installed" && hooks.status === "already-installed" && planToolUnchanged && !bootstrap.changed;
   if (unchanged) {
     return {
       status: "already-installed",
@@ -417,6 +426,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
         "MCP, Codex/ChatGPT skill and required hooks already match",
         hooks.note ?? "",
         `plan tool: ${planTool.detail}`,
+        `bootstrap: ${bootstrap.detail}`,
       ].filter(Boolean).join("\n  · "),
       configPath,
     };
@@ -428,6 +438,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     `hooks: ${hooks.detail}`,
     hooks.note ?? "",
     `plan tool: ${planTool.detail}`,
+    `bootstrap: ${bootstrap.detail}`,
     hooks.status === "installed"
       ? `hook definitions changed — Codex trusts a hook by the hash of its exact command, so re-approve them in Codex with '/hooks' or they stay silent`
       : "review changed hooks in Codex '/hooks'",
@@ -460,7 +471,9 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
   // the user set stays.
   const planToolPlan = await ensureCodexPlanTool("uninstall", { dryRun: true, configPath });
   if (planToolPlan.status === "error") return { status: "error", message: `plan tool: ${planToolPlan.detail}`, configPath };
-  if (!mcpPresent && !skillPresent && hookPlan.status === "not-present" && planToolPlan.status !== "would-remove") {
+  const bootstrapPlan = await ensureBootstrap("codex", "uninstall", { dryRun: true });
+  if (bootstrapPlan.error) return { status: "error", message: bootstrapPlan.detail, configPath };
+  if (!bootstrapPlan.changed && !mcpPresent && !skillPresent && hookPlan.status === "not-present" && planToolPlan.status !== "would-remove") {
     return { status: "not-present", message: "no bastra-recall Codex integration present", configPath };
   }
   if (opts.dryRun) {
@@ -472,6 +485,7 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
         hookPlan.note ?? "",
         skillPresent ? `skill: would remove ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
         `plan tool: ${planToolPlan.detail}`,
+        `bootstrap: ${bootstrapPlan.detail}`,
       ].filter(Boolean).join("\n  · "),
       configPath,
     };
@@ -488,6 +502,8 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
   if (hooks.status === "error") return { status: "error", message: `hooks: ${hooks.detail}`, configPath, backupPath };
   const planTool = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
   if (planTool.status === "error") return { status: "error", message: `plan tool: ${planTool.detail}`, configPath, backupPath };
+  const bootstrap = await ensureBootstrap("codex", "uninstall", opts);
+  if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
   return {
     status: "removed",
     message: [
@@ -496,6 +512,7 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
       hooks.note ?? "",
       skillPresent ? `skill: removed ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
       `plan tool: ${planTool.detail}`,
+      `bootstrap: ${bootstrap.detail}`,
       "restart ChatGPT desktop, Codex CLI sessions and the IDE extension",
     ].filter(Boolean).join("\n  · "),
     configPath,
@@ -578,6 +595,7 @@ export function codexSaveNoticeRegistered(hooks: Record<string, unknown>): boole
 
 async function codexDoctor(): Promise<DoctorResult> {
   const details: Record<string, string> = {};
+  details.bootstrap = await describeBootstrap("codex");
   const bin = findCodexExecutable();
   details["codex-executable"] = bin ?? "not found (Codex CLI or ChatGPT desktop required)";
   details["shared-host-config"] = CODEX_CONFIG;

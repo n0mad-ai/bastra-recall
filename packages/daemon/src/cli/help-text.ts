@@ -179,6 +179,8 @@ Options:
                              --days N days (default 14) through the live prompt lane,
                              nothing written; --json for the report as JSON,
                              --compare <report.json> to print deltas to a saved one
+  --with-bootstrap          Add generated startup instructions (explicit consent)
+  --no-bootstrap            Skip the startup instruction offer
   --no-stop-hook             Skip the Stop save-eval hook (registered by default)
   --stub                     Download the compiled hook client for Claude Code without asking (~70 MB)
   --no-stub                  Keep the node hook client — never download the compiled one (remembered)
@@ -326,6 +328,8 @@ Options:
   --yes, -y        Skip confirmation prompts (e.g. replacing a foreign statusLine)
   --ollama         Set up Ollama for semantic recall without asking (~620 MB)
   --no-ollama      Skip the Ollama setup — recall stays BM25 keyword-only
+  --with-bootstrap          Add generated startup instructions (explicit consent)
+  --no-bootstrap            Skip the startup instruction offer
   --no-stop-hook   Skip the Stop save-eval hook (registered by default)
   --stub           Download the compiled hook client without asking (~70 MB; faster hook start)
   --no-stub        Keep the node hook client — no download, remembered for updates

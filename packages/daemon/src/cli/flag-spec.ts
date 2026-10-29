@@ -53,7 +53,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   version: [],
   install: [
     "--dry-run", "--vault", "--yes", "-y", "--ollama", "--no-ollama",
-    "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub", "--extension",
+    "--with-bootstrap", "--no-bootstrap", "--with-stop-hook", "--no-stop-hook", "--stub", "--no-stub", "--extension",
   ],
   uninstall: ["--dry-run"],
   doctor: [

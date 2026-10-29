@@ -66,11 +66,9 @@ jobs:
       - name: Test
         run: npm test
 
-      # #1302: intentionally red until the convention gate is implemented.
-      # Make this a required gate once #1303 and the remaining expectations pass.
-      - name: Convention replay (expected red baseline)
+      # #1302/#1314: all seven expectations are required, once per matrix job.
+      - name: Convention replay
         id: convention-replay
-        continue-on-error: true
         run: npm run test:convention-replay --workspace=@bastra-recall/daemon
 
       - name: Report convention replay outcome

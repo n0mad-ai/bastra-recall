@@ -104,6 +104,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (a === "--fix") result.fix = true;
     else if (a === "--with-stop-hook") result.withStopHook = true; // kept for compat — now the default
     else if (a === "--no-stop-hook") result.withStopHook = false;
+    else if (a === "--with-bootstrap") result.withBootstrap = true;
+    else if (a === "--no-bootstrap") result.withBootstrap = false;
     else if (a === "--staged") result.staged = true;
     else if (a === "--force") result.force = true;
     else if (a === "--exclude") {
@@ -297,6 +299,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
     vaultPath,
     force: args.yes,
     withStopHook: args.withStopHook,
+    withBootstrap: args.withBootstrap,
   };
 
   // First-run vault guard (#178) — before the loop, so the offer never
@@ -464,6 +467,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
           vaultPath: resolveVaultPath(args.vaultPath),
           force: args.yes,
           withStopHook: args.withStopHook,
+          withBootstrap: args.withBootstrap,
         });
         process.stdout.write(`  fix: ${formatStatus(fix.status)}: ${fix.message}\n`);
         if (fix.backupPath) process.stdout.write(`  backup: ${fix.backupPath}\n`);

@@ -21,6 +21,8 @@ import { formatAdoptionCandidateBlock } from "../src/curator-run.js";
 
 const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skill");
 const REFERENCES = ["topology.md", "taxonomy.md", "intake.md", "commons.md"];
+// Generated startup payload, not another gated reference (#1314).
+const GENERATED_PROJECTIONS = ["bootstrap-block.md"];
 
 async function skillBody(): Promise<string> {
   return readFile(join(SKILL_DIR, "SKILL.md"), "utf8");
@@ -49,10 +51,10 @@ test("every reference file is pointed at from somewhere — no orphans", async (
   }
 });
 
-test("the skill payload is exactly SKILL.md plus the reference files", async () => {
+test("the skill payload is exactly SKILL.md, its references and generated startup projection", async () => {
   const entries = await readdir(SKILL_DIR, { withFileTypes: true });
   const markdown = entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
-  assert.deepEqual(markdown, ["SKILL.md", ...REFERENCES].sort());
+  assert.deepEqual(markdown, ["SKILL.md", ...REFERENCES, ...GENERATED_PROJECTIONS].sort());
 });
 
 test("gated subsystems name their reference file inside the gate signal", async () => {
@@ -97,6 +99,13 @@ test("the core stayed a trigger file — save signals in, mechanics out", async 
   assert.doesNotMatch(body, /Hard cap 400/, "summary length mechanics belong in the tool description");
   assert.doesNotMatch(body, /weight 5 while the summary/, "recall_when weighting belongs in the tool description");
 
-  const lines = body.split("\n").length;
+  // The bootstrap is authored here once for extraction, with its own strict
+  // <=600-character generated-envelope guard in install-bootstrap-1314.test.ts.
+  // Exclude only that uniquely marked region; the trigger core keeps its
+  // original 160-line budget rather than receiving a blanket allowance.
+  const bootstrapRegions = body.match(/\n<!-- bastra-recall:start -->\n[\s\S]*?\n<!-- bastra-recall:end -->\n/g) ?? [];
+  assert.equal(bootstrapRegions.length, 1, "expected one canonical bootstrap region (#1314)");
+  const core = body.replace(bootstrapRegions[0], "");
+  const lines = core.split("\n").length;
   assert.ok(lines <= 160, `SKILL.md grew back to ${lines} lines — mechanics go to the tool description (#232)`);
 });

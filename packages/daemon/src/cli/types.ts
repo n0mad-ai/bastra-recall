@@ -5,6 +5,8 @@ export interface InstallOpts {
   force?: boolean;
   // Stop hook can emit multi-line save-eval suggestions, so it is opt-in.
   withStopHook?: boolean;
+  /** Explicit bootstrap consent; undefined asks on a TTY, false/ non-TTY skips. */
+  withBootstrap?: boolean;
   /**
    * Which hook client this run registers (#537): true = the compiled stub,
    * false = the node thin client. Set once by the install step from
@@ -80,6 +82,7 @@ export interface ParsedArgs {
   yes: boolean;
   fix: boolean;
   withStopHook: boolean;
+  withBootstrap?: boolean;
   // `update --staged`: swap files only (npm/brew + re-register), no daemon
   // kickstart. The new code goes live on the next daemon boot. Used by the
   // SessionStart auto-update path so a running session is never disrupted.

@@ -5,6 +5,10 @@ description: Persistent external brain for ChatGPT, Codex, Claude, and other MCP
 
 # bastra-recall — autonomous teammate memory
 
+<!-- bastra-recall:start -->
+Use bastra-recall as persistent working context. At session start and before a new task type, resolve applicable saved conventions. Apply fully delivered, current rules; use load_memory for missing content by ID. Bind rules to source ID, revision, scope and task state. Re-resolve after context or rule changes. Judge the delivered result against applicable rules, not search/load counts. Current user instructions retain authority within the host hierarchy.
+<!-- bastra-recall:end -->
+
 You have a persistent memory across sessions via the `bastra-recall` MCP server. Treat it as YOUR own long-term memory, not as a tool the user has to invoke.
 
 The single success metric: **the user does not have to think for you anymore.** Recurring mistakes don't recur. Stable preferences don't get re-stated. Project facts don't get re-discovered.

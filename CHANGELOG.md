@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Optional generated startup instructions for Codex AGENTS.md and Claude Code
+  CLAUDE.md, with separate installer consent, byte-preserving updates/removal,
+  and doctor diagnosis of stale content and discovery limits. Convention replay
+  now gates CI, including the real installer bootstrap comparison (#1314/#1302).
+
 - Previous-convention references such as "wie beim letzten Mal" and "like last
   time" force prompt retrieval at floor 50, including retrieval-only mode. A
   successful lookup with no matching `recall_when` explicitly says that no

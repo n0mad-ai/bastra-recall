@@ -65,6 +65,30 @@ Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex u
 
 <a id="deutsch"></a>
 
+### Optional startup instructions (#1314)
+
+`bastra install codex --with-bootstrap` adds the generated Recall startup block to
+`$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`).
+`bastra install claude-code --with-bootstrap` optionally uses the active Claude
+user `CLAUDE.md` (`CLAUDE_CONFIG_DIR`, otherwise `~/.claude`). If Claude already
+has an unmanaged `bastra-recall` line, the installer leaves it alone and reports
+a doctor notice. Without this flag, an interactive installer shows the exact
+target and block and asks for a separate yes; non-interactive installation skips
+it. `--yes` does not grant this consent; `--no-bootstrap` suppresses the offer.
+
+The block comes from the canonical skill, includes its revision hash and stays
+within 600 characters including markers. Reinstall replaces only one well-formed
+managed region. Uninstall removes only that region; surrounding user bytes are
+preserved. Duplicate or malformed markers require manual repair. `bastra doctor`
+reports missing, stale or modified content separately from host loading limits.
+A non-empty Codex `AGENTS.override.md` can hide the block; doctor also reports
+its active root, configured instruction byte budget and project fallback names.
+No override or other profile is edited. Restart the host after accepting a
+change. File parity proves neither runtime delivery nor rule compliance; nearby
+project guidance and host restrictions still apply. Claude `/context` can help
+verify what loaded.
+
+
 ## Deutsch
 
 Für das geführte Setup beginne mit der [README](../README.md#installation). Die [Support-Matrix](../README.md#unterstützte-plattformen) nennt Plattformgrenzen.
@@ -126,3 +150,26 @@ Führe nach einem Update `bastra install claude-code` / `bastra install codex` e
 ### Client manuell konfigurieren
 
 Nutze die [manuelle Anleitung](./USAGE.md#komplett-manuelle-installation--fallback). Codex verwendet eine eigene [TOML-Konfiguration](./CODEX.md). Starte den Client nach geänderten Registrierungen neu und prüfe sie mit `bastra doctor`. Dessen Abschnitt features zeigt auch, was ausgeschaltet ist, etwa keine Memory-Sprache gesetzt oder noch kein Onboarding, jeweils mit dem passenden Befehl.
+
+### Optionale Startanweisungen (#1314)
+
+`bastra install codex --with-bootstrap` schreibt den generierten Recall-Startblock
+nach `$CODEX_HOME/AGENTS.md` (Standard `~/.codex/AGENTS.md`).
+`bastra install claude-code --with-bootstrap` nutzt optional die aktive
+Nutzerdatei `CLAUDE.md` (`CLAUDE_CONFIG_DIR`, sonst `~/.claude`). Eine vorhandene
+unverwaltete `bastra-recall`-Zeile bleibt unverändert; dafür erscheint nur ein
+Doctor-Hinweis. Ohne Flag zeigt der interaktive Installer Ziel und Inhalt und
+fragt separat nach einem Ja. Nichtinteraktiv bleibt der Block aus. `--yes`
+gilt hierfür nicht; `--no-bootstrap` unterdrückt das Angebot.
+
+Der Block stammt aus dem kanonischen Skill, trägt dessen Revisionshash und bleibt
+mit Markern unter 600 Zeichen. Neuinstallation ersetzt nur einen korrekt
+markierten Bereich. Deinstallation entfernt nur diesen Bereich; Nutzertext bleibt
+bytegenau erhalten. Doppelte oder beschädigte Marker müssen manuell repariert
+werden. `bastra doctor` unterscheidet fehlenden, veralteten und veränderten Inhalt
+von Ladegrenzen des Hosts. Eine nichtleere Codex-Datei `AGENTS.override.md` kann
+den Block verdecken. Doctor nennt außerdem aktives Profilverzeichnis,
+Byte-Budget und Projekt-Ersatznamen; Overrides und andere Profile bleiben
+unangetastet. Nach Änderungen den Host neu starten. Dateigleichheit belegt weder
+das tatsächliche Laden noch Regelbefolgung; nähere Projektanweisungen und
+Host-Einschränkungen gelten weiter. In Claude hilft `/context` beim Prüfen.
