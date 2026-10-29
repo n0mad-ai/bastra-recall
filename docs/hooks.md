@@ -20,6 +20,19 @@ is on disk. They share three discipline rules:
 - Any failure path emits `{}` and exits 0.
 - Telemetry is best-effort, never breaks the hook.
 
+For per-surface/runtime evidence, tool coverage and the distinction between
+host support and Bastra registration, see [host-capabilities.ts](../packages/daemon/src/host-capabilities.ts).
+
+**Codex gate (#1304):** only the runtime-verified 0.162.1 receives the gate.
+Other or unknown versions retain preparation-only hints without must-load
+promises. Version evidence is recorded during installation, not probed on each
+tool call. After a Codex version change, old markers can remain active until
+you re-run `bastra install codex`; Doctor marks these stale registrations or
+hint markers broken. Review and re-trust changed definitions in `/hooks`.
+Deny is runtime-confirmed for Bash/exec_command and view_image; existing-process
+write_stdin has no fresh boundary, and Hosted WebSearch is excluded. Other
+local tools are documented, not separately runtime-certified. See [Codex setup](./CODEX.md#gate-evidence-and-compatibility-1304).
+
 ### Budgets and the release threshold (#305)
 
 One budget across lanes that do different amounts of work was the wrong shape:
@@ -665,13 +678,13 @@ token with the command. The static STOP / CAUTION / reversible-form text is
 unconditional. `bash_hook_call` carries `dropped_unanchored_count`. To have a
 rule appear here, give it a `recall_when` that names the command.
 
-#### `bastra-recall-gate-hook` (#1303, Claude Code only)
+#### `bastra-recall-gate-hook` (#1303/#1304, supported registrations)
 
 **Existing installations:** after updating, run `bastra install claude-code`
 again to register the gate and add `fork` to the SessionStart matcher. Until then,
 `bastra doctor` reports the missing gate registration and `fork` matcher.
 
-Registered on `PreToolUse` with the matcher `*`, so it sees every tool call
+Registered on `PreToolUse` with the matcher `*`, so it sees each hook-covered tool call
 ("`*`, `""`, or omitted — Match all", code.claude.com/docs/en/hooks). It runs
 in parallel with the other PreToolUse lanes; when two of them decide, Claude
 Code applies "deny > defer > ask > allow" (same page), so the gate's deny wins
@@ -701,7 +714,9 @@ usual. Two jobs, one locked state write per call:
 
 Always passes: every Recall MCP tool (`mcp__bastra-recall__*`, also the
 plugin form `mcp__plugin_…_bastra-recall__*`) and a `ToolSearch` whose query
-mentions bastra. Codex payloads always pass (#1304).
+mentions bastra. The underscore Recall spelling is exempt too. Codex payloads
+without the verified installed version marker pass; stamped registrations use
+the same persisted one-time gate protocol (#1304).
 
 Fail-open: a deny goes out only after the claim reached the disk. A state
 write that fails, a gate timeout, an unreachable daemon or the kill switch
@@ -1761,6 +1776,20 @@ teilen drei Disziplinregeln:
 - Jeder Fehlerpfad gibt `{}` aus und endet mit Exit-Code 0.
 - Telemetrie ist Best-Effort und bricht den Hook nie.
 
+Belege je Oberfläche/Laufzeitversion, Tool-Grenzen und die Trennung zwischen
+Host-Unterstützung und Bastra-Registrierung stehen in [host-capabilities.ts](../packages/daemon/src/host-capabilities.ts).
+
+**Codex-Gate (#1304):** Nur das zur Laufzeit geprüfte 0.162.1 erhält das Gate.
+Andere oder unbekannte Versionen behalten vorbereitende Hinweise ohne
+Must-load-Versprechen. Der Versionsbeleg entsteht bei der Installation, nicht
+bei jedem Toolaufruf. Nach einem Codex-Versionswechsel können alte Marker bis
+zum erneuten `bastra install codex` aktiv bleiben; Doctor meldet diese alten
+Registrierungen oder Hinweis-Marker als defekt. Geänderte Definitionen in
+`/hooks` erneut prüfen und bestätigen. Deny ist für Bash/exec_command und
+view_image belegt; write_stdin bestehender Prozesse hat keine neue Grenze,
+Hosted WebSearch ist ausgenommen. Andere lokale Werkzeuge sind dokumentiert,
+aber nicht einzeln zur Laufzeit geprüft. Siehe [Codex-Einrichtung](./CODEX.md#gate-belege-und-kompatibilität-1304).
+
 ### Budgets und die Freigabeschwelle (#305)
 
 Ein gemeinsames Budget für Lanes, die unterschiedlich viel Arbeit leisten, war
@@ -2401,14 +2430,14 @@ reversible Form geht immer raus. `bash_hook_call` trägt
 `dropped_unanchored_count`. Damit eine Regel hier erscheint, braucht sie ein
 `recall_when`, das den Befehl nennt.
 
-#### `bastra-recall-gate-hook` (#1303, nur Claude Code)
+#### `bastra-recall-gate-hook` (#1303/#1304, unterstützte Registrierungen)
 
 **Bestehende Installationen:** Nach dem Update `bastra install claude-code`
 erneut ausführen, um das Gate zu registrieren und `fork` zum SessionStart-Matcher
 hinzuzufügen. Bis dahin meldet `bastra doctor` die fehlende Gate-Registrierung
 und den fehlenden `fork`-Matcher.
 
-Registriert auf `PreToolUse` mit dem Matcher `*`, sieht also jeden Toolaufruf
+Registriert auf `PreToolUse` mit dem Matcher `*`, sieht sie jeden vom Host erfassten Toolaufruf
 („`*`, `""`, or omitted — Match all", code.claude.com/docs/en/hooks). Sie läuft
 parallel zu den anderen PreToolUse-Lanes. Entscheiden zwei davon, gilt bei
 Claude Code „deny > defer > ask > allow" (dieselbe Seite): Das Deny des Gates
@@ -2441,7 +2470,9 @@ State-Schreibvorgang pro Aufruf:
 
 Immer durch: jedes Recall-MCP-Tool (`mcp__bastra-recall__*`, auch die
 Plugin-Form `mcp__plugin_…_bastra-recall__*`) und ein `ToolSearch`, dessen
-Query bastra nennt. Codex-Payloads gehen immer durch (#1304).
+Query bastra nennt. Auch die Recall-Schreibweise mit Unterstrich ist ausgenommen.
+Codex-Payloads ohne den geprüften installierten Versionsmarker gehen durch;
+markierte Registrierungen nutzen dasselbe persistierte Einmal-Gate (#1304).
 
 Fail-open: Ein Deny geht nur raus, wenn der Anspruch auf der Platte steht. Ein
 fehlgeschlagener State-Schreibvorgang, ein Gate-Timeout, ein nicht erreichbarer
