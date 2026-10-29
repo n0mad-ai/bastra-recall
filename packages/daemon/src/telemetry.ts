@@ -41,6 +41,7 @@ export * from "./telemetry-events.js";
 import type {
   TelemetryEvent,
   IdScanEvent,
+  ReceiptUnattributedEvent,
   RecallEvent,
   LoadMemoryEvent,
   SaveMemoryEvent,
@@ -360,6 +361,19 @@ export class Telemetry {
     if (!this.enabled) return;
     await this.write({
       kind: "id_scan",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
+  }
+
+  /** #1310: see {@link ReceiptUnattributedEvent}. */
+  async logReceiptUnattributed(
+    payload: Omit<ReceiptUnattributedEvent, "kind" | "ts" | "session_id">,
+  ): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({
+      kind: "receipt_unattributed",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...payload,

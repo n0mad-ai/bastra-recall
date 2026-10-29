@@ -41,7 +41,8 @@ export type TelemetryEvent =
   | VectorLateSettleEvent
   | CodeToolCallEvent
   | CodeGraphRefreshEvent
-  | ReadDocumentEvent;
+  | ReadDocumentEvent
+  | ReceiptUnattributedEvent;
 
 /**
  * Pro-Stage-Timings eines Recalls (#38) plus die Querykosten-Merkmale aus
@@ -445,6 +446,19 @@ export interface SaveHoldEvent extends BaseEvent {
 /** #144: lightweight act-signal from the PostToolUse:Bash hook — no recall,
  *  no injection; only widens the acted_on measuring surface so shell-driven
  *  applications of a memory can close their recall_episode. */
+/**
+ * #1310: `validate_artifact` passed, but the call carried no Claude Code
+ * session (stdio, or a forwarded call without the header). The receipt was
+ * returned and NOT stored — a positive claim is never written on a guess.
+ * Carries no text and no hash.
+ */
+export interface ReceiptUnattributedEvent extends BaseEvent {
+  kind: "receipt_unattributed";
+  channel: string;
+  /** `stdio` = not a forwarded call; `forwarded` = forwarded without session header. */
+  transport: "stdio" | "forwarded";
+}
+
 /**
  * Was ein autoritativer ID-Scan gekostet hat.
  *

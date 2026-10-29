@@ -170,14 +170,38 @@ export interface SessionState {
   /** #1306: the "task unclear" choice line went out; only the next prompt of
    *  the same generation may answer it. Every prompt clears it. */
   taskQuestion?: TaskQuestion;
+  /** #1310: successful `validate_artifact` receipts of the running task
+   *  (receipt-store.ts). Only hashes and parameters, never artifact text. */
+  receipts?: ArtifactReceipt[];
 }
 
 /** #1306: the task state. `generation` rises on compact, clear and fork. */
 export interface ActiveTask {
+  /** #1310: stable id of this task, {@link taskIdFor}; a new kind is a new task. */
+  id: string;
   kind: TaskKind;
   /** ms epoch when `kind` was entered. */
   since: number;
   generation: number;
+}
+
+/** #1310: the id of the task entered as `kind` at `since`. */
+export function taskIdFor(kind: TaskKind, since: number): string {
+  return `${kind}@${since}`;
+}
+
+/** #1310: one successful validation, bound to the task and generation it ran in. */
+export interface ArtifactReceipt {
+  taskId: string;
+  generation: number;
+  /** `artifact_sha256` of the canonical text. */
+  hash: string;
+  /** The copy-blocks receipt (`sha256:<hex>`). */
+  receipt: string;
+  channel: string;
+  limit: number;
+  unit: string;
+  at: number;
 }
 
 /** #1306: an open "task unclear" question, bound to the generation it was asked in. */
@@ -257,6 +281,7 @@ export interface ReadonlySessionState {
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
   readonly activeTask?: Readonly<ActiveTask>;
   readonly taskQuestion?: Readonly<TaskQuestion>;
+  readonly receipts?: readonly Readonly<ArtifactReceipt>[];
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -382,7 +407,18 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     // #1306: the task state — same reason, every lane's save carries it.
     const task = parsed.activeTask;
     if (task && TASK_KINDS.has(task.kind) && typeof task.since === "number" && typeof task.generation === "number") {
-      state.activeTask = { kind: task.kind, since: task.since, generation: task.generation };
+      // #1310: a state written before task ids existed gets the same derived id.
+      const id = typeof task.id === "string" ? task.id : taskIdFor(task.kind, task.since);
+      state.activeTask = { id, kind: task.kind, since: task.since, generation: task.generation };
+    }
+    // #1310: receipts — same reason, every lane's save carries them.
+    if (Array.isArray(parsed.receipts)) {
+      state.receipts = parsed.receipts.filter(
+        (r): r is ArtifactReceipt =>
+          !!r && typeof r.taskId === "string" && typeof r.generation === "number" && typeof r.hash === "string" &&
+          typeof r.receipt === "string" && typeof r.channel === "string" && typeof r.limit === "number" &&
+          typeof r.unit === "string" && typeof r.at === "number",
+      );
     }
     const question = parsed.taskQuestion;
     if (question && typeof question.at === "number" && typeof question.generation === "number") {
@@ -530,15 +566,17 @@ const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>(["translate-only", "dr
  * #1306: compact, clear and fork start a new generation of the task state. The
  * task and its conventions survive (the rule kernel restores the bodies); an
  * open "task unclear" question does not — it was asked of a context that is
- * gone. Never throws.
+ * gone. #1310: neither do receipts — they were validated in the old
+ * generation. Never throws.
  */
 export async function bumpTaskGeneration(sessionId: string, now: number = Date.now()): Promise<void> {
   if (!sessionId) return;
   try {
     await mutateSessionState(sessionId, (state) => {
-      const task = state.activeTask ?? { kind: "none" as const, since: now, generation: 0 };
+      const task = state.activeTask ?? { id: taskIdFor("none", now), kind: "none" as const, since: now, generation: 0 };
       state.activeTask = { ...task, generation: task.generation + 1 };
       delete state.taskQuestion;
+      delete state.receipts;
     });
   } catch {
     // A missed bump only leaves an old question answerable; it never blocks the start.

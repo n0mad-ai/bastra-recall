@@ -183,7 +183,7 @@ export async function startStdioServer(opts: {
     }
 
     if (name === "validate_artifact") {
-      try { return { content: [{ type: "text", text: JSON.stringify(validateArtifactHandler(args ?? {}), null, 2) }] }; }
+      try { return { content: [{ type: "text", text: JSON.stringify(await validateArtifactHandler(args ?? {}, toolDeps), null, 2) }] }; }
       catch (err) { return errorResult((err as Error).message); }
     }
 

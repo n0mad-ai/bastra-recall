@@ -32,7 +32,7 @@ for (const scope of [undefined, "task"] as const) {
   test(`gate claim and successful load preserve ${scope ?? "session"} scope and validator`, async () => {
     const sessionId = `task-gate-${scope ?? "session"}`;
     await mutateSessionState(sessionId, (s) => {
-      s.activeTask = { kind: "draft-for-review", since: 1, generation: 0 };
+      s.activeTask = { id: "draft-for-review@1", kind: "draft-for-review", since: 1, generation: 0 };
       s.activeConventions = [{ id: "rule", revision: "old", setAt: 1, ...(scope ? { scope } : {}), validator }];
       bookPendingMustLoad(s, ["rule"], "prompt:first", 1);
     });

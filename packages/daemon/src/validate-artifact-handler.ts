@@ -5,6 +5,9 @@
  */
 import { z } from "zod";
 import { validateCopyBlocks, renderForChat } from "@bastra-recall/core";
+import { callerSessionStore } from "./caller-session.js";
+import { storeReceipt, type StoreOutcome } from "./receipt-store.js";
+import type { Telemetry } from "./telemetry.js";
 
 const UNIT_DESCRIPTION = "Counting unit for other channels; omit for the stricter of both. discord-dm always applies max(codepoints,utf16) until its counting unit is verified; an explicit unit cannot weaken this fallback.";
 
@@ -46,7 +49,33 @@ export const validateArtifactTools = [{
   },
 }];
 
-export function validateArtifactHandler(args: Record<string, unknown>) {
-  const result = validateCopyBlocks(ValidateArtifactArgs.parse(args));
-  return { ...result, rendered: renderForChat(result) };
+const RECEIPT_NOTES: Readonly<Record<Exclude<StoreOutcome, "stored">, string>> = {
+  no_task: "Receipt not stored: the session has no correspondence task in progress.",
+  task_mismatch: "Receipt not stored: `task` does not match the session's current task and generation.",
+  not_persisted: "Receipt not stored: the session state could not be written.",
+};
+const UNATTRIBUTED_NOTE =
+  "Receipt not stored: this call carried no Claude Code session (stdio or no session header), so it cannot be bound to a task.";
+
+/**
+ * #1310: a passing result is stored as a receipt in the CALLING session only —
+ * the session the forwarder named (`x-bastra-cc-session`). Without one the
+ * receipt is returned but not stored, and a `receipt_unattributed` line is
+ * written; it is never written into some or all sessions on a guess.
+ */
+export async function validateArtifactHandler(args: Record<string, unknown>, deps?: { telemetry?: Telemetry }) {
+  const input = ValidateArtifactArgs.parse(args);
+  const result = validateCopyBlocks(input);
+  const caller = callerSessionStore.getStore();
+  const session_known = typeof caller === "string" && caller.length > 0;
+  const base = { ...result, rendered: renderForChat(result), session_known };
+  if (result.receipt === null) return { ...base, receipt_stored: false };
+  if (!session_known) {
+    await deps?.telemetry?.logReceiptUnattributed({ channel: result.channel, transport: caller === undefined ? "stdio" : "forwarded" }).catch(() => {});
+    return { ...base, receipt_stored: false, receipt_note: UNATTRIBUTED_NOTE };
+  }
+  const outcome = await storeReceipt(caller, { ...result, receipt: result.receipt }, input.task);
+  return outcome === "stored"
+    ? { ...base, receipt_stored: true }
+    : { ...base, receipt_stored: false, receipt_note: RECEIPT_NOTES[outcome] };
 }

@@ -1653,7 +1653,7 @@ bodies. The assembler's own `- [pinned]` lines serve the hookless
 
 A correspondence task spans several turns, and a short follow-up ("ok") carries
 none of the words that recalled its rules. The session state therefore holds
-the task (`activeTask: {kind, since, generation}`) next to the active
+the task (`activeTask: {id, kind, since, generation}`) next to the active
 conventions, and the prompt hook prints both on **every** turn in a small
 `<active-conventions>` block — independent of the hint dedup and of new recall
 hits, for Claude Code, Codex and replays alike. The block is information only;
@@ -1713,6 +1713,22 @@ dropped. A fork's new session ID starts at generation 1 without the parent's
 task (see the fork limit above). While a task is in progress the prompt lane
 does not skip the recall in mode `none` (#371), so it can still tell whether a
 prompt touches the conventions in force.
+
+**Receipts (#1310).** A passing `validate_artifact` call stores its receipt in
+the calling session only — the one the MCP forwarder names in
+`x-bastra-cc-session` — bound to the running task id and generation:
+`{taskId, generation, hash, receipt, channel, limit, unit, at}`, at most 20,
+the oldest dropped. Artifact text is never stored. A call without a known
+session (stdio, or a forwarded call without the header) stores nothing: the
+answer carries `session_known: false` and a `receipt_note`, and telemetry
+writes one `receipt_unattributed` line. A `task` argument that does not match
+the session's current kind and generation stores nothing either. Receipts
+expire when the task changes or ends (`none`) and when `generation` rises.
+While a receipt for the running task exists, the block shows one line:
+
+```
+receipt: <first 12 hex of the receipt> (<channel>, <limit> <unit>)
+```
 
 #### Pinned-memories injection (session hook, #141/#142)
 
@@ -3497,7 +3513,7 @@ zweiter Renderer des Session-Hooks.
 
 Eine Korrespondenz-Aufgabe läuft über mehrere Turns, und ein kurzer Folgeprompt
 („ok“) enthält keins der Wörter, die ihre Regeln abgerufen haben. Der
-Session-State hält deshalb die Aufgabe (`activeTask: {kind, since,
+Session-State hält deshalb die Aufgabe (`activeTask: {id, kind, since,
 generation}`) neben den aktiven Konventionen, und der Prompt-Hook gibt beides in
 **jedem** Turn als kleinen Block `<active-conventions>` aus, unabhängig vom
 Hinweis-Dedup und von neuen Recall-Treffern, für Claude Code, Codex und
@@ -3559,6 +3575,23 @@ verfällt. Die neue Session-ID eines Forks beginnt bei Generation 1 ohne die
 Aufgabe der Eltern-Session (siehe Fork-Grenze oben). Solange eine Aufgabe
 läuft, überspringt die Prompt-Lane den Recall im Modus `none` nicht (#371),
 damit sie weiter erkennt, ob ein Prompt die geltenden Konventionen berührt.
+
+**Prüfbelege (#1310).** Ein bestandener `validate_artifact`-Aufruf speichert
+seinen Beleg nur in der aufrufenden Session — der, die der MCP-Forwarder in
+`x-bastra-cc-session` nennt —, gebunden an die ID und Generation der laufenden
+Aufgabe: `{taskId, generation, hash, receipt, channel, limit, unit, at}`,
+höchstens 20, die ältesten fallen heraus. Artefakttext wird nie gespeichert.
+Ohne bekannte Session (stdio oder weitergeleiteter Aufruf ohne Header) wird
+nichts gespeichert: Die Antwort trägt `session_known: false` und eine
+`receipt_note`, die Telemetrie schreibt eine Zeile `receipt_unattributed`. Ein
+`task`-Argument, das nicht zu Art und Generation der aktuellen Aufgabe passt,
+speichert ebenfalls nichts. Belege verfallen, wenn die Aufgabe wechselt oder
+endet (`none`) und wenn `generation` steigt. Solange ein Beleg der laufenden
+Aufgabe existiert, zeigt der Block eine Zeile:
+
+```
+receipt: <erste 12 Hex-Zeichen des Belegs> (<channel>, <limit> <unit>)
+```
 
 #### Einblendung angehefteter Erinnerungen (Session-Hook, #141/#142)
 

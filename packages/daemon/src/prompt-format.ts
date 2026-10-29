@@ -197,6 +197,8 @@ export interface ActiveConventionsView {
   /** Ids whose file revision changed since they were set. */
   changed: readonly string[];
   unclear: boolean;
+  /** #1310: the newest receipt of the running task and generation, if any. */
+  receipt?: { receipt: string; channel: string; limit: number; unit: string } | null;
 }
 
 /**
@@ -220,6 +222,9 @@ export function formatActiveConventionsBlock(view: ActiveConventionsView, surfac
       lines.push(`- ${c.id} revision=${c.revision ?? "unknown"} task=${view.task}${validator}`);
     }
   }
+  // #1310: one line, only while a receipt of this task and generation exists.
+  const r = view.receipt;
+  if (r) lines.push(`receipt: ${r.receipt.replace(/^sha256:/, "").slice(0, 12)} (${r.channel}, ${r.limit} ${r.unit})`);
   for (const id of view.changed) lines.push(`revision changed: reload load_memory(${id})`);
   if (view.unclear) lines.push(TASK_UNCLEAR_LINE);
   return [head, stripFenceMarkers(lines.join("\n")), "</active-conventions>"].join("\n");

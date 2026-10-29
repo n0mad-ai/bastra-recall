@@ -30,16 +30,18 @@ test("validate_artifact is on the write and full surfaces, not on search", () =>
   assert.ok(isToolAllowed("review_draft", "write"), "review_draft stays on write");
 });
 
-test("the handler returns the core result plus labels rendered outside the payload", () => {
-  const out = validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" });
-  const { rendered, ...result } = out;
+test("the handler returns the core result plus labels rendered outside the payload", async () => {
+  const out = await validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" });
+  const { rendered, session_known, receipt_stored, receipt_note, ...result } = out as typeof out & { receipt_note?: string };
   assert.deepEqual(result, validateCopyBlocks({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
   assert.match(rendered, /^Block 1\/1 · \d+ max\(codepoints,utf16\)\n```\n/);
-  assert.throws(() => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "nfc" }));
+  // #1310: stdio — no session, so the receipt is returned but not stored.
+  assert.deepEqual([session_known, receipt_stored, typeof receipt_note], [false, false, "string"]);
+  await assert.rejects(() => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "nfc" }));
 });
 
-test("the handler cannot weaken Discord's unverified counting fallback", () => {
-  const out = validateArtifactHandler({ text: "😀 ".repeat(1000) + "😀", channel: "discord-dm", unit: "codepoints", normalize: "none" });
+test("the handler cannot weaken Discord's unverified counting fallback", async () => {
+  const out = await validateArtifactHandler({ text: "😀 ".repeat(1000) + "😀", channel: "discord-dm", unit: "codepoints", normalize: "none" });
   assert.equal(out.unit_applied, "max(codepoints,utf16)");
   assert.ok(out.blocks.every((b) => b.payload.length <= 2000));
   assert.ok(out.receipt);

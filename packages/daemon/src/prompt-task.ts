@@ -18,9 +18,11 @@ import { memoryRevision } from "@bastra-recall/core";
 import { GATED_HINT_TYPES } from "./hook-recall-response.js";
 import { decideTask, taskSignals, type DetectedMode, type TaskKind } from "./prompt-classify.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
+import { currentReceipt, expireReceipts } from "./receipt-store.js";
 import {
   mutateSessionState,
   recordActiveConventions,
+  taskIdFor,
   type ActiveConvention,
   type ReadonlySessionState,
 } from "./session-state.js";
@@ -123,7 +125,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
 
   if (!needsWrite) {
     return formatActiveConventionsBlock(
-      { task: current, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: false },
+      { task: current, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: false, receipt: currentReceipt(snapshot) },
       input.surface,
     );
   }
@@ -142,7 +144,9 @@ async function step(input: TaskStepInput): Promise<string | null> {
       e.revision = rev;
     }
     if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
-      s.activeTask = { kind: decision.next, since: now, generation: gen };
+      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen };
+      // #1310: a new task (or none) ends the receipts of the old one.
+      expireReceipts(s);
       if (decision.next === "none") {
         const rest = (s.activeConventions ?? []).filter((e) => e.scope !== "task");
         if (rest.length > 0) s.activeConventions = rest;
@@ -171,6 +175,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
       conventions: (s.activeConventions ?? []).map((e): ActiveConvention => ({ ...e })),
       changed,
       unclear: decision.unclear,
+      receipt: currentReceipt(s),
     };
   });
   // The assignment happens inside the callback, which control flow does not follow.
@@ -179,7 +184,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
     // State not on disk: still tell this turn what the snapshot knew, and ask
     // when unclear — but never claim a transition that did not persist.
     return formatActiveConventionsBlock(
-      { task: current, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: decision.unclear },
+      { task: current, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: decision.unclear, receipt: currentReceipt(snapshot) },
       input.surface,
     );
   }

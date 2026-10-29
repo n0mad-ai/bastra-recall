@@ -80,7 +80,7 @@ async function dispatchTool(
 
   switch (tool) {
     case "review_draft": return reviewDraftHandler(toolDeps, body);
-    case "validate_artifact": return validateArtifactHandler(body);
+    case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
     case "recall":
       return await recallHandler(toolDeps, body);
     case "load_memory":
