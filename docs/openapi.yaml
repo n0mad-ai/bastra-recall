@@ -7897,6 +7897,129 @@
           }
         ]
       }
+    },
+    "/validate_artifact": {
+      "post": {
+        "operationId": "validate_artifact",
+        "summary": "validate artifact",
+        "description": "Discord's counting unit is unverified: discord-dm always uses the conservative max(codepoints,utf16) fallback; an explicit unit cannot weaken it. Other channels respect an explicit unit. Call before you deliver text the user will copy into a size-limited channel. Splits the final text i...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "unit": {
+                    "description": "Counting unit for other channels; omit for the stricter of both. discord-dm always applies max(codepoints,utf16) until its counting unit is verified; an explicit unit cannot weaken this fallback.",
+                    "type": "string",
+                    "enum": [
+                      "codepoints",
+                      "utf16"
+                    ]
+                  },
+                  "normalize": {
+                    "type": "string",
+                    "enum": [
+                      "crlf-to-lf",
+                      "none"
+                    ]
+                  },
+                  "rule": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "revision": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "revision"
+                    ]
+                  },
+                  "task": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "generation"
+                    ]
+                  }
+                },
+                "required": [
+                  "text",
+                  "channel",
+                  "normalize"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
     }
   },
   "components": {

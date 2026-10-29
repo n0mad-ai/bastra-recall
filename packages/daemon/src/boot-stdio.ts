@@ -10,6 +10,7 @@ import { forwardTaskExecutionMcp } from "./task-execution-client.js";
 import { finalizeTaskMcp } from "./task-delivery.js";
 import { taskTools, isTaskTool, callTaskMcp, taskClientAuthorization, defaultTaskContext } from "./task-transport.js";
 import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
+import { validateArtifactTools, validateArtifactHandler } from "./validate-artifact-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -85,6 +86,7 @@ export async function startStdioServer(opts: {
       ...MEMORY_TOOL_DEFS,
       ...(tasksEnabled() ? taskTools : []),
       ...draftReviewTools,
+      ...validateArtifactTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
       ...productDocTools,
@@ -177,6 +179,11 @@ export async function startStdioServer(opts: {
 
     if (name === "review_draft") {
       try { return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] }; }
+      catch (err) { return errorResult((err as Error).message); }
+    }
+
+    if (name === "validate_artifact") {
+      try { return { content: [{ type: "text", text: JSON.stringify(validateArtifactHandler(args ?? {}), null, 2) }] }; }
       catch (err) { return errorResult((err as Error).message); }
     }
 

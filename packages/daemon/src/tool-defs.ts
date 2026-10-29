@@ -16,6 +16,7 @@ import { tasksEnabled, TASKS_PREVIEW_HINT } from "./tasks-enabled.js";
  */
 import { taskTools } from "./task-transport.js";
 import { draftReviewTools } from "./draft-review-handler.js";
+import { validateArtifactTools } from "./validate-artifact-handler.js";
 import { requiredFieldsOf } from "./call-corruption.js";
 import { MEMORY_TOOL_DEFS } from "./tool-handlers.js";
 import { documentTools } from "./documents-handler.js";
@@ -33,6 +34,7 @@ export const ALL_TOOL_DEFS = [
   ...codeTools,
   ...affectedTools,
   ...draftReviewTools,
+  ...validateArtifactTools,
 ];
 
 /**
@@ -90,6 +92,9 @@ const WRITE_SURFACE_TOOLS = [
   "save_document",
   "save_product_doc",
   "review_draft",
+  // #1309: validate_artifact reads nothing and writes nothing; it belongs
+  // wherever an agent delivers copy-ready text, which is the write surface.
+  "validate_artifact",
   ...(tasksEnabled() ? taskTools.map(t => t.name) : []),
 ] as const;
 
