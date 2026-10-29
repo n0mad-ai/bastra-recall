@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   collectConsolidationCandidates,
   collectReflexCandidates,
+  formatReflexCandidateBlock,
   collectAdoptionCandidates,
   runCuratorPass,
   sanitizeRunResultForHttp,
@@ -282,6 +283,81 @@ test("reflex promotion (#217): repeated acted_on recalls become candidates, cool
     vault, { stale: {}, reflex_suggested: { hot: iso(45) } }, NOW, events,
   );
   assert.equal(matured.length, 1, "nach Ablauf des Cooldowns wieder vorschlagbar");
+});
+
+function frustrationMemory(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "frustration", title: "Stop repeating this", created: iso(60), related: [],
+    write_origin: "user-directed", salience: 0.8, emotion: "frustration",
+    ...overrides,
+  };
+}
+
+test("reflex promotion (#1308): all frustration criteria are required, without telemetry", async () => {
+  for (const salience of [0.8, 0.9, 1]) {
+    const vault = fakeVault([frustrationMemory({ salience })]);
+    const candidates = await collectReflexCandidates(vault, { stale: {} }, NOW, []);
+    assert.deepEqual(candidates, [{
+      id: "frustration", title: "Stop repeating this", count: 0, reason: "user-directed-frustration",
+    }]);
+    const block = formatReflexCandidateBlock(candidates[0]);
+    assert.ok(block.includes('<reflex-candidate memory-id="frustration" evidence="user-directed-frustration">'));
+    assert.ok(block.includes("ONLY on an explicit yes: load_memory"));
+    assert.ok(block.includes("Never promote without explicit confirmation."));
+    assert.equal(vault.get("frustration")?.fm.recall_mode, undefined);
+  }
+  const exclusions: Array<Record<string, unknown>> = [
+    { write_origin: undefined }, { write_origin: "agent-inferred" },
+    { salience: undefined }, { salience: 0.79 }, { salience: "0.9" }, { salience: NaN },
+    { emotion: undefined }, { emotion: "success" }, { emotion: "neutral" }, { emotion: "risk" },
+    { recall_mode: "reflex" }, { recall_mode: "deliberate" },
+    { superseded_by: "replacement" }, { obsolete: true },
+  ];
+  for (const overrides of exclusions) {
+    const candidates = await collectReflexCandidates(fakeVault([frustrationMemory(overrides)]), { stale: {} }, NOW, []);
+    assert.deepEqual(candidates, [], `excluded: ${JSON.stringify(overrides)}`);
+  }
+});
+
+test("reflex promotion (#1308): overlapping sources retain frustration reason and permanent dedup", async () => {
+  const vault = fakeVault([frustrationMemory()]);
+  const events: TelemetryEvent[] = [1, 2, 3].flatMap(n => [
+    { kind: "hook_recall", ts: iso(0), recall_id: `fr-${n}`, query: "stop repeating" },
+    { kind: "recall_episode", ts: iso(0), recall_id: `fr-${n}`, memory_id: "frustration", acted_on: true },
+  ]);
+  const candidates = await collectReflexCandidates(vault, { stale: {} }, NOW, events);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].reason, "user-directed-frustration");
+  const deduped = await collectReflexCandidates(
+    vault, { stale: {}, reflex_suggested: { frustration: iso(90) } }, NOW, events,
+  );
+  assert.deepEqual(deduped, [], "previous proposals never reappear through the telemetry source");
+});
+
+test("reflex promotion (#1308): proposals persist across curator passes without setting recall_mode", async () => {
+  await withFixture(async (root, deps) => {
+    deps.vault = fakeVault([frustrationMemory()]);
+    const pendingPath = join(root, "pending.json");
+    await withEnv("BASTRA_PENDING_SUGGESTIONS_PATH", pendingPath, async () => {
+      await runCuratorPass(deps, { force: true, dryRun: true, nowMs: NOW });
+      assert.deepEqual((await loadCuratorState(root)).reflex_suggested, undefined);
+      await runCuratorPass(deps, { force: true, nowMs: NOW });
+      assert.deepEqual((await loadCuratorState(root)).reflex_suggested, undefined, "review-first does not propose");
+      const result = await runCuratorPass(deps, { force: true, nowMs: T_ACT });
+      assert.equal(result.error, undefined);
+      const rows = JSON.parse(await readFile(pendingPath, "utf8"));
+      const blocks = rows.map((row: { blocks: string }) => row.blocks).join("\n");
+      assert.equal((blocks.match(/<reflex-candidate /g) ?? []).length, 1);
+      assert.ok(blocks.includes('evidence="user-directed-frustration"'));
+      assert.ok(blocks.includes("Never promote without explicit confirmation."));
+      assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, new Date(T_ACT).toISOString());
+      await rm(pendingPath);
+      const again = await runCuratorPass(deps, { force: true, nowMs: T_ACT + 90 * 86_400_000 });
+      assert.equal(again.error, undefined);
+      await assert.rejects(readFile(pendingPath), { code: "ENOENT" });
+      assert.equal(deps.vault.get("frustration")?.fm.recall_mode, undefined);
+    });
+  });
 });
 
 test("intake adoption (#217): repeatedly used imported memories become candidates, natives and cooldown excluded", async () => {
