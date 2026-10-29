@@ -30,6 +30,7 @@ export const CLIENT_ONLY_ENV_KEYS = [
   "NEXUS_HOOK_TIMEOUT_MS",
   "BASTRA_FORWARDER_SPAWN",
   "BASTRA_HOOK_CLIENT",
+  "BASTRA_CODEX_VERSION",
 ] as const;
 
 /** Daemon behaviour keys that exist only as env, settable in `daemon.env` (#684). */

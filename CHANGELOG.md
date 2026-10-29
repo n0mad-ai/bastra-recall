@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Codex 0.162.1: the one-time must-load/reflex gate and fork registration,
+  with preparation-only hints on unverified runtimes, preserved wrappers,
+  stale-registration diagnosis and explicit hook re-trust (#1304).
+- A source-backed host/runtime capability matrix distinguishes native support
+  from Bastra registration, tool coverage and unverified paths, with checked
+  README summaries (#1312).
 - Claude Code's catch-all PreToolUse gate interrupts once for must-load hints
   and matching user-directed reflex rules, then lets retries through (#1303).
   Existing installations must run `bastra install claude-code` again after

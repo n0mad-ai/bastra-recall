@@ -81,3 +81,9 @@ export function codexMcpGet(bin: string, name = DEFAULT_SERVER_KEY): {
   const result = runCaptured(bin, ["mcp", "get", name, "--json"], { timeoutMs: 10_000 });
   return { server: result.ok ? parseCodexMcpServer(result.stdout) : null, result };
 }
+
+/** Probe the selected executable, not another Codex found on PATH. */
+export function codexRuntimeVersion(bin: string): string | null {
+  const result = runCaptured(bin, ["--version"], { timeoutMs: 3_000 });
+  return result.ok ? /^codex-cli (\d+\.\d+\.\d+)\s*$/.exec(result.stdout.trim())?.[1] ?? null : null;
+}

@@ -54,7 +54,7 @@ import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
 import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
+import { hookGateAvailable, hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
 import type { Residency, WarmupCoordinator } from "./embedding-warmup.js";
 // #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492.
 import { hostProfileId } from "./host-profile.js";
@@ -685,9 +685,8 @@ export async function runSessionLane(
   // #462: der Recall-Block einmal gebaut, damit er als eigener Posten messbar
   // ist — bisher gab es EINE Zahl für zehn Teile.
   let recallBlock = "";
-  // #1303: the hints the catch-all gate holds the next tool call for (Claude
-  // Code only — the deny is its contract).
-  const gated = new Set(client === "claude-code" ? top.filter(isGatedHint).map((h) => h.id) : []);
+  // #1303/#1304: only deny-capable registrations book must-load hints.
+  const gated = new Set(hookGateAvailable(payload) ? top.filter(isGatedHint).map((h) => h.id) : []);
   if (top.length === 0 && pinnedBlock === "" && extras === "" && kernel.text === "") {
     if (status === "ok") status = "no-hits";
     // stays "{}"

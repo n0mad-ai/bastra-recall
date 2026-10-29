@@ -394,3 +394,37 @@ test(
     assert.equal(stubSourcesDirty(), false, "the checkout must be left clean");
   },
 );
+
+/** #1304: the compiled transport must preserve registration evidence too. */
+test("#1304 built stub forwards Codex client/version markers from env and Windows argv", { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false }, async () => {
+  assert.ok(builtBinary);
+  const received: Array<{payload?: Record<string, unknown>}> = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    received.push(JSON.parse(body));
+    res.end("{}");
+  });
+  await new Promise<void>(ok => server.listen(0, "127.0.0.1", ok));
+  const addr = server.address();
+  assert.ok(addr && typeof addr !== "string");
+  try {
+    for (const argv of [false, true]) {
+      await new Promise<void>((ok, ko) => {
+        const child = spawn(builtBinary, ["gate", ...(argv ? ["--client=codex", "--codex-version=0.162.1"] : [])], {
+          env: {...process.env, BASTRA_DAEMON_URL: `http://127.0.0.1:${addr.port}`, BASTRA_HOOK_TIMEOUT_MS: "1500",
+            BASTRA_HOOK_CLIENT: argv ? "claude-code" : "codex", BASTRA_CODEX_VERSION: argv ? "0.162.0" : "0.162.1"},
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        child.on("error", ko);
+        child.on("close", code => code === 0 ? ok() : ko(new Error(`stub exit ${code}`)));
+        child.stdin.end(JSON.stringify({hook_event_name: "PreToolUse", tool_name: "view_image", session_id: "1304-compiled-markers", tool_input: {path: "/tmp/a.png"}}));
+      });
+      assert.equal(received.at(-1)?.payload?.bastra_client, "codex");
+      assert.equal(received.at(-1)?.payload?.bastra_codex_version, "0.162.1");
+    }
+    assert.equal(received.length, 2);
+  } finally {
+    await new Promise<void>(ok => server.close(() => ok()));
+  }
+});
