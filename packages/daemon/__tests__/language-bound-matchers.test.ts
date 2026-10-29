@@ -85,6 +85,18 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 retrieval label (floor 50 instead of 100, k=5, no backoff, delivers unfused), per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with tr)",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 per-language data with a neutral path (score-gated recall, #677)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; task start on a workflow announcement; quoted/pasted text is recognised structurally in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_TRANSLATE_ONLY_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; explicit translate-only; an unlisted language keeps the task state (neutral)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_TRANSLATE_ONLY_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; whole-prompt approval; an unlisted language never approves copy (neutral = no approval)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_APPROVED_COPY_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; explicit approval phrase; an unlisted language never approves copy (neutral = no approval)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_APPROVED_COPY_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_DRAFT_REPLY_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; explicit reply-draft request; quoted text plus compose verb, or the choice line, covers the rest",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DRAFT_REPLY_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_QUOTE_HEADER_CUES_BY_LANGUAGE": "#1306 task contract, per-language data, user-extensible; e-mail quote header; blockquote and <pasted_content> are structural in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_QUOTE_HEADER_CUES_BY_LANGUAGE": "#1306 per-language data with a neutral path (state unchanged)",
 
   // ── #676: per-language data with a neutral fallback (#678) — allowed shape ──
   "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",

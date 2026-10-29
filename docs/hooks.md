@@ -1634,6 +1634,71 @@ The `<pinned-memories>` block below stays as it is: a lean audit list without
 bodies. The assembler's own `- [pinned]` lines serve the hookless
 `GET /hook/session-context` contract and are not a second session-hook renderer.
 
+#### Task contract and active conventions (prompt hook, #1306)
+
+A correspondence task spans several turns, and a short follow-up ("ok") carries
+none of the words that recalled its rules. The session state therefore holds
+the task (`activeTask: {kind, since, generation}`) next to the active
+conventions, and the prompt hook prints both on **every** turn in a small
+`<active-conventions>` block — independent of the hint dedup and of new recall
+hits, for Claude Code, Codex and replays alike. The block is information only;
+nothing in it denies a call.
+
+```
+<active-conventions surface="claude-code" task="draft-for-review" generation="0">
+Session state, repeated every turn (not a new hint). Task: draft-for-review — draft for the user's review — nothing is final copy until the user approves it.
+Conventions in force (bodies: load_memory(id) or the rule kernel):
+- <id> revision=sha256:… task=draft-for-review
+</active-conventions>
+```
+
+Per convention it lists the id, the byte `revision` (`memoryRevision`, as
+`load_memory` returns it), the task state and, when set, the validator
+parameters (`tool`, `channel`, `limit`, `unit`). It never carries a body — the
+rule kernel and `load_memory` do. When a file's revision moved since the
+convention was set, the block adds `revision changed: reload load_memory(<id>)`
+once and then shows the new revision. Without a task, conventions or open
+question the block is absent.
+
+States and transitions, decided per prompt from the user's **own** text:
+
+| Prompt | Transition |
+|---|---|
+| announces a correspondence workflow ("ich arbeite eine eingegangene Nachricht ab", "work through the inbox"), asks for a reply draft, or pastes/quotes incoming text with a reply verb | `draft-for-review`; the rule-shaped hits of this prompt (type `user-preference`, `meta-working` or `workflow`, matched by their own trigger or wired as reflex) become active conventions bound to the task |
+| explicitly "nur übersetzen" / "translate only" | `translate-only` (overrides a draft in progress) |
+| a short approval ("ok", "passt", "go", "ja") or an explicit "freigegeben" / "approved copy" while `draft-for-review` is active | `approved-copy` |
+| no task cue, a plain (`none`/`generic`) prompt with its own recall match outside the active conventions and no match on an active convention | `none`; the task-bound conventions end with the task, session-wide ones (gate, load) stay |
+| no task cue and no new matching memory, including a short editing follow-up | unchanged; absence of recall hits does not end the task |
+| anything else, including trivial prompts | unchanged |
+
+Quoted incoming text — a blockquote, a `<pasted_content>` block, everything
+below a "… schrieb:" / "… wrote:" header — is cut off before any cue is read.
+An instruction inside an incoming message never changes the state. When the
+intent stays ambiguous — quoted text without a reply verb, or two explicit cues
+that contradict each other — the block carries exactly one line and no second
+model request is made:
+
+```
+task unclear: ask the user with a choice (translate only / draft reply / approved copy) before producing the deliverable
+```
+
+The question is bound to the generation and to the conventions (with their
+revisions) the unclear prompt surfaced. Only the **next** prompt can answer it
+("Antwortentwurf", "nur übersetzen", "freigegeben"); a bare "ja" or "ok" is not
+an answer, and an unanswered question never approves copy. Every newer prompt
+discards it. The cues are per-language data in `lexicon.ts` (de/en), each
+extensible by a user file under `~/.bastra/lexicon/` (`correspondence.txt`,
+`translate-only.txt`, `task-approval.txt`, `approved-copy.txt`,
+`draft-reply.txt`, `quote-header.txt`). A language without a list takes the
+neutral path: no transition, and quoted text still yields the choice line.
+
+`compact`, `clear` and `fork` raise `generation`; the task and its conventions
+survive (the rule kernel restores their bodies) and an open question is
+dropped. A fork's new session ID starts at generation 1 without the parent's
+task (see the fork limit above). While a task is in progress the prompt lane
+does not skip the recall in mode `none` (#371), so it can still tell whether a
+prompt touches the conventions in force.
+
 #### Pinned-memories injection (session hook, #141/#142)
 
 Recall is pull-by-relevance — and the thing you most need to *not* forget (a
@@ -3396,6 +3461,73 @@ Der Block `<pinned-memories>` unten bleibt, wie er ist: eine schlanke
 Audit-Liste ohne Bodies. Die eigenen `- [pinned]`-Zeilen des Assemblers
 bedienen den hooklosen Vertrag `GET /hook/session-context` und sind kein
 zweiter Renderer des Session-Hooks.
+
+#### Aufgabenvertrag und aktive Konventionen (Prompt-Hook, #1306)
+
+Eine Korrespondenz-Aufgabe läuft über mehrere Turns, und ein kurzer Folgeprompt
+(„ok“) enthält keins der Wörter, die ihre Regeln abgerufen haben. Der
+Session-State hält deshalb die Aufgabe (`activeTask: {kind, since,
+generation}`) neben den aktiven Konventionen, und der Prompt-Hook gibt beides in
+**jedem** Turn als kleinen Block `<active-conventions>` aus, unabhängig vom
+Hinweis-Dedup und von neuen Recall-Treffern, für Claude Code, Codex und
+Replays gleich. Der Block ist reine Information; er verweigert keinen Aufruf.
+
+```
+<active-conventions surface="claude-code" task="draft-for-review" generation="0">
+Session state, repeated every turn (not a new hint). Task: draft-for-review — draft for the user's review — nothing is final copy until the user approves it.
+Conventions in force (bodies: load_memory(id) or the rule kernel):
+- <id> revision=sha256:… task=draft-for-review
+</active-conventions>
+```
+
+Je Konvention stehen dort die ID, die Byte-`revision` (`memoryRevision`, wie
+`load_memory` sie liefert), der Aufgabenzustand und, falls gesetzt, die
+Validator-Parameter (`tool`, `channel`, `limit`, `unit`). Bodies stehen nie
+darin; die liefern Regelkern und `load_memory`. Hat sich die Revision der Datei
+seit dem Setzen geändert, ergänzt der Block einmal
+`revision changed: reload load_memory(<id>)` und zeigt danach die neue
+Revision. Ohne Aufgabe, Konventionen und offene Frage fehlt der Block.
+
+Zustände und Übergänge, pro Prompt aus dem **eigenen** Text des Nutzers
+entschieden:
+
+| Prompt | Übergang |
+|---|---|
+| kündigt einen Korrespondenz-Ablauf an („ich arbeite eine eingegangene Nachricht ab“, „work through the inbox“), bittet um einen Antwortentwurf oder fügt eingehenden Text mit Antwortverb ein bzw. zitiert ihn | `draft-for-review`; die regelartigen Treffer dieses Prompts (Typ `user-preference`, `meta-working` oder `workflow`, über den eigenen Trigger getroffen oder als Reflex verdrahtet) werden an die Aufgabe gebundene aktive Konventionen |
+| ausdrücklich „nur übersetzen“ / „translate only“ | `translate-only` (überschreibt einen laufenden Entwurf) |
+| kurzes Okay („ok“, „passt“, „go“, „ja“) oder ausdrücklich „freigegeben“ / „approved copy“ bei aktivem `draft-for-review` | `approved-copy` |
+| kein Aufgaben-Cue, einfacher Prompt (`none`/`generic`) mit eigenem Recall-Treffer außerhalb der aktiven Konventionen und ohne Treffer auf eine aktive Konvention | `none`; aufgabengebundene Konventionen enden mit der Aufgabe, sessionweite (Gate, Load) bleiben |
+| kein Aufgaben-Cue und kein neu passender Memory-Treffer, auch eine kurze Textnachbesserung | unverändert; fehlende Recall-Treffer beenden die Aufgabe nicht |
+| alles andere, auch triviale Prompts | unverändert |
+
+Zitierter eingehender Text (Blockquote, Block `<pasted_content>`, alles unter
+einer Kopfzeile „… schrieb:“ / „… wrote:“) wird abgetrennt, bevor ein Cue
+gelesen wird. Eine Anweisung in einer eingegangenen Nachricht ändert den
+Zustand nie. Bleibt die Absicht unklar (zitierter Text ohne Antwortverb oder
+zwei widersprüchliche ausdrückliche Cues), trägt der Block genau eine Zeile, und
+es gibt keine zweite Modell-Anfrage:
+
+```
+task unclear: ask the user with a choice (translate only / draft reply / approved copy) before producing the deliverable
+```
+
+Die Frage ist an die Generation und an die Konventionen (mit ihren Revisionen)
+gebunden, die der unklare Prompt getroffen hat. Nur der **nächste** Prompt kann
+sie beantworten („Antwortentwurf“, „nur übersetzen“, „freigegeben“); ein bloßes
+„ja“ oder „ok“ ist keine Antwort, und eine unbeantwortete Frage gibt nie eine
+Kopie frei. Jeder neuere Prompt verwirft sie. Die Cues sind Daten pro Sprache in
+`lexicon.ts` (de/en), jeweils erweiterbar durch eine Nutzerdatei unter
+`~/.bastra/lexicon/` (`correspondence.txt`, `translate-only.txt`,
+`task-approval.txt`, `approved-copy.txt`, `draft-reply.txt`,
+`quote-header.txt`). Eine Sprache ohne Liste nimmt den neutralen Weg: kein
+Übergang, und zitierter Text ergibt weiterhin die Auswahlzeile.
+
+`compact`, `clear` und `fork` erhöhen `generation`. Aufgabe und Konventionen
+bleiben (der Regelkern stellt ihre Bodies wieder her), eine offene Frage
+verfällt. Die neue Session-ID eines Forks beginnt bei Generation 1 ohne die
+Aufgabe der Eltern-Session (siehe Fork-Grenze oben). Solange eine Aufgabe
+läuft, überspringt die Prompt-Lane den Recall im Modus `none` nicht (#371),
+damit sie weiter erkennt, ob ein Prompt die geltenden Konventionen berührt.
 
 #### Einblendung angehefteter Erinnerungen (Session-Hook, #141/#142)
 

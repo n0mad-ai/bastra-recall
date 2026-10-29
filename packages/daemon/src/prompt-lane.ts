@@ -75,6 +75,7 @@ import {
 import { formatHintBlock, formatReflexBlock, type PromptReflexHit, type RecallHit } from "./prompt-format.js";
 import { writeTelemetry, type PromptHookTelemetry } from "./prompt-lane-telemetry.js";
 import { postJson } from "./prompt-loopback.js";
+import { runTaskStep } from "./prompt-task.js";
 
 // #680: classification, formatting, telemetry and the loopback call live in
 // their own modules; the lane's public surface is re-exported unchanged.
@@ -152,6 +153,10 @@ interface RecallResponse {
  */
 export interface PromptLaneOptions {
   onTelemetry?: (row: PromptHookTelemetry) => void;
+  /** #1306: the file revision (`memoryRevision`) of a memory id, read from the
+   *  daemon's vault index. Absent = the active-conventions block says
+   *  `revision=unknown` and cannot notice a revision change. */
+  revisionOf?: (id: string) => Promise<string | null>;
 }
 
 interface ReflexResponse {
@@ -334,11 +339,25 @@ export async function runPromptLane(
     if (parkedForTrivial !== null) {
       logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
     }
-    if (parkedForTrivial?.note != null) {
+    // #1306: "ok" after a draft is exactly the turn the task state is for — it
+    // may approve the copy, and the conventions in force stay visible. One
+    // state read when the session has no task.
+    const taskBlock = await runTaskStep({
+      sessionId: payload.session_id ?? "",
+      prompt,
+      snapshot: await loadSessionState(payload.session_id ?? ""),
+      mode: "trivial",
+      candidates: [],
+      revisionOf: opts.revisionOf,
+      surface: client,
+    });
+    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].filter((b): b is string => b !== null);
+    if (trivialBlocks.length > 0) {
+      if (taskBlock !== null && !replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
       return JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: parkedForTrivial.note,
+          additionalContext: trivialBlocks.join("\n"),
         },
       });
     }
@@ -417,7 +436,11 @@ export async function runPromptLane(
   // they belong to (#371). The recall that still runs here is byte-identical
   // to the one that ran before; only whether it runs at all is new.
   let recallSkipped: "reflex-pool-empty" | "reflex-all-suppressed" | undefined;
-  if (detectedMode === "none" && reflexPool) {
+  // #1306: during a correspondence task the existing recall can identify a
+  // new topic outside the conventions in force. A recall miss alone keeps
+  // the task active; no second search is added for task tracking.
+  const taskInProgress = (state.activeTask?.kind ?? "none") !== "none";
+  if (detectedMode === "none" && reflexPool && !taskInProgress) {
     const wired = reflexPool();
     if (wired.length === 0) {
       recallSkipped = "reflex-pool-empty";
@@ -714,6 +737,19 @@ export async function runPromptLane(
   const takenBoundary = boundary as TakenBoundary | null;
   if (takenBoundary !== null) logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
 
+  // #1306: the task transition and the active-conventions block. Candidates are
+  // this prompt's hits BEFORE the session dedup: a convention shown earlier
+  // still starts the task and still counts as touched.
+  const taskBlock = await runTaskStep({
+    sessionId,
+    prompt,
+    snapshot: state,
+    mode: detectedMode,
+    candidates: [...filtered, ...rawReflexHits.map((h) => ({ ...h, recall_mode: "reflex" }))],
+    revisionOf: opts.revisionOf,
+    surface: client,
+  });
+
   // The impact block goes FIRST: it is the answer to what the user just asked,
   // and it is there to be read before the first search, not after the memory
   // hints. It never rides the recall backoff — it is not recall noise, it is a
@@ -722,7 +758,7 @@ export async function runPromptLane(
   // #572: the boundary block rides ahead of it for the same reason: it is about
   // what the agent just did, and it is worth reading before the next thing is
   // done on top of it.
-  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock].filter(
+  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock, taskBlock].filter(
     (b): b is string => b !== null,
   );
   const stdout =

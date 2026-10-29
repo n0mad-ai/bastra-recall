@@ -5,12 +5,18 @@
  * deterministic; runs before any recall work.
  */
 import {
+  approvedCopyCues,
   composeVerbCues,
+  correspondenceCues,
   cueRegex,
+  draftReplyCues,
   outwardArtifactCues,
   projectStateCues,
+  quoteHeaderCues,
   retrievalLeadCues,
   stateQuestionCues,
+  taskApprovalCues,
+  translateOnlyCues,
 } from "./lexicon.js";
 
 export const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
@@ -152,4 +158,120 @@ export function extractPrompt(payload: ClaudeHookPayload): string | null {
   if (raw === null) return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+// ─── task contract (#1306) ───────────────────────────────────────────────────
+//
+// The correspondence workflow a session is in: translate the incoming text
+// only, draft a reply for the user's review, or deliver the copy the user
+// approved. The state lives in the session (session-state.ts `activeTask`);
+// this part only reads the prompt. Pure and deterministic like the rest.
+
+export type TaskKind = "translate-only" | "draft-for-review" | "approved-copy" | "none";
+
+const PASTED_CONTENT = /<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content>|$)/giu;
+const BLOCKQUOTE_LINE = /^\s*>/u;
+
+/**
+ * Split the prompt into the user's own text and quoted incoming text. Quoted
+ * is a `<pasted_content>` block, a blockquote line, and everything from a
+ * "… schrieb:" / "Am …, schrieb Max <a@b>:" / "… wrote:" header line on. Only `own` is ever read for a cue:
+ * an instruction inside an incoming message never changes the task state.
+ */
+export function splitQuoted(prompt: string): { own: string; quoted: boolean } {
+  let quoted = false;
+  const withoutPaste = prompt.replace(PASTED_CONTENT, (block) => {
+    if (/\S/u.test(block.replace(/<\/?pasted_content\b[^>]*>/giu, ""))) quoted = true;
+    return "\n";
+  });
+  const header = new RegExp(`(?<![\\p{L}\\p{N}])(?:${quoteHeaderCues().join("|")})(?![\\p{L}\\p{N}])[^\\n]{0,120}:\\s*$`, "iu");
+  const own: string[] = [];
+  let tail = false;
+  for (const line of withoutPaste.split("\n")) {
+    if (!tail && header.test(line)) tail = true;
+    if (tail || BLOCKQUOTE_LINE.test(line)) {
+      if (/\S/u.test(line.replace(/^\s*>/u, ""))) quoted = true;
+      continue;
+    }
+    own.push(line);
+  }
+  return { own: own.join("\n").trim(), quoted };
+}
+
+/** What the user's own text says about the task. */
+export interface TaskSignals {
+  /** "nur übersetzen" / "translate only". */
+  translate: boolean;
+  /** "ich arbeite eine eingegangene Nachricht ab" — a correspondence workflow. */
+  announce: boolean;
+  /** A compose/reply verb ("antworte", "reply", "schreib"). */
+  reply: boolean;
+  /** An explicit request for a reply draft ("Antwortentwurf", "draft a reply"). */
+  draftReply: boolean;
+  /** Quoted or pasted incoming text is present (its content is never read). */
+  quoted: boolean;
+  /** The whole short prompt is an approval ("ok", "passt", "go", "ja"). */
+  approval: boolean;
+  /** The prompt opens with one ("ok, aber kürzer") — a follow-up, not a new topic. */
+  ack: boolean;
+  /** An explicit approval phrase ("freigegeben", "approved copy"). */
+  approvedCopy: boolean;
+}
+
+export function taskSignals(prompt: string): TaskSignals {
+  const { own, quoted } = splitQuoted(prompt);
+  const has = (cues: readonly string[]): boolean => own.length > 0 && cueRegex(cues).test(own);
+  const bare = own.toLowerCase().replace(/[\s!.?…]+$/u, "").trim();
+  return {
+    translate: has(translateOnlyCues()),
+    announce: has(correspondenceCues()),
+    reply: has(composeVerbCues()),
+    draftReply: has(draftReplyCues()),
+    quoted,
+    approval: bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare),
+    ack: own.length > 0 && cueRegex(taskApprovalCues(), true).test(own),
+    approvedCopy: has(approvedCopyCues()),
+  };
+}
+
+export interface TaskContext {
+  current: TaskKind;
+  /** The choice line went out on the previous prompt of the same generation. */
+  questionOpen: boolean;
+  /** Detected mode of this prompt; "trivial" for the gated short prompts. */
+  mode: DetectedMode | "trivial";
+  /** This prompt's recall or reflex surfaced an active convention again. */
+  hitActive: boolean;
+  /** This prompt surfaced a new topic outside the active conventions. */
+  hitOther?: boolean;
+}
+
+/** `next` null keeps the state; `unclear` asks the user with the choice line. */
+export interface TaskDecision {
+  next: TaskKind | null;
+  unclear: boolean;
+}
+
+/**
+ * The transition for one prompt. Explicit beats implicit: "translate only"
+ * wins over a workflow announcement, an approval counts only while a draft is
+ * under review (or as the explicit answer to the choice line), and quoted text
+ * without a verb of the user's own is unclear rather than a guess. A prompt
+ * with no cue, in a plain mode, that surfaced a new topic outside the active
+ * conventions ends the task. A recall miss alone is not a task switch.
+ */
+export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
+  const keep: TaskDecision = { next: null, unclear: false };
+  const explicit = [sig.translate, sig.approvedCopy, sig.draftReply].filter(Boolean).length;
+  if (explicit > 1) return { next: null, unclear: true };
+  if (sig.translate) return { next: "translate-only", unclear: false };
+  if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
+  if (sig.approval && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
+  if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
+  if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
+  if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };
+  if (ctx.mode === "trivial" || ctx.current === "none") return keep;
+  const anyCue = sig.reply || sig.ack || sig.approvedCopy;
+  if (!anyCue && !ctx.hitActive && ctx.hitOther === true && (ctx.mode === "none" || ctx.mode === "generic")) return { next: "none", unclear: false };
+  return keep;
 }

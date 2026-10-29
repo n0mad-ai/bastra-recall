@@ -5,7 +5,8 @@
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
-import { MUST_LOAD_SCORE, SCORE_FLOOR, type DetectedMode } from "./prompt-classify.js";
+import { MUST_LOAD_SCORE, SCORE_FLOOR, type DetectedMode, type TaskKind } from "./prompt-classify.js";
+import type { ActiveConvention } from "./session-state.js";
 import { escapeAttr } from "./escape-attr.js";
 
 export interface RecallHit {
@@ -174,4 +175,52 @@ export function formatReflexBlock(
     sections.push(`- ${h.id} (${h.type}, trigger "${h.matched_phrase}"): ${summary}${gated?.has(h.id) ? MUST_LOAD_MARK : ""}`);
   }
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), `</recall-hints>`].join("\n");
+}
+
+// ─── #1306: active conventions ──────────────────────────────────────────────
+
+/** The one line an ambiguous task gets — no second model request, no guess. */
+export const TASK_UNCLEAR_LINE =
+  "task unclear: ask the user with a choice (translate only / draft reply / approved copy) before producing the deliverable";
+
+const TASK_MEANING: Readonly<Record<TaskKind, string>> = {
+  "translate-only": "translate the incoming text only — no reply, no draft",
+  "draft-for-review": "draft for the user's review — nothing is final copy until the user approves it",
+  "approved-copy": "the user approved the draft — deliver the copy-ready version",
+  none: "no correspondence task in progress",
+};
+
+export interface ActiveConventionsView {
+  task: TaskKind;
+  generation: number;
+  conventions: readonly Readonly<ActiveConvention>[];
+  /** Ids whose file revision changed since they were set. */
+  changed: readonly string[];
+  unclear: boolean;
+}
+
+/**
+ * The per-turn `<active-conventions>` block: ids, revisions, task state and
+ * validator parameters straight from the session state. It is repeated every
+ * turn on purpose — the hint dedup does not apply — and it never carries a
+ * body (the rule kernel and load_memory do). Null when there is nothing to say.
+ */
+export function formatActiveConventionsBlock(view: ActiveConventionsView, surface = "claude-code"): string | null {
+  if (view.conventions.length === 0 && view.task === "none" && !view.unclear) return null;
+  const head =
+    `<active-conventions surface="${escapeAttr(surface)}" task="${escapeAttr(view.task)}" generation="${view.generation}">`;
+  const lines = [
+    `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${TASK_MEANING[view.task]}.`,
+  ];
+  if (view.conventions.length > 0) {
+    lines.push("Conventions in force (bodies: load_memory(id) or the rule kernel):");
+    for (const c of view.conventions) {
+      const v = c.validator;
+      const validator = v ? ` validator: tool=${v.tool} channel=${v.channel} limit=${v.limit} unit=${v.unit}` : "";
+      lines.push(`- ${c.id} revision=${c.revision ?? "unknown"} task=${view.task}${validator}`);
+    }
+  }
+  for (const id of view.changed) lines.push(`revision changed: reload load_memory(${id})`);
+  if (view.unclear) lines.push(TASK_UNCLEAR_LINE);
+  return [head, stripFenceMarkers(lines.join("\n")), "</active-conventions>"].join("\n");
 }

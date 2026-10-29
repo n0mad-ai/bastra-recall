@@ -49,7 +49,7 @@ import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { appendModelSessionNotice } from "./model-session-notice.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { bookPendingMustLoad, bumpShown, clearShown, loadSessionState, mutateSessionState, takeConstantCadence, type ActiveConvention } from "./session-state.js";
+import { bookPendingMustLoad, bumpShown, bumpTaskGeneration, clearShown, loadSessionState, mutateSessionState, takeConstantCadence, type ActiveConvention } from "./session-state.js";
 import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
 import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
@@ -231,6 +231,9 @@ export async function runSessionLane(
     } catch {
       /* no state, no active conventions — floors, reflex and user rules still come */
     }
+    // #1306: a new generation of the task state — the task and its conventions
+    // carry over, an open "task unclear" question does not.
+    await bumpTaskGeneration(payload.session_id);
   }
   resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear") {

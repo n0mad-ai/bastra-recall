@@ -36,6 +36,7 @@ import * as os from "node:os";
 import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
+import type { TaskKind } from "./prompt-classify.js";
 
 export interface ShownEntry {
   count: number;
@@ -161,8 +162,39 @@ export interface SessionState {
    * #1305: the conventions the session is working under, kept across
    * compact/clear so the rule kernel can put them first. For now filled from
    * loads that answer a gate must-load and from the gate's reflex deliveries.
+   * #1306: and from the prompt lane when a correspondence task starts.
    */
   activeConventions?: ActiveConvention[];
+  /** #1306: the correspondence task the session is in (prompt-classify.ts). */
+  activeTask?: ActiveTask;
+  /** #1306: the "task unclear" choice line went out; only the next prompt of
+   *  the same generation may answer it. Every prompt clears it. */
+  taskQuestion?: TaskQuestion;
+}
+
+/** #1306: the task state. `generation` rises on compact, clear and fork. */
+export interface ActiveTask {
+  kind: TaskKind;
+  /** ms epoch when `kind` was entered. */
+  since: number;
+  generation: number;
+}
+
+/** #1306: an open "task unclear" question, bound to the generation it was asked in. */
+export interface TaskQuestion {
+  at: number;
+  generation: number;
+  /** The conventions the unclear prompt surfaced, at their revision then. An
+   *  answer puts exactly these in force; a moved revision gets a reload line. */
+  conventions?: Array<{ id: string; revision: string | null }>;
+}
+
+/** #1306: the check a convention's deliverable is held to (validate_artifact, #1309). */
+export interface ConventionValidator {
+  tool: string;
+  channel: string;
+  limit: number;
+  unit: string;
 }
 
 /** #1305: one convention in force for the session. */
@@ -171,6 +203,11 @@ export interface ActiveConvention {
   /** `memoryRevision` when it was set; null when the file was not readable. */
   revision: string | null;
   setAt: number;
+  /** #1306: "task" when a correspondence task put it in force — it ends with
+   *  the task. Absent: in force for the session (#1305 gate and load paths). */
+  scope?: "task";
+  /** #1306: optional validator parameters, shown in the active-conventions block. */
+  validator?: ConventionValidator;
 }
 
 /** #1303: one must-load id waiting for the gate lane. */
@@ -218,6 +255,8 @@ export interface ReadonlySessionState {
   readonly toolCalls?: number;
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
+  readonly activeTask?: Readonly<ActiveTask>;
+  readonly taskQuestion?: Readonly<TaskQuestion>;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -340,6 +379,25 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
           !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null) && typeof e.setAt === "number",
       );
     }
+    // #1306: the task state — same reason, every lane's save carries it.
+    const task = parsed.activeTask;
+    if (task && TASK_KINDS.has(task.kind) && typeof task.since === "number" && typeof task.generation === "number") {
+      state.activeTask = { kind: task.kind, since: task.since, generation: task.generation };
+    }
+    const question = parsed.taskQuestion;
+    if (question && typeof question.at === "number" && typeof question.generation === "number") {
+      const conventions = Array.isArray(question.conventions)
+        ? question.conventions.filter(
+            (e): e is { id: string; revision: string | null } =>
+              !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null),
+          )
+        : [];
+      state.taskQuestion = {
+        at: question.at,
+        generation: question.generation,
+        ...(conventions.length > 0 ? { conventions } : {}),
+      };
+    }
     return state;
   } catch {
     return { shown: {} };
@@ -440,17 +498,51 @@ const ACTIVE_CONVENTIONS_CAP = 20;
 const CLAIMED_MUST_LOAD_CAP = 20;
 
 /** #1305: put conventions in force (mutates in place). A convention set again
- *  moves to the newest position with its current revision. */
+ *  moves to the newest position with its current revision. #1306: it keeps
+ *  the scope and validator it was first set with — a session-wide rule does
+ *  not become task-bound because a task named it too. */
 export function recordActiveConventions(
   state: SessionState,
-  set: ReadonlyArray<{ id: string; revision: string | null }>,
+  set: ReadonlyArray<{ id: string; revision: string | null; scope?: "task" }>,
   now: number = Date.now(),
 ): void {
   if (set.length === 0) return;
+  const before = new Map((state.activeConventions ?? []).map((e) => [e.id, e]));
   const ids = new Set(set.map((e) => e.id));
   const kept = (state.activeConventions ?? []).filter((e) => !ids.has(e.id));
-  for (const e of set) kept.push({ id: e.id, revision: e.revision, setAt: now });
+  for (const e of set) {
+    const old = before.get(e.id);
+    const scope = old ? old.scope : e.scope;
+    kept.push({
+      id: e.id,
+      revision: e.revision,
+      setAt: now,
+      ...(scope ? { scope } : {}),
+      ...(old?.validator ? { validator: old.validator } : {}),
+    });
+  }
   state.activeConventions = kept.slice(-ACTIVE_CONVENTIONS_CAP);
+}
+
+const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>(["translate-only", "draft-for-review", "approved-copy", "none"]);
+
+/**
+ * #1306: compact, clear and fork start a new generation of the task state. The
+ * task and its conventions survive (the rule kernel restores the bodies); an
+ * open "task unclear" question does not — it was asked of a context that is
+ * gone. Never throws.
+ */
+export async function bumpTaskGeneration(sessionId: string, now: number = Date.now()): Promise<void> {
+  if (!sessionId) return;
+  try {
+    await mutateSessionState(sessionId, (state) => {
+      const task = state.activeTask ?? { kind: "none" as const, since: now, generation: 0 };
+      state.activeTask = { ...task, generation: task.generation + 1 };
+      delete state.taskQuestion;
+    });
+  } catch {
+    // A missed bump only leaves an old question answerable; it never blocks the start.
+  }
 }
 
 /** #1305: remember the must-load ids a gate deny claimed (mutates in place). */

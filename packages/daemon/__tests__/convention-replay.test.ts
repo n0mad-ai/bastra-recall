@@ -104,8 +104,11 @@ async function fixture(projection = false) {
       // ADAPTER: these are real production lane outputs, not mocked envelopes.
       switch (path) {
         case "/hook/session": result = await runSessionLane(payload, base, undefined, async () => null); break;
+        // #1306 ADAPTER: the daemon route passes revisions read off its vault
+        // index (vaultRevisionOf); here the invented memories carry them as data.
         case "/hook/prompt": result = await runPromptLane(payload, null, base, undefined,
-          () => [vault[2].id], { onTelemetry: row => promptRows.push(row) }); break;
+          () => [vault[2].id], { onTelemetry: row => promptRows.push(row),
+            revisionOf: async id => vault.find(memory => memory.id === id)?.revision ?? null }); break;
         case "/hook/write": result = await runWriteLane(payload, base, cwd); break;
         case "/hook/bash-pre": result = await runBashPreLane(payload, base); break;
         case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool,

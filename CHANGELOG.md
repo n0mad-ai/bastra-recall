@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `degraded: load_memory(id)` instead of a cut body, revision and staleness per
   rule, and an instruction to ask before deviating. `resume` gets none. The gate
   delivers the kernel again as a hint after 25 tool calls without a prompt (#1305).
+- The prompt hook keeps a correspondence task in the session state
+  (`translate-only`, `draft-for-review`, `approved-copy`, `none`) and prints an
+  `<active-conventions>` block every turn with the ids, byte revisions, task
+  state and validator parameters of the conventions in force, regardless of the
+  hint dedup and for every client. A changed revision adds a reload line;
+  quoted or pasted incoming text never changes the state; an ambiguous intent
+  adds one "task unclear" choice line, and an unanswered choice never approves
+  copy. `compact`, `clear` and `fork` raise the task generation (#1306).
 - Code awareness (experimental, off by default): a coverage map collected from the test runs the agent already makes. With `bastra config set coverageMap.enabled true`, test commands (`npm test`, `node --test`, `vitest`, `jest`, `tsx --test`) in a repository with code awareness run with `NODE_V8_COVERAGE` into the git-ignored `.bastra-coverage/`; the raw output is folded in the background into a map of which tests executed which files and functions, paths only. The Write/Edit and task-boundary blocks add one line naming the tests that ran the changed functions, at most five, never as an instruction. `bastra code` and `bastra doctor` show whether a map exists and how old it is (#629, refs #668).
 - `bastra doctor --replay [--days N] [--json] [--compare <report.json>]` sends your own Claude Code prompts of the last N days (default 14) through the running daemon's prompt lane in shadow and reports how recall behaves on your vault: share of system turns, prompts with a hint, hint slots and the share of the ten most frequent notes, slots on notes the agent loaded, bridge fires, p50/p95 latency and timeouts. A replay writes nothing to the vault, opens no join window, teaches the latency profile nothing and logs to its own `replay-YYYY-MM-DD.jsonl`, which no live readout counts and which ages out with the event logs. `bastra onboard` runs it once at the end; a daemon without the replay mode is refused (#702).
 

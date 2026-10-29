@@ -27,6 +27,7 @@ import { truncateSummaryTo } from "@bastra-recall/core";
 import { type Telemetry } from "./telemetry.js";
 import { handleHookReflex, reflexPoolIds } from "./reflex.js";
 import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
+import { vaultRevisionOf } from "./prompt-task.js";
 import type { PromptHookTelemetry } from "./prompt-lane-telemetry.js";
 import { REPLAY_CLIENT } from "./hook-surface.js";
 import { runWriteLane, type WriteHookPayload } from "./write-lane.js";
@@ -159,7 +160,7 @@ export function dispatchLocalRoutes(
             self,
             toolDeps.prewarmEmbedding,
             () => reflexPoolIds(vault),
-            { onTelemetry: (r) => { row = r; } },
+            { onTelemetry: (r) => { row = r; }, revisionOf: vaultRevisionOf(vault) },
           );
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ stdout, telemetry: row }));
@@ -171,8 +172,9 @@ export function dispatchLocalRoutes(
         // "none" — 91% of prompts — can inject nothing else, so the lane
         // uses it to decide whether the full-vault recall is worth paying
         // for at all.
+        // #1306: revisions for the active-conventions block, off the same index.
         const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () =>
-          reflexPoolIds(vault),
+          reflexPoolIds(vault), { revisionOf: vaultRevisionOf(vault) },
         );
         const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String(payload.session_id ?? "unknown"), "prompt");
         let result = out;
