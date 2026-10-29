@@ -218,12 +218,14 @@ function readRaw(req: IncomingMessage): Promise<string> {
 
 /** RFC 6749 §3.1: a parameter sent twice is an error, not "first one wins". */
 export function singleParams(params: URLSearchParams): Record<string, string> | null {
-  const out: Record<string, string> = {};
+  const out = new Map<string, string>();
   for (const [k, v] of params) {
-    if (Object.hasOwn(out, k)) return null;
-    out[k] = v;
+    if (out.has(k)) return null;
+    out.set(k, v);
   }
-  return out;
+  // Keep arbitrary extension parameters as own data, including __proto__,
+  // without invoking setters on Object.prototype.
+  return Object.fromEntries(out);
 }
 
 /** OAuth bodies are form-encoded; a JSON body is tolerated for clients that

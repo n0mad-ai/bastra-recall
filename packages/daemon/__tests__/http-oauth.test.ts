@@ -28,6 +28,7 @@ import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { registerClient, createGrant, revokeClient } from "../src/oauth-store.js";
 import { cmdOAuth } from "../src/cli/oauth-cmd.js";
+import { singleParams } from "../src/oauth-server.js";
 
 const TOKEN = "test-token-abcdef0123456789";
 process.env.BASTRA_API_TOKEN = TOKEN;
@@ -35,6 +36,19 @@ process.env.BASTRA_API_TOKEN = TOKEN;
 const HOST = "recall.example.com";
 const ORIGIN = `https://${HOST}`;
 const REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
+
+test("oauth: extension parameters cannot inject properties and all duplicate names are refused", () => {
+  const parsed = singleParams(new URLSearchParams("__proto__=data&constructor=extension&toString=value"));
+  assert.ok(parsed);
+  assert.equal(Object.getPrototypeOf(parsed), Object.prototype);
+  assert.ok(Object.hasOwn(parsed, "__proto__"));
+  assert.equal(parsed.__proto__, "data");
+  assert.equal(parsed.constructor, "extension");
+  assert.equal(parsed.toString, "value");
+  for (const name of ["client_id", "__proto__", "constructor", "toString"]) {
+    assert.equal(singleParams(new URLSearchParams([[name, "one"], [name, "two"]])), null);
+  }
+});
 
 interface Reply {
   status: number;
@@ -387,6 +401,25 @@ test("oauth: deny redirects with access_denied", async () => {
     const r = await call(port, "POST", "/api/v1/oauth/authorize", form({ request: requestId, action: "deny" }));
     assert.equal(r.status, 302);
     assert.equal(new URL(String(r.headers.location)).searchParams.get("error"), "access_denied");
+  });
+});
+
+test("oauth: choosing a public authorize route cannot bypass consent or expose protected routes", async () => {
+  await withServer(async port => {
+    const id = await openAuthorize(port, await register(port), pkce().challenge);
+    const fields = form({ request: id, action: "approve" });
+    for (const [method, path, status] of [
+      ["PUT", "/api/v1/oauth/authorize", 405],
+      ["POST", "/api/v1/oauth/authorize/extra", 404],
+      ["POST", "/api/v1/recall?endpoint=authorize", 401],
+      ["POST", "/api/v1/oauth/authorize", 401],
+    ] as const) {
+      const r = await call(port, method, path, fields);
+      assert.equal(r.status, status, `${method} ${path}: ${r.text}`);
+      assert.equal(r.headers.location, undefined, "no authorization code redirect without the token");
+    }
+    assert.equal((await approve(port, "forged", TOKEN)).status, 400, "the API token alone is not a live CSRF request");
+    assert.equal((await approve(port, id, TOKEN)).status, 302, "normal authenticated consent still works");
   });
 });
 
