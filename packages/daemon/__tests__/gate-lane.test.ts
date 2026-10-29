@@ -152,7 +152,7 @@ describe("#1303 gate lane: must-load", () => {
     assert.doesNotMatch(reason(stillA), /shared/);
   });
 
-  it("Codex payloads, subagent calls and non-PreToolUse events never claim a must-load", async () => {
+  it("unverified Codex payloads, subagent calls and non-PreToolUse events never claim a must-load", async () => {
     const sid = session("scope");
     await book(sid, ["pref-a"]);
     assert.equal(await runGateLane(call(sid, "Edit", {}, { bastra_client: "codex" }), { reflexPool: noPool }), "{}");
@@ -393,5 +393,58 @@ describe("#1303 gate lane beside the bash-pre rm shim (bash-pre-lane.ts:261)", (
     } finally {
       setEnv("BASTRA_RM_ARCHIVES", undefined);
     }
+  });
+});
+
+
+describe("#1304 Codex verified gate protocol", () => {
+  const codex = (sid: string, tool = "Bash", input: Record<string, unknown> = {}) =>
+    call(sid, tool, input, { bastra_client: "codex", bastra_codex_version: "0.162.1" });
+
+  it("claims pending and reflex together once after persistence, including parallel retries", async () => {
+    const sid = session("codex-once");
+    await book(sid, ["codex-pref"]);
+    const outs = await Promise.all(Array.from({length: 5}, () => runGateLane(codex(sid, "Bash", {command: "fixture_send_message"}), {reflexPool: pool(RULE)})));
+    assert.equal(outs.filter(denied).length, 1);
+    assert.match(reason(outs.find(denied)!), /codex-pref/);
+    assert.match(reason(outs.find(denied)!), /Never call fixture_send_message/);
+    assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
+    assert.deepEqual((await loadSessionState(sid)).deniedReflex, [RULE.fm.id]);
+    assert.equal(await runGateLane(codex(sid, "view_image"), {reflexPool: noPool}), "{}");
+  });
+
+  it("both Recall server spellings and plugin prefixes remain exempt", async () => {
+    const sid = session("codex-exempt");
+    await book(sid, ["pref-a"]);
+    for (const tool of ["mcp__bastra_recall__load_memory", "mcp__bastra-recall__load_memory", "mcp__plugin_bastra_recall_bastra_recall__load_memory", "mcp__plugin_bastra-recall_bastra-recall__load_memory"]) {
+      assert.equal(isGateExempt(tool, {}), true, tool);
+      assert.equal(await runGateLane(codex(sid, tool), {reflexPool: noPool}), "{}");
+    }
+    assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["pref-a"]);
+    assert.ok(denied(await runGateLane(codex(sid, "view_image"), {reflexPool: noPool})));
+  });
+
+  it("a failed Codex claim write fails open and preserves the pending id", async () => {
+    const sid = session("codex-readonly");
+    await book(sid, ["pref-a"]);
+    await chmod(stateDir, 0o500);
+    let out: string;
+    try { out = await runGateLane(codex(sid), {reflexPool: noPool}); }
+    finally { await chmod(stateDir, 0o700); }
+    assert.equal(out, "{}");
+    assert.equal((await gateRows(sid))[0]?.non_conformance, "state_write_failed");
+    assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["pref-a"]);
+    assert.ok(denied(await runGateLane(codex(sid), {reflexPool: noPool})));
+  });
+
+  it("a late persisted Codex claim never denies and is spent once", async (t) => {
+    const sid = session("codex-timeout");
+    await book(sid, ["pref-a"]);
+    let now = Date.now();
+    t.mock.method(Date, "now", () => now);
+    assert.equal(await runGateLane(codex(sid), {reflexPool: () => {now += 60_000; return [];}}), "{}");
+    assert.equal((await gateRows(sid))[0]?.non_conformance, "gate_timeout");
+    assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
+    assert.equal(await runGateLane(codex(sid), {reflexPool: noPool}), "{}");
   });
 });

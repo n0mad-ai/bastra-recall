@@ -254,6 +254,29 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
     }
   });
 
+  for (const version of ["0.162.0", "0.162.1", "0.162.2"]) {
+    for (const lane of ["prompt", "session"]) {
+      it(`#1304 Codex ${version} ${lane}: wording and pending follow verified registration evidence`, async () => {
+        const d = await mockDaemon(HITS);
+        try {
+          const sid = `codex-${lane}-${version}`;
+          const payload = {session_id: sid, cwd: stateDir, bastra_client: "codex", bastra_codex_version: version};
+          const out = lane === "prompt"
+            ? await runPromptLane({...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten"} as never, null, d.base, undefined, () => [])
+            : await runSessionLane({...payload, hook_event_name: "SessionStart", source: "fork"} as never, d.base, undefined, async () => null);
+          const state = await loadSessionState(sid);
+          if (version === "0.162.1") {
+            assert.match(out, /must-load/);
+            assert.deepEqual(state.pendingMustLoad?.map(e => e.id).sort(), [...GATED].sort());
+          } else {
+            assert.ok(!out.includes("must-load"));
+            assert.equal(state.pendingMustLoad, undefined);
+          }
+        } finally { await d.close(); }
+      });
+    }
+  }
+
   it("session lane: a fork start books and marks the gated ids, and releases nothing", async () => {
     const d = await mockDaemon(HITS);
     try {

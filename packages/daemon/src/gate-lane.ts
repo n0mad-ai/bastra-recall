@@ -1,5 +1,5 @@
 /**
- * Gate lane (#1303): the catch-all Claude Code PreToolUse hook, daemon-side.
+ * Gate lane (#1303/#1304): the catch-all PreToolUse hook, daemon-side.
  *
  * Two jobs, one state mutation per tool call:
  *
@@ -40,7 +40,7 @@ import { memoryRevision, stripAutoRelatedSection } from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envInt, envOff } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
-import { hookAgent, hookClient, hookClientEvidence } from "./hook-surface.js";
+import { hookAgent, hookGateAvailable, hookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
 import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
@@ -65,7 +65,7 @@ const DENIED_REFLEX_CAP = 200;
 /** Pool eligibility: only a rule the user dictated and rated as weighty. */
 const MIN_SALIENCE = 0.8;
 
-const RECALL_TOOL = new RegExp(RECALL_TOOL_PREFIX);
+const RECALL_TOOL = new RegExp(RECALL_TOOL_PREFIX.replace("bastra-recall", "bastra[-_]recall"));
 
 export interface GatePayload {
   session_id?: string;
@@ -75,6 +75,7 @@ export interface GatePayload {
   tool_input?: Record<string, unknown>;
   agent_id?: string;
   bastra_client?: string;
+  bastra_codex_version?: string;
 }
 
 export interface GateDeps {
@@ -160,8 +161,8 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
 
 async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Promise<string> {
   if (payload.hook_event_name !== "PreToolUse") return "{}";
-  // Deny is a Claude Code contract here; Codex is #1304.
-  if (hookClient(payload) !== "claude-code") return "{}";
+  // #1304: Codex needs registration evidence for the proven runtime minimum.
+  if (!hookGateAvailable(payload)) return "{}";
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   const toolName = typeof payload.tool_name === "string" ? payload.tool_name : "";
   if (!sessionId || !toolName) return "{}";

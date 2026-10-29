@@ -1,3 +1,5 @@
+import { codexGateSupported } from "./codex-gate-capability.js";
+
 /**
  * Hook-surface normalization (#15).
  *
@@ -103,6 +105,14 @@ export function hookCaller(payload: unknown): HookCaller {
   };
 }
 
+/** Only version-stamped Codex registrations promise an interruption. Legacy
+ * Claude Code hooks retain their existing behavior; replay never gates. */
+export function hookGateAvailable(payload: unknown): boolean {
+  if (hookClientEvidence(payload) === REPLAY_CLIENT) return false;
+  if (hookClient(payload) !== "codex") return true;
+  return codexGateSupported((payload as Record<string, unknown>).bastra_codex_version as string | undefined);
+}
+
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
   // Windows registrations use argv so the compiled stub starts directly,
@@ -111,5 +121,9 @@ export function decorateHookPayload<T>(payload: T): T {
     ?? process.env.BASTRA_HOOK_CLIENT;
   if (requested !== "codex" && requested !== "claude-code") return payload;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
-  return { ...(payload as Record<string, unknown>), bastra_client: requested } as T;
+  const codexVersion = process.argv.slice(2).find((a) => a.startsWith("--codex-version="))?.slice(16)
+    ?? process.env.BASTRA_CODEX_VERSION;
+  return { ...(payload as Record<string, unknown>), bastra_client: requested,
+    ...(requested === "codex" && (codexVersion !== undefined || "bastra_codex_version" in payload) ? { bastra_codex_version: codexGateSupported(codexVersion) ? codexVersion : null } : {}),
+  } as T;
 }

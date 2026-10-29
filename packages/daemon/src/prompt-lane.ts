@@ -36,7 +36,7 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
+import { hookGateAvailable, hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
 import { ownerPromptText } from "./system-turn.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact, NO_PROMPT_IMPACT } from "./code-graph/prompt-impact.js";
@@ -607,9 +607,9 @@ export async function runPromptLane(
   let suppressedTokensEst = 0;
   let consumedForEmit = false;
   let recallBlock: string | null = null;
-  // #1303: the hints the catch-all gate holds the next tool call for. Claude
-  // Code only — the deny is its contract — and never for a shadow replay.
-  const gateActive = client === "claude-code" && !replay;
+  // #1303/#1304: only deny-capable registrations book must-load hints;
+  // legacy Codex and shadow replays keep context-only guidance.
+  const gateActive = hookGateAvailable(payload) && !replay;
   const gatedRecall = new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []);
   // A reflex hit is user-wired by definition; only its type decides.
   const gatedReflex = new Set(gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []);

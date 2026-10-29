@@ -1,3 +1,4 @@
+import { codexGateSupported, CODEX_GATE_MIN_VERSION } from "../../codex-gate-capability.js";
 import { windowsHookToken } from "./command-paths.js";
 /**
  * Codex + ChatGPT desktop adapter (#15).
@@ -13,6 +14,7 @@ import { existsSync } from "node:fs";
 import {
   BASH_FAIL_HOOK_BIN,
   BASH_PRE_HOOK_BIN,
+  GATE_HOOK_BIN,
   CODEX_CONFIG,
   CODEX_HOOKS,
   CODEX_SKILL_TARGET_DIR,
@@ -40,11 +42,12 @@ import {
 } from "../helpers.js";
 import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { PLAN_TOOL_KEY, ensureCodexPlanTool, inspectPlanTool } from "./codex-plan-tool.js";
-import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
+import { findCodexExecutable, codexMcpGet, codexServerMatches, codexRuntimeVersion } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
 import {
   existingHookWrapper,
+  hookCommandTokens,
   fileOf,
   leftAloneNote,
   lookalikeHookCommands,
@@ -74,9 +77,9 @@ const STOP_DEF: CodexHookDef = {
   stubSubcommand: "stop",
 };
 
-function codexHookDefinitions(includeStop: boolean): CodexHookDef[] {
+function codexHookDefinitions(includeStop: boolean, codexVersion?: string | null): CodexHookDef[] {
   const defs: CodexHookDef[] = [
-    { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, label: "loading context", stubSubcommand: "session" },
+    { event: "SessionStart", matcher: "startup|resume|clear|compact|fork", bin: SESSION_HOOK_BIN, timeout: 3, label: "loading context", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, label: "recalling for prompt", stubSubcommand: "prompt" },
     { event: "PreToolUse", matcher: "^apply_patch$", bin: PRE_TOOL_HOOK_BIN, timeout: 2, label: "recalling for patch", stubSubcommand: "write" },
     { event: "PreToolUse", matcher: "^update_plan$", bin: TODO_HOOK_BIN, timeout: 2, label: "recalling for plan", stubSubcommand: "todo" },
@@ -84,6 +87,10 @@ function codexHookDefinitions(includeStop: boolean): CodexHookDef[] {
     { event: "PostToolUse", matcher: "^Bash$", bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "learning from shell result", stubSubcommand: "bash-fail" },
     { event: "PostToolUse", matcher: CODEX_SAVE_NOTICE_MATCHER, bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "announcing saved memory", stubSubcommand: "bash-fail" },
   ];
+  // #1300 runtime evidence is exactly 0.162.1. Other/unknown versions keep
+  // legacy context-only lanes, with neither a deny gate nor must-load claims.
+  // Official catch-all matcher: https://learn.chatgpt.com/docs/hooks#matcher-patterns
+  if (codexGateSupported(codexVersion)) defs.push({ event: "PreToolUse", matcher: "*", bin: GATE_HOOK_BIN, timeout: 2, label: "checking must-load and reflex rules", stubSubcommand: "gate" });
   if (includeStop) defs.push(STOP_DEF);
   return defs;
 }
@@ -97,8 +104,9 @@ const OUR_HOOK_FILES = [
   "bash-pre-hook.js",
   "bash-fail-hook.js",
   "stop-hook.js",
+  "gate-hook.js",
 ];
-const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((file) => file !== "stop-hook.js");
+const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((file) => file !== "stop-hook.js" && file !== "gate-hook.js");
 
 const CLIENT_MARKER = "BASTRA_HOOK_CLIENT=codex";
 
@@ -111,21 +119,30 @@ function hookEntry(
   stubPresent = existsSync(HOOK_STUB_BIN),
   wrap: HookWrapper = { prefix: "", suffix: "" },
   platform: string = process.platform,
+  codexVersion?: string | null,
 ): Record<string, unknown> {
   const token = platform === "win32" ? windowsHookToken : shellToken;
   const runner = stubPresent
     ? `${token(HOOK_STUB_BIN)} ${def.stubSubcommand}`
     : `node ${token(def.bin)}`;
-  // #647: a user's wrapper around the runner survives the rewrite. The client
-  // marker is ours and is written fresh, so it is taken out of the kept prefix.
-  const prefix = wrap.prefix.replace(`${CLIENT_MARKER} `, "");
+  // #647/#1304: remove only our unquoted assignments adjacent to the runner.
+  // Marker text inside a wrapper's quoted label is user data, kept byte-for-byte.
+  let prefixEnd = wrap.prefix.length;
+  for (const part of hookCommandTokens(wrap.prefix).reverse()) {
+    if (wrap.prefix.slice(part.end, prefixEnd).trim() !== "" ||
+        wrap.prefix.slice(part.start, part.end) !== part.value ||
+        (part.value !== CLIENT_MARKER && !/^BASTRA_CODEX_VERSION=\d+\.\d+\.\d+$/.test(part.value))) break;
+    prefixEnd = part.start;
+  }
+  const prefix = wrap.prefix.slice(0, prefixEnd);
+  const version = codexGateSupported(codexVersion) ? codexVersion : null;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
     type: "command",
     command: platform === "win32"
-      ? `${prefix}${runner} --client=codex${wrap.suffix}`
-      : `${prefix}${CLIENT_MARKER} ${runner}${wrap.suffix}`,
+      ? `${prefix}${runner} --client=codex${version ? ` --codex-version=${version}` : ""}${wrap.suffix}`
+      : `${prefix}${CLIENT_MARKER} ${version ? `BASTRA_CODEX_VERSION=${version} ` : ""}${runner}${wrap.suffix}`,
     timeout: def.timeout,
     statusMessage: `Bastra Recall · ${def.label}`,
   }];
@@ -169,11 +186,11 @@ export interface CodexHookPlan {
 export function planCodexHooks(
   action: "install" | "uninstall",
   hooks: Record<string, unknown>,
-  opts: { includeStop: boolean; mapBin?: (bin: string) => string; stubPresent?: boolean; platform?: string },
+  opts: { includeStop: boolean; codexVersion?: string | null; mapBin?: (bin: string) => string; stubPresent?: boolean; platform?: string },
 ): CodexHookPlan {
   const map = (def: CodexHookDef): CodexHookDef =>
     opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def;
-  const defs = codexHookDefinitions(opts.includeStop).map(map);
+  const defs = codexHookDefinitions(opts.includeStop, opts.codexVersion).map(map);
   const stopDef = map(STOP_DEF);
   const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
   // #647: what wraps our runner for this lane today, kept on the rebuilt entry.
@@ -195,13 +212,13 @@ export function planCodexHooks(
     if (action === "install" && !opts.includeStop && event === "Stop") {
       stopPreserved = current.some(isOurHookEntry);
       after[event] = current.flatMap((entry) => isOurHookEntry(entry)
-        ? [hookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform), ...foreignRemainder(entry)] : [entry]);
+        ? [hookEntry(stopDef, stubPresent, wrapOf(stopDef), opts.platform, opts.codexVersion), ...foreignRemainder(entry)] : [entry]);
     } else {
       after[event] = current.flatMap((entry) => isOurHookEntry(entry) ? foreignRemainder(entry) : [entry]);
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def), opts.platform));
+    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def), opts.platform, opts.codexVersion));
   }
   return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }
@@ -213,6 +230,7 @@ export async function patchCodexHooks(
   opts: {
     dryRun: boolean;
     includeStop?: boolean;
+    codexVersion?: string | null;
     mapBin?: (bin: string) => string;
     hooksPath?: string;
     stubPresent?: boolean;
@@ -221,7 +239,7 @@ export async function patchCodexHooks(
 ): Promise<{ status: HookStepStatus; detail: string; backupPath?: string; note?: string }> {
   const hooksPath = opts.hooksPath ?? CODEX_HOOKS;
   const exists = opts.exists ?? fileExists;
-  const sourceDefs = codexHookDefinitions(opts.includeStop === true);
+  const sourceDefs = codexHookDefinitions(opts.includeStop === true, opts.codexVersion);
   if (action === "install") {
     for (const def of sourceDefs) {
       if (!(await exists(def.bin))) {
@@ -238,21 +256,25 @@ export async function patchCodexHooks(
     : {};
   const plan = planCodexHooks(action, hooks, {
     includeStop: opts.includeStop === true,
+    codexVersion: opts.codexVersion,
     mapBin: opts.mapBin,
     stubPresent: opts.stubPresent,
   });
   const note = leftAloneNote(plan.leftAlone);
+  const gateDetail = codexGateSupported(opts.codexVersion)
+    ? `gate: verified Codex ${opts.codexVersion}; review new/changed definitions in /hooks`
+    : `gate: preparation only (Codex ${opts.codexVersion ?? "unknown"}); deny verified only on ${CODEX_GATE_MIN_VERSION}; legacy additionalContext hints, no must-load promise`;
   const unchanged = HOOK_EVENTS.every(
     (event) => JSON.stringify(plan.before[event]) === JSON.stringify(plan.after[event]),
   );
   if (unchanged) {
     return action === "install"
-      ? { status: "already-installed", detail: `${sourceDefs.length} Codex hooks already match`, note }
+      ? { status: "already-installed", detail: `${sourceDefs.length} Codex hooks already match; ${gateDetail}`, note }
       : { status: "not-present", detail: "no bastra-recall Codex hooks present", note };
   }
   if (opts.dryRun) {
     return action === "install"
-      ? { status: "would-install", detail: `would register ${sourceDefs.length} Codex hooks${plan.stopPreserved ? " (existing Stop hook retained)" : ""}`, note }
+      ? { status: "would-install", detail: `would register ${sourceDefs.length} Codex hooks${plan.stopPreserved ? " (existing Stop hook retained)" : ""}; ${gateDetail}`, note }
       : { status: "would-remove", detail: "would remove bastra-recall Codex hooks", note };
   }
 
@@ -265,7 +287,7 @@ export async function patchCodexHooks(
   const backupPath = await backupConfig(hooksPath);
   await atomicWriteJson(hooksPath, data);
   return action === "install"
-    ? { status: "installed", detail: `${sourceDefs.length} Codex hooks registered`, backupPath: backupPath ?? undefined, note }
+    ? { status: "installed", detail: `${sourceDefs.length} Codex hooks registered; ${gateDetail}`, backupPath: backupPath ?? undefined, note }
     : { status: "removed", detail: "bastra-recall Codex hooks removed", backupPath: backupPath ?? undefined, note };
 }
 
@@ -309,6 +331,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   const configPath = CODEX_CONFIG;
   const bin = findCodexExecutable();
   if (!bin) return { status: "error", message: "Codex/ChatGPT desktop executable not found", configPath };
+  const codexVersion = codexRuntimeVersion(bin);
   const vault = await resolveVault(opts);
   if ("error" in vault) return { status: "error", message: vault.error, configPath };
 
@@ -339,6 +362,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   const hookPlan = await patchCodexHooks("install", {
     dryRun: true,
     includeStop: opts.withStopHook === true,
+    codexVersion,
     mapBin,
     // #537 — the client the install step selected, not a disk probe.
     stubPresent: opts.useStub,
@@ -373,6 +397,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   const hooks = await patchCodexHooks("install", {
     dryRun: false,
     includeStop: opts.withStopHook === true,
+    codexVersion,
     mapBin,
     stubPresent: opts.useStub,
   });
@@ -490,7 +515,7 @@ export function registeredCodexHookFiles(hooks: Record<string, unknown>): Set<st
         const command = typeof (handler as Record<string, unknown>)?.command === "string"
           ? String((handler as Record<string, unknown>).command)
           : "";
-        for (const def of codexHookDefinitions(true)) {
+        for (const def of codexHookDefinitions(true, CODEX_GATE_MIN_VERSION)) {
           if (slashes(command).includes(`/${fileOf(def.bin)}`) ||
               (command.includes("bastra-hook") && command.includes(` ${def.stubSubcommand}`))) {
             found.add(fileOf(def.bin));
@@ -562,6 +587,9 @@ async function codexDoctor(): Promise<DoctorResult> {
   if (!current.result.ok && !mcpMissing(current.result.detail)) {
     return { status: "broken", message: `cannot inspect Codex MCP config: ${current.result.detail}`, details };
   }
+  const codexVersion = codexRuntimeVersion(bin);
+  details["codex-version"] = codexVersion ?? "unknown";
+  const gateEligible = codexGateSupported(codexVersion);
   const registered = current.server !== null;
   details["mcp-registration"] = registered ? "present (shared with ChatGPT desktop)" : "missing";
   let forwarderBroken = false;
@@ -596,17 +624,28 @@ async function codexDoctor(): Promise<DoctorResult> {
       ? hookRead.data.hooks as Record<string, unknown>
       : {};
     const found = registeredCodexHookFiles(hooks);
-    const missing = REQUIRED_HOOK_FILES.filter((file) => !found.has(file));
+    const required = gateEligible ? [...REQUIRED_HOOK_FILES, "gate-hook.js"] : REQUIRED_HOOK_FILES;
+    const expectedCount = required.length + 1; // optional Stop
+    const missing = required.filter((file) => !found.has(file));
     hooksBroken = missing.length > 0;
     saveNoticeRegistered = codexSaveNoticeRegistered(hooks);
+    const gateState = inspectCodexGateRegistration(hooks, codexVersion);
+    const gateRegistered = gateState.registered;
+    if (gateState.broken) hooksBroken = true;
+    const staleGate = gateState.stale;
+    details["must-load-gate"] = gateEligible
+      ? gateRegistered ? "registered for supported local tool paths (runtime evidence: 0.162.1)" : "MISSING or stale — re-run bastra install codex, then re-trust in /hooks"
+      : `preparation only — Codex ${codexVersion ?? "unknown"}; deny verified only on ${CODEX_GATE_MIN_VERSION}; ${staleGate
+        ? "STALE gate from another runtime — re-run bastra install codex to remove it and update markers, then re-trust changed hooks in /hooks"
+        : "legacy additionalContext hints, no must-load promise"}`;
     stopHookRegistered = found.has("stop-hook.js");
     details.hooks = missing.length > 0
-      ? `${found.size}/${OUR_HOOK_FILES.length} registered (missing required: ${missing.join(", ")})`
+      ? `${found.size}/${expectedCount} registered (missing required: ${missing.join(", ")})`
       : found.has("stop-hook.js")
-        ? `${OUR_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered`
-        : `${REQUIRED_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered (optional Stop disabled)`;
+        ? `${expectedCount}/${expectedCount} registered`
+        : `${required.length}/${expectedCount} registered (optional Stop disabled)`;
     details["save-notice-hook"] = saveNoticeRegistered ? "registered" : "MISSING — re-run bastra install codex";
-    if (!hooksBroken) details["hook-trust"] = "Codex-owned; use '/hooks' to confirm registered hooks are active";
+    if (!hooksBroken) details["hook-trust"] = "Codex-owned; new or changed hook definitions require re-trust in '/hooks' (exact hook hash); registration does not prove trust";
   }
   // #506 — the plan hook lane is silent unless Codex's planning tool is on.
   const planTool = await describePlanTool();
@@ -642,3 +681,47 @@ export const codexAdapter: Adapter = {
   uninstall: codexUninstall,
   doctor: codexDoctor,
 };
+
+/** Verify the real catch-all runner and version evidence on the hint producers.
+ * Trust is Codex-owned and cannot be inferred from registration. */
+export function codexGateRegistered(hooks: Record<string, unknown>, version?: string | null): boolean {
+  if (!codexGateSupported(version)) return false;
+  return [
+    ["PreToolUse", "*", "gate-hook.js", "gate"],
+    ["SessionStart", "startup|resume|clear|compact|fork", "session-hook.js", "session"],
+    ["UserPromptSubmit", undefined, "prompt-hook.js", "prompt"],
+  ].every(([event, matcher, file, sub]) => {
+    const entries = Array.isArray(hooks[event!]) ? hooks[event!] as unknown[] : [];
+    return entries.some(entry => {
+      const group = entry as { matcher?: unknown; hooks?: unknown } | null;
+      if (!group) return false;
+      return group.matcher === matcher && Array.isArray(group.hooks) && group.hooks.some(handler => {
+        const command = (handler as {command?: unknown} | null)?.command;
+        if (typeof command !== "string") return false;
+        const tokens = hookCommandTokens(command).map(token => token.value);
+        return runsOurHookRunner(command, [file!], CLIENT_MARKER, sub) &&
+          (tokens.includes(CLIENT_MARKER) || tokens.includes("--client=codex")) &&
+          (tokens.includes(`BASTRA_CODEX_VERSION=${version}`) || tokens.includes(`--codex-version=${version}`));
+      });
+    });
+  });
+}
+
+/** Doctor's read-only policy includes stale hint markers: an old producer can
+ * still promise must-load even if someone already removed its gate entry. */
+export function inspectCodexGateRegistration(hooks: Record<string, unknown>, version?: string | null): {
+  registered: boolean; stale: boolean; broken: boolean;
+} {
+  const eligible = codexGateSupported(version);
+  const registered = codexGateRegistered(hooks, version);
+  const hasVersionMarker = HOOK_EVENTS.some(event => {
+    const entries = Array.isArray(hooks[event]) ? hooks[event] as unknown[] : [];
+    return entries.some(entry => isOurHookEntry(entry) &&
+      ((entry as {hooks: unknown[]}).hooks).some(handler => {
+        const command = (handler as {command?: unknown} | null)?.command;
+        return typeof command === "string" && hookCommandTokens(command).some(token => /^(?:BASTRA_CODEX_VERSION=|--codex-version=)/.test(token.value));
+      }));
+  });
+  const stale = !eligible && (registeredCodexHookFiles(hooks).has("gate-hook.js") || hasVersionMarker);
+  return {registered, stale, broken: eligible ? !registered : stale};
+}

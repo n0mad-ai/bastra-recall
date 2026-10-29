@@ -111,7 +111,7 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
     }
   }
   if (start < 0) return null;
-  if (/^--client=(codex|claude-code)$/.test(tokens[end + 1]?.value ?? "")) end++;
+  while (/^(?:--client=(codex|claude-code)|--codex-version=\d+\.\d+\.\d+)$/.test(tokens[end + 1]?.value ?? "")) end++;
   return {
     prefix: cmd.slice(0, tokens[start].start),
     suffix: cmd.slice(tokens[end].end),
