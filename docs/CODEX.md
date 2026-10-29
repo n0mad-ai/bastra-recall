@@ -52,6 +52,8 @@ On 0.162.1, an installed version marker travels with the client marker through b
 
 Coverage is bounded: `write_stdin` input/polls of an existing process do not create a fresh PreToolUse boundary. Hosted WebSearch is [documented outside tool hooks](https://learn.chatgpt.com/docs/hooks#tool-coverage). `apply_patch`, MCP, and other local tools are covered by current official documentation but were not separately runtime-certified in #1300. The catch-all matches every **supported** event occurrence; it does not expand host coverage. Desktop/IDE gate behavior was not runtime-tested. See the [official hook contract](https://learn.chatgpt.com/docs/hooks#pretooluse) and [trust rules](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
 
+The prompt hook also carries the [task contract and active conventions](./hooks.md#task-contract-and-active-conventions-prompt-hook-1306) across short follow-ups. The [host capability matrix](../packages/daemon/src/host-capabilities.ts) records the evidence and limits for each surface; a task-state block does not itself deny tools or validate an answer.
+
 ### Status display
 
 While a hook is running, the adapter uses Codex's native blinking status line through `statusMessage`, for example `Bastra Recall · loading context`, `Bastra Recall · recalling for patch`, or `Bastra Recall · evaluating memory save`. The message is deliberately brief and disappears when the hook finishes.
@@ -123,6 +125,8 @@ Der Installer fragt die gewählte Codex-Datei mit `--version` ab; nach einem Cod
 Auf 0.162.1 transportieren Node- und kompilierte Stub-Hooks neben dem Client-Marker einen installierten Versionsmarker. Nur damit verwenden Prompt-/Session-Hinweise das Must-load-Wording. Das Gate unterbricht nach bestätigtem Schreiben des Zustands einmal; der nächste Versuch geht auch ohne Laden durch. Schreibfehler, Daemon-Fehler und Zeitüberschreitungen bleiben fail-open. Eine Registrierung belegt Codex' Vertrauen nicht: `bastra install codex` erneut ausführen und **neue/geänderte Definitionen in `/hooks` erneut prüfen und bestätigen**, einschließlich SessionStart-Matcher und Hinweis-Hooks. Codex bindet Vertrauen an den exakten Definitions-Hash und überspringt unbestätigte Hooks. `bastra doctor codex` prüft Gate-Registrierung und Versionsmarker und erklärt diese Grenze.
 
 Die Abdeckung bleibt begrenzt: `write_stdin`-Eingaben und Abfragen eines bestehenden Prozesses erzeugen keine neue PreToolUse-Grenze. Hosted WebSearch liegt [laut Dokumentation außerhalb der Tool-Hooks](https://learn.chatgpt.com/docs/hooks#tool-coverage). `apply_patch`, MCP und andere lokale Werkzeuge sind aktuell offiziell dokumentiert, wurden in #1300 aber nicht einzeln zur Laufzeit geprüft. Catch-all erfasst jedes **unterstützte** Ereignis; es erweitert die Host-Abdeckung nicht. Desktop-/IDE-Gates wurden nicht zur Laufzeit geprüft. Siehe [offiziellen Hook-Vertrag](https://learn.chatgpt.com/docs/hooks#pretooluse) und [Vertrauensregeln](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
+
+Der Prompt-Hook erhält außerdem den [Aufgabenvertrag und aktive Konventionen](./hooks.md#aufgabenvertrag-und-aktive-konventionen-prompt-hook-1306) bei kurzen Folgeprompts. Die [Host-Capability-Matrix](../packages/daemon/src/host-capabilities.ts) nennt Belege und Grenzen pro Oberfläche; der Aufgabenblock selbst verweigert keine Tools und prüft keine fertige Antwort.
 
 ### Statusanzeige
 
