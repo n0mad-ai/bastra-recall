@@ -12,6 +12,7 @@ import {
   draftReplyCues,
   outwardArtifactCues,
   projectStateCues,
+  previousConventionCues,
   quoteHeaderCues,
   retrievalLeadCues,
   stateQuestionCues,
@@ -48,7 +49,19 @@ export type DetectedMode = "retrieval" | "assertion" | "none" | "generic";
 export function detectRetrieval(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  return cueRegex(retrievalLeadCues(), true).test(trimmed);
+  return detectPreviousConvention(trimmed) || cueRegex(retrievalLeadCues(), true).test(trimmed);
+}
+
+/** #1307: only the user's own instruction can force a previous-rule lookup. */
+export function detectPreviousConvention(prompt: string): boolean {
+  return cueRegex(previousConventionCues()).test(splitQuoted(prompt).own);
+}
+
+/** Mode selection belongs with classification, independently of the pipeline. */
+export function classifyPromptMode(prompt: string, hookMode: "all" | "retrieval-only"): DetectedMode {
+  if (detectRetrieval(prompt)) return "retrieval";
+  if (detectAssertion(prompt)) return "assertion";
+  return hookMode === "all" ? "generic" : "none";
 }
 
 // ─── assertion lane (#252) ───────────────────────────────────────────────────

@@ -19,7 +19,7 @@ const REPEAT_TURNS_MIN = 2;
 const DECISION_WINDOW_TURNS = 5;
 const FEATURE_FILE_TOKEN_MIN = 5;
 
-type Heuristic = "frustration-density" | "feature-completion" | "architecture-decision";
+type Heuristic = "correction-without-save" | "frustration-density" | "feature-completion" | "architecture-decision";
 
 export interface SaveSuggestion {
   heuristic: Heuristic;
@@ -150,6 +150,27 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
       `Exemplars: ${[...new Set(repeats.map((c) => c.slice(0, 120)))].slice(0, 3).join(" | ")}. ` +
       `If the user had to repeat a correction, save a 'lesson' memory that captures the failure path and the fix.`,
   };
+}
+
+/** #1307: reuse the repeated-correction signal, bounded to the latest user
+ * turn. Tool evidence after that correction, never a prose mention, clears it. */
+export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
+  const userTurns = turns.filter((t) => t.role === "user").slice(-FRUSTRATION_WINDOW_TURNS);
+  const correction = detectRepeatedCorrection(userTurns);
+  if (!correction) return suggestions;
+  const last = userTurns.length - 1;
+  if (!restatementIndices(userTurns.map((t) => t.content)).includes(last)) return suggestions;
+  const correctionIndex = turns.lastIndexOf(userTurns[last]);
+  // The existing frustration suggestion describes this same correction. A
+  // save clears both; without one, replace it rather than reminding twice.
+  const other = suggestions.filter((s) => s.heuristic !== "frustration-density");
+  if (turns.slice(correctionIndex + 1).some((t) => t.tools?.some((name) => /(?:^|__)save_memory$/u.test(name)))) return other;
+  return [...other, {
+    ...correction,
+    heuristic: "correction-without-save",
+    body: "The user repeated a correction in this turn and no save_memory followed. " +
+      "If it establishes a durable rule, save the user-evidenced failure path and fix; do not infer a missing convention.",
+  }];
 }
 
 // Source extensions that signal a real edit. `.md` only counts under docs/.

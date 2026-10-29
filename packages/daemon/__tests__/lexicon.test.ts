@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import {
+  previousConventionCues,
   frustrationCues,
   decisionCues,
   DEFAULT_FRUSTRATION_CUES,
@@ -194,5 +195,15 @@ test("lexicon (#517): a file of exactly 64 KiB keeps its last complete line", as
     await writeFile(join(dir, "frustration.txt"), exact + "x", "utf8");
     const over = frustrationCues();
     assert.ok(!over.includes("latecue") && !over.includes("latecuex"));
+  });
+});
+
+
+test("#1307 previous convention cues ship DE/EN and accept other languages via user data", async () => {
+  await withLexiconDir(async (dir) => {
+    assert.ok(previousConventionCues().includes("wie beim letzten Mal"));
+    assert.ok(previousConventionCues().includes("like last time"));
+    await writeFile(join(dir, "previous-convention.txt"), "comme la dernière fois\n", "utf8");
+    assert.ok(previousConventionCues().includes("comme la dernière fois"));
   });
 });

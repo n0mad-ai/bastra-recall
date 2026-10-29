@@ -288,6 +288,16 @@ much" leads need a past-tense verb, so "когда мы закончим, уда
   weak / no-home result, or a new topic later in the task. An explicit user
   request to search always runs.
 
+Previous-convention cues such as "wie beim letzten Mal", "wie vorher", "like
+last time" or "you have a memory" force that same retrieval path even inside
+an instruction and in `retrieval-only` mode (#1307). Only the user's own text
+counts; quoted/pasted incoming text does not force it. The DE/EN defaults are
+extended by `~/.bastra/lexicon/previous-convention.txt`, one cue per line;
+unlisted languages keep ordinary score-gated recall. After a successful
+lookup with no `matched_recall_when` hit, the hint block says `no stored rule
+matched; save one when the user explains`, even if there are no candidates.
+A matching rule uses the normal block; a failed lookup makes no absence claim.
+
 Every other non-trivial prompt recalls too (#677, `k=3`), in any language —
 the leads above cover three languages and do not decide whether a prompt
 recalls: a lookup in a language without a list is not labelled `retrieval` on
@@ -899,6 +909,13 @@ loop. Codex, a payload without a session id, and `BASTRA_STOP_SAME_TURN=0`
 keep the older route: the `<save-eval>` blocks go to
 `~/.bastra/pending-suggestions.json` and the next session start shows them
 (#48, #513).
+
+On that supported same-turn path, a repeated correction in the latest user
+turn also gets the reason `correction-without-save` (#1307), once per session.
+It reuses the existing language-neutral correction signal (at least two
+restatements, with emphasis), and replaces the duplicate frustration reminder.
+An actual `save_memory` tool call after the correction suppresses the reminder;
+a prior save or a prose mention does not. Other delivery paths stay unchanged.
 
 **What you see (#757).** Claude Code has no agent-only channel on `Stop`: it
 prints `additionalContext` in full under "Stop hook feedback" (measured on
@@ -2148,6 +2165,18 @@ eine Sprache. Bei einem Treffer:
   Umformulierung nach schwachem / heimatlosem Ergebnis oder einem neuen Thema
   später in der Aufgabe. Eine ausdrückliche Suchanfrage des Nutzers läuft immer.
 
+Verweise auf frühere Konventionen wie „wie beim letzten Mal“, „wie vorher“,
+„like last time“ oder „you have a memory“ erzwingen denselben Retrieval-Pfad,
+auch innerhalb einer Anweisung und im Modus `retrieval-only` (#1307). Nur der
+eigene Text des Nutzers zählt; zitierter oder eingefügter Nachrichtentext löst
+das nicht aus. Die deutschen und englischen Vorgaben lassen sich in
+`~/.bastra/lexicon/previous-convention.txt` erweitern, ein Cue pro Zeile.
+Sprachen ohne Eintrag behalten den gewöhnlichen, scoregesteuerten Recall.
+Liefert eine erfolgreiche Suche keinen Treffer mit `matched_recall_when`,
+steht im Hinweisblock `no stored rule matched; save one when the user explains`,
+auch ohne Kandidaten. Eine passende Regel erhält den normalen Block; eine
+fehlgeschlagene Suche behauptet nicht, dass keine Regel vorhanden sei.
+
 Jeder andere nicht-triviale Prompt ruft ebenfalls Recall auf (#677, `k=3`),
 in jeder Sprache — die Anfänge oben decken drei Sprachen ab und entscheiden
 nicht, ob ein Prompt Recall bekommt: Eine Suchanfrage in einer Sprache ohne
@@ -2756,6 +2785,15 @@ kreisen. Codex, ein Payload ohne Session-ID und `BASTRA_STOP_SAME_TURN=0`
 behalten den alten Weg: Die `<save-eval>`-Blöcke landen in
 `~/.bastra/pending-suggestions.json`, und der nächste Session-Start zeigt sie
 (#48, #513).
+
+Auf diesem unterstützten Übergabeweg im selben Turn erhält eine wiederholte
+Korrektur im neuesten Nutzer-Turn außerdem den Grund `correction-without-save`
+(#1307), einmal pro Session. Dafür wird das bestehende sprachneutrale
+Korrektursignal verwendet: mindestens zwei Wiederholungen mit Nachdruck. Der
+Hinweis ersetzt den doppelten Frust-Hinweis. Ein tatsächlicher
+`save_memory`-Werkzeugaufruf nach der Korrektur unterdrückt den Hinweis; ein
+früherer Aufruf oder eine bloße Erwähnung im Text tut das nicht. Andere
+Übergabewege bleiben unverändert.
 
 **Was du siehst (#757).** Claude Code hat bei `Stop` keinen Kanal nur für den
 Agenten: Es gibt `additionalContext` vollständig unter „Stop hook feedback"

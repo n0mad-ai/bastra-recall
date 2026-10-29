@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Previous-convention references such as "wie beim letzten Mal" and "like last
+  time" force prompt retrieval at floor 50, including retrieval-only mode. A
+  successful lookup with no matching `recall_when` explicitly says that no
+  stored rule matched. A repeated user correction without a subsequent
+  `save_memory` gets one existing same-turn save reminder per session (#1307).
+
 - Codex 0.162.1: the one-time must-load/reflex gate and fork registration,
   with preparation-only hints on unverified runtimes, preserved wrappers,
   stale-registration diagnosis and explicit hook re-trust (#1304).

@@ -69,7 +69,7 @@ import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import { noteSessionForHarvest } from "./session-harvest.js";
 import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
-import { appendProductDocHint, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
+import { appendProductDocHint, correctionReminderSuggestions, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
 import { formatSameTurnBlock, sameTurnNotice } from "./stop-lane-same-turn.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
@@ -241,7 +241,11 @@ async function evaluateStop(
   }
 
   const last30 = turns.slice(-30);
-  const suggestions = evaluateHeuristics(last30, { cwd: payload.cwd });
+  let suggestions = evaluateHeuristics(last30, { cwd: payload.cwd });
+  // #1307 changes only the supported same-turn delivery path.
+  if (payload.session_id && hookClientEvidence(payload) !== "codex" && !envOff("BASTRA_STOP_SAME_TURN")) {
+    suggestions = correctionReminderSuggestions(last30, suggestions);
+  }
 
   // Produkt-Doku (docs.mode): feature-completion ist auch der Trigger für
   // die Doku-Pflege — Hinweis an die Suggestion hängen, wenn eingeschaltet.
