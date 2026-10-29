@@ -31,6 +31,9 @@ export interface ConventionSession {
   failedValidations: number;
   unverifiedValidations: number;
   unattributedReceipts: number;
+  repairExhausted: number;
+  reportedRepairAttempts: number;
+  unverifiedRepairAttemptCounts: number;
   memories: Map<string, ConventionMemory>;
   taskKinds: Set<string>;
   revisions: Set<string>;
@@ -45,6 +48,7 @@ function sessionOf(e: Event): string | null {
   if (e.session_known === false || e.kind === "receipt_unattributed") return null;
   if (e.kind === "load_memory" || e.kind === "convention_validation") return str(e.caller_session);
   if (e.kind === "session_harvest") return str(e.session_id);
+  if (e.kind === "non_conformance") return e.session_known === true ? str(e.session_id) : null;
   const dimensions = e.dimensions as Record<string, unknown> | undefined;
   // Legacy hook clients minted a random session_id on missing attribution.
   // A nonempty UUID by itself therefore cannot establish a caller session.
@@ -54,7 +58,7 @@ function sessionOf(e: Event): string | null {
 function fresh(session: string | null): ConventionSession {
   return { session, session_known: session !== null, shown: new Set(), loaded: new Set(), denied: 0, timeouts: 0,
     saidAgain: 0, receipts: 0, followed: "unknown", gateAttempts: 0, loadAttempts: 0, failedLoads: 0, unverifiedLoads: 0, legacyUnattributedEvents: 0,
-    validationAttempts: 0, failedValidations: 0, unverifiedValidations: 0, unattributedReceipts: 0, memories: new Map(),
+    validationAttempts: 0, failedValidations: 0, unverifiedValidations: 0, unattributedReceipts: 0, repairExhausted: 0, reportedRepairAttempts: 0, unverifiedRepairAttemptCounts: 0, memories: new Map(),
     taskKinds: new Set(), revisions: new Set(), generations: new Set(), firstVisible: new Set(), repaired: new Set() };
 }
 function memory(row: ConventionSession, id: string): ConventionMemory {
@@ -71,7 +75,8 @@ export function aggregateConventions(events: Event[]): ConventionSession[] {
     const kind = String(e.kind);
     const hookShown = /^(session|prompt|bash|bash_fail|todo)_hook_call$/.test(kind) || kind === "hook_call";
     const gate = kind === "gate_hook_call" || /^(gate_deny|gate_pass|gate_timeout)$/.test(kind);
-    if (!hookShown && !gate && !["convention_shown", "load_memory", "session_harvest", "convention_validation", "receipt_unattributed"].includes(kind)) continue;
+    const repairExhausted = kind === "non_conformance" && e.reason === "repair_exhausted";
+    if (!hookShown && !gate && !repairExhausted && !["convention_shown", "load_memory", "session_harvest", "convention_validation", "receipt_unattributed"].includes(kind)) continue;
     if (hookShown && ids(e.hinted_ids).length === 0) continue;
     const session = sessionOf(e);
     let row = rows.get(session);
@@ -133,6 +138,14 @@ export function aggregateConventions(events: Event[]): ConventionSession[] {
         if (session === null) row.unattributedReceipts++;
       }
     }
+    if (repairExhausted) {
+      row.repairExhausted++;
+      row.repaired.add("exhausted");
+      // The stop producer reports its bounded attempt count, not a complete
+      // end-to-end attempt ledger. Keep this series separate and lower-bound.
+      if (typeof e.attempts === "number" && Number.isInteger(e.attempts) && e.attempts >= 0) row.reportedRepairAttempts += e.attempts;
+      else row.unverifiedRepairAttemptCounts++;
+    }
     // Older lines have no matching validation attempt: keep the unknown
     // attribution visible without inventing a task or successful followed join.
     if (kind === "receipt_unattributed") row.legacyUnattributedEvents++;
@@ -146,11 +159,11 @@ export function renderConventions(rows: ConventionSession[]): string {
     "said-again = exact-wording stored match at harvest, not proof the rule existed when repeated. Unknown-session events are not joined."];
   if (!rows.length) out.push("(no convention evidence in this window — try --since 7d)");
   for (const r of rows) {
-    out.push(`session=${r.session ?? "unknown"} session_known=${r.session_known} shown=${r.shown.size} loaded=${r.loaded.size} denied=${r.denied} timeouts=${r.timeouts} said-again=${r.saidAgain} receipts=${r.receipts} followed: ${r.followed} task=${values(r.taskKinds)} revision=${values(r.revisions)} generation=${values(r.generations)} first-visible=${values(r.firstVisible)} repaired=${values(r.repaired)} gate-attempts=${r.gateAttempts} load-attempts=${r.loadAttempts} failed-loads=${r.failedLoads} unverified-loads=${r.unverifiedLoads} validator-attempts=${r.validationAttempts} failed-validations=${r.failedValidations} unverified-validations=${r.unverifiedValidations} unattributed-receipts=${r.unattributedReceipts} legacy-unattributed-events=${r.legacyUnattributedEvents}`);
+    out.push(`session=${r.session ?? "unknown"} session_known=${r.session_known} shown=${r.shown.size} loaded=${r.loaded.size} denied=${r.denied} timeouts=${r.timeouts} said-again=${r.saidAgain} receipts=${r.receipts} followed: ${r.followed} task=${values(r.taskKinds)} revision=${values(r.revisions)} generation=${values(r.generations)} first-visible=${values(r.firstVisible)} repaired=${values(r.repaired)} gate-attempts=${r.gateAttempts} load-attempts=${r.loadAttempts} failed-loads=${r.failedLoads} unverified-loads=${r.unverifiedLoads} validator-attempts=${r.validationAttempts} failed-validations=${r.failedValidations} unverified-validations=${r.unverifiedValidations} unattributed-receipts=${r.unattributedReceipts} legacy-unattributed-events=${r.legacyUnattributedEvents} repair-exhausted=${r.repairExhausted} repair-attempts-reported-lower-bound=${r.reportedRepairAttempts} repair-attempt-counts-unknown=${r.unverifiedRepairAttemptCounts}`);
     for (const m of r.memories.values()) if (m.saidAgain > 0) out.push(`  memory=${m.id} said-again=${m.saidAgain} in-vault-at-repetition=unknown stored-match-at-harvest=yes shown=${r.session_known && m.shown ? "yes" : "unknown"} loaded=${r.session_known && m.loaded ? "yes" : "unknown"} followed=unknown`);
   }
   const sum = (f: (r: ConventionSession) => number) => rows.reduce((n, r) => n + f(r), 0);
-  out.push(`total sessions=${rows.filter(r => r.session_known).length} unknown-buckets=${rows.some(r => !r.session_known) ? 1 : 0} shown=${sum(r => r.shown.size)} loaded=${sum(r => r.loaded.size)} denied=${sum(r => r.denied)} timeouts=${sum(r => r.timeouts)} said-again=${sum(r => r.saidAgain)} receipts=${sum(r => r.receipts)} gate-attempts=${sum(r => r.gateAttempts)} load-attempts=${sum(r => r.loadAttempts)} validator-attempts=${sum(r => r.validationAttempts)} failed-validations=${sum(r => r.failedValidations)} unverified-validations=${sum(r => r.unverifiedValidations)}`);
+  out.push(`total sessions=${rows.filter(r => r.session_known).length} unknown-buckets=${rows.some(r => !r.session_known) ? 1 : 0} shown=${sum(r => r.shown.size)} loaded=${sum(r => r.loaded.size)} denied=${sum(r => r.denied)} timeouts=${sum(r => r.timeouts)} said-again=${sum(r => r.saidAgain)} receipts=${sum(r => r.receipts)} gate-attempts=${sum(r => r.gateAttempts)} load-attempts=${sum(r => r.loadAttempts)} validator-attempts=${sum(r => r.validationAttempts)} failed-validations=${sum(r => r.failedValidations)} unverified-validations=${sum(r => r.unverifiedValidations)} repair-exhausted=${sum(r => r.repairExhausted)} repair-attempts-reported-lower-bound=${sum(r => r.reportedRepairAttempts)} repair-attempt-counts-unknown=${sum(r => r.unverifiedRepairAttemptCounts)}`);
   out.push("No end-to-end success rate: absent evidence stays unknown; first-visible and repair outcomes require explicit delivery telemetry.");
   return out.join("\n");
 }
