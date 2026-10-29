@@ -111,6 +111,7 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "save_document",
       "save_memory",
       "save_product_doc",
+      "validate_artifact",
     ].sort(),
     // #519: edit_memory joined the save tools. It changes one memory in place
     // and moves nothing, so it is not lifecycle — and leaving it out of the

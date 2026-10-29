@@ -117,6 +117,40 @@ have permissions 0600. It does not clear the harvest queue, optional training
 capture or promoted notes; stop capture before clearing to prevent new entries.
 See [privacy and retention](./PRIVACY.md#switching-off-and-clearing-drafts).
 
+### Copy-ready blocks with a receipt: `validate_artifact` (#1309)
+
+When an agent hands you text to paste into a size-limited channel, for example
+a Discord DM with its 2000-character limit, it can check the text first with
+the MCP tool `validate_artifact` (write and full tool surfaces). The tool
+splits the final text at paragraph, line, sentence or word boundaries, never
+inside a character such as an emoji sequence, and never shortens or rewrites
+anything. Block numbers and counts stay outside the copied text: each block is
+shown as a label line followed by a code block that holds only the payload.
+
+Example call with an invented message:
+
+```json
+{ "text": "Hi Sam,\n\nthe package arrives on Tuesday.", "channel": "discord-dm", "normalize": "none" }
+```
+
+For `discord-dm` the defaults are a limit of 2000 and the stricter of the
+code-point and UTF-16 counts (`unit_applied: "max(codepoints,utf16)"`), because
+the channel's own counting unit is not verified yet. This conservative counting
+fallback is enforced even with an explicit `unit`; no weaker override is allowed.
+`limit` sets the block limit. Other channels respect an explicit `unit`
+(`codepoints` or `utf16`). The only normalization is the
+named `crlf-to-lf`; `none` keeps the text byte for byte.
+
+The result lists each block with offsets and count, the separators between
+blocks and `reconstruction_ok` (payloads plus separators rebuild the text
+exactly). It fails on a line starting with `> `, on counters such as `(1/3)` or
+`[123 chars]` inside a payload, and on a single word longer than the limit.
+Only when every check passes does it return a `receipt`: a SHA-256 bound to the
+text, channel, limit, unit, normalization, optional rule id and revision,
+optional task kind and generation, and the validator version. Any edit or
+changed parameter gives a different receipt. A receipt proves the mechanical
+format, not a good translation or an approval.
+
 ### Cookbook
 
 What this actually looks like in a working week.
@@ -719,6 +753,42 @@ Ein fehlender Relay wird in der Ausgabe als nicht vorhanden gekennzeichnet. Verb
 Rechte 0600. Harvest-Queue, optionale Trainingsdaten und beförderte Notizen
 bleiben erhalten; vor dem Leeren die Erfassung abschalten, damit keine neuen
 Einträge entstehen. Siehe [Datenschutz und Aufbewahrung](./PRIVACY.md#abschalten-und-entwürfe-entfernen).
+
+### Kopierfertige Blöcke mit Beleg: `validate_artifact` (#1309)
+
+Gibt dir ein Agent Text zum Einfügen in einen Kanal mit Längengrenze, etwa eine
+Discord-DM mit 2000 Zeichen, kann er ihn vorher mit dem MCP-Tool
+`validate_artifact` prüfen (Tool-Surfaces write und full). Das Tool teilt den
+fertigen Text an Absatz-, Zeilen-, Satz- oder Wortgrenzen, nie mitten in einem
+Zeichen wie einer Emoji-Folge, und kürzt oder ändert nichts. Blocknummern und
+Zählungen stehen außerhalb des kopierten Texts: Jeder Block erscheint als
+Label-Zeile und danach als Codeblock, der nur den Inhalt enthält.
+
+Beispielaufruf mit einer erfundenen Nachricht:
+
+```json
+{ "text": "Hallo Sam,\n\ndas Paket kommt am Dienstag.", "channel": "discord-dm", "normalize": "none" }
+```
+
+Für `discord-dm` gelten als Vorgabe das Limit 2000 und die strengere der
+beiden Zählungen nach Code-Points und UTF-16 (`unit_applied:
+"max(codepoints,utf16)"`), weil die Zähleinheit des Kanals noch nicht belegt
+ist. Dieser konservative Fallback gilt auch bei explizitem `unit`; eine
+schwächere Zählung lässt sich nicht erzwingen. `limit` setzt das Blocklimit.
+Andere Kanäle beachten ein explizites `unit` (`codepoints` oder `utf16`). Die
+einzige Normalisierung ist das benannte `crlf-to-lf`; `none` lässt den Text
+Byte für Byte, wie er ist.
+
+Das Ergebnis nennt jeden Block mit Offsets und Zählung, die Trennstellen
+zwischen den Blöcken und `reconstruction_ok` (Inhalte plus Trennstellen ergeben
+den Text exakt). Es schlägt fehl bei einer Zeile, die mit `> ` beginnt, bei
+Zählern wie `(1/3)` oder `[123 chars]` im Inhalt und bei einem einzelnen Wort,
+das länger als das Limit ist. Nur wenn alle Prüfungen bestehen, kommt ein
+`receipt`: ein SHA-256 über Text, Kanal, Limit, Einheit, Normalisierung,
+optional Regel-ID und Revision, optional Aufgabenart und Generation sowie die
+Validator-Version. Jede Änderung am Text oder an einem Parameter ergibt einen
+anderen Beleg. Der Beleg prüft das mechanische Format, nicht die Qualität einer
+Übersetzung und keine Freigabe.
 
 ### Kochbuch
 

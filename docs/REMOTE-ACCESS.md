@@ -122,8 +122,9 @@ at the tunnel:
 **What an approved client can do.** The remote MCP door offers the `write` tool
 set without task tools: `recall`, `load_memory`, `find_document`,
 `read_document`, `find_code`, `find_affected_files`, `save_memory`,
-`edit_memory`, `save_document`, `save_product_doc` and `review_draft`. In plain
-words: search and read your memories and documents, save and edit memories.
+`edit_memory`, `save_document`, `save_product_doc`, `review_draft` and
+`validate_artifact`. In plain words: search and read your memories and
+documents, save and edit memories, and check copy-ready text blocks.
 It cannot archive, reorganise or delete memories, and it cannot open files on
 your computer. Document writes additionally need `BASTRA_DOCUMENT_WRITE=1` in
 the daemon's environment, as for local clients. Whatever ChatGPT retrieves is

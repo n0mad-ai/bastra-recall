@@ -248,3 +248,23 @@ export {
 export type { TriggerExpanderOptions, ChatFn, SelfTestFn } from "./trigger-expand.js";
 
 export { isLoopbackHost } from "./ollama-egress.js";
+
+export {
+  validateCopyBlocks,
+  copyBlocksReceipt,
+  renderForChat,
+  countCopyUnits,
+  COPY_BLOCKS_VALIDATOR_VERSION,
+  COPY_BLOCKS_CHANNEL_DEFAULTS,
+} from "./copy-blocks.js";
+export type {
+  CopyBlocksInput,
+  CopyBlocksResult,
+  CopyBlock,
+  CopyBlocksSeparator,
+  CopyBlocksError,
+  CopyBlocksErrorCode,
+  CopyBlocksUnit,
+  CopyBlocksUnitApplied,
+  CopyBlocksNormalize,
+} from "./copy-blocks.js";

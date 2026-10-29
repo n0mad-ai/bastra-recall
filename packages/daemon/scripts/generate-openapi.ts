@@ -11,6 +11,7 @@ import { FindDocumentArgs, ReadDocumentArgs, OpenDocumentArgs } from "../src/doc
 import { SaveDocumentArgs, RecategorizeDocumentArgs, MoveDocumentArgs } from "../src/documents-write-handler.js";
 import { SaveProductDocArgs } from "../src/product-doc-handler.js";
 import { ReviewDraftArgs } from "../src/draft-review-handler.js";
+import { ValidateArtifactArgs } from "../src/validate-artifact-handler.js";
 import { FindCodeArgs } from "../src/code-graph/find-code.js";
 import { FindAffectedFilesArgs } from "../src/code-graph/find-affected-files.js";
 import { TASK_INPUT_SCHEMAS } from "../src/task-service.js";
@@ -101,7 +102,7 @@ const inputValidators: Record<string, z.ZodType> = {
   edit_memory: EditMemoryArgs, archive_memory: ArchiveMemoryArgs,
   find_document: FindDocumentArgs, read_document: ReadDocumentArgs, open_document: OpenDocumentArgs,
   save_document: SaveDocumentArgs, recategorize_document: RecategorizeDocumentArgs, move_document: MoveDocumentArgs,
-  save_product_doc: SaveProductDocArgs, review_draft: ReviewDraftArgs,
+  save_product_doc: SaveProductDocArgs, review_draft: ReviewDraftArgs, validate_artifact: ValidateArtifactArgs,
   find_code: FindCodeArgs, find_affected_files: FindAffectedFilesArgs,
   ...TASK_INPUT_SCHEMAS,
 };
