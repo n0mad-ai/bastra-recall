@@ -78,6 +78,33 @@ Official foundations: [MCP in ChatGPT and Codex](https://learn.chatgpt.com/docs/
 
 <a id="deutsch"></a>
 
+[Official discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+explain profile roots, overrides and the byte budget.
+
+### Optional startup instructions (#1314)
+
+`bastra install codex --with-bootstrap` adds the generated Recall startup block to
+`$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`).
+`bastra install claude-code --with-bootstrap` optionally uses the active Claude
+user `CLAUDE.md` (`CLAUDE_CONFIG_DIR`, otherwise `~/.claude`). If Claude already
+has an unmanaged `bastra-recall` line, the installer leaves it alone and reports
+a doctor notice. Without this flag, an interactive installer shows the exact
+target and block and asks for a separate yes; non-interactive installation skips
+it. `--yes` does not grant this consent; `--no-bootstrap` suppresses the offer.
+
+The block comes from the canonical skill, includes its revision hash and stays
+within 600 characters including markers. Reinstall replaces only one well-formed
+managed region. Uninstall removes only that region; surrounding user bytes are
+preserved. Duplicate or malformed markers require manual repair. `bastra doctor`
+reports missing, stale or modified content separately from host loading limits.
+A non-empty Codex `AGENTS.override.md` can hide the block; doctor also reports
+its active root, configured instruction byte budget and project fallback names.
+No override or other profile is edited. Restart the host after accepting a
+change. File parity proves neither runtime delivery nor rule compliance; nearby
+project guidance and host restrictions still apply. Claude `/context` can help
+verify what loaded.
+
+
 ## Deutsch
 
 Bastra Recall verwendet auf demselben Rechner die von Codex und der ChatGPT-Desktop-App gemeinsam gelesene Datei `~/.codex/config.toml`. Die Anmeldung bleibt vollständig bei OpenAI: ChatGPT-Login oder OpenAI-API-Key werden von Codex verwaltet; Bastra Recall benötigt dafür keinen eigenen OpenAI-Schlüssel. Speicherung und Stichwortsuche laufen lokal. Abgerufene Erinnerungen werden dem verbundenen KI-Client als Kontext übergeben; siehe [Datenschutz](./PRIVACY.md#deutsch).
@@ -153,3 +180,26 @@ Offizielle Grundlagen: [MCP in ChatGPT und Codex](https://learn.chatgpt.com/docs
 For agent-to-agent cmux handovers, use the [marked sender](agent-messages.md) so the recipient does not capture agent prose as owner evidence.
 
 Für Agenten-Übergaben über cmux den [markierten Sender](agent-messages.md) verwenden, damit der Empfänger Agententext nicht als Nutzeräußerung erfasst.
+
+### Optionale Startanweisungen (#1314)
+
+`bastra install codex --with-bootstrap` schreibt den generierten Recall-Startblock
+nach `$CODEX_HOME/AGENTS.md` (Standard `~/.codex/AGENTS.md`).
+`bastra install claude-code --with-bootstrap` nutzt optional die aktive
+Nutzerdatei `CLAUDE.md` (`CLAUDE_CONFIG_DIR`, sonst `~/.claude`). Eine vorhandene
+unverwaltete `bastra-recall`-Zeile bleibt unverändert; dafür erscheint nur ein
+Doctor-Hinweis. Ohne Flag zeigt der interaktive Installer Ziel und Inhalt und
+fragt separat nach einem Ja. Nichtinteraktiv bleibt der Block aus. `--yes`
+gilt hierfür nicht; `--no-bootstrap` unterdrückt das Angebot.
+
+Der Block stammt aus dem kanonischen Skill, trägt dessen Revisionshash und bleibt
+mit Markern unter 600 Zeichen. Neuinstallation ersetzt nur einen korrekt
+markierten Bereich. Deinstallation entfernt nur diesen Bereich; Nutzertext bleibt
+bytegenau erhalten. Doppelte oder beschädigte Marker müssen manuell repariert
+werden. `bastra doctor` unterscheidet fehlenden, veralteten und veränderten Inhalt
+von Ladegrenzen des Hosts. Eine nichtleere Codex-Datei `AGENTS.override.md` kann
+den Block verdecken. Doctor nennt außerdem aktives Profilverzeichnis,
+Byte-Budget und Projekt-Ersatznamen; Overrides und andere Profile bleiben
+unangetastet. Nach Änderungen den Host neu starten. Dateigleichheit belegt weder
+das tatsächliche Laden noch Regelbefolgung; nähere Projektanweisungen und
+Host-Einschränkungen gelten weiter. In Claude hilft `/context` beim Prüfen.

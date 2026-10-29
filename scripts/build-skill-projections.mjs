@@ -36,6 +36,7 @@ export const DRAFT_REVIEW_RULE_PATH = resolve(REPO_ROOT, "packages", "daemon", "
 export const REFERENCE_FILES = ["topology.md", "taxonomy.md", "intake.md", "commons.md"];
 export const PROJECTIONS = {
   cursor: resolve(CANONICAL_DIR, "cursor-rules.mdc"),
+  bootstrapBlock: resolve(CANONICAL_DIR, "bootstrap-block.md"),
   pluginSkillDir: resolve(REPO_ROOT, "plugins", "bastra-recall", "skills", "bastra-recall"),
 };
 
@@ -52,6 +53,17 @@ export function canonicalHash(text) {
 
 const header = (hash) =>
   `<!-- GENERATED from packages/skill/SKILL.md (canonical ${hash}) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run \`npm run skill:build\` -->\n`;
+
+/** Small startup projection: authored once in the canonical skill. The second
+ * digest distinguishes an old generated block from a hand-edited one. */
+export function renderBootstrapBlock(canonical) {
+  const match = canonical.match(/<!-- bastra-recall:start -->\n([\s\S]*?)\n<!-- bastra-recall:end -->/);
+  if (!match) throw new Error("canonical skill lacks bootstrap region");
+  const body = match[1];
+  const block = `<!-- bastra-recall:start -->\n<!-- GENERATED SKILL.md bastra-recall:hash ${canonicalHash(canonical)}/${canonicalHash(body)} -->\n${body}\n<!-- bastra-recall:end -->`;
+  if (block.length > 600) throw new Error(`bootstrap exceeds 600 characters: ${block.length}`);
+  return block;
+}
 
 /**
  * Cursor project rule: `.cursor/rules/bastra-recall.mdc`. Cursor reads only
@@ -118,10 +130,12 @@ export async function buildSkillProjections({ write = true } = {}) {
   }
   const out = {
     cursor: renderCursorRule(canonical),
+    bootstrapBlock: renderBootstrapBlock(canonical),
     pluginSkill: renderPluginSkill(canonical),
   };
   if (write) {
     await writeFile(PROJECTIONS.cursor, out.cursor, "utf8");
+    await writeFile(PROJECTIONS.bootstrapBlock, out.bootstrapBlock, "utf8");
     await mkdir(resolve(PROJECTIONS.pluginSkillDir, "agents"), { recursive: true });
     await writeFile(resolve(PROJECTIONS.pluginSkillDir, "SKILL.md"), out.pluginSkill, "utf8");
     for (const name of REFERENCE_FILES) {

@@ -140,8 +140,8 @@ async function fixture(projection = false) {
   set("BASTRA_HTTP_URL", base);
   if (projection) {
     // Real installer path and explicit install consent, in its own disposable
-    // config home. ADAPTER #1314: add its bootstrap consent option here when
-    // introduced. Do not synthesize a bootstrap file to make this test pass.
+    // config home. #1314: withBootstrap is the real consent option.
+    // Do not synthesize a bootstrap file to make this test pass.
     // Installer paths resolve relative to dist; use the real built adapter so
     // preflight checks find the same .js hook binaries as an actual install.
     const adapter = new URL("../dist/cli/adapters/codex.js", import.meta.url).href;
@@ -160,7 +160,7 @@ async function fixture(projection = false) {
       `else if(args[0]==='mcp'&&args[1]==='add'){const cut=args.indexOf('--'),env={};for(let i=3;i<cut;i++)if(args[i]==='--env'){const value=args[++i],at=value.indexOf('=');env[value.slice(0,at)]=value.slice(at+1);}fs.writeFileSync(state,JSON.stringify({name:args[2],transport:{type:'stdio',command:args[cut+1],args:args.slice(cut+2),env}}));fs.writeFileSync(p.join(home,'config.toml'),'# synthetic MCP transport fixture\\n');}\n` +
       `else{process.stderr.write('unexpected external Codex fixture command');process.exitCode=2;}\n`, { mode: 0o700 });
     const source = `const {codexAdapter}=await import(${JSON.stringify(adapter)});` +
-      `const result=await codexAdapter.install(${JSON.stringify({ dryRun: false, force: true, useStub: false, vaultPath: cwd })});` +
+      `const result=await codexAdapter.install(${JSON.stringify({ dryRun: false, force: true, withBootstrap: true, useStub: false, vaultPath: cwd })});` +
       `if(result.status==='error')throw new Error(JSON.stringify(result));`;
     const installer = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", source], {
       cwd: repo, env: { ...process.env, HOME: configHome, USERPROFILE: configHome, CODEX_HOME: codexHome,

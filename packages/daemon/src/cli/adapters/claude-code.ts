@@ -1,3 +1,4 @@
+import { ensureBootstrap, describeBootstrap } from "../bootstrap.js";
 import { windowsHookToken } from "./command-paths.js";
 import { existsSync } from "node:fs";
 import {
@@ -199,6 +200,8 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   );
 
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
+  const bootstrapPlan = await ensureBootstrap("claude-code", "install", { ...opts, dryRun: true });
+  if (bootstrapPlan.error) return { status: "error", message: bootstrapPlan.detail, configPath };
   const skillResult = await copySkill({ dryRun: opts.dryRun });
   const hookResult = await patchClaudeCodeHooks("install", {
     dryRun: opts.dryRun,
@@ -217,6 +220,9 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   if (hookResult.status === "error") return { status: "error", message: `hooks: ${hookResult.detail}`, configPath };
   if (statuslineResult.status === "error") return { status: "error", message: `statusline: ${statuslineResult.detail}`, configPath };
 
+  const bootstrap = await ensureBootstrap("claude-code", "install", opts);
+  if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
+
   // If everything is already in place: no MCP write, no Skill write, no Hook write.
   // A kept foreign statusLine counts as settled (nothing to write) — we just
   // surface the hint that --yes would switch it to bastra's.
@@ -226,13 +232,13 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     mcpMatches &&
     skillResult.status === "already-installed" &&
     hookResult.status === "already-installed" &&
-    statuslineSettled;
+    statuslineSettled && !bootstrap.changed;
   if (allAlreadyInstalled) {
     const msg = statuslineResult.status === "foreign-kept"
       ? "MCP, skill, hooks in place; statusLine: foreign one kept (pass --yes to use bastra's)"
       : "MCP server, skill, hooks, and statusLine all already in place";
     // #683: an entry that was left alone is named on every run, this one too.
-    return { status: "already-installed", message: [msg, hookResult.note].filter(Boolean).join("\n  · "), configPath };
+    return { status: "already-installed", message: [msg, hookResult.note, `bootstrap: ${bootstrap.detail}`].filter(Boolean).join("\n  · "), configPath };
   }
 
   if (opts.dryRun) {
@@ -244,6 +250,7 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     steps.push(`hooks: ${hookResult.detail}`);
     if (hookResult.note) steps.push(hookResult.note);
     steps.push(`statusline: ${statuslineResult.detail}`);
+    steps.push(`bootstrap: ${bootstrap.detail}`);
     return { status: "would-install", message: steps.join("\n  · "), configPath };
   }
 
@@ -262,6 +269,7 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   lines.push(`hooks: ${hookResult.detail}`);
   if (hookResult.note) lines.push(hookResult.note);
   lines.push(`statusline: ${statuslineResult.detail}`);
+  lines.push(`bootstrap: ${bootstrap.detail}`);
   lines.push("restart Claude Code to activate");
 
   return {
@@ -288,7 +296,9 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
   const hookResult = await patchClaudeCodeHooks("uninstall", { dryRun: opts.dryRun });
   const statuslineResult = await patchClaudeCodeStatusline("uninstall", { dryRun: opts.dryRun, force: false });
 
-  if (!mcpPresent && hookResult.status === "not-present" && statuslineResult.status === "not-present") {
+  const bootstrap = await ensureBootstrap("claude-code", "uninstall", opts);
+  if (bootstrap.error) return { status: "error", message: bootstrap.detail, configPath };
+  if (!bootstrap.changed && !mcpPresent && hookResult.status === "not-present" && statuslineResult.status === "not-present") {
     return { status: "not-present", message: "nothing to remove (skill: shared file — final sweep decides)", configPath };
   }
 
@@ -298,6 +308,7 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
     steps.push(`hooks: ${hookResult.detail}`);
     if (hookResult.note) steps.push(hookResult.note);
     steps.push(`statusline: ${statuslineResult.detail}`);
+    steps.push(`bootstrap: ${bootstrap.detail}`);
     steps.push("skill: shared file — final sweep decides");
     return { status: "would-remove", message: steps.join("\n  · "), configPath };
   }
@@ -316,6 +327,7 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
   lines.push(`hooks: ${hookResult.detail}`);
   if (hookResult.note) lines.push(hookResult.note);
   lines.push(`statusline: ${statuslineResult.detail}`);
+  lines.push(`bootstrap: ${bootstrap.detail}`);
   lines.push("skill: shared file — final sweep decides");
   lines.push("restart Claude Code to drop the connection");
 
@@ -330,6 +342,7 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
 async function claudeCodeDoctor(): Promise<DoctorResult> {
   const configPath = CLAUDE_CODE_CONFIG;
   const details: Record<string, string> = {};
+  details.bootstrap = await describeBootstrap("claude-code");
 
   // MCP entry in ~/.claude.json
   const read = await readJsonConfig(configPath);
