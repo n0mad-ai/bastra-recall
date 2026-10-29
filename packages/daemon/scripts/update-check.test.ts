@@ -529,3 +529,36 @@ test("#435: doctor names a dead node binary, not only a dead script", {
     assert.equal(state.missingProgramPath, goneNode, "and doctor has to be able to name it");
   });
 });
+
+test("#1326: node repoint preserves every custom env value and snapshots the exact plist", async () => {
+  await withKegFixture(async ({ dir, old, fresh, plist, launchctl, plutil }) => {
+    const env = {
+      ...autostartEnv(join(dir, "vault"), "/old/node"),
+      BASTRA_CORS_ORIGINS: "http://localhost:5001,https://bastra.io,https://www.bastra.io",
+      BASTRA_EMBEDDING_PROVIDER: "ollama", BASTRA_EMBEDDING_MODEL: "embeddinggemma",
+      BASTRA_EXPAND_MODEL: "tev1:4b", BASTRA_RERANK_MODEL: "tev1:4b",
+      OLLAMA_HOST: "http://localhost:11434", BASTRA_RETENTION_DAYS: "3650",
+      BASTRA_TRAINING_CAPTURE: "1", BASTRA_HTTP_PORT: "6723", CUSTOM: "<&unchanged>",
+    };
+    const before = renderPlist(env, ["/old/node", old.script]);
+    await writeFile(plist, before);
+    const backupDir = join(dir, "snapshots");
+    const options = { target: { node: process.execPath, script: fresh.script, version: fresh.version },
+      reload: false, plistFile: plist, launchctl, plutil, platform: "darwin" as const, backupDir };
+    const first = await refreshManagedAutostart(() => {}, options);
+    assert.equal(first.ok, true, first.detail);
+    assert.deepEqual((await readState(plist, launchctl, plutil)).env, env);
+    assert.deepEqual(programFromPlist(await readFile(plist, "utf8")), [process.execPath, fresh.script]);
+    const { readdir } = await import("node:fs/promises");
+    const snapshots = await readdir(backupDir);
+    assert.equal(snapshots.length, 1);
+    assert.equal(await readFile(join(backupDir, snapshots[0]), "utf8"), before);
+    assert.equal((await refreshManagedAutostart(() => {}, options)).ok, true);
+    assert.equal((await readdir(backupDir)).length, 2, "an update without repoint also snapshots");
+    const blocked = join(dir, "not-a-directory");
+    await writeFile(blocked, "block");
+    const unchanged = await readFile(plist, "utf8");
+    assert.equal((await refreshManagedAutostart(() => {}, { ...options, backupDir: blocked })).ok, false);
+    assert.equal(await readFile(plist, "utf8"), unchanged, "snapshot failure must prevent mutation");
+  });
+});

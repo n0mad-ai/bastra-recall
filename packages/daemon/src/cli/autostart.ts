@@ -39,8 +39,9 @@
 import { windowsService, type AutostartService } from "./windows-service.js";
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { probeDaemon, resolveVault } from "./helpers.js";
@@ -596,6 +597,7 @@ export async function refreshManagedAutostart(
     /** Nur für die Regressionen: plist-Datei, launchd-CLI, plist-Leser und
      *  Plattform — damit sie auch auf dem Linux-Runner laufen (#940). */
     plistFile?: string;
+    backupDir?: string;
     launchctl?: string;
     plutil?: string;
     platform?: NodeJS.Platform;
@@ -619,24 +621,29 @@ export async function refreshManagedAutostart(
     return { ok: false, detail: "installed runtime not resolved" };
   }
 
+  // Snapshot before any mutation or restart, even when no repoint is needed.
+  // Fixture paths keep their backups in the fixture; production uses ~/.bastra.
+  const backupDir = opts.backupDir ?? (opts.plistFile
+    ? join(dirname(path), "backups") : join(homedir(), ".bastra", "backups"));
+  try {
+    await mkdir(backupDir, { recursive: true });
+    const snapshot = join(backupDir, `launchagent-${new Date().toISOString().replaceAll(":", "-")}-${randomUUID().slice(0, 8)}.plist`);
+    await copyFile(path, snapshot, constants.COPYFILE_EXCL);
+    write(`  ✓ LaunchAgent snapshot: ${snapshot}\n`);
+  } catch (err) {
+    write(`  ✗ could not snapshot ${path}: ${(err as Error).message}\n`);
+    return { ok: false, detail: "LaunchAgent snapshot failed" };
+  }
+
   const program = [opts.target.node, opts.target.script];
   const pointsAtInstall =
     state.program.length === program.length && state.program.every((p, i) => p === program[i]);
   if (!pointsAtInstall) {
     write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — repointing it at the installed runtime\n`);
-    const vault = await resolveVault({ dryRun: false, vaultPath: null });
-    if ("error" in vault) {
-      write(`  ✗ cannot update the autostart: ${vault.error}\n`);
-      return { ok: false, detail: vault.error };
-    }
     try {
-      // #531: `bastra update` usually runs without the user's export, so the
-      // endpoint comes from the plist being rewritten — otherwise the repoint
-      // would quietly move the daemon back to the default port.
-      await writePlistAtomically(
-        path,
-        renderPlist(autostartEnv(vault.path, opts.target.node, endpointToPersist(state.endpoint)), program),
-      );
+      // The existing environment is authoritative. Reconstructing defaults here
+      // loses provider, retention and other settings before the next boot.
+      await writePlistAtomically(path, renderPlist(state.env, program));
     } catch (err) {
       write(`  ✗ could not rewrite ${path}: ${(err as Error).message}\n`);
       return { ok: false, detail: (err as Error).message };
