@@ -84,6 +84,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     source: null,
     lines: null,
     stats: false,
+    conventions: false,
     includeEval: false,
     replay: false,
     days: null,
@@ -117,6 +118,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
     else if (a === "--follow" || a === "-f") result.follow = true;
     else if (a === "--stats") result.stats = true;
+    else if (a === "--conventions") result.conventions = true;
     else if (a === "--include-eval") result.includeEval = true;
     else if (a === "--replay") result.replay = true;
     else if (a === "--days") {

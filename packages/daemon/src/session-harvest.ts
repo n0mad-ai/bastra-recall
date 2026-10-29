@@ -329,10 +329,16 @@ export async function runSessionHarvest(opts: {
       const shapes = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity, true);
       let candidates = shapes.filter((c) => !savedAfter(turns, c.turn));
       let stored = 0;
+      const storedMemoryIds: string[] = [];
       if (candidates.length > 0 && opts.storedIn) {
         storedIn ??= opts.storedIn();
         const matcher = storedIn;
-        const fresh = candidates.filter((c) => matcher(c.quote) === null);
+        const fresh = candidates.filter((c) => {
+          const id = matcher(c.quote);
+          if (id === null) return true;
+          storedMemoryIds.push(id);
+          return false;
+        });
         stored = candidates.length - fresh.length;
         candidates = fresh;
       }
@@ -353,7 +359,7 @@ export async function runSessionHarvest(opts: {
       result.harvested += 1;
       result.candidates += candidates.length;
       result.stored += stored;
-      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended, undefined, drafts);
+      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended, undefined, drafts, storedMemoryIds);
     }
     await withPathLock(path, async () => {
       const entries = await readQueue(path);
@@ -383,6 +389,7 @@ async function writeHarvestTelemetry(
   ended: boolean,
   skippedReason?: string,
   drafts?: { count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number; error: boolean },
+  storedMemoryIds: string[] = [],
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -400,6 +407,7 @@ async function writeHarvestTelemetry(
       candidate_count: candidates.length,
       candidate_kinds: kinds,
       stored_count: stored,
+      stored_memory_ids: storedMemoryIds,
       trigger: ended ? "session_end" : "idle",
       ...(drafts ? { draft_count: drafts.count, draft_evicted_count: drafts.evicted, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
       ...(skippedReason ? { skipped_reason: skippedReason } : {}),

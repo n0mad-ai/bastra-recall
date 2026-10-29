@@ -87,7 +87,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   completion: [],
   archive: ["--json", "--yes", "-y"],
   reconcile: ["--dry-run", "--yes", "-y", "--json", "--vault"],
-  logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--include-eval"],
+  logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--conventions", "--include-eval"],
 };
 
 /** Every option the CLI knows at all — used to tell "unknown" from "misplaced". */

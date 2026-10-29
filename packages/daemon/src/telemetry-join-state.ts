@@ -40,6 +40,7 @@ interface TurnTrace {
 
 interface LoadedMemoryTrace {
   memory_id: string;
+  session_id?: string | null;
   distinctive_tokens: Set<string>;
   turn_id: string;
   turn_source: TurnSource;
@@ -84,6 +85,7 @@ interface JoinStateSnapshot {
   version: number;
   lastRecall: { id: string; ts: number } | null;
   hookHints: Array<[string, HookHintTrace]>;
+  sessionHookHints?: Array<[string, HookHintTrace]>;
   turns: Array<[string, TurnTrace]>;
   latestTurn: TurnTrace | null;
   adoptedTurnKeys: Array<[string, number]>;
@@ -99,6 +101,7 @@ export class JoinState {
   private lastRecall: { id: string; ts: number } | null = null;
   /** Map<memory_id, most-recent HookHintTrace>. Older traces are evicted lazily. */
   private hookHints = new Map<string, HookHintTrace>();
+  private sessionHookHints = new Map<string, HookHintTrace>();
   private turns = new Map<string, TurnTrace>();
   private latestTurn: TurnTrace | null = null;
   private loadedMemories: LoadedMemoryTrace[] = [];
@@ -164,7 +167,7 @@ export class JoinState {
     }
   }
 
-  recordHookHints(recall_id: string, hits: Array<{ id: string; score?: number }>): void {
+  recordHookHints(recall_id: string, hits: Array<{ id: string; score?: number }>, session_id?: string | null): void {
     const ts = Date.now();
     for (let i = 0; i < hits.length; i++) {
       const hit = hits[i];
@@ -175,6 +178,11 @@ export class JoinState {
         score: typeof hit.score === "number" ? hit.score : null,
         ts,
       });
+    }
+    for (const [key, trace] of this.sessionHookHints) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.sessionHookHints.delete(key);
+    if (session_id) for (const hit of hits) {
+      const trace = this.hookHints.get(hit.id);
+      if (trace) this.sessionHookHints.set(`${session_id}\0${hit.id}`, trace);
     }
     // Deliberately NO usage emission here: these are the engine's raw top-k.
     // The hook CLIs drop hits client-side (score floors, #110/#148 scope
@@ -240,6 +248,11 @@ export class JoinState {
     session_id: string | null,
   ): void {
     if (hints.length === 0) return;
+    if (this.enabled) fireAndForget(this.sink.write({
+      kind: "convention_shown", ts: new Date().toISOString(),
+      session_id: session_id || this.sessionId, session_known: !!session_id,
+      memory_ids: hints.map((hint) => hint.memory_id),
+    }));
     // Review find (Vera, 06.09.): without a session id `currentTurn` produces
     // an `inferred` turn, and the session lock further down
     // (`turn_source === "session"`) then does not apply — a command from a
@@ -302,11 +315,15 @@ export class JoinState {
    * Returns the recall_id + rank if this id was hinted in the last
    * HOOK_HINT_WINDOW_MS. Lazy-evicts the entry on miss.
    */
-  findHookHintFor(id: string): { recall_id: string; rank: number; score: number | null } | null {
-    const t = this.hookHints.get(id);
+  findHookHintFor(id: string, session_id?: string | null): { recall_id: string; rank: number; score: number | null } | null {
+    // Omitted argument preserves the legacy API; explicit null means unknown.
+    const map = session_id === undefined ? this.hookHints : this.sessionHookHints;
+    const key = session_id ? `${session_id}\0${id}` : id;
+    if (session_id === null) return null;
+    const t = map.get(key);
     if (!t) return null;
     if (Date.now() - t.ts > HOOK_HINT_WINDOW_MS) {
-      this.hookHints.delete(id);
+      map.delete(key);
       return null;
     }
     return { recall_id: t.recall_id, rank: t.rank, score: t.score };
@@ -422,6 +439,7 @@ export class JoinState {
     );
     this.loadedMemories.push({
       memory_id: payload.memory_id,
+      session_id: loadingSession,
       distinctive_tokens: tokens,
       turn_id: turn.turn_id,
       turn_source: turn.turn_source,
@@ -456,6 +474,7 @@ export class JoinState {
 
     for (const entry of this.loadedMemories) {
       if (entry.closed) continue;
+      if (entry.session_id && entry.session_id !== payload.session_id) continue;
       if (now - entry.ts > ACTED_ON_WINDOW_MS) {
         entry.closed = true;
         continue;
@@ -559,6 +578,7 @@ export class JoinState {
       version: JOIN_STATE_VERSION,
       lastRecall: this.lastRecall,
       hookHints: [...this.hookHints.entries()],
+      sessionHookHints: [...this.sessionHookHints.entries()],
       turns: [...this.turns.entries()],
       latestTurn: this.latestTurn,
       adoptedTurnKeys: [...this.adoptedTurnKeys.entries()],
@@ -587,6 +607,11 @@ export class JoinState {
     if (Array.isArray(snap.hookHints)) {
       for (const [id, trace] of snap.hookHints) {
         if (trace && now - trace.ts <= HOOK_HINT_WINDOW_MS) this.hookHints.set(id, trace);
+      }
+    }
+    if (Array.isArray(snap.sessionHookHints)) {
+      for (const [key, trace] of snap.sessionHookHints) {
+        if (trace && now - trace.ts <= HOOK_HINT_WINDOW_MS) this.sessionHookHints.set(key, trace);
       }
     }
     if (Array.isArray(snap.loadedMemories)) {

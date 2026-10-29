@@ -35,6 +35,7 @@ import { cmdFeedback } from "./cli/feedback-cmd.js";
 import { cmdArchive } from "./cli/archive-cmd.js";
 import { cmdReconcile } from "./cli/reconcile-cmd.js";
 import { cmdLogs, parseSince } from "./cli/logs.js";
+import { cmdConventions } from "./cli/log-conventions.js";
 import { cmdLogStats } from "./cli/log-stats.js";
 import { cmdCompletion } from "./cli/completion.js";
 import { cmdRules } from "./cli/rules-cmd.js";
@@ -122,6 +123,9 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       }
       // --stats reads the same files, but aggregated instead of line by line.
       // Default window is wider: a per-lane rate needs days, not five minutes.
+      if (args.conventions) {
+        return cmdConventions({ sinceMs: args.since === null ? 7 * 86_400_000 : sinceMs, includeEval: args.includeEval });
+      }
       if (args.stats) {
         const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
         return cmdLogStats({ sinceMs: statsSince, includeEval: args.includeEval });

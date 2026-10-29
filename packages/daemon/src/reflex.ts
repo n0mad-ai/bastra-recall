@@ -387,7 +387,7 @@ export function handleHookReflex(
       const recallId = served.length > 0 ? (replay ? randomUUID() : telemetry.newRecallId()) : null;
       if (recallId && !replay) {
         // Join-Anker für spätere load_memory-Episoden (score-los → null).
-        telemetry.recordHookHints(recallId, served.map((m) => ({ id: m.memory.fm.id })));
+        telemetry.recordHookHints(recallId, served.map((m) => ({ id: m.memory.fm.id })), typeof body.session_id === "string" ? body.session_id : null);
       }
       const sessionId = typeof body.session_id === "string" ? body.session_id : undefined;
       fireAndForget(

@@ -56,7 +56,10 @@ async function harness(opts: { telemetry?: "on" | "off" } = {}) {
         return rows;
       };
       let rows = await read();
-      for (let i = 0; i < 50 && rows.length < Math.max(expected, 1); i++) {
+      // Delivery acknowledgements can arrive before the asynchronous shadow
+      // write. Only the event under test can satisfy this polling threshold.
+      const shadowCount = () => rows.filter((row) => row.kind === "hint_followed_shadow").length;
+      for (let i = 0; i < 50 && shadowCount() < Math.max(expected, 1); i++) {
         await new Promise((r) => setTimeout(r, 10));
         rows = await read();
       }

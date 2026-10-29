@@ -170,6 +170,7 @@ Options:
   --since <duration>         How far back to read: 30s, 10min, 2h, 1d (logs only, default 5min)
   --source <daemon|hook|all> Which log source to read (logs only, default all)
   --lines <n>                Cap the number of lines printed (logs only, default 200)
+  --conventions              Per-session convention evidence (default window: 7d)
   --stats                    Aggregate per trigger lane instead of printing lines
                              (logs only; --since defaults to 7d)
   --include-eval             With --stats: also count rows marked as eval/
@@ -411,6 +412,7 @@ Options:
 Usage:
   bastra logs [-f] [--since <duration>] [--source <src>] [--lines <n>]
   bastra logs --stats [--since <duration>]
+  bastra logs --conventions [--since <duration>]
 
 One line per event, newest last. --stats aggregates per trigger lane instead
 (median/p90/max latency, timeouts) — that is the view the hook budget is
@@ -423,6 +425,7 @@ Options:
   --source <daemon|hook|all>
                          Which log source to read (default all)
   --lines <n>            Cap the number of lines printed (default 200)
+  --conventions          Per-session shown/loaded/gate/receipt evidence
   --stats                Aggregate per lane instead of printing lines
   --include-eval         With --stats: also count eval/synthetic-marked rows
                          (excluded by default, #619)

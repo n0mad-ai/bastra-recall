@@ -529,7 +529,7 @@ export async function runHookRecall(
       // `newRecallId()` it would become the "latest recall" a real
       // load_memory/save_memory within five minutes is booked against.
       const recallId = replay ? randomUUID() : telemetry.newRecallId();
-      if (!replay) telemetry.recordHookHints(recallId, hits);
+      if (!replay) telemetry.recordHookHints(recallId, hits, hookSessionId);
       // #489: Ab hier ist die `recall_id` bekannt — die späte Stichprobe kann
       // geschrieben werden. Ein Sample, das schon eingetroffen ist, wird
       // nachgeholt.

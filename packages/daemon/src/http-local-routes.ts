@@ -325,7 +325,7 @@ export function dispatchLocalRoutes(
             && (body as { session_id: string }).session_id.length > 0
             ? cleanDraftField((body as { session_id: string }).session_id)
             : null;
-        if (hintedSession) {
+        {
           telemetry.recordSurfacedHints(
             ids.flatMap((id) => {
               const memory = vault.get(id);

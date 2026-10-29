@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   CLAUDE.md, with separate installer consent, byte-preserving updates/removal,
   and doctor diagnosis of stale content and discovery limits. Convention replay
   now gates CI, including the real installer bootstrap comparison (#1314/#1302).
+- `bastra logs --conventions [--since 7d]` reports per-session convention
+  delivery, loads, gate outcomes, harvest memory IDs and mechanical validator
+  receipts. Unknown attribution and unverified/failed attempts remain visible;
+  receipt and deny-cleared evidence do not claim semantic compliance (#1313).
 
 - Previous-convention references such as "wie beim letzten Mal" and "like last
   time" force prompt retrieval at floor 50, including retrieval-only mode. A
