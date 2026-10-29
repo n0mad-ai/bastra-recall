@@ -288,6 +288,16 @@ much" leads need a past-tense verb, so "когда мы закончим, уда
   weak / no-home result, or a new topic later in the task. An explicit user
   request to search always runs.
 
+Previous-convention cues such as "wie beim letzten Mal", "wie vorher", "like
+last time" or "you have a memory" force that same retrieval path even inside
+an instruction and in `retrieval-only` mode (#1307). Only the user's own text
+counts; quoted/pasted incoming text does not force it. The DE/EN defaults are
+extended by `~/.bastra/lexicon/previous-convention.txt`, one cue per line;
+unlisted languages keep ordinary score-gated recall. After a successful
+lookup with no `matched_recall_when` hit, the hint block says `no stored rule
+matched; save one when the user explains`, even if there are no candidates.
+A matching rule uses the normal block; a failed lookup makes no absence claim.
+
 Every other non-trivial prompt recalls too (#677, `k=3`), in any language —
 the leads above cover three languages and do not decide whether a prompt
 recalls: a lookup in a language without a list is not labelled `retrieval` on
@@ -899,6 +909,13 @@ loop. Codex, a payload without a session id, and `BASTRA_STOP_SAME_TURN=0`
 keep the older route: the `<save-eval>` blocks go to
 `~/.bastra/pending-suggestions.json` and the next session start shows them
 (#48, #513).
+
+On that supported same-turn path, a repeated correction in the latest user
+turn also gets the reason `correction-without-save` (#1307), once per session.
+It reuses the existing language-neutral correction signal (at least two
+restatements, with emphasis), and replaces the duplicate frustration reminder.
+An actual `save_memory` tool call after the correction suppresses the reminder;
+a prior save or a prose mention does not. Other delivery paths stay unchanged.
 
 **What you see (#757).** Claude Code has no agent-only channel on `Stop`: it
 prints `additionalContext` in full under "Stop hook feedback" (measured on

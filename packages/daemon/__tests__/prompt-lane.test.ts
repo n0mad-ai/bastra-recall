@@ -28,6 +28,7 @@ import {
   type PromptReflexHit,
   type RecallHit,
 } from "../src/prompt-lane.js";
+import { classifyPromptMode, detectPreviousConvention } from "../src/prompt-classify.js";
 import {
   clearShown,
   decideBackoff,
@@ -1731,6 +1732,70 @@ test("#677 — BASTRA_PROMPT_HOOK_MODE=retrieval-only keeps the old regex gate a
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(bodies.length, 0, "mode none with an empty reflex pool skips the recall (#371)");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+
+test("#1307 previous-convention cues force retrieval with floor 50 in every hook mode", () => {
+  for (const cue of ["wie beim letzten Mal", "wie vorher", "wie wir es gemacht haben", "du hast ein Gedächtnis", "muss ich das wieder erklären", "like last time", "as before", "as we did", "you have a memory", "do I have to explain this again"]) {
+    const prompt = `Bitte arbeite ${cue}, danke`;
+    assert.equal(detectRetrieval(prompt), true, cue);
+    for (const hookMode of ["all", "retrieval-only"] as const) {
+      assert.equal(classifyPromptMode(prompt, hookMode), "retrieval");
+      assert.equal(effectiveScoreFloor(classifyPromptMode(prompt, hookMode)), 50);
+    }
+  }
+  assert.equal(detectPreviousConvention("Bitte lesen\n> like last time"), false);
+  assert.equal(detectPreviousConvention("Bitte lesen <pasted_content>wie vorher</pasted_content>"), false);
+  assert.equal(detectPreviousConvention("alike last times"), false);
+  assert.equal(classifyPromptMode("Διόρθωσε το παράδειγμα", "retrieval-only"), "none");
+});
+
+test("#1307 forced retrieval reports a missing rule even with no hits, but matching rules use normal hints", async () => {
+  let hits: RecallHit[] = [];
+  let reflexHits: PromptReflexHit[] = [];
+  let malformed = false;
+  let failed = false;
+  const requests: object[] = [];
+  const daemon = await startMockDaemon((req, res) => {
+    let body = "";
+    req.on("data", (c: Buffer) => { body += c.toString(); });
+    req.on("end", () => {
+      res.writeHead(failed && req.url === "/hook/recall" ? 500 : 200, { "Content-Type": "application/json" });
+      if (req.url === "/hook/recall") {
+        requests.push(JSON.parse(body));
+        res.end(JSON.stringify(malformed ? {} : { hits, recall_id: "forced", vault_size: 1, latency_ms: 1 }));
+      } else res.end(JSON.stringify({ hits: reflexHits }));
+    });
+  });
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-forced-"));
+  try {
+    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HOOK_STATE_DIR: stateDir };
+    const payload = { hook_event_name: "UserPromptSubmit", prompt: "Baue den Ablauf wie beim letzten Mal", cwd: process.cwd() };
+    const run = async (session_id: string) => JSON.parse((await runHook({ ...payload, session_id }, env, () => [])).stdout).hookSpecificOutput?.additionalContext ?? "";
+    assert.match(await run("forced-empty"), /<recall-hints[\s\S]*no stored rule matched; save one when the user explains[\s\S]*<\/recall-hints>/);
+    hits = [{ id: "unrelated", title: "unrelated", type: "workflow", scope: "test", summary: "candidate", score: 60 }];
+    assert.match(await run("forced-unmatched"), /no stored rule matched/);
+    hits = [{ ...hits[0], id: "matching", matched_recall_when: true }];
+    const matched = await run("forced-matched");
+    assert.match(matched, /matching/);
+    assert.doesNotMatch(matched, /no stored rule matched/);
+    hits = [];
+    reflexHits = [{ id: "wired-rule", title: "Wired rule", type: "workflow", scope: "test", summary: "previous rule", matched_phrase: "wie beim letzten Mal" }];
+    const reflex = await run("forced-reflex");
+    assert.match(reflex, /wired-rule/);
+    assert.doesNotMatch(reflex, /no stored rule matched/);
+    assert.doesNotMatch(await run("forced-reflex"), /no stored rule matched/, "a deduped reflex is still an existing rule");
+    reflexHits = [];
+    malformed = true;
+    assert.doesNotMatch(await run("forced-malformed"), /no stored rule matched/);
+    malformed = false;
+    failed = true;
+    assert.doesNotMatch(await run("forced-failed"), /no stored rule matched/);
+    assert.ok(requests.every((r) => (r as { k?: number }).k === 5));
   } finally {
     await daemon.close();
     await rm(stateDir, { recursive: true, force: true });

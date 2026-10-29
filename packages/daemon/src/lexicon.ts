@@ -408,6 +408,18 @@ export function retrievalLeadCues(): string[] {
   return loadCues("retrieval-lead", Object.values(DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE).flat());
 }
 
+/** #1307: previous-convention references, per-language data. An unlisted
+ * language retains ordinary score-gated recall; users can extend this list. */
+const DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["wie beim letzten Mal", "wie vorher", "wie wir es gemacht haben", "du hast ein Gedächtnis", "muss ich das wieder erklären"],
+  en: ["like last time", "like we did before", "as last time", "as before", "as we did", "you have a memory", "do I have to explain this again", "do I have to explain everything again"],
+};
+
+/** Extended by ~/.bastra/lexicon/previous-convention.txt. */
+export function previousConventionCues(): string[] {
+  return loadCues("previous-convention", Object.values(DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE).flat());
+}
+
 /**
  * #1306 — the task contract's cues (prompt-classify.ts `taskSignals`). Per-
  * language data like the lists above, each extended by a user file of the same

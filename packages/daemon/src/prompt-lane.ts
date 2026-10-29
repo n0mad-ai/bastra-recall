@@ -64,8 +64,8 @@ import { isGatedHint } from "./hook-recall-response.js";
 import {
   MUST_LOAD_SCORE,
   SCORE_FLOOR,
-  detectAssertion,
-  detectRetrieval,
+  classifyPromptMode,
+  detectPreviousConvention,
   effectiveScoreFloor,
   extractPrompt,
   isTrivialPrompt,
@@ -364,18 +364,8 @@ export async function runPromptLane(
     return "{}";
   }
 
-  const isRetrieval = detectRetrieval(prompt);
-  let detectedMode: DetectedMode;
-  if (isRetrieval) {
-    detectedMode = "retrieval";
-  } else if (detectAssertion(prompt)) {
-    // #252 — recalls where the retrieval-only mode stays silent.
-    detectedMode = "assertion";
-  } else if (hookMode() === "all") {
-    detectedMode = "generic";
-  } else {
-    detectedMode = "none";
-  }
+  const detectedMode = classifyPromptMode(prompt, hookMode());
+  const forcedRetrieval = detectPreviousConvention(prompt);
 
   const cwd = payload.cwd ?? process.cwd();
   // §20.5: geratene Erkennung = kein Projekt (projectForLane) — sonst fragt
@@ -636,7 +626,9 @@ export async function runPromptLane(
   const gatedRecall = new Set(gateActive ? recallHits.filter(isGatedHint).map((h) => h.id) : []);
   // A reflex hit is user-wired by definition; only its type decides.
   const gatedReflex = new Set(gateActive ? reflexKept.filter((h) => isGatedHint({ ...h, recall_mode: "reflex" })).map((h) => h.id) : []);
-  if (recallHits.length > 0) {
+  const noStoredRule = forcedRetrieval && resp !== null && Array.isArray(resp.hits) && rawReflexHits.length === 0 &&
+    ![...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])].some((h) => h.matched_recall_when);
+  if (recallHits.length > 0 || noStoredRule) {
     // #161 empty-streak backoff (see session-state.ts): unconsumed injection
     // streaks widen the cadence; any load of an emitted candidate resets.
     // REQUIRED-band hits bypass suppression (decideBackoff hasRequired), and
@@ -665,6 +657,7 @@ export async function runPromptLane(
       resp?.degraded,
       resp?.recall_id,
       gatedRecall,
+      noStoredRule,
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.

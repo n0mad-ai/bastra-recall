@@ -76,6 +76,7 @@ export function formatHintBlock(
   recallId?: string,
   /** #1303: ids the gate lane holds the next tool call for. */
   gated?: ReadonlySet<string>,
+  noStoredRule = false,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const idAttr = recallId ? ` recall_id="${escapeAttr(recallId)}"` : "";
@@ -88,6 +89,7 @@ export function formatHintBlock(
   const required = unfused ? [] : hits.filter((h) => h.score >= MUST_LOAD_SCORE);
   const optional = unfused ? [] : hits.filter((h) => h.score < MUST_LOAD_SCORE);
   const sections: string[] = [];
+  if (noStoredRule) sections.push("no stored rule matched; save one when the user explains");
 
   if (mode === "retrieval") {
     sections.push(

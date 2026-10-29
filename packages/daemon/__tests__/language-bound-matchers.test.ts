@@ -51,6 +51,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
   "packages/core/src/scrub.ts :: words /true|false|[01]/": "#1107 boolean and protocol-mode control values are not credential disclosures",
   "packages/daemon/src/system-turn.ts :: words /local-command-stdout|local-command-stderr|bash-input/": "#1106 transcript protocol tags, not natural-language authorship cues",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE": "#1307 user-extensible per-language data; unlisted languages retain ordinary score-gated recall",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE": "#1307 per-language data with a neutral path (score-gated recall)",
   // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──
   "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES": "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",
   "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS": "#707 filing-folder detection only, never a gate",

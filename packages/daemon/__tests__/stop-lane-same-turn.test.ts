@@ -163,3 +163,36 @@ test("#662 — a Stop raised by a Stop hook is never re-evaluated (loop guard)",
     assert.equal(await stop({ session_id: "cc-662-loop", stop_hook_active: true }), "{}");
   });
 });
+
+
+const CORRECTION_TRANSCRIPT = [
+  { role: "user", content: "Please keep the answer short and simple" },
+  { role: "assistant", content: "Here is a lengthy answer" },
+  { role: "user", content: "Please keep the answer short and simple!" },
+  { role: "assistant", content: "Here is another lengthy answer" },
+  { role: "user", content: "Please keep the answer short and simple!!" },
+  { role: "assistant", content: "understood" },
+];
+
+test("#1307 correction without save reaches the same-turn path once per session", async () => {
+  await withSandbox({}, async () => {
+    const payload = { session_id: "correction-once", transcript: CORRECTION_TRANSCRIPT };
+    const first = JSON.parse(await stop(payload));
+    assert.match(first.hookSpecificOutput?.additionalContext ?? "", /- correction-without-save:/);
+    assert.equal(await stop(payload), "{}");
+  });
+});
+
+test("#1307 a subsequent save_memory prevents the correction reminder; a prior save or prose mention does not", async () => {
+  await withSandbox({}, async () => {
+    const save = { message: { role: "assistant", content: [{ type: "tool_use", name: "mcp__bastra_recall__save_memory", input: {} }] } };
+    const after = JSON.parse(await stop({ session_id: "correction-saved", transcript: [...CORRECTION_TRANSCRIPT, save] }));
+    assert.deepEqual(after, {}, "a saved correction produces no reminder under either reason");
+    const before = JSON.parse(await stop({ session_id: "correction-prior", transcript: [save, ...CORRECTION_TRANSCRIPT] }));
+    assert.match(before.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
+    const prose = JSON.parse(await stop({ session_id: "correction-prose", transcript: [...CORRECTION_TRANSCRIPT, { role: "assistant", content: "I could call save_memory" }] }));
+    assert.match(prose.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
+    const unrelated = JSON.parse(await stop({ session_id: "correction-old", transcript: [...CORRECTION_TRANSCRIPT, { role: "user", content: "Build a calendar widget" }] }));
+    assert.doesNotMatch(unrelated.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
+  });
+});
