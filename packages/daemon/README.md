@@ -21,7 +21,8 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 |---|---|---|
 | MCP (stdio, standalone) | `dist/index.js` | Single-client setup; each session spawns its own embedded daemon |
 | MCP forwarder (stdio → loopback HTTP) | `dist/mcp-forwarder.js` | **Default for multi-client setups.** Starts a missing daemon on demand, first giving an installed managed macOS service up to ten seconds. All sessions share one vault state, one index, one telemetry stream |
-| HTTP REST | `http://127.0.0.1:6723/api/v1/{tool}` | Non-MCP clients (ChatGPT Custom GPT Actions, web apps, scripts). Bearer auth + CORS supported |
+| HTTP REST | `http://127.0.0.1:6723/api/v1/{tool}` | Non-MCP clients (web apps, scripts, legacy Custom GPT Actions). Bearer auth + CORS supported |
+| MCP over HTTP | `POST /api/v1/mcp` (Streamable HTTP, stateless) | Remote clients such as ChatGPT web/phone and claude.ai, through your own HTTPS tunnel. Bearer token or the daemon's own OAuth 2.1 login. [Remote access](../../docs/REMOTE-ACCESS.md) |
 | Hooks | `dist/hook.js` (PreToolUse), `dist/session-hook.js` (SessionStart) | Both POST to the daemon's `/hook/recall` |
 | CLI | `dist/cli.js` (`bastra` bin) | Install / uninstall / doctor across every supported AI client |
 

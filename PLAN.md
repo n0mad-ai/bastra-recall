@@ -38,7 +38,7 @@ has been field-tested; the support matrix retains those distinctions.
 
 ## After v1.0
 
-- Verify additional clients and complete the packaged [ChatGPT Custom GPT Actions integration](https://github.com/n0mad-ai/bastra-recall/issues/13).
+- Verify additional clients, including claude.ai over [remote MCP](./docs/REMOTE-ACCESS.md), and follow up the ChatGPT connection with a plugin ([#1279](https://github.com/n0mad-ai/bastra-recall/issues/1279)); the Custom GPT Actions route is retired with OpenAI's 2026-12-11 deadline.
 - Evaluate deeper retrieval, episodic memory, consolidation and learned ranking before enabling them in normal use.
 - Continue the native Mac app as a separate interface over the same memory service.
 

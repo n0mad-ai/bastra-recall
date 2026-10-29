@@ -96,9 +96,11 @@ You can repeat the lookup in another connected client using the same vault. This
 | **Codex CLI** | Verified for the v1.0 integration | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implemented; not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
 | **Cursor** | Implemented; not yet field-tested | MCP registration; add project rules with `bastra rules cursor` |
-| **ChatGPT Custom GPT Actions** | Planned | REST API and starter schema exist; the packaged integration is not yet ready. [Track progress](https://github.com/n0mad-ai/bastra-recall/issues/13) |
+| **ChatGPT web + iPhone app** | Tested on `main` (not yet released) | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
+| **claude.ai custom connectors** | Untested | Same remote MCP address and OAuth login; expected to work. [Remote access](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) |
+| **ChatGPT Custom GPT Actions** | Legacy | OpenAI retires Custom GPTs on 2026-12-11; use the remote MCP connection instead. [Legacy setup](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 
-Other MCP clients can connect through the forwarder, but are untested. Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
+Other MCP clients can connect through the forwarder, or remotely over [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md), but are untested. Scripts and other integrations can use the [REST API](./docs/USAGE.md#rest-api-for-non-mcp-clients). MCP is the protocol that lets an AI assistant use external tools such as this memory service.
 
 ### Supported platforms
 
@@ -144,6 +146,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates.
 - [Model recommendations](./docs/USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model) — a release can suggest a better local text model; you are asked, never switched automatically.
 - [Reviewed-miss harvester](./docs/reviewed-miss-harvester.md) — an offline repository tool for reviewing missed recall opportunities; it applies nothing automatically.
+- [Remote access](./docs/REMOTE-ACCESS.md) — connect ChatGPT on the web and phone to your own Recall through your own HTTPS address.
 - [Statusline and terminal panels](./packages/statusline/README.md#english) — setup, views and data limits for Claude Code and Codex.
 - [Product docs](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) — let the assistant maintain user guides for your projects.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) — optional community recipes with verification records.
@@ -250,9 +253,11 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 | **Codex CLI** | Für die v1.0-Integration verifiziert | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implementiert; noch nicht im Feld getestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
 | **Cursor** | Implementiert; noch nicht im Feld getestet | MCP-Registrierung; Projektregeln mit `bastra rules cursor` ergänzen |
-| **ChatGPT Custom GPT Actions** | Geplant | REST-API und Starter-Schema vorhanden; die fertige Integration steht noch aus. [Fortschritt](https://github.com/n0mad-ai/bastra-recall/issues/13) |
+| **ChatGPT Web + iPhone-App** | Auf `main` getestet (noch nicht veröffentlicht) | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
+| **claude.ai Custom Connectors** | Ungetestet | Dieselbe Remote-MCP-Adresse und derselbe OAuth-Login; sollte funktionieren. [Fernzugriff](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) (Englisch) |
+| **ChatGPT Custom GPT Actions** | Veraltet | OpenAI stellt Custom GPTs am 11.12.2026 ein; nutze stattdessen die Remote-MCP-Verbindung. [Bisherige Einrichtung](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 
-Weitere MCP-Clients können den Forwarder verwenden, sind aber ungetestet. Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
+Weitere MCP-Clients können den Forwarder oder aus der Ferne [`/api/v1/mcp`](./docs/REMOTE-ACCESS.md) verwenden, sind aber ungetestet. Skripte und andere Integrationen nutzen die [REST-API](./docs/USAGE.md#rest-api-für-nicht-mcp-clients). MCP ist das Protokoll, mit dem ein KI-Assistent externe Werkzeuge wie diesen Gedächtnisdienst verwendet.
 
 ### Unterstützte Plattformen
 
@@ -298,6 +303,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren.
 - [Modell-Empfehlungen](./docs/USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt) – ein Release kann ein besseres lokales Textmodell vorschlagen; du wirst gefragt, nie automatisch umgestellt.
 - [Reviewed-Miss-Harvester](./docs/reviewed-miss-harvester.md#deutsch) — ein Offline-Repo-Werkzeug zum Prüfen verpasster Abrufchancen; es wendet nichts automatisch an.
+- [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) – ChatGPT im Web und auf dem Handy über deine eigene HTTPS-Adresse mit deinem Recall verbinden.
 - [Statusline und Terminal-Panels](./packages/statusline/README.md#deutsch) – Einrichtung, Ansichten und Datengrenzen für Claude Code und Codex.
 - [Produkt-Dokumentation](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) – Anleitungen deiner Projekte vom Assistenten pflegen lassen.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) – optionale Community-Rezepte mit Prüfnachweisen.

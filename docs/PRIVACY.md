@@ -15,7 +15,7 @@ Bastra Recall stores memories as files in your chosen vault. Keyword search runs
 | OpenAI embeddings | Requires an explicit provider choice and credentials. Queries and indexed memory text are sent to `api.openai.com`. An unrelated `OPENAI_API_KEY` alone does not select this provider in the v1.0 implementation. |
 | Importing chat exports | The import queue is stored locally. When you ask your assistant to extract memories, it reads chunks of that queue; a cloud-based assistant may process those chunks remotely. `bastra import clear` discards the queue. |
 | File synchronization | A vault in iCloud, Google Drive, Dropbox or a Git remote uses that service. Choose its access and backup settings yourself. Concurrent file edits can conflict. |
-| REST access | The service normally listens on your computer. If you expose it through a tunnel or connect another application, that application can receive the data allowed by the API. Follow the [REST setup](./USAGE.md#rest-api-for-non-mcp-clients). |
+| REST access | The service normally listens on your computer. If you expose it through a tunnel or connect another application, that application can receive the data allowed by the API. Follow the [REST setup](./USAGE.md#rest-api-for-non-mcp-clients); for ChatGPT and other cloud clients, see [remote access](./REMOTE-ACCESS.md#security-model). |
 | Bastra Commons | Optional downloads of community recipes. Sharing a contribution is a separate, reviewed action; enabling Commons does not publish your private vault. See [Commons](./commons.md). |
 
 ### Other network activity
@@ -215,7 +215,7 @@ Bastra Recall speichert Erinnerungen als Dateien in deinem gewählten Vault. Die
 | OpenAI-Embeddings | Erfordern die ausdrückliche Provider-Wahl und Zugangsdaten. Suchanfragen und indizierte Erinnerungstexte gehen an `api.openai.com`. Ein anderweitig gesetzter `OPENAI_API_KEY` allein wählt diesen Provider in der v1.0-Implementierung nicht aus. |
 | Chat-Exporte importieren | Die Import-Warteschlange liegt lokal. Wenn du deinen Assistenten Erinnerungen daraus extrahieren lässt, liest er Abschnitte dieser Warteschlange; ein cloudbasierter Assistent kann sie beim Anbieter verarbeiten. `bastra import clear` verwirft die Warteschlange. |
 | Datei-Synchronisierung | Ein Vault in iCloud, Google Drive, Dropbox oder einem Git-Remote nutzt diesen Dienst. Zugriff und Backups bestimmst du selbst. Gleichzeitige Dateiänderungen können Konflikte verursachen. |
-| REST-Zugriff | Der Dienst lauscht normalerweise auf deinem Rechner. Wenn du ihn durch einen Tunnel erreichbar machst oder eine weitere Anwendung verbindest, kann sie die von der API erlaubten Daten erhalten. Siehe [REST-Einrichtung](./USAGE.md#rest-api-für-nicht-mcp-clients). |
+| REST-Zugriff | Der Dienst lauscht normalerweise auf deinem Rechner. Wenn du ihn durch einen Tunnel erreichbar machst oder eine weitere Anwendung verbindest, kann sie die von der API erlaubten Daten erhalten. Siehe [REST-Einrichtung](./USAGE.md#rest-api-für-nicht-mcp-clients); für ChatGPT und andere Cloud-Clients den [Fernzugriff](./REMOTE-ACCESS.md#security-model) (Englisch). |
 | Bastra Commons | Optionaler Download von Community-Rezepten. Das Teilen eines Beitrags ist eine separate, geprüfte Aktion; die Aktivierung veröffentlicht deinen privaten Vault nicht. Siehe [Commons](./commons.md). |
 
 ### Weitere Netzwerkzugriffe
