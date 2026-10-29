@@ -16,7 +16,7 @@ import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 
 let dir: string;
 const previous = process.env.BASTRA_HOOK_STATE_DIR;
-const validator = { tool: "validate_artifact", channel: "discord", limit: 2000, unit: "code-points" };
+const validator = { tool: "validate_artifact", channel: "discord", limit: 2000, unit: "codepoints" } as const;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), "bastra-task-gate-"));
@@ -43,7 +43,7 @@ for (const scope of [undefined, "task"] as const) {
     const first = JSON.parse(await runGateLane(action, { reflexPool: () => [] }));
     assert.equal(first.hookSpecificOutput.permissionDecision, "deny");
     assert.equal((await loadSessionState(sessionId)).pendingMustLoad, undefined);
-    await clearPendingMustLoad("rule", { revision: "new" });
+    await clearPendingMustLoad("rule", { revision: "new", validator });
     const loaded = await loadSessionState(sessionId);
     assert.equal(loaded.claimedMustLoad, undefined);
     assert.equal(loaded.activeConventions?.[0]?.scope, scope);
@@ -55,9 +55,9 @@ for (const scope of [undefined, "task"] as const) {
     const block = await runTaskStep({
       sessionId, snapshot: loaded, prompt: "Bitte einen Antwortentwurf erstellen",
       mode: "generic", candidates: [{ id: "rule", type: "workflow", matched_recall_when: true }],
-      revisionOf: async () => "new", surface: "claude-code",
+      conventionOf: async () => ({ revision: "new", validator }), surface: "claude-code",
     });
-    assert.match(block!, /validator: tool=validate_artifact channel=discord limit=2000 unit=code-points/);
+    assert.match(block!, /validator: tool=validate_artifact channel=discord limit=2000 unit=codepoints/);
     assert.equal(scrubInjectedBlocks(`before${block}after`).text, "beforeafter");
     const state = await loadSessionState(sessionId);
     assert.equal(state.activeConventions?.[0]?.scope, scope);
