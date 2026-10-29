@@ -1,7 +1,8 @@
 /** Generated startup instructions (#1314). Never owns bytes outside its markers. */
 import { createHash } from "node:crypto";
 import { isUtf8 } from "node:buffer";
-import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { CODEX_CONFIG, SKILL_SOURCE_DIR } from "./paths.js";
@@ -30,12 +31,25 @@ export function inspectBootstrap(source: string, expected: string): { state: Boo
 }
 async function textAt(path: string): Promise<string> {
   try {
-    if ((await lstat(path)).isSymbolicLink()) throw new Error(`instruction path is a symlink: ${path}; inspect its target manually`);
-    const bytes = await readFile(path);
-    if (!isUtf8(bytes)) throw new Error(`instruction file is not UTF-8: ${path}; left untouched`);
-    return bytes.toString("utf8");
+    // Refuse a symlink at open time, rather than checking a path and later
+    // reading whatever may have replaced it. Read from this same handle.
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile()) throw new Error(`instruction path is not a regular file: ${path}; left untouched`);
+      // O_NOFOLLOW is unavailable on some platforms. Verify the path still
+      // names this regular file; all actual reading stays on the handle.
+      const named = await lstat(path);
+      if (named.isSymbolicLink() || named.dev !== stat.dev || named.ino !== stat.ino) {
+        throw new Error(`instruction path changed or is a symlink: ${path}; left untouched`);
+      }
+      const bytes = await handle.readFile();
+      if (!isUtf8(bytes)) throw new Error(`instruction file is not UTF-8: ${path}; left untouched`);
+      return bytes.toString("utf8");
+    } finally { await handle.close(); }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new Error(`instruction path is a symlink: ${path}; inspect its target manually`);
     throw error;
   }
 }
@@ -87,7 +101,7 @@ export async function ensureBootstrap(host: BootstrapHost, action: "install" | "
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.bastra-${process.pid}.tmp`;
     const mode = await lstat(path).then(stat => stat.mode & 0o777).catch(() => 0o600);
-    await writeFile(tmp, next, { mode });
+    await writeFile(tmp, next, { mode, flag: "wx" });
     await rename(tmp, path);
     return { changed: true, detail: `${path}: managed bootstrap ${action === "install" ? "written; restart the host" : "removed"}` };
   } catch (error) { return { changed: false, detail: `${path}: ${(error as Error).message}`, error: true }; }

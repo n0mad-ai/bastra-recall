@@ -129,6 +129,18 @@ test("#1314 invalid UTF8 and symlinks cannot corrupt unmanaged bytes", async () 
   }
 }));
 
+test("bootstrap refuses a pre-existing temporary symlink without touching its target", { skip: process.platform === "win32" }, async () => fixture(async path => {
+  const target = path + ".user";
+  await writeFile(path, "original instructions");
+  await writeFile(target, "unrelated user content");
+  await symlink(target, `${path}.bastra-${process.pid}.tmp`);
+  const result = await ensureBootstrap("codex", "install", { ...opts(path), withBootstrap: true });
+  assert.equal(result.changed, false);
+  assert.equal(result.error, true);
+  assert.equal(await readFile(path, "utf8"), "original instructions");
+  assert.equal(await readFile(target, "utf8"), "unrelated user content");
+}));
+
 test("#1314 CLI consent is independent from --yes and recognized by install", () => {
   assert.equal(parseArgs(["install", "codex", "--yes"]).withBootstrap, undefined);
   const enabled = parseArgs(["install", "codex", "--with-bootstrap"]);
