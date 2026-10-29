@@ -35,6 +35,6 @@ test("#462: the parts use the same chars/4 estimator as hint_tokens_est, per par
 
 test("#462: the part list is the block's assembly order", () => {
   assert.deepEqual([...SESSION_CONTEXT_PARTS], [
-    "pinned", "recalls", "taxonomy", "language", "care", "import", "onboarding", "update", "patch", "pending", "doku",
+    "kernel", "pinned", "recalls", "taxonomy", "language", "care", "import", "onboarding", "update", "patch", "pending", "doku",
   ]);
 });

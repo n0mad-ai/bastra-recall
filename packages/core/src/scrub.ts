@@ -57,6 +57,7 @@ export const INJECTED_BLOCK_TAGS = [
   "code-impact",
   "file-size-check",
   "vault-location-check",
+  "rule-kernel",
   // Claude Code harness injections
   "system-reminder",
   "command-name",

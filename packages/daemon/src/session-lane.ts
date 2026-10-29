@@ -49,7 +49,8 @@ import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { appendModelSessionNotice } from "./model-session-notice.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { bookPendingMustLoad, bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
+import { bookPendingMustLoad, bumpShown, clearShown, loadSessionState, mutateSessionState, takeConstantCadence, type ActiveConvention } from "./session-state.js";
+import { renderRuleKernel, type RenderedKernel } from "./rule-kernel.js";
 import { isGatedHint } from "./hook-recall-response.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -219,6 +220,18 @@ export async function runSessionLane(
   // summary (anything given only in conversation, hook context included, is
   // gone), `/clear` empties it, `resume` restores the transcript intact. So
   // compact and clear release both; resume releases neither.
+  // #1305: compact, clear and fork come back with an emptied context, so they
+  // get the rule kernel — the session's active conventions first, read BEFORE
+  // the reset below. Never on resume: its transcript is intact (#509).
+  const kernelWanted = payload.source === "compact" || payload.source === "clear" || payload.source === "fork";
+  let kernelActive: ActiveConvention[] = [];
+  if (kernelWanted && payload.session_id) {
+    try {
+      kernelActive = [...((await loadSessionState(payload.session_id)).activeConventions ?? [])];
+    } catch {
+      /* no state, no active conventions — floors, reflex and user rules still come */
+    }
+  }
   resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear") {
     try {
@@ -299,6 +312,7 @@ export async function runSessionLane(
           hook_budget_ms: SESSION_HOOK_BUDGET_MS,
           // #493: siehe `sessionStartCallId` oben.
           session_start_call_id: sessionStartCallId,
+          ...(kernelWanted ? { kernel: { active: kernelActive } } : {}),
           budget: { time_ms: remainingMs },
         },
         remainingMs,
@@ -651,6 +665,13 @@ export async function runSessionLane(
     /* cadence is best-effort — a failed read re-sends, it never drops */
   }
 
+  // #1305: the rule kernel heads the block. Rendered here from the daemon's
+  // candidates; a cold dense arm says so, the kernel itself never needs one.
+  let kernel: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
+  if (kernelWanted && sideData?.kernel) {
+    kernel = renderRuleKernel(sideData.kernel, { trigger: `after ${payload.source}`, lexicalOnly: denseCold });
+  }
+  const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
   const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
@@ -664,12 +685,12 @@ export async function runSessionLane(
   // #1303: the hints the catch-all gate holds the next tool call for (Claude
   // Code only — the deny is its contract).
   const gated = new Set(client === "claude-code" ? top.filter(isGatedHint).map((h) => h.id) : []);
-  if (top.length === 0 && pinnedBlock === "" && extras === "") {
+  if (top.length === 0 && pinnedBlock === "" && extras === "" && kernel.text === "") {
     if (status === "ok") status = "no-hits";
     // stays "{}"
   } else if (top.length === 0) {
     // Only pinned entries, conventions and/or an update banner, no recall hits.
-    injected = (pinnedBlock + extras).trimStart();
+    injected = (kernelHead + pinnedBlock + extras).trimStart();
     out = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
@@ -689,7 +710,7 @@ export async function runSessionLane(
       denseCold ? "cold-model" : "off",
       gated,
     );
-    injected = pinnedHead + recallBlock + extras;
+    injected = kernelHead + pinnedHead + recallBlock + extras;
     out = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
@@ -737,6 +758,7 @@ export async function runSessionLane(
       injected === ""
         ? {}
         : {
+            kernel: kernel.text,
             pinned: pinnedBlock,
             recalls: recallBlock,
             taxonomy: taxonomyBlock,
@@ -755,6 +777,9 @@ export async function runSessionLane(
     pending_lanes: pendingLanes,
     ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
     constants_skipped: constantsSkipped,
+    ...(kernelWanted
+      ? { kernel: { full_ids: kernel.full, degraded_ids: kernel.degraded, omitted: kernel.omitted, chars: kernel.text.length } }
+      : {}),
     status,
     error: errMsg,
   });

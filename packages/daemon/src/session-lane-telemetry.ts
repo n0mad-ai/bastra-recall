@@ -56,6 +56,9 @@ export interface SessionHookTelemetry {
    *  out because this session's context already carries the identical text.
    *  Fehlt auf Zeilen vor #509. */
   constants_skipped: string[];
+  /** #1305: the rule kernel of a compact/clear/fork start — what went out in
+   *  full, what as `degraded: load_memory(id)`, what was not listed. */
+  kernel?: { full_ids: string[]; degraded_ids: string[]; omitted: number; chars: number };
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
   /** #342/Deep-Dive 07.09.2026: welcher Arm ausgefallen ist — `vector-arm-timeout`
@@ -84,6 +87,7 @@ export interface SessionHookTelemetry {
 }
 
 export const SESSION_CONTEXT_PARTS = [
+  "kernel",
   "pinned",
   "recalls",
   "taxonomy",

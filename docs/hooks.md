@@ -695,6 +695,9 @@ usual. Two jobs, one locked state write per call:
   reason, or "degraded: load_memory(id)" when the body is over the budget.
   The pool is cached in the daemon and rebuilt on every vault change;
   `BASTRA_REFLEX=off` silences it like the prompt reflex.
+- **Rule kernel (#1305).** After 25 tool calls without a user prompt the gate
+  answers the rule kernel as `additionalContext`, never as a deny (see "Rule
+  kernel" below).
 
 Always passes: every Recall MCP tool (`mcp__bastra-recall__*`, also the
 plugin form `mcp__plugin_…_bastra-recall__*`) and a `ToolSearch` whose query
@@ -704,7 +707,8 @@ Fail-open: a deny goes out only after the claim reached the disk. A state
 write that fails, a gate timeout, an unreachable daemon or the kill switch
 answer `{}`, and the call runs. Each of these leaves a `gate_hook_call` row with
 `non_conformance` (`state_write_failed`, `gate_timeout`, `gate_unavailable`).
-A deny also writes a `gate_hook_call` row; a plain pass writes none. A deny is
+A deny and a kernel re-delivery also write a `gate_hook_call` row; a plain pass
+writes none. A deny is
 not a load and not a surfaced hint: it reports nothing to `/hook/hinted` and
 creates no usage, so #515 never reads it as "used". A load the agent makes
 after a deny is an ordinary load.
@@ -1573,6 +1577,63 @@ Recalls and pending suggestions are sent on every start. Telemetry:
 `constants_skipped` on `session_hook_call` names the parts left out, and
 `hint_tokens_by_part` counts only what was actually sent.
 
+#### Rule kernel (session hook and gate, #1305)
+
+`/compact`, `/clear` and a fork start with an emptied context, so the rules
+the session was working under are gone with it. On a SessionStart with
+`source` `compact`, `clear` or `fork` the session hook therefore puts a
+`<rule-kernel>` block first, with the **full bodies** of the rules in force.
+`resume` gets none: its transcript is intact (#509). Order is priority:
+
+1. the session's active conventions, newest first — a rule the agent loaded
+   to answer a must-load, or a reflex rule the gate delivered; read from the
+   session state before compact/clear releases the dedup, and kept across it,
+2. floors,
+3. memories with `recall_mode: reflex`,
+4. `write_origin: user-directed` memories of type `user-preference` or
+   `meta-working`, by salience.
+
+**Known fork limit.** Claude Code's documented [SessionStart input](https://code.claude.com/docs/en/hooks#sessionstart-input)
+and [common input fields](https://code.claude.com/docs/en/hooks#common-input-fields)
+provide no parent session ID. A fork with a new session ID therefore has no
+`activeConventions` from its parent. The kernel can restore floors, reflex
+rules and user-directed preferences; it cannot promise to restore the parent's
+active conventions. The hook does not guess the parent session ID.
+
+Private, obsolete and superseded memories are left out; without a detected
+project only global scopes count. The bodies come from the daemon's vault
+index, never from a recall, inside the lane's 500 ms. One explicit bound: the
+whole block stays at or below 6,000 characters. A body goes out whole or not
+at all: one that does not fit becomes `degraded: load_memory(<id>)`, and a rule
+is never cut. Active conventions get the room first, then bodies up to 1,500
+characters, then longer ones; the block is still printed in priority order.
+Rules past the bound are counted in one `+N more rule(s) not listed` line.
+Every entry line carries the id, `revision` (the `memoryRevision` of the file,
+as `load_memory` returns it), `updated` and `stale_status`, computed live from
+the memory's lifecycle fields rather than a stored UI projection (`unknown`
+if the supplied entry has no status). A
+one-armed start (cold dense model) adds
+`lexical-only: kernel built from floors, reflex and user-directed rules only`.
+The last line of the block is always:
+
+```
+If a rule here seems unclear or outdated, ask the user with a choice box before deviating; never silently ignore it.
+```
+
+**Re-delivery.** The gate lane counts tool calls since the last user prompt;
+every `UserPromptSubmit` resets the count. At 25 calls without a prompt the gate
+answers the same kernel as `additionalContext` — never a deny — and starts
+counting again. A call the gate denies does not carry it; the next call does.
+The re-delivery is charged to the session budget shadow (#458) like the
+session block, and leaves a `gate_hook_call` row with `kernel_ids`,
+`kernel_degraded_ids`, `kernel_omitted` and `kernel_chars`. The session start
+reports the same under `kernel` on its `session_hook_call` row, and its tokens
+under `hint_tokens_by_part.kernel`.
+
+The `<pinned-memories>` block below stays as it is: a lean audit list without
+bodies. The assembler's own `- [pinned]` lines serve the hookless
+`GET /hook/session-context` contract and are not a second session-hook renderer.
+
 #### Pinned-memories injection (session hook, #141/#142)
 
 Recall is pull-by-relevance — and the thing you most need to *not* forget (a
@@ -2374,6 +2435,9 @@ State-Schreibvorgang pro Aufruf:
   Body das Budget übersteigt. Der Pool liegt im Daemon-Cache und wird bei jeder
   Vault-Änderung neu gebaut. `BASTRA_REFLEX=off` schaltet ihn ab wie den
   Prompt-Reflex.
+- **Regelkern (#1305).** Nach 25 Toolaufrufen ohne Prompt des Nutzers liefert
+  das Gate den Regelkern als `additionalContext`, nie als Deny (siehe
+  „Regelkern" unten).
 
 Immer durch: jedes Recall-MCP-Tool (`mcp__bastra-recall__*`, auch die
 Plugin-Form `mcp__plugin_…_bastra-recall__*`) und ein `ToolSearch`, dessen
@@ -2383,8 +2447,9 @@ Fail-open: Ein Deny geht nur raus, wenn der Anspruch auf der Platte steht. Ein
 fehlgeschlagener State-Schreibvorgang, ein Gate-Timeout, ein nicht erreichbarer
 Daemon oder der Kill-Switch liefern `{}`, und der Aufruf läuft. Jeder dieser
 Fälle schreibt eine `gate_hook_call`-Zeile mit `non_conformance`
-(`state_write_failed`, `gate_timeout`, `gate_unavailable`). Ein Deny schreibt
-ebenfalls eine `gate_hook_call`-Zeile, ein schlichtes Durchlassen keine. Ein
+(`state_write_failed`, `gate_timeout`, `gate_unavailable`). Ein Deny und eine
+erneute Kern-Lieferung schreiben ebenfalls eine `gate_hook_call`-Zeile, ein
+schlichtes Durchlassen keine. Ein
 Deny ist weder ein Load noch ein eingeblendeter Hinweis: Er meldet nichts an
 `/hook/hinted` und erzeugt keine Nutzung, #515 liest ihn also nie als „used".
 Ein Load nach einem Deny ist ein gewöhnlicher Load.
@@ -3268,6 +3333,69 @@ Sitzungsbudget zurück. `resume` setzt keins von beiden zurück. Recalls und
 offene Vorschläge gehen bei jedem Start raus. Telemetrie: `constants_skipped` am
 Event `session_hook_call` nennt die weggelassenen Teile, und
 `hint_tokens_by_part` zählt nur, was tatsächlich geschickt wurde.
+
+#### Regelkern (Session-Hook und Gate, #1305)
+
+`/compact`, `/clear` und ein Fork beginnen mit geleertem Kontext, und mit ihm
+sind die Regeln weg, unter denen die Session gearbeitet hat. Bei einem
+SessionStart mit `source` `compact`, `clear` oder `fork` setzt der Session-Hook
+deshalb einen Block `<rule-kernel>` an den Anfang, mit den **vollständigen
+Bodies** der geltenden Regeln. `resume` bekommt keinen, denn das Transkript ist
+dort erhalten (#509). Die Reihenfolge ist die Priorität:
+
+1. die aktiven Konventionen der Session, neueste zuerst: eine Regel, die der
+   Agent auf ein Must-Load hin geladen hat, oder eine Reflex-Regel, die das
+   Gate geliefert hat. Sie werden vor dem Dedup-Reset von compact/clear aus dem
+   Session-State gelesen und überstehen ihn,
+2. Floors,
+3. Memories mit `recall_mode: reflex`,
+4. Memories mit `write_origin: user-directed` vom Typ `user-preference` oder
+   `meta-working`, nach Salience.
+
+**Bekannte Fork-Grenze.** Claude Codes dokumentierter [SessionStart-Input](https://code.claude.com/docs/en/hooks#sessionstart-input)
+und die [gemeinsamen Input-Felder](https://code.claude.com/docs/en/hooks#common-input-fields)
+enthalten keine Eltern-Session-ID. Ein Fork mit neuer Session-ID hat deshalb
+keine `activeConventions` der Eltern-Session. Der Kern kann Floors,
+Reflex-Regeln und nutzergerichtete Präferenzen wiederherstellen; die aktiven
+Konventionen der Eltern-Session kann er nicht zusichern. Der Hook rät die
+Eltern-Session-ID nicht.
+
+Private, obsolete und ersetzte Memories fehlen. Ohne erkanntes Projekt zählen
+nur globale Scopes. Die Bodies kommen aus dem Vault-Index im Daemon, nie aus
+einem Recall, innerhalb der 500 ms der Lane. Es gibt eine ausdrückliche
+Schranke: Der ganze Block bleibt bei höchstens 6.000 Zeichen. Ein Body geht
+ganz oder gar nicht raus. Passt er nicht, steht dort `degraded:
+load_memory(<id>)`, eine Regel wird nie abgeschnitten. Den Platz bekommen
+zuerst die aktiven Konventionen, dann Bodies bis 1.500 Zeichen, dann längere.
+Gedruckt wird trotzdem in der Prioritätsreihenfolge. Regeln jenseits der
+Schranke zählt eine Zeile `+N more rule(s) not listed`. Jede Eintragszeile
+trägt die ID, `revision` (die `memoryRevision` der Datei, wie `load_memory` sie
+liefert), `updated` und `stale_status`, live aus den Lebenszyklus-Feldern der
+Memory berechnet statt aus einer gespeicherten UI-Projektion (`unknown`, wenn
+dem gelieferten Eintrag der Status fehlt). Ein einarmiger Start
+(kaltes dichtes Modell) ergänzt
+`lexical-only: kernel built from floors, reflex and user-directed rules only`.
+Die letzte Zeile des Blocks lautet immer:
+
+```
+If a rule here seems unclear or outdated, ask the user with a choice box before deviating; never silently ignore it.
+```
+
+**Erneute Lieferung.** Die Gate-Lane zählt die Toolaufrufe seit dem letzten
+Prompt des Nutzers. Jedes `UserPromptSubmit` setzt den Zähler zurück. Nach 25
+Aufrufen ohne Prompt liefert das Gate denselben Kern als `additionalContext`,
+nie als Deny, und zählt von vorn. Ein Aufruf, den das Gate verweigert, trägt ihn
+nicht, der nächste schon. Die erneute Lieferung wird wie der Session-Block im
+Schatten des Sitzungsbudgets gebucht (#458) und hinterlässt eine
+`gate_hook_call`-Zeile mit `kernel_ids`, `kernel_degraded_ids`,
+`kernel_omitted` und `kernel_chars`. Der Sitzungsstart meldet dasselbe unter
+`kernel` in seiner `session_hook_call`-Zeile und die Tokens unter
+`hint_tokens_by_part.kernel`.
+
+Der Block `<pinned-memories>` unten bleibt, wie er ist: eine schlanke
+Audit-Liste ohne Bodies. Die eigenen `- [pinned]`-Zeilen des Assemblers
+bedienen den hooklosen Vertrag `GET /hook/session-context` und sind kein
+zweiter Renderer des Session-Hooks.
 
 #### Einblendung angehefteter Erinnerungen (Session-Hook, #141/#142)
 

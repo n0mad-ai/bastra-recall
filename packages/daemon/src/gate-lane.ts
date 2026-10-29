@@ -17,6 +17,13 @@
  * the vault on the hot path: must-load is state only, and the reflex pool is
  * cached per vault and dropped on the vault's change events.
  *
+ * #1305 — **rule kernel re-delivery.** The lane counts tool calls since the last
+ * user prompt (the prompt lane resets the count). At
+ * {@link RULE_KERNEL_TOOL_CALLS} calls without a deny it answers the rule kernel
+ * as `additionalContext` — never a deny — and starts the count again. A
+ * must-load the agent answered with a load and a reflex rule the gate
+ * delivered become the session's active conventions, which head the kernel.
+ *
  * A denial is not a load and not a surfaced hint: this lane reports nothing to
  * /hook/hinted and writes no usage. A load the agent makes after a denial is an
  * ordinary load (#515: "used" is not "loaded"; a forced load is still a load).
@@ -25,11 +32,11 @@
  * over the Bash lane's `allow` + `updatedInput` (precedence deny > defer > ask >
  * allow, code.claude.com/docs/en/hooks). The retry runs the rm shim again.
  */
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Memory, Vault } from "@bastra-recall/core";
-import { stripAutoRelatedSection } from "@bastra-recall/core";
+import { memoryRevision, stripAutoRelatedSection } from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envInt, envOff } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
@@ -37,7 +44,13 @@ import { hookAgent, hookClient, hookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
 import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
-import { mutateSessionState, type PendingMustLoad } from "./session-state.js";
+import {
+  mutateSessionState, recordActiveConventions, recordClaimedMustLoad,
+  type ActiveConvention, type PendingMustLoad,
+} from "./session-state.js";
+import { recordBudgetShadow } from "./session-budget.js";
+import { projectForLane } from "./scope-filter.js";
+import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel, type KernelCandidates } from "./rule-kernel.js";
 import { RECALL_TOOL_PREFIX } from "./save-notice-lane.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
@@ -67,6 +80,9 @@ export interface GatePayload {
 export interface GateDeps {
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
+  /** #1305: the rule kernel's candidates from the daemon's vault index.
+   *  Absent = no re-delivery; the count still runs. */
+  kernel?: (active: readonly ActiveConvention[], project: string | null) => Promise<KernelCandidates>;
 }
 
 /** The recall tools themselves always pass — denying the load would deadlock. */
@@ -157,13 +173,19 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   const subagent = hookAgent(payload) === "subagent";
   const matched = matchActionReflex(deps.reflexPool(), toolName, input);
   const reflexCandidates = matched.length > 0 ? await servedReflex(matched) : [];
+  // #1305: a delivered reflex rule is in force from here on, at this revision.
+  const reflexRevisions = new Map(
+    await Promise.all(reflexCandidates.map(async (m) => [m.memory.fm.id, await revisionOf(m.memory)] as const)),
+  );
 
   let claimedMustLoad: PendingMustLoad[] = [];
   let claimedReflex: ReflexMatch[] = [];
+  let kernelActive: ActiveConvention[] | null = null;
   const persisted = await mutateSessionState(sessionId, (state) => {
     state.toolCalls = (state.toolCalls ?? 0) + 1;
     claimedMustLoad = [];
     claimedReflex = [];
+    kernelActive = null;
     if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
       claimedMustLoad = state.pendingMustLoad;
       delete state.pendingMustLoad;
@@ -174,7 +196,14 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       if (claimedReflex.length > 0) {
         for (const m of claimedReflex) denied.add(m.memory.fm.id);
         state.deniedReflex = [...denied].slice(-DENIED_REFLEX_CAP);
+        recordActiveConventions(state, claimedReflex.map((m) => ({ id: m.memory.fm.id, revision: reflexRevisions.get(m.memory.fm.id) ?? null })));
       }
+    }
+    if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
+    // #1305: a deny carries its own message; the kernel waits for the next call.
+    if (deps.kernel && claimedMustLoad.length === 0 && claimedReflex.length === 0 && state.toolCalls >= RULE_KERNEL_TOOL_CALLS) {
+      kernelActive = [...(state.activeConventions ?? [])];
+      state.toolCalls = 0;
     }
   });
   const elapsed = Date.now() - startedAt;
@@ -195,7 +224,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     return "{}";
   }
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
-    return "{}";
+    const active = kernelActive as ActiveConvention[] | null;
+    return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
   }
 
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
@@ -214,6 +244,43 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       permissionDecisionReason: reason.text,
     },
   });
+}
+
+/**
+ * #1305: the rule kernel as a hint after {@link RULE_KERNEL_TOOL_CALLS} tool
+ * calls without a prompt. Never a deny. The count is already reset on disk; a
+ * kernel that cannot be built or comes too late answers `{}` and leaves a row.
+ */
+async function redeliverKernel(
+  payload: GatePayload,
+  kernel: NonNullable<GateDeps["kernel"]>,
+  active: readonly ActiveConvention[],
+  startedAt: number,
+): Promise<string> {
+  const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
+  const rendered = renderRuleKernel(await kernel(active, project), { trigger: `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt` });
+  if (rendered.text === "") return "{}";
+  if (Date.now() - startedAt > HOOK_TIMEOUT_MS) {
+    await writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "gate_timeout", kernel_ids: rendered.full.concat(rendered.degraded) });
+    return "{}";
+  }
+  // #458 shadow: the re-delivery is PreToolUse context like the tool lanes'.
+  recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), { source: "rule-kernel" });
+  await writeTelemetry(payload, startedAt, {
+    outcome: "pass",
+    kernel_ids: rendered.full,
+    kernel_degraded_ids: rendered.degraded,
+    kernel_omitted: rendered.omitted,
+    kernel_chars: rendered.text.length,
+  });
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text },
+  });
+}
+
+async function revisionOf(m: Memory): Promise<string | null> {
+  if (!m.filePath) return null;
+  return readFile(m.filePath, "utf8").then(memoryRevision, () => null);
 }
 
 function matchActionReflex(pool: readonly Memory[], toolName: string, input: Record<string, unknown>): ReflexMatch[] {
@@ -255,8 +322,8 @@ function denyReason(mustLoad: string[], reflex: ReflexMatch[]): { text: string; 
   return { text: parts.join("\n\n"), degraded };
 }
 
-/** One `gate_hook_call` row per deny or non-conformance. A plain pass writes
- *  nothing: the lane runs on every tool call. */
+/** One `gate_hook_call` row per deny, kernel re-delivery or non-conformance.
+ *  A plain pass writes nothing: the lane runs on every tool call. */
 async function writeTelemetry(payload: GatePayload, startedAt: number, fields: Record<string, unknown> & { outcome: Outcome }): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {

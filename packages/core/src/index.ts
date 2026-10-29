@@ -8,9 +8,9 @@
 export { Vault } from "./vault.js";
 export type { VaultEvent, VaultListener } from "./vault.js";
 
-export { SearchIndex, salienceRankCap } from "./search.js";
+export { SearchIndex, salienceRankCap, computeStaleness } from "./search.js";
 export { visitSupersession } from "./supersession.js";
-export type { RecallHit, RecallOptions, CueIndexOptions } from "./search.js";
+export type { RecallHit, RecallOptions, CueIndexOptions, StaleStatus } from "./search.js";
 
 export {
   normalizeQuery,

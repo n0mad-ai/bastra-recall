@@ -22,7 +22,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
 import { runTodoLane, type ClaudeHookPayload as TodoPayload } from "./todo-lane.js";
-import { runGateLane, type GatePayload } from "./gate-lane.js";
+import { runGateLane, type GateDeps, type GatePayload } from "./gate-lane.js";
 import type { Memory } from "@bastra-recall/core";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import type { SaveNoticePayload } from "./save-notice-lane.js";
@@ -67,6 +67,8 @@ export function dispatchLaneRoutes(
   /** #1303: the cached action-time reflex pool. Absent = no reflex denies,
    *  must-load still gates. */
   gateReflexPool?: () => readonly Memory[],
+  /** #1305: the rule kernel's candidates for the gate's re-delivery. */
+  gateKernel?: GateDeps["kernel"],
 ): boolean {
   if (method !== "POST") return false;
 
@@ -92,7 +94,7 @@ export function dispatchLaneRoutes(
   // #1303: catch-all PreToolUse gate — one-time must-load and reflex denies.
   // No notice: a draft line must not ride on a deny or on every tool call.
   if (url === "/hook/gate") {
-    runLane<GatePayload>(req, res, (payload) => runGateLane(payload, { reflexPool: gateReflexPool ?? (() => []) }));
+    runLane<GatePayload>(req, res, (payload) => runGateLane(payload, { reflexPool: gateReflexPool ?? (() => []), kernel: gateKernel }));
     return true;
   }
   return false;

@@ -57,6 +57,7 @@ import {
   takeParkedBoundary,
   wasEmitConsumed,
   bookPendingMustLoad,
+  resetToolCalls,
   type TakenBoundary,
 } from "./session-state.js";
 import { isGatedHint } from "./hook-recall-response.js";
@@ -259,6 +260,11 @@ export async function runPromptLane(
   // (statusline is cosmetic, the lane is not).
   const sessionPid = replay ? null : resolveSessionPid(clientPpid);
   if (sessionPid !== null) resetStatuslineFeed(sessionPid, payload.session_id ?? null);
+
+  // #1305: every prompt starts a new count for the gate lane's rule-kernel
+  // re-delivery ("N tool calls without a prompt"). One state read when
+  // nothing is counted; a replay leaves the real session alone.
+  if (!replay) await resetToolCalls(payload.session_id ?? "");
 
   const submitted = extractPrompt(payload);
   if (!submitted) return "{}";

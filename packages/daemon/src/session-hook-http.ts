@@ -13,6 +13,7 @@ import { taskClientHeaders } from "./task-client-auth.js";
 import { request } from "node:http";
 import type { HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 import type { PinnedFloorLean } from "./pinned-block.js";
+import type { KernelCandidates } from "./rule-kernel.js";
 
 // P0: der Transporttyp kannte den Score-Modus nicht — `score_kind`/`unfused`
 // fielen beim Parsen still weg, und die SessionStart-Lane bandete danach rohe
@@ -65,6 +66,8 @@ export interface SessionContextResponse {
     care?: { open: number; queued: number };
     imports?: { open: number; queued: number };
     onboarding?: boolean;
+    /** #1305: present when the lane asked for the rule kernel; null when it failed. */
+    kernel?: KernelCandidates | null;
   };
 }
 

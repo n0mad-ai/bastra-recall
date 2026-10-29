@@ -70,12 +70,17 @@ async function fixture(projection = false) {
   set("BASTRA_HOOK_TIMEOUT_MS", "5000");
   set("BASTRA_PROMPT_HOOK_MODE", "all");
   // Import only in opt-in runs, after isolation variables are set.
-  const [{ runSessionLane }, { runPromptLane }, { runWriteLane }, { runBashPreLane }, { runGateLane, actionReflexPool }] = await Promise.all([
+  const [{ runSessionLane }, { runPromptLane }, { runWriteLane }, { runBashPreLane }, { runGateLane, actionReflexPool }, { collectRuleKernel }] = await Promise.all([
     import("../src/session-lane.js"), import("../src/prompt-lane.js"),
     import("../src/write-lane.js"), import("../src/bash-pre-lane.js"), import("../src/gate-lane.js"),
+    import("../src/rule-kernel.js"),
   ]);
-  // The invented vault as the daemon's reflex pool; the lane's own filter decides.
-  const gatePool = actionReflexPool(vault.map(memory => ({ fm: memory, body: memory.body }) as unknown as Parameters<typeof actionReflexPool>[0][number]));
+  // The invented vault as the daemon's index; the lanes' own filters decide.
+  const index = vault.map(memory => ({ fm: memory, body: memory.body }) as unknown as Parameters<typeof actionReflexPool>[0][number]);
+  const gatePool = actionReflexPool(index);
+  // #1305 ADAPTER: the daemon's vault index as the kernel source (data only;
+  // the real collector and renderer decide). No floors, like /hook/session-context below.
+  const kernelVault = { list: () => index, get: (id: string) => index.find(memory => memory.fm.id === id) };
   const requests: RequestRow[] = [];
   const errors: unknown[] = [];
   const promptRows: Array<{ detected_mode: string }> = [];
@@ -103,7 +108,8 @@ async function fixture(projection = false) {
           () => [vault[2].id], { onTelemetry: row => promptRows.push(row) }); break;
         case "/hook/write": result = await runWriteLane(payload, base, cwd); break;
         case "/hook/bash-pre": result = await runBashPreLane(payload, base); break;
-        case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool }); break;
+        case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool,
+          kernel: (active, project) => collectRuleKernel(kernelVault, { project, active, floors: async () => [] }) }); break;
         case "/hook/session-context": result = { data: { recalls: [
           { scope: "user-preference", resp: recall("", true) },
           { scope: "all-projects", resp: recall("", true) },
@@ -189,11 +195,16 @@ async function fixture(projection = false) {
   }
   const prompt = (text: string) => hook("prompt-hook.ts", { hook_event_name: "UserPromptSubmit", prompt: text });
   // Claude Code runs every matching PreToolUse hook in parallel and a deny
-  // wins over any allow/updatedInput (code.claude.com/docs/en/hooks).
+  // wins over any allow/updatedInput (code.claude.com/docs/en/hooks). #1305:
+  // without a deny, "when several hooks return additionalContext for the same
+  // event, Claude receives all of the values" (same page) — so both reach it.
   const tool = async (tool_name: string, tool_input: object): Promise<Output> => {
     const input = { hook_event_name: "PreToolUse", tool_name, tool_input };
     const [gate, lane] = await Promise.all([hook("gate-hook.ts", input), hook(tool_name === "Bash" ? "bash-pre-hook.ts" : "hook.ts", input)]);
-    return denied(gate) ? gate : lane;
+    if (denied(gate)) return gate;
+    const contexts = [context(gate), context(lane)].filter(Boolean);
+    if (contexts.length < 2) return context(gate) ? gate : lane;
+    return { ...lane, hookSpecificOutput: { ...lane.hookSpecificOutput, additionalContext: contexts.join("\n") } };
   };
   async function replay() {
     const start = await hook("session-hook.ts", { hook_event_name: "SessionStart", source: "compact" });

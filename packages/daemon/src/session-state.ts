@@ -150,8 +150,27 @@ export interface SessionState {
   pendingMustLoad?: PendingMustLoad[];
   /** #1303: reflex memories the gate already denied once in this session. */
   deniedReflex?: string[];
-  /** #1303: tool calls the gate lane has seen in this session. */
+  /** #1303: tool calls the gate lane has seen in this session. #1305: since
+   *  the last user prompt — the prompt lane resets it, and the gate lane
+   *  resets it when it re-delivers the rule kernel. */
   toolCalls?: number;
+  /** #1305: must-load ids the gate denied a call for, waiting for the load
+   *  that answers them. A load moves the id into `activeConventions`. */
+  claimedMustLoad?: string[];
+  /**
+   * #1305: the conventions the session is working under, kept across
+   * compact/clear so the rule kernel can put them first. For now filled from
+   * loads that answer a gate must-load and from the gate's reflex deliveries.
+   */
+  activeConventions?: ActiveConvention[];
+}
+
+/** #1305: one convention in force for the session. */
+export interface ActiveConvention {
+  id: string;
+  /** `memoryRevision` when it was set; null when the file was not readable. */
+  revision: string | null;
+  setAt: number;
 }
 
 /** #1303: one must-load id waiting for the gate lane. */
@@ -197,6 +216,8 @@ export interface ReadonlySessionState {
   readonly pendingMustLoad?: readonly Readonly<PendingMustLoad>[];
   readonly deniedReflex?: readonly string[];
   readonly toolCalls?: number;
+  readonly claimedMustLoad?: readonly string[];
+  readonly activeConventions?: readonly Readonly<ActiveConvention>[];
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -310,6 +331,15 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       state.deniedReflex = parsed.deniedReflex.filter((id): id is string => typeof id === "string");
     }
     if (typeof parsed.toolCalls === "number") state.toolCalls = parsed.toolCalls;
+    if (Array.isArray(parsed.claimedMustLoad)) {
+      state.claimedMustLoad = parsed.claimedMustLoad.filter((id): id is string => typeof id === "string");
+    }
+    if (Array.isArray(parsed.activeConventions)) {
+      state.activeConventions = parsed.activeConventions.filter(
+        (e): e is ActiveConvention =>
+          !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null) && typeof e.setAt === "number",
+      );
+    }
     return state;
   } catch {
     return { shown: {} };
@@ -404,13 +434,65 @@ export function bookPendingMustLoad(state: SessionState, ids: readonly string[],
   state.pendingMustLoad = pending.slice(-PENDING_MUST_LOAD_CAP);
 }
 
+/** #1305: bound on the conventions one session keeps in force. */
+const ACTIVE_CONVENTIONS_CAP = 20;
+/** #1305: bound on denied must-load ids still waiting for their load. */
+const CLAIMED_MUST_LOAD_CAP = 20;
+
+/** #1305: put conventions in force (mutates in place). A convention set again
+ *  moves to the newest position with its current revision. */
+export function recordActiveConventions(
+  state: SessionState,
+  set: ReadonlyArray<{ id: string; revision: string | null }>,
+  now: number = Date.now(),
+): void {
+  if (set.length === 0) return;
+  const ids = new Set(set.map((e) => e.id));
+  const kept = (state.activeConventions ?? []).filter((e) => !ids.has(e.id));
+  for (const e of set) kept.push({ id: e.id, revision: e.revision, setAt: now });
+  state.activeConventions = kept.slice(-ACTIVE_CONVENTIONS_CAP);
+}
+
+/** #1305: remember the must-load ids a gate deny claimed (mutates in place). */
+export function recordClaimedMustLoad(state: SessionState, ids: readonly string[]): void {
+  if (ids.length === 0) return;
+  const set = new Set(state.claimedMustLoad ?? []);
+  for (const id of ids) {
+    set.delete(id);
+    set.add(id);
+  }
+  state.claimedMustLoad = [...set].slice(-CLAIMED_MUST_LOAD_CAP);
+}
+
+/** #1305: a user prompt starts a new count for the rule kernel's re-delivery.
+ *  One read when nothing is counted, never throws. */
+export async function resetToolCalls(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const current = await loadSessionState(sessionId);
+    if (!current.toolCalls) return;
+    await mutateSessionState(sessionId, (state) => {
+      delete state.toolCalls;
+    });
+  } catch {
+    // A missed reset re-delivers the kernel early; it never blocks the prompt.
+  }
+}
+
 /**
  * #1301/#1303: a successful `load_memory(id)` releases `id` in EVERY session
  * state that still holds it — the caller's session is not reliably known on
  * every transport. Fail-open by design: another session's load releases this
  * session's claim without proving this session read the body. Never throws.
+ *
+ * #1305: when the load answers a must-load — still pending, or already denied
+ * for — and is a real load (`activate`, not a lean dismissal), the memory
+ * becomes an active convention of that session with `revision`.
  */
-export async function clearPendingMustLoad(memId: string): Promise<void> {
+export async function clearPendingMustLoad(
+  memId: string,
+  activate?: { revision: string | null },
+): Promise<void> {
   if (!memId) return;
   try {
     const dir = sessionStateDir();
@@ -422,10 +504,19 @@ export async function clearPendingMustLoad(memId: string): Promise<void> {
       if (!raw.includes(needle)) continue;
       const sessionId = name.slice(0, -".json".length);
       await mutateSessionState(sessionId, (state) => {
-        if (state.pendingMustLoad === undefined) return;
-        const rest = state.pendingMustLoad.filter((e) => e.id !== memId);
-        if (rest.length > 0) state.pendingMustLoad = rest;
-        else delete state.pendingMustLoad;
+        const pending = state.pendingMustLoad?.some((e) => e.id === memId) ?? false;
+        const claimed = state.claimedMustLoad?.includes(memId) ?? false;
+        if (pending) {
+          const rest = state.pendingMustLoad!.filter((e) => e.id !== memId);
+          if (rest.length > 0) state.pendingMustLoad = rest;
+          else delete state.pendingMustLoad;
+        }
+        if (claimed) {
+          const rest = state.claimedMustLoad!.filter((id) => id !== memId);
+          if (rest.length > 0) state.claimedMustLoad = rest;
+          else delete state.claimedMustLoad;
+        }
+        if ((pending || claimed) && activate) recordActiveConventions(state, [{ id: memId, revision: activate.revision }]);
       });
     }
   } catch {

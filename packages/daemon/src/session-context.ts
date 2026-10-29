@@ -20,6 +20,8 @@ import { sendJsonPlain } from "./webui.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import { projectForLane } from "./scope-filter.js";
 import { dimensionHints } from "./telemetry-dimensions.js";
+import { collectRuleKernel } from "./rule-kernel.js";
+import type { ActiveConvention } from "./session-state.js";
 import {
   assembleSessionSections,
   renderSessionContext,
@@ -97,6 +99,12 @@ export async function handleSessionContextPost(
   const caps = (b.caps ?? {}) as Record<string, unknown>;
   const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
   // The SessionStart lane consumes raw data and delivers once at its outer exit.
+  // #1305: the rule kernel's candidates, from the vault index beside the
+  // assembly — only when the caller asks (SessionStart compact/clear/fork).
+  const kernelReq = b.kernel && typeof b.kernel === "object" ? (b.kernel as Record<string, unknown>) : null;
+  const kernelPromise = kernelReq
+    ? collectRuleKernel(vault, { project, active: activeFrom(kernelReq.active) }).catch(() => null)
+    : null;
   const due = b.assembly_only === true ? undefined : await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
   const assembled = await assembleSessionSections(toolDeps, vault, {
     dueText: due?.text,
@@ -173,6 +181,18 @@ export async function handleSessionContextPost(
     // #265: das Rohmaterial für Aufrufer, die selbst rendern (die
     // SessionStart-Lane mit ihrem Banding). Additiv — wer nur `context` und
     // `vault_size` liest, merkt nichts davon.
-    data: assembled.data,
+    data: {
+      ...assembled.data,
+      ...(kernelPromise ? { kernel: await kernelPromise } : {}),
+    },
   });
+}
+
+/** The active conventions the lane read from the session state — request data. */
+function activeFrom(raw: unknown): ActiveConvention[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is ActiveConvention =>
+      !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null) && typeof e.setAt === "number",
+  );
 }

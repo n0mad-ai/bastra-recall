@@ -176,7 +176,18 @@ export async function loadMemoryHandler(
   // pending must-load for this id in EVERY session — the caller's session is
   // not known on every transport. Awaited so a tool call right after the load
   // does not meet a claim the load already answered; it never throws.
-  await clearPendingMustLoad(parsed.data.id);
+  // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
+  // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
+  // wäre kein Vergleich, sondern eine Vermutung.
+  const revision = await readFile(m.filePath, "utf8")
+    .then(memoryRevision)
+    .catch(() => undefined);
+  // #1305: a real load (not an explicit lean dismissal) that answers a
+  // must-load puts the rule in force for the rule kernel, with this revision.
+  await clearPendingMustLoad(
+    parsed.data.id,
+    parsed.data.verbosity === "lean" ? undefined : { revision: revision ?? null },
+  );
 
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).
@@ -229,12 +240,6 @@ export async function loadMemoryHandler(
         },
       }
     : {};
-  // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
-  // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
-  // wäre kein Vergleich, sondern eine Vermutung.
-  const revision = await readFile(m.filePath, "utf8")
-    .then(memoryRevision)
-    .catch(() => undefined);
   const derivedClaims = m.fm.derived_claims ?? [];
   const derivedBlock = derivedClaims.length > 0
     ? { derived: { claims: await resolveDerivedClaims(deps.vaultPath, derivedClaims) } }
