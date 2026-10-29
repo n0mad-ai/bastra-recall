@@ -7,7 +7,7 @@ import { isOurStatusline, patchClaudeCodeStatusline } from "../src/cli/adapters/
 
 const feed = {
   type: "command",
-  command: "node /Users/n0mad/Projekte/bastra-recall/packages/statusline/dist/claude-panel-feed.mjs",
+  command: "/opt/homebrew/Cellar/node@24/24.16.0/bin/node /Users/n0mad/Projekte/bastra-recall/packages/statusline/dist/claude-panel-feed.mjs",
   refreshInterval: 1,
 };
 

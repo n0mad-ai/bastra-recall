@@ -534,10 +534,10 @@ test("#1326: node repoint preserves every custom env value and snapshots the exa
   await withKegFixture(async ({ dir, old, fresh, plist, launchctl, plutil }) => {
     const env = {
       ...autostartEnv(join(dir, "vault"), "/old/node"),
-      BASTRA_CORS_ORIGINS: "http://localhost:5001,https://bastra.io,https://www.bastra.io",
+      BASTRA_CORS_ORIGIN: "http://localhost:5001,https://bastra.io,https://www.bastra.io",
       BASTRA_EMBEDDING_PROVIDER: "ollama", BASTRA_EMBEDDING_MODEL: "embeddinggemma",
       BASTRA_EXPAND_MODEL: "tev1:4b", BASTRA_RERANK_MODEL: "tev1:4b",
-      OLLAMA_HOST: "http://localhost:11434", BASTRA_RETENTION_DAYS: "3650",
+      BASTRA_OLLAMA_URL: "http://localhost:11434", BASTRA_LOG_RETENTION_DAYS: "3650",
       BASTRA_TRAINING_CAPTURE: "1", BASTRA_HTTP_PORT: "6723", CUSTOM: "<&unchanged>",
     };
     const before = renderPlist(env, ["/old/node", old.script]);
