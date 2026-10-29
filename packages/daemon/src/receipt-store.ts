@@ -41,14 +41,20 @@ export function currentReceipt(state: ReadonlySessionState | SessionState): Read
   return findReceipt(state, { taskId: task.id, generation: task.generation });
 }
 
-/** Drop every receipt that does not belong to the running task and generation (mutates in place). */
+/** Drop every receipt — and the #1311 repair counter — that does not belong
+ *  to the running task and generation (mutates in place). */
 export function expireReceipts(state: SessionState): void {
   const task = state.activeTask;
-  const kept = task && task.kind !== "none"
-    ? (state.receipts ?? []).filter((r) => r.taskId === task.id && r.generation === task.generation)
+  const running = task && task.kind !== "none" ? task : null;
+  const kept = running
+    ? (state.receipts ?? []).filter((r) => r.taskId === running.id && r.generation === running.generation)
     : [];
   if (kept.length > 0) state.receipts = kept;
   else delete state.receipts;
+  const repair = state.repairAttempts;
+  if (repair && !(running && repair.taskId === running.id && repair.generation === running.generation)) {
+    delete state.repairAttempts;
+  }
 }
 
 export type StoreOutcome = "stored" | "no_task" | "task_mismatch" | "not_persisted";

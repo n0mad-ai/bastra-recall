@@ -40,6 +40,7 @@ export const INJECTED_BLOCK_TAGS = [
   "bastra-product-docs",
   "save-eval",
   "save-eval-now",
+  "copy-repair",
   "session-harvest",
   "taxonomy-drift",
   "pending-trends",

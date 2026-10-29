@@ -70,6 +70,21 @@ test("Codex runtime certification is exact and coverage distinguishes probe from
   assert.equal(hostCapabilities("claude-code").capabilities.stop_block.bastra, "unsupported");
 });
 
+test("#1311 — approved-copy Stop repair: additionalContext on Claude Code, unsupported on Codex, never a block", () => {
+  const claudeRow = hostCapabilities("claude-code").capabilities;
+  assert.equal(claudeRow.stop_additional_context.bastra, "supported");
+  assert.match(claudeRow.stop_additional_context.note, /approved-copy repair/);
+  assert.equal(claudeRow.stop_block.bastra, "unsupported");
+  assert.match(claudeRow.stop_block.note, /never a block decision/);
+  for (const version of [CODEX_GATE_MIN_VERSION, null, "0.161.0"]) {
+    const row = hostCapabilities("codex", version).capabilities;
+    assert.equal(row.stop_additional_context.bastra, "unsupported", String(version));
+    assert.match(row.stop_additional_context.note, /approved-copy Stop repair is not offered on Codex/);
+    assert.equal(row.stop_block.bastra, "unsupported", String(version));
+    assert.match(row.stop_block.note, /no approved-copy Stop repair on Codex/);
+  }
+});
+
 test("hookless/replay capability claims do not imply live denial; validation needs write/full MCP", () => {
   for (const surface of ["cursor", "claude-desktop", "remote-mcp"] as const) {
     const row = hostCapabilities(surface);
