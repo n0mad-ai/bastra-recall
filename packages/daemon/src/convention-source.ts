@@ -5,11 +5,15 @@ import { readFile } from "node:fs/promises";
 import { parseMemory, memoryRevision, type Memory, type Vault, type ConventionValidator } from "@bastra-recall/core";
 
 export interface ConventionSource {
+  matchesIndex?:boolean;
+  hiddenFromPublic?:boolean;
+  summary?:string;
+  write_origin?:"user-directed"|"agent-session"|"capture-review";
   revision: string | null;
   validator?: ConventionValidator;
 }
 
-export async function readConventionSource(memory: Pick<Memory, "filePath" | "fm"> | undefined): Promise<ConventionSource> {
+export async function readConventionSource(memory: (Pick<Memory, "filePath" | "fm"> & Partial<Pick<Memory,"body">>) | undefined,includeRuleMetadata=false): Promise<ConventionSource> {
   if (!memory?.filePath) return { revision: null };
   try {
     const raw = await readFile(memory.filePath, "utf8");
@@ -18,7 +22,7 @@ export async function readConventionSource(memory: Pick<Memory, "filePath" | "fm
     try {
       const parsed = parseMemory(raw, memory.filePath, 0);
       const validator = parsed.fm.id === memory.fm.id ? parsed.fm.validator : undefined;
-      return { revision, ...(validator ? { validator } : {}) };
+      return { revision, matchesIndex:memory.body===parsed.body&&JSON.stringify({...memory.fm,validator:undefined})===JSON.stringify({...parsed.fm,validator:undefined}), ...(validator ? { validator } : {}),...(includeRuleMetadata?{hiddenFromPublic:parsed.fm.sensitivity==="private"}:{}),...(includeRuleMetadata&&parsed.fm.id===memory.fm.id?{summary:parsed.fm.summary,write_origin:parsed.fm.write_origin}:{}) };
     } catch { return { revision }; }
   } catch { return { revision: null }; }
 }

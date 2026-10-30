@@ -1,3 +1,4 @@
+import type {ConventionSource} from "./convention-source.js";
 /**
  * /hook/recall — assembling the wire payload (split out of
  * http-hook-routes.ts, #680, the cut named in #504): lean projection,
@@ -13,6 +14,7 @@ import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 import { withSupersession } from "./recall-batch.js";
 
 export interface HookRecallPayloadInput {
+  conventionSources?:ReadonlyMap<string,ConventionSource>;
   hits: RecallHit[];
   candidatePool: { id: string; score: number }[];
   vault: Vault;
@@ -29,9 +31,12 @@ export interface HookRecallPayloadInput {
 /** Builds the budgeted response payload; `.payload` is what goes on the wire. */
 export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   const {
-    hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
+    hits:rawHits, candidatePool:rawPool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
     hookProject, hybridActiveAtRecall, degradedReason,
   } = input;
+  // A current private source must not leak through a stale public index.
+  const visible=(id:string)=>input.conventionSources?.get(id)?.hiddenFromPublic!==true;
+  const hits=rawHits.filter(h=>visible(h.id)),candidatePool=rawPool.filter(h=>visible(h.id));
   // Lean projection (#50): the hook CLI only consumes lean fields, so we
   // never need to send matched_terms/mode/hop/topic_path over the wire.
   // Telemetry above already logged the full hits. #148: the hook scope
@@ -65,6 +70,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
     // #1303: the gate's evidence that the user dictated the rule.
     ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
+    ...(input.conventionSources?{revision:input.conventionSources.get(h.id)?.revision??null,write_origin:input.conventionSources.get(h.id)?.write_origin,summary:input.conventionSources.get(h.id)?.summary??h.summary}:{}),
   }, vault));
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
   // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die

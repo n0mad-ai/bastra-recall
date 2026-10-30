@@ -1,3 +1,4 @@
+import {readConventionSource} from "./convention-source.js";
 import { randomUUID } from "node:crypto";
 import { markDraftDelivery } from './draft-delivery.js';
 import { cleanDraftField } from './draft-text.js';
@@ -600,9 +601,10 @@ export async function runHookRecall(
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
 
+      const conventionSources=body.convention_revisions===true?new Map(await Promise.all(hits.slice(0,5).map(async h=>[h.id,await readConventionSource(vault.get(h.id),true)]as const))):undefined;
       const budgeted = assembleHookRecallPayload({
         hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
-        hookProject, hybridActiveAtRecall, degradedReason,
+        hookProject, hybridActiveAtRecall, degradedReason, conventionSources,
       });
       const draftHits = await searchDrafts(query, hits.map(hit => ({ ...hit, body: vault.get(hit.id)?.body })), 2, hookSessionId ?? undefined);
       // #702: which bridges fired on this query — the replay report counts

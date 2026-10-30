@@ -34,3 +34,18 @@ test("#1330 review: executable multiline bodies, expansions, compounds and wrapp
  for(const command of cases)assert.ok((await githubWriteActions(command)).length>0,command);
  for(const command of ["echo 'gh issue create'", "grep 'gh pr create' file", "git commit -m 'gh issue create'", 'git commit -m "$(cat <<\'EOF\'\ngh issue create\nEOF\n)"', "cat <<'EOF'\ngh issue create\nEOF", "gh issue create --help", "gh api repos/fixture/repo/issues -X GET", "echo '$(gh issue create)'", "gh issue view 42 --json body --jq '.body'"] )assert.deepEqual(await githubWriteActions(command),[],command);
 });
+
+test("#1330 final review: timeout/watch/eval wrappers preserve code versus data",async()=>{
+ for(const command of ["timeout 5s gh issue create --title fixture","timeout -k 1s --signal TERM 5 gh pr create --title fixture","watch -n 2 gh issue create --title fixture","watch 'gh issue create --title fixture'","eval 'gh issue create --title fixture'"] )assert.ok((await githubWriteActions(command)).length,command);
+ for(const command of ["watch echo 'gh issue create'","eval 'echo gh issue create'","echo 'timeout 5 gh issue create'","parallel gh issue create","$CMD issue create"])assert.deepEqual(await githubWriteActions(command),[],command);
+});
+test("#1330 final review: valid WASM with mismatching provenance fails open at initialization",async t=>{
+ const {copyFile,mkdir,symlink}=await import("node:fs/promises"),{fileURLToPath,pathToFileURL}=await import("node:url"),{execFileSync}=await import("node:child_process");const root=await mkdtemp(join(tmpdir(),"github-grammar-hash-"));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,"src"));await mkdir(join(root,"vendor"));
+ await copyFile(fileURLToPath(new URL("../src/github-shell-actions.ts",import.meta.url)),join(root,"src","github-shell-actions.ts"));await copyFile(fileURLToPath(new URL("../vendor/tree-sitter-bash.wasm",import.meta.url)),join(root,"vendor","tree-sitter-bash.wasm"));await writeFile(join(root,"vendor","tree-sitter-bash.json"),JSON.stringify({sha256:"0".repeat(64)}));await writeFile(join(root,"package.json"),'{"type":"module"}');await symlink(fileURLToPath(new URL("../../../node_modules",import.meta.url)),join(root,"node_modules"),"dir");
+ const source=`const m=await import(${JSON.stringify(pathToFileURL(join(root,"src","github-shell-actions.ts")).href)});process.stdout.write(JSON.stringify(await m.githubWriteActions("gh issue create --title fixture")));`;
+ assert.deepEqual(JSON.parse(execFileSync(process.execPath,["--import","tsx","--input-type=module","--eval",source],{encoding:"utf8",timeout:10000})),[]);
+});
+test("#1330 final review: wrapper help is read-only and eval accepts its option terminator",async()=>{
+ for(const command of ["timeout --help 5s gh issue create","watch --help gh issue create","eval --help 'echo fixture; gh issue create'"])assert.deepEqual(await githubWriteActions(command),[],command);
+ assert.ok((await githubWriteActions("eval -- 'gh issue create --title fixture'")).length);
+});

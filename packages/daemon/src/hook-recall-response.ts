@@ -13,6 +13,7 @@
  */
 
 export interface HookRecallHit {
+  revision?:string|null;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;

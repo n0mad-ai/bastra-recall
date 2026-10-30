@@ -1,10 +1,15 @@
 /** #1330: parse Bash syntax, never execute it. Grammar is pinned, portable WASM.
  * Only command nodes (plus known exec wrappers) become action candidates;
  * quoted prose and literal heredoc bodies are not command nodes. */
-import {fileURLToPath} from "node:url";
+import {createHash} from "node:crypto";
+import {readFile} from "node:fs/promises";
 import {Parser,Language,type Node} from "web-tree-sitter";
 let parserPromise:Promise<Parser>|undefined;
-function parser(){return parserPromise??= (async()=>{await Parser.init();const p=new Parser();p.setLanguage(await Language.load(fileURLToPath(new URL("../vendor/tree-sitter-bash.wasm",import.meta.url))));return p;})();}
+function parser(){return parserPromise??= (async()=>{
+ const [bytes,raw]=await Promise.all([readFile(new URL("../vendor/tree-sitter-bash.wasm",import.meta.url)),readFile(new URL("../vendor/tree-sitter-bash.json",import.meta.url),"utf8")]);
+ if(createHash("sha256").update(bytes).digest("hex")!==JSON.parse(raw).sha256)throw Error("Bash grammar checksum mismatch");
+ await Parser.init();const p=new Parser();p.setLanguage(await Language.load(bytes));return p;
+})();}
 function literal(node:Node):string|null{
  if(node.type==="command_name")return node.namedChildren.length===1?literal(node.namedChildren[0]):null;
  if(node.type==="raw_string")return node.text.slice(1,-1);
@@ -24,6 +29,7 @@ const WRAPPER_VALUES:Record<string,Set<string>>={
  sudo:new Set(["-u","-g","-h","-p","-C","-T","-R","-D","--user","--group","--host","--prompt","--close-from","--command-timeout","--chroot","--chdir"]),
  nice:new Set(["-n","--adjustment"]),time:new Set(["-o","--output"]),env:new Set(["-u","--unset","-C","--chdir"]),
  xargs:new Set(["-a","-d","-E","-I","-L","-n","-P","-s","--arg-file","--delimiter","--eof","--replace","--max-lines","--max-args","--max-procs","--max-chars"]),
+ timeout:new Set(["-k","--kill-after","-s","--signal"]),watch:new Set(["-n","--interval"]),
  command:new Set(),exec:new Set(["-a"]),nohup:new Set(),
 };
 const GH_VALUES=new Set(["-b","--body","-t","--title","-F","--body-file","-l","--label","--add-label","--remove-label","-m","--milestone","-R","--repo","-B","--base","-H","--head","-a","--assignee","-r","--reviewer","--author","--project","--add-project","--remove-project"]);
@@ -84,17 +90,23 @@ export async function githubWriteActions(source:string):Promise<string[]>{
       const name=node.childForFieldName("name"),nodes=name?[name,...node.childrenForFieldName("argument")]:[];
       const words=nodes.map(literal);let i=0,wrapper=base(words[i]);
       while(Object.hasOwn(WRAPPER_VALUES,wrapper)){
-       const values=WRAPPER_VALUES[wrapper];i++;
+       const kind=wrapper,values=WRAPPER_VALUES[wrapper];let execMode=false,readOnly=false;i++;
        if(wrapper==="command"&&(words[i]==="-v"||words[i]==="-V"))return;
        while(i<words.length){
         const a=words[i];if(a===null)break;
         if(wrapper==="env"&&/^[A-Za-z_][A-Za-z0-9_]*=/.test(a)){i++;continue;}
         if(a==="--"){i++;break;}if(!a.startsWith("-"))break;
+        if(a==="--help"||a==="--version"){readOnly=true;break;}
+        if(kind==="watch"&&(a==="--exec"||a==="-x"))execMode=true;
         i++;if(values.has(a))i++;
        }
+       if(readOnly){wrapper="";break;}
+       if(kind==="timeout"){if(!/^(?:\d+(?:\.\d+)?)(?:[smhd])?$/.test(words[i]??""))break;i++;}
+       if(kind==="watch"&&!execMode){const script=words.slice(i);if(script.every(w=>w!==null))parse(script.join(" "),depth+1);wrapper="";break;}
        wrapper=base(words[i]);
       }
       if(wrapper==="gh"){const action=ghAction(words.slice(i+1));if(action)actions.add(action);}
+      else if(wrapper==="eval"){const script=words.slice(i+1);if(script[0]==="--")script.shift();if(!script[0]?.startsWith("-")&&script.every(w=>w!==null))parse(script.join(" "),depth+1);}
       else if(SHELLS.has(wrapper)){
        const at=words.findIndex((w,n)=>n>i&&w!==null&&/^-[a-zA-Z]*c[a-zA-Z]*$/.test(w));
        if(at>=0&&words[at+1]!==null&&words[at+1]!==undefined)parse(words[at+1]!,depth+1);

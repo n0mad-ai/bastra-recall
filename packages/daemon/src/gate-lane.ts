@@ -38,7 +38,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Memory, Vault } from "@bastra-recall/core";
 import { stripAutoRelatedSection } from "@bastra-recall/core";
-import { stripFenceMarkers } from "@bastra-recall/core/scrub";
+import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { readConventionSource } from "./convention-source.js";
 import { envFirst, envInt, envOff } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
@@ -86,12 +86,23 @@ export interface GateDeps {
   /** A tool-specific inline gate must not double count the catch-all call. */
   countTool?: boolean;
   /** Tool-specific rules delivered to this subagent, independent of its parent hints. */
-  actionMustLoad?: {ids:readonly string[];key:string;summaries?:ReadonlyMap<string,string>;onClaim?:(ids:readonly string[])=>void};
+  actionMustLoad?: {ids:readonly string[];key:string;summaries?:ReadonlyMap<string,string>;origins?:ReadonlyMap<string,string|undefined>;revisions?:ReadonlyMap<string,string|null>;onClaim?:(ids:readonly string[])=>void};
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
+  /** Testable advisory telemetry; failure must never alter gate delivery. */
+  telemetry?:(fields:Record<string,unknown>)=>Promise<void>;
   /** #1305: the rule kernel's candidates from the daemon's vault index.
    *  Absent = no re-delivery; the count still runs. */
   kernel?: (active: readonly ActiveConvention[], project: string | null) => Promise<KernelCandidates>;
+}
+
+/** Recalled text stays reference-only; only owner-directed text is inlined. */
+export function actionConventionFrame(ids:readonly string[],summaries?:ReadonlyMap<string,string>,origins?:ReadonlyMap<string,string|undefined>){
+ const line=(s:string)=>stripFenceMarkers(s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu," ")).replace(/\s+/gu," ").trim();
+ return ['<recall-hints trigger="github-write">',HINT_FRAME_NOTE,
+  "MUST-LOAD — load the applicable saved issue/PR conventions before deciding:",
+  ...ids.map(id=>{const text=summaries?.get(id);return origins?.get(id)==="user-directed"&&typeof text==="string"?`- ${line(id)}: ${line(text).slice(0,350)}`:`- ${line(id)}: load_memory(${JSON.stringify(line(id))})`; }),
+  '</recall-hints>'].join("\n");
 }
 
 /** The recall tools themselves always pass — denying the load would deadlock. */
@@ -168,6 +179,7 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
 }
 
 async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Promise<string> {
+  const emitTelemetry=async(fields:Record<string,unknown>&{outcome:Outcome})=>{try{if(deps.telemetry)await deps.telemetry(fields);else await writeTelemetry(payload,startedAt,fields);}catch{/* advisory only */}};
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   // #1304: Codex needs registration evidence for the proven runtime minimum.
   if (!hookGateAvailable(payload)) return "{}";
@@ -206,6 +218,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
    });
   };
   const undoAction=()=>finishAction(false);
+  try{
   const persisted = await mutateSessionState(sessionId, (state) => {
     if(deps.countTool!==false)state.toolCalls = (state.toolCalls ?? 0) + 1;
     claimedMustLoad = [];
@@ -219,15 +232,15 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     if(action&&!expired()){
       const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
       // A process crash or dropped response leaves a reservation, not a spent delivery.
-      for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if(!marker.delivered&&Date.now()>=marker.deadline){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
-      const loaded=new Set(subagent?[]:state.loadedConventions?.map(c=>c.id)??[]);
-      const ids=action.ids.filter(id=>!seen.has(id)&&!loaded.has(id)).slice(0,20);
+      for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if((!marker.delivered&&Date.now()>=marker.deadline)||(action.revisions?.has(id)&&marker.revision!==action.revisions.get(id))){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
+      const loaded=new Map(subagent?[]:(state.loadedConventions??[]).map(c=>[c.id,c.revision]));
+      const ids=action.ids.filter(id=>!seen.has(id)&&!(loaded.has(id)&&(!action.revisions||(typeof action.revisions.get(id)==="string"&&loaded.get(id)===action.revisions.get(id))))).slice(0,20);
       actionIds=ids;newActionClaims=ids.filter(id=>!state.claimedMustLoad?.includes(id)&&!claimedMustLoad.some(e=>e.id===id));
       const alreadyClaimed=new Set(claimedMustLoad.map(e=>e.id));
       for(const id of ids){seen.add(id);if(!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
       if(ids.length){
        (state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
-       for(const id of ids)state.constants[`${action.key}:attempt:${id}`]=JSON.stringify({token:actionToken,deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),delivered:false,newClaim:newActionClaims.includes(id)});
+       for(const id of ids)state.constants[`${action.key}:attempt:${id}`]=JSON.stringify({token:actionToken,deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),delivered:false,revision:action.revisions?.get(id)??null,newClaim:newActionClaims.includes(id)});
       }
       action.onClaim?.(ids);
     }
@@ -250,7 +263,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   const elapsed = Date.now() - startedAt;
   if (!persisted) {
     // No claim reached the disk, so nothing may be denied: the call passes.
-    await writeTelemetry(payload, startedAt, {
+    await emitTelemetry({
       outcome: "pass",
       non_conformance: "state_write_failed",
       ...(claimedMustLoad.length > 0 ? { unclaimed_must_load_ids: claimedMustLoad.map((e) => e.id) } : {}),
@@ -262,7 +275,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     await undoAction();
     // The client has most likely given up already. Ordinary legacy claims stay
     // spent, but a late response must never deny the action.
-    await writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "gate_timeout" });
+    await emitTelemetry({ outcome: "pass", non_conformance: "gate_timeout" });
     return "{}";
   }
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
@@ -271,9 +284,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   }
 
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
-  const summaries=actionIds.map(id=>deps.actionMustLoad?.summaries?.get(id)).filter((s):s is string=>typeof s==="string");
-  if(summaries.length)reason.text+="\nApplicable saved issue/PR conventions:\n"+summaries.map(s=>"- "+stripFenceMarkers(s.slice(0,350))).join("\n");
-  await writeTelemetry(payload, startedAt, {
+  if(actionIds.length)reason.text+="\n"+actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
+  await emitTelemetry({
     outcome: "deny",
     must_load_ids: claimedMustLoad.map((e) => e.id),
     must_load_blocks: [...new Set(claimedMustLoad.map((e) => e.block))],
@@ -291,6 +303,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       permissionDecisionReason: reason.text,
     },
   });
+  }catch(error){await undoAction();throw error;}
 }
 
 /**

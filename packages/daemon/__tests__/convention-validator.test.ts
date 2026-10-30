@@ -109,3 +109,22 @@ test("hook recall and deeper reflex projections carry explicit frontmatter metad
     noHome: false, hookProject: null, hybridActiveAtRecall: true, degradedReason: undefined });
   assert.deepEqual(response.payload.hits[0]?.validator, validator);
 });
+
+test("#1330 final review: revision and inline provenance are bound to current source bytes",async t=>{
+ const {readConventionSource}=await import("../src/convention-source.js"),f=await fixture(t),before=await readFile(f.file,"utf8"),parsed=matter(before);
+ await writeFile(f.file,matter.stringify(parsed.content+"\nchanged rule",{...parsed.data,summary:"changed summary",write_origin:"agent-session"}));
+ const raw=await readFile(f.file,"utf8"),source=await readConventionSource(f.vault.get(input.id),true);
+ const response=assembleHookRecallPayload({hits:[{...input,score:150,matched_recall_when:true,matched_terms:["fixture_copy_tool"]}],candidatePool:[],vault:f.vault,maxTokens:0,totalLatencyMs:1,recallId:"fixture",weakResult:false,noHome:false,hookProject:null,hybridActiveAtRecall:true,degradedReason:undefined,conventionSources:new Map([[input.id,source]])});
+ assert.notEqual(memoryRevision(before),memoryRevision(raw));assert.equal((response.payload.hits[0]as any).revision,memoryRevision(raw));assert.equal(response.payload.hits[0].write_origin,"agent-session");assert.equal(response.payload.hits[0].summary,"changed summary");
+});
+test("#1330 final review: stale cached body never records the new disk revision as loaded",async t=>{
+ const f=await fixture(t),raw=await readFile(f.file,"utf8"),parsed=matter(raw);await writeFile(f.file,matter.stringify("new rule not present in cached body",parsed.data));
+ await loadMemoryHandler(f.deps,{id:input.id},{sessionId:"fixture-stale-rule-load"});
+ assert.equal((await loadSessionState("fixture-stale-rule-load")).loadedConventions,undefined);
+});
+test("#1330 final review: source metadata cannot expose a newly private rule through a stale index",async t=>{
+ const {readConventionSource}=await import("../src/convention-source.js"),f=await fixture(t),old=matter(await readFile(f.file,"utf8"));await writeFile(f.file,matter.stringify("PRIVATE BODY SENTINEL",{...old.data,sensitivity:"private",summary:"PRIVATE SUMMARY SENTINEL"}));
+ const source=await readConventionSource(f.vault.get(input.id),true);
+ const response=assembleHookRecallPayload({hits:[{...input,score:150,matched_recall_when:true,matched_terms:["fixture_copy_tool"]}],candidatePool:[{id:input.id,score:150}],vault:f.vault,maxTokens:0,totalLatencyMs:1,recallId:"fixture",weakResult:false,noHome:false,hookProject:null,hybridActiveAtRecall:true,degradedReason:undefined,conventionSources:new Map([[input.id,source]])});
+ assert.equal(response.payload.hits.length,0);assert.doesNotMatch(JSON.stringify(response.payload),/PRIVATE SUMMARY|PRIVATE BODY|invented-convention/);
+});

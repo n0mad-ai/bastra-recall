@@ -52,8 +52,8 @@ const vault: Array<{id:string;title:string;type:string;scope:string;summary:stri
     summary: "Die erfundene Farbliste hat drei Farben.", body: "Die erfundene Farbliste hat drei Farben.", revision: "sha256:fixture-start-1" },
 ];
 vault.push(
-  {id:"fixture-issue-metadata",title:"Invented GitHub issue metadata convention",type:"workflow",scope:"all-projects",summary:"Always assign milestone and labels before GitHub issue/PR create or edit.",body:"Invented convention: every issue/PR needs a milestone and labels.",revision:"sha256:fixture-issue-meta",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
-  {id:"fixture-issue-language",title:"Invented bilingual issue convention",type:"workflow",scope:"all-projects",summary:"Issue/PR bodies are bilingual: English first, Deutsch danach.",body:"Invented convention: write English first, then German.",revision:"sha256:fixture-issue-lang",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
+  {id:"fixture-issue-metadata",write_origin:"user-directed",title:"Invented GitHub issue metadata convention",type:"workflow",scope:"all-projects",summary:"Always assign milestone and labels before GitHub issue/PR create or edit.",body:"Invented convention: every issue/PR needs a milestone and labels.",revision:"sha256:fixture-issue-meta",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
+  {id:"fixture-issue-language",write_origin:"user-directed",title:"Invented bilingual issue convention",type:"workflow",scope:"all-projects",summary:"Issue/PR bodies are bilingual: English first, Deutsch danach.",body:"Invented convention: write English first, then German.",revision:"sha256:fixture-issue-lang",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
 );
 const mustLoadIds = vault.slice(0, 2).map(memory => memory.id);
 type Output = { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string; additionalContext?: string } };
