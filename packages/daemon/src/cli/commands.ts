@@ -1,4 +1,4 @@
-import { assistantAddressStatus, hasManagedAssistantAddress, addressRemovalNeedsConsent, removeAssistantAddress, notifyAssistantAddressDaemon } from "../assistant-address.js";
+import { assistantAddressStatus, hasManagedAssistantAddress, addressRemovalNeedsConsent, removeAssistantAddress, notifyAssistantAddressDaemon, type AssistantAddressOptions } from "../assistant-address.js";
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { missingVaultReason } from "../vault-presence.js";
 import { resolveTargets } from "./registry.js";
@@ -374,13 +374,13 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
-export async function cmdUninstall(args: ParsedArgs): Promise<number> {
-  if(args.surface === "all" && await hasManagedAssistantAddress()) {
+export async function cmdUninstall(args: ParsedArgs,io?:{address?:AssistantAddressOptions;notify?:()=>Promise<void>}): Promise<number> {
+  if(args.surface === "all" && await hasManagedAssistantAddress(io?.address)) {
     if(args.dryRun) process.stdout.write("→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n");
     else {
-      const needs=await addressRemovalNeedsConsent();
+      const needs=await addressRemovalNeedsConsent(io?.address);
       if(needs && !(process.stdin.isTTY&&process.stdout.isTTY&&await confirm("Eigene Assistenten-Systemadresse entfernen? macOS fragt nach Administratorrechten."))) {process.stderr.write("Eigene Systemadresse zuerst mit bastra address remove --yes entfernen. Nichts deinstalliert.\n");return 1;}
-      try{await removeAssistantAddress({systemConsent:needs});await notifyAssistantAddressDaemon();}catch(e){process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);return 1;}
+      try{await removeAssistantAddress({...io?.address,systemConsent:needs});await(io?.notify??notifyAssistantAddressDaemon)();}catch(e){process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);return 1;}
     }
   }
   const targets = resolveTargets(args.surface);
