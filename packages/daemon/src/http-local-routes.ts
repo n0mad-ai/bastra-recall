@@ -175,12 +175,12 @@ export function dispatchLocalRoutes(
         // for at all.
         // #1306: revisions for the active-conventions block, off the same index.
         const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () =>
-          reflexPoolIds(vault), { conventionOf: vaultConventionOf(vault) },
+          reflexPoolIds(vault), { conventionOf: vaultConventionOf(vault), kernel: (active, project) => collectRuleKernel(vault, { active, project }) },
         );
         const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String(payload.session_id ?? "unknown"), "prompt");
         let result = out;
         if (due) {
-          const parsed = JSON.parse(out) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+          const parsed = JSON.parse(result) as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
           parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit",
             additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
           result = JSON.stringify(parsed); res.once("finish", due.record);

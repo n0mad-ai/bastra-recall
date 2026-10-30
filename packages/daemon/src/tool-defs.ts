@@ -67,6 +67,7 @@ const SEARCH_SURFACE_TOOLS = [
   "recall",
   "load_memory",
   "list_rules",
+  "rulebook_check",
   "find_document",
   "read_document",
   // #576: find_code reads an index of a repository the user already has

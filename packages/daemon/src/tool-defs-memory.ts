@@ -50,6 +50,18 @@ const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: false,
 
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
+    name: "rulebook_check", annotations: READ_ONLY,
+    description: "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. " +
+      "Pass applicable: [IDs] or applicable: [] when none applies. No approval, full-catalog receipt or action binding required. " +
+      "Valid only for the caller session, current context and round; subagents use their own agent_id. " +
+      "When transport attribution is missing, session_id must be the exact hook session. Unknown-agent hook calls cannot inherit a main-thread receipt. " +
+      "Records checking, not semantic compliance; hookless clients remain advisory.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["applicable"], properties: {
+      applicable: { type: "array", maxItems: 10000, items: { type: "string", minLength: 1 } },
+      agent_id: { type: "string", minLength: 1, maxLength: 200 }, session_id: { type: "string", minLength: 1, maxLength: 200 }
+    } },
+  },
+  {
     name: "list_rules", annotations: READ_ONLY,
     description: "Read the complete scoped rulebook catalog without search or relevance filtering. " +
       "Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. " +

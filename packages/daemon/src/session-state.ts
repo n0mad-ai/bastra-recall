@@ -106,6 +106,8 @@ export interface TakenBoundary {
 
 export interface SessionState {
   shown: Record<string, ShownEntry>;
+  /** Round rulebook self-report; parsed by rulebook-check.ts, independent of delivery cadence. */
+  rulebookCheck?: string;
   draftShown?: string[];
   /** #161: keyed by hook source ("write-edit", "bash-tripwire", …) */
   sources?: Record<string, SourceBackoff>;
@@ -277,6 +279,7 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 };
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
+  readonly rulebookCheck?: string;
   readonly draftShown?: readonly string[];
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
   readonly boundary?: Readonly<ParkedBoundary>;
@@ -355,6 +358,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       return { shown: {} };
     }
     const state: SessionState = { shown: parsed.shown as Record<string, ShownEntry> };
+    if (typeof parsed.rulebookCheck === "string") state.rulebookCheck = parsed.rulebookCheck;
     if (Array.isArray(parsed.draftShown)) {
       state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
       claimDraftHints(sessionId, [], state.draftShown, 0);

@@ -8,7 +8,7 @@ Tracking: [#1336](https://github.com/n0mad-ai/bastra-recall/issues/1336), under 
 - B: `rulebook: on-demand` delivers a complete description index; overflow uses cursor pagination with catalog hash, total count and end marker. The model loads applicable bodies. Keywords and embeddings never decide membership.
 - C: check evidence before mutations on verified hook hosts. Reads remain available. At most two denials per round, then allow and report a violation. Observable outages fail open and are counted. No human input is needed to unblock an autonomous run.
 
-The delivery stage below is implemented. Check evidence and bounded action enforcement remain for the next stage. Semantic compliance can be checked only where an appropriate validator exists. Hookless clients receive one advisory notice. Answer language remains `language.primary`.
+A+B delivery and bounded C checking are implemented; Phase 3 awaits counter-review. Semantic compliance can be checked only where an appropriate validator exists. Hookless clients receive one advisory notice. Answer language remains `language.primary`.
 
 User-directed rules bind immediately. Agent proposals and weakening await user confirmation in CLI/UI; proposals are separate from the binding catalog and hash.
 
@@ -16,8 +16,8 @@ User-directed rules bind immediately. Agent proposals and weakening await user c
 
 0. Track scope, milestone, labels and rationale (complete).
 1. Additive schema and projections, runtime defaults without vault migration (implemented and counter-reviewed).
-2. Complete A+B delivery and pagination (implemented; counter-review pending).
-3. Bounded gate, evidence and measured host coverage.
+2. Complete A+B delivery and pagination (implemented and counter-reviewed).
+3. Bounded gate, evidence and measured host coverage (implemented; counter-review pending).
 4. Replace lexical paths after parity.
 5. Invented multilingual and unattended-run verification.
 
@@ -53,10 +53,29 @@ An always text that is too large or whose current source cannot be read is named
 
 Both doctor and the context header report the total of possible legacy rules without user confirmation, across servable vault scopes. These candidates remain unbound; no file is rewritten and no confirmation is requested by the hook. A later user-facing review/confirmation command is not implemented in this stage.
 
-The action/Stop check evidence and enforcement contract (C) remains for the next stage. Clients without hooks can read the catalog, but receive advisory guidance rather than guaranteed lifecycle injection or action enforcement.
+The action/Stop check evidence and bounded enforcement contract (C) is implemented with the host limits below. Clients without hooks can read the catalog, but receive advisory guidance rather than guaranteed lifecycle injection or action enforcement.
 
 ## Deutsch: Zustellung
 
 Always-Regeln kommen bei Start, Resume und Kontextwechsel vollständig an, soweit sie ins feste Budget passen. Zu große oder nicht lesbare Regeltexte werden ausdrücklich gemeldet; Doctor nennt alle betroffenen IDs. Der vollständige Katalog bleibt ohne Suchfilter über list_rules(cursor) erreichbar. Seine letzte Seite trägt end=true, Gesamtzahl und Hash. Ändert sich der Katalog, beginnt die nächste Antwort mit neuem Hash von vorn.
 
-Der Hook bleibt unter der Host-Grenze. Vollständige Regeltexte werden nie abgeschnitten. Die Zahl möglicher Legacy-Regeln ohne Bestätigung steht sichtbar in Doctor und Kopfzeile; sie werden nicht automatisch übernommen. Eine spätere Sammelbestätigung in UI/CLI ist noch nicht enthalten. Aktionsprüfung und Stop-Sperre folgen erst in der nächsten Stufe.
+Der Hook bleibt unter der Host-Grenze. Vollständige Regeltexte werden nie abgeschnitten. Die Zahl möglicher Legacy-Regeln ohne Bestätigung steht sichtbar in Doctor und Kopfzeile; sie werden nicht automatisch übernommen. Eine spätere Sammelbestätigung in UI/CLI ist noch nicht enthalten. Die begrenzte Aktionsprüfung und Stop-Kontrolle sind mit den unten genannten Host-Grenzen umgesetzt.
+
+
+## Round check and bounded action/Stop control
+
+`rulebook_check({applicable: ["rule-id"]})` records the agent's honest self-report for the current session, context generation and prompt round. `applicable: []` means no rule applies. It is available on every MCP surface, including search. This is not a complete-catalog protocol or an action-bound proof. Bastra does not classify prompt meaning or validate the applicability judgment. A successful full `load_memory` of a binding rule in this round also supplies evidence; an explicit lean dismissal, an old load, a stale cached body, a different session or a hint does not. A check without a transport session may supply the exact hook `session_id`; a known transport session takes precedence. A subagent supplies its own `agent_id` and cannot inherit its parent's receipt. Unattributed hook calls cannot use the main-thread receipt: they receive the bounded attribution notice and eventually pass, rather than pretending that isolation was proved.
+
+The catch-all PreToolUse lane applies C when the scoped rulebook is nonempty. Known read tools, Bastra's read/check tools and simple syntactically read-only shell commands stay available. Bastra writing tools now participate, including plugin/canonical server spellings. Unknown MCP schemas, dynamic shell commands and opaque programs cannot be certified read-only; they are treated as potentially mutating, without guessing which rule applies. The effect classifier is a technical allowlist, not a language/intent classifier. It cannot prove the effects of arbitrary executables or shell startup configuration. Existing legacy lanes remain for non-rulebook sessions until Phase 4.
+
+Before the first potentially mutating action, missing evidence causes at most **two persisted denials per actor/round**. After that, actions pass and each unchecked observation is audited. A new prompt expires the receipt and resets denial counts; compact/clear/fork creates a fresh context generation. No question, approval or endless retry is introduced. Bastra failure is fail-open. The hook client and daemon spool observable failures locally; the next prompt reports the pending unchecked observations. Counters describe observations and can overlap when a timeout is seen by both client and daemon. Storage failure itself is observable only as far as local storage remains usable.
+
+For prompts with on-demand rules, the prompt hook adds a short factual reminder before the answer. Claude Code's Stop lane checks evidence even for a response with no tools, without interpreting the pasted message. Missing evidence returns `decision: block` **once per actor/round**, asking the model to load applicable rules/revise or call `rulebook_check` with no applicable IDs. Further Stops log a violation and continue. The existing independent artifact-validation repair remains in place. Stop continuation does not guarantee that the initial answer was hidden before display. Codex Stop block remains unverified and is deliberately skipped. [Runtime observations](rulebook-host-probes.md) distinguish observed boundaries from verified denial; the [host matrix](../packages/daemon/src/host-capabilities.ts) retains per-tool limits.
+
+The checked/deny/unchecked audit rows contain IDs and counters, not prompt or artifact text. The first hookless forwarder context includes an explicit advisory notice. Hooks do not change user authority or implement the still-outstanding rule confirmation/body-edit/archive lifecycle; this stage guarantees checking at covered boundaries, not immutable rule content or semantic compliance.
+
+## Deutsch: Prüfung
+
+Der Agent prüft den Index selbst und lädt passende Regeln oder meldet mit `rulebook_check({applicable: []})`, dass keine passt. Der Beleg gilt nur für diese Runde und diesen Kontext. Vor Änderungen wird ohne Beleg höchstens zweimal abgelehnt, danach läuft die Aktion mit Verstoßmeldung weiter. Lesen bekannter Werkzeuge bleibt frei; unbekannte Werkzeug-Schemas und opake Programme gelten vorsorglich als möglicherweise verändernd. Eine vollkommene Seiteneffektanalyse wird nicht behauptet.
+
+Claude Code hält auch eine reine Textantwort ohne Beleg einmal am Stop an. Der Agent kann die Prüfung selbst erledigen, ohne den Nutzer zu fragen. Codex-Stop, ungeprüfte MCP-Sperren und fortgesetzte Prozesse werden nicht als abgesichert ausgewiesen. Ausfälle und Durchläufe ohne Beleg werden beim nächsten Prompt sichtbar gemeldet, soweit die lokale Speicherung funktioniert. Antworten und Hinweise richten sich nach `language.primary`; das Regelbuch entscheidet nicht über die Antwortsprache.

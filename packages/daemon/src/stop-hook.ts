@@ -27,6 +27,13 @@ import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./th
 const HOOK_TIMEOUT_MS = envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", 1000);
 
 let stdoutEmitted = false;
+let callSessionId: string | null = null;
+let failureRecorded = false;
+async function recordFailure(): Promise<void> {
+  if (failureRecorded) return; failureRecorded = true;
+  const { spoolRulebookFailure } = await import("./rulebook-spool.js");
+  await spoolRulebookFailure(callSessionId);
+}
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
@@ -42,6 +49,7 @@ async function main(): Promise<void> {
   } catch {
     return emitOnce("{}");
   }
+  callSessionId = (payload as { session_id?: string })?.session_id ?? null;
   const url = daemonBaseUrl();
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
   try {
@@ -55,6 +63,7 @@ async function main(): Promise<void> {
     // (hook-client-telemetry.ts), so it folds into this lane's series and no
     // other. Imported lazily: it is only ever needed on a failure, and a
     // static import would be process-start cost on every call (#305).
+    await recordFailure();
     const status = classifyTransportError(err as NodeJS.ErrnoException);
     const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import(
       "./hook-client-telemetry.js"
@@ -86,7 +95,7 @@ const isMain = (() => {
 if (isMain) {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    process.exit(0);
+    void recordFailure().finally(() => process.exit(0));
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 

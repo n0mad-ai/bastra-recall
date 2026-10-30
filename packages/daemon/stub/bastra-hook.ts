@@ -274,6 +274,10 @@ async function main(): Promise<void> {
     const status = classifyError(e);
     if (failureRowWritten) return;
     failureRowWritten = true;
+    if (lane === "gate" || lane === "stop") {
+      const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
+      await spoolRulebookFailure(payload.session_id ?? null);
+    }
     await writeClientTelemetry(
       lane,
       {
@@ -311,17 +315,23 @@ if (process.argv[2] === "version") {
 } else {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    if (process.argv[2] !== "gate" || failureRowWritten) process.exit(0);
+    if (failureRowWritten) process.exit(0);
+    if (process.argv[2] === "stop") {
+      failureRowWritten = true;
+      void import("../src/rulebook-spool.js").then(m => m.spoolRulebookFailure(callSessionId)).finally(() => process.exit(0));
+      return;
+    }
+    if (process.argv[2] !== "gate") process.exit(0);
     // #1303: the gate passed the call without deciding — that is a
     // non-conformance and must leave its row, like a transport timeout.
     failureRowWritten = true;
-    void writeClientTelemetry(
+    void import("../src/rulebook-spool.js").then(m => m.spoolRulebookFailure(callSessionId)).then(() => writeClientTelemetry(
       "gate",
       { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
       callStartedAt,
       callSessionId,
       STUB_VERSION,
-    ).finally(() => process.exit(0));
+    )).finally(() => process.exit(0));
   }, laneBudgetMs(process.argv[2] ?? "") + 50);
   killSwitch.unref?.();
 

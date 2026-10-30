@@ -1,3 +1,4 @@
+import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
 /**
  * SessionStart lane, daemon-side (#369/#15 — the #343/#344 pattern, applied to the
@@ -235,7 +236,7 @@ export async function runSessionLane(
     }
     // #1306: a new generation of the task state — the task and its conventions
     // carry over, an open "task unclear" question does not.
-    if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") await bumpTaskGeneration(payload.session_id);
+    if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") { await resetRulebookContext(payload.session_id); await bumpTaskGeneration(payload.session_id); }
   }
   resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear") {

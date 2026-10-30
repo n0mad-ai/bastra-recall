@@ -252,22 +252,16 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     assert.equal(next.hookSpecificOutput, undefined, "call 1 after the prompt carries nothing");
   });
 
-  it("a due kernel waits behind a deny; the delivered reflex rule and the answered must-load head it", async () => {
+  it("rulebook reads stay free and re-delivery never invents a loaded convention", async () => {
     const sid = "kernel-gate-active";
     for (let i = 0; i < RULE_KERNEL_TOOL_CALLS - 1; i++) await runGateLane(call(sid), deps);
-    // Call 25 matches the reflex rule: a deny, and the kernel waits.
-    const reflexDeny = parse(await runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), deps));
-    assert.equal(reflexDeny.hookSpecificOutput?.permissionDecision, "deny");
-    assert.equal(reflexDeny.hookSpecificOutput?.additionalContext, undefined);
-    // Call 26 is denied for a must-load; the load that answers it activates it.
-    await mutateSessionState(sid, (s) => bookPendingMustLoad(s, ["task-rule"], "prompt:test"));
-    assert.equal(parse(await runGateLane(call(sid), deps)).hookSpecificOutput?.permissionDecision, "deny");
-    await clearPendingMustLoad("task-rule", { revision: "sha256:task-1" });
+    await mutateSessionState(sid, s => bookPendingMustLoad(s, ["task-rule"], "prompt:test"));
+    const out = parse(await runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), deps));
+    assert.equal(out.hookSpecificOutput?.permissionDecision, undefined);
+    assert.match(out.hookSpecificOutput?.additionalContext ?? "", /gate-rule/);
     const state = await loadSessionState(sid);
-    assert.deepEqual(state.activeConventions?.map((a) => [a.id, a.revision]), [["gate-rule", null], ["task-rule", "sha256:task-1"]]);
-    // Call 27 delivers the kernel with both active conventions first, newest first.
-    const kernel = parse(await runGateLane(call(sid), deps)).hookSpecificOutput?.additionalContext ?? "";
-    assert.match(kernel, /Always gate-rule/); assert.match(kernel, /Always task-rule/);
+    assert.equal(state.activeConventions, undefined);
+    assert.deepEqual(state.pendingMustLoad?.map(e => e.id), ["task-rule"]);
   });
 
   it("a lean dismissal does not put a rule in force", async () => {

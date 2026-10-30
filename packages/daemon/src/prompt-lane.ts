@@ -1,3 +1,4 @@
+import { beginRulebookRound, catalogFor, type CatalogProvider } from "./rulebook-check.js";
 /**
  * UserPromptSubmit lane, daemon-side (#343/#15 — stage A of #305 direction 2).
  *
@@ -153,6 +154,7 @@ interface RecallResponse {
  * holds instead of parsing the lane's stdout.
  */
 export interface PromptLaneOptions {
+  kernel?: CatalogProvider;
   onTelemetry?: (row: PromptHookTelemetry) => void;
   /** #1306: the file revision (`memoryRevision`) of a memory id, read from the
    *  daemon's vault index. Absent = the active-conventions block says
@@ -219,6 +221,25 @@ function resetStatuslineFeed(sessionPid: number, ccSessionId: string | null): vo
  * matching the CLI's fail-open contract.
  */
 export async function runPromptLane(
+  payload: ClaudeHookPayload, clientPpid: number | null, selfBaseUrl: string,
+  prewarm?: Prewarmer, reflexPool?: () => string[], opts: PromptLaneOptions = {},
+): Promise<string> {
+  let notice = "";
+  if (opts.kernel && payload.hook_event_name === "UserPromptSubmit" && hookClientEvidence(payload) !== "replay") {
+    try { notice = await beginRulebookRound(payload, await catalogFor(payload, opts.kernel)); }
+    catch { // Even a catalog outage must expire the previous round's receipt.
+      notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }).catch(() => "");
+    }
+  }
+  const out = await runPromptLaneInner(payload, clientPpid, selfBaseUrl, prewarm, reflexPool, opts);
+  if (!notice) return out;
+  const parsed = JSON.parse(out);
+  parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit", additionalContext:
+    [notice, parsed.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n") };
+  return JSON.stringify(parsed);
+}
+
+async function runPromptLaneInner(
   payload: ClaudeHookPayload,
   clientPpid: number | null,
   selfBaseUrl: string,

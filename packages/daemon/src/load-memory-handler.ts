@@ -1,3 +1,4 @@
+import { recordRulebookLoad } from "./rulebook-check.js";
 /**
  * load_memory handler — the single-memory read path (#50/#74/#235/#467).
  * Split out of tool-handlers.ts (#680, file-size convention); tool-handlers
@@ -198,6 +199,9 @@ export async function loadMemoryHandler(
     source.matchesIndex===true?(ctx?.sessionId ?? callerSessionStore.getStore()):undefined,
   );
 
+  if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true && source.rulebookMetadata?.rulebook) {
+    await recordRulebookLoad(sessionId, parsed.data.id);
+  }
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).
   const full = parsed.data.verbosity === "full";

@@ -125,3 +125,33 @@ export async function githubWriteActions(source:string):Promise<string[]>{
   return [...actions];
  }catch{return [];} // parse errors, missing assets and time budgets never block the shell
 }
+
+/** Technical command-effect classification only; never decides rule applicability.
+ * Unknown/dynamic commands stay opaque and potentially mutating. */
+export async function shellIsReadOnly(source: string): Promise<boolean> {
+ if (!source || source.length > 65536) return false;
+ try {
+  const p = await parser(), tree = p.parse(source); if (!tree) return false;
+  try {
+   if (tree.rootNode.hasError) return false;
+   let commands = 0;
+   const visit = (node: Node): boolean => {
+    if (["command_substitution", "process_substitution", "function_definition", "variable_assignment", "file_redirect", "heredoc_redirect"].includes(node.type)) return false;
+    if (node.type === "command") {
+     commands++;
+     const name = node.childForFieldName("name");
+     const words = name ? [name, ...node.childrenForFieldName("argument")].map(literal) : [];
+     if (!words.length || words.some(w => w === null)) return false;
+     const [head, ...args] = words as string[];
+     if (["cat", "head", "tail", "wc", "printf", "echo", "pwd", "ls", "stat", "readlink", "uname", "uptime", "which", "true", "false"].includes(head)) return true;
+     if (["rg", "grep", "egrep", "fgrep"].includes(head)) return !args.some(a => /^(?:--pre(?:=|$)|--hostname-bin(?:=|$))/.test(a));
+     if (head === "sed") return args[0] === "-n" && args.length >= 2 && /^\d+(?:,\d+)?p$/.test(args[1]) && !args.slice(2).some(a => a.startsWith("-"));
+     if (head === "git") return ["status", "log", "diff", "show", "rev-parse", "ls-files"].includes(args[0]) && !args.some(a => /^(?:--output(?:=|$)|--ext-diff|--textconv)/.test(a));
+     return false;
+    }
+    return node.namedChildren.every(visit);
+   };
+   return visit(tree.rootNode) && commands > 0;
+  } finally { tree.delete(); }
+ } catch { return false; }
+}

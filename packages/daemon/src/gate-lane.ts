@@ -1,3 +1,6 @@
+import { catalogFor, rulebookBoundary } from "./rulebook-check.js";
+import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
+import { spoolRulebookFailure } from "./rulebook-spool.js";
 import {confirmLaneDelivery} from "./lane-delivery.js";
 /**
  * Gate lane (#1303/#1304): the catch-all PreToolUse hook, daemon-side.
@@ -53,7 +56,7 @@ import {
 import { recordBudgetShadow } from "./session-budget.js";
 import { projectForLane } from "./scope-filter.js";
 import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel, type KernelCandidates } from "./rule-kernel.js";
-import { RECALL_TOOL_PREFIX } from "./save-notice-lane.js";
+
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
@@ -67,7 +70,6 @@ const DENIED_REFLEX_CAP = 200;
 /** Pool eligibility: only a rule the user dictated and rated as weighty. */
 const MIN_SALIENCE = 0.8;
 
-const RECALL_TOOL = new RegExp(RECALL_TOOL_PREFIX.replace("bastra-recall", "bastra[-_]recall"));
 
 export interface GatePayload {
   session_id?: string;
@@ -105,9 +107,9 @@ export function actionConventionFrame(ids:readonly string[],summaries?:ReadonlyM
   '</recall-hints>'].join("\n");
 }
 
-/** The recall tools themselves always pass — denying the load would deadlock. */
+/** Read/check tools always pass; Bastra writes participate in round checking. */
 export function isGateExempt(toolName: string, input: Record<string, unknown>): boolean {
-  if (RECALL_TOOL.test(toolName)) return true;
+  if (bastraReadTool(toolName)) return true;
   return toolName === "ToolSearch" && typeof input.query === "string" && /bastra/i.test(input.query);
 }
 
@@ -169,6 +171,7 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
   try {
     return await gate(payload, deps, startedAt);
   } catch (err) {
+    await spoolRulebookFailure(payload.session_id ?? null);
     await writeTelemetry(payload, startedAt, {
       outcome: "pass",
       non_conformance: "gate_error",
@@ -185,9 +188,27 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   if (!hookGateAvailable(payload)) return "{}";
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   const toolName = typeof payload.tool_name === "string" ? payload.tool_name : "";
-  if (!sessionId || !toolName) return "{}";
+  if (!toolName) return "{}";
   const input = payload.tool_input && typeof payload.tool_input === "object" ? payload.tool_input : {};
   if (isGateExempt(toolName, input)) return "{}";
+  const mutates = await rulebookMutates(toolName, input);
+  if (deps.kernel) {
+    const catalog = await catalogFor(payload, deps.kernel);
+    if (catalog.entries.length) {
+      const decision = mutates ? await rulebookBoundary(payload, catalog, "action") : "{}";
+      if (decision !== undefined) {
+        if (decision !== "{}") return decision;
+        // Reads, checked writes and bounded fail-open calls keep the cadence.
+        let active: ActiveConvention[] | null = null;
+        if (sessionId && deps.countTool !== false) await mutateSessionState(sessionId, state => {
+          state.toolCalls = (state.toolCalls ?? 0) + 1;
+          if (state.toolCalls >= RULE_KERNEL_TOOL_CALLS) { active = [...(state.activeConventions ?? [])]; state.toolCalls = 0; }
+        });
+        return active === null ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
+      }
+    }
+  }
+  if (!sessionId) return "{}";
 
   // A subagent never saw the main thread's hint block; its calls do not
   // answer for it. A reflex rule is about the action, whoever takes it.

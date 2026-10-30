@@ -85,6 +85,7 @@ test("the search surface lists exactly the read tools", () => {
       "load_memory",
       "read_document",
       "recall",
+      "rulebook_check",
     ],
     // #576: find_code reads a code index and writes nothing — it belongs with
     // the read tools, not behind the full surface.
@@ -106,6 +107,7 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "find_code",
       "find_document",
       "list_rules",
+      "rulebook_check",
       "load_memory",
       "read_document",
       "recall",

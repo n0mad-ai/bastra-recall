@@ -10,6 +10,7 @@ import {
   recallHandler,
   loadMemoryHandler,
   listRulesHandler,
+  rulebookCheckHandler,
   saveMemoryHandler,
   archiveMemoryHandler,
   type ToolDeps,
@@ -88,6 +89,7 @@ async function dispatchTool(
     case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
     case "recall":
       return await recallHandler(toolDeps, body);
+    case "rulebook_check": return await rulebookCheckHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
     case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
     case "load_memory":
       return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null });

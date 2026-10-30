@@ -119,7 +119,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     if (!resp.ok) return null;
     const body = (await resp.json()) as { context?: string };
     sessionContextPending = false;
-    return typeof body.context === "string" && body.context ? { type: "text", text: body.context } : null;
+    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: without verified host hooks, rules are advisory here; action and Stop enforcement are not guaranteed." } : null;
   } catch {
     return null;
   }

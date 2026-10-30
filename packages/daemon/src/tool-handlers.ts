@@ -195,3 +195,5 @@ export async function archiveMemoryHandler(
 // und Description nicht aus dem Sync geraten.
 
 export { ListRulesArgs, listRulesHandler } from "./rulebook-catalog.js";
+
+export { RulebookCheckArgs, rulebookCheckHandler } from "./rulebook-check.js";

@@ -33,6 +33,7 @@ import {
   recallHandler,
   loadMemoryHandler,
   listRulesHandler,
+  rulebookCheckHandler,
   saveMemoryHandler,
   archiveMemoryHandler,
   MEMORY_TOOL_DEFS,
@@ -167,6 +168,10 @@ export async function startStdioServer(opts: {
       }
     }
 
+    if (name === "rulebook_check") {
+      try { return { content: [{ type: "text", text: JSON.stringify(await rulebookCheckHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })) }] }; }
+      catch (err) { return errorResult((err as Error).message); }
+    }
     if (name === "list_rules") {
       try { return { content: [{ type: "text", text: JSON.stringify(await listRulesHandler(toolDeps, args, { project: projectForFilter(process.cwd()) })) }] }; }
       catch (err) { return errorResult((err as Error).message); }

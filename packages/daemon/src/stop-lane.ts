@@ -1,3 +1,5 @@
+import { catalogFor, rulebookBoundary, type CatalogProvider } from "./rulebook-check.js";
+import { spoolRulebookFailure } from "./rulebook-spool.js";
 /**
  * Stop lane, daemon-side (#369/#15 — the #343/#344 pattern, applied to the lane
  * that fires at the end of EVERY answer).
@@ -85,6 +87,7 @@ const HOOK_VERSION = "0.1.0";
 export async function runStopLane(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
+  deps: { kernel?: CatalogProvider } = {},
 ): Promise<string> {
   const startedAt = Date.now();
 
@@ -103,6 +106,12 @@ export async function runStopLane(
     return "{}";
   }
   if (payload.hook_event_name !== "Stop") return "{}";
+  if (deps.kernel) {
+    try {
+      const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");
+      if (decision && JSON.parse(decision).decision === "block") return decision;
+    } catch { await spoolRulebookFailure(payload.session_id ?? null); }
+  }
   // #1311: bounded repair for an approved-copy task without a valid receipt.
   // It sits before the loop guard on purpose — the follow-up Stop it causes is
   // `stop_hook_active` — and bounds itself: two requests per task, then one

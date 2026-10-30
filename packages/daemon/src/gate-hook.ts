@@ -32,6 +32,8 @@ let rowWritten = false;
 async function failureRow(status: string, error: string | null, url: string): Promise<void> {
   if (rowWritten) return;
   rowWritten = true;
+  const { spoolRulebookFailure } = await import("./rulebook-spool.js");
+  await spoolRulebookFailure(sessionId);
   // Imported lazily: only a failure pays for it (#305).
   const { writeClientTelemetry, THIN_CLIENT_VERSION } = await import("./hook-client-telemetry.js");
   await writeClientTelemetry(

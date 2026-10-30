@@ -50,8 +50,8 @@ type WriteTool = (typeof WRITE_TOOLS)[number];
  * expression. Claude keeps its original registration; the lane also accepts
  * Codex's spelling.
  */
-/** Any Recall MCP tool, direct or plugin-bundled — the gate lane (#1303)
- *  lets every one of them through, or loading a memory could be denied. */
+/** Recall namespace, direct or plugin-bundled. Write notices use this prefix;
+ * the rulebook gate exempts only read/check operations within it. */
 export const RECALL_TOOL_PREFIX = "^mcp__(plugin_.+_)?bastra-recall__";
 export const SAVE_NOTICE_MATCHER = `${RECALL_TOOL_PREFIX}(${WRITE_TOOLS.join("|")})$`;
 export const CODEX_SAVE_NOTICE_MATCHER = SAVE_NOTICE_MATCHER.replace("bastra-recall", "bastra[-_]recall");

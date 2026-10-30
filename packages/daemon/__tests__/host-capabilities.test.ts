@@ -11,7 +11,7 @@ const repo = new URL("../../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, repo), "utf8");
 const statuses = ["supported", "unsupported", "preparation-only", "unverified"];
 
-test("all evidence rows record eight capabilities, sources, runtime scope and coverage limits", () => {
+test("all evidence rows record all capabilities, sources, runtime scope and coverage limits", () => {
   assert.equal(HOST_CAPABILITIES.length, 7);
   for (const row of HOST_CAPABILITIES) {
     assert.deepEqual(Object.keys(row.capabilities).sort(), [...CAPABILITY_KEYS].sort());
@@ -67,15 +67,15 @@ test("Codex runtime certification is exact and coverage distinguishes probe from
   assert.equal(tested.capabilities.stop_additional_context.bastra, "unsupported");
   assert.equal(tested.capabilities.stop_additional_context.status, "unverified");
   assert.equal(tested.capabilities.stop_block.bastra, "unsupported");
-  assert.equal(hostCapabilities("claude-code").capabilities.stop_block.bastra, "unsupported");
+  assert.equal(hostCapabilities("claude-code").capabilities.stop_block.bastra, "supported");
 });
 
 test("#1311 — approved-copy Stop repair: additionalContext on Claude Code, unsupported on Codex, never a block", () => {
   const claudeRow = hostCapabilities("claude-code").capabilities;
   assert.equal(claudeRow.stop_additional_context.bastra, "supported");
   assert.match(claudeRow.stop_additional_context.note, /approved-copy repair/);
-  assert.equal(claudeRow.stop_block.bastra, "unsupported");
-  assert.match(claudeRow.stop_block.note, /never a block decision/);
+  assert.equal(claudeRow.stop_block.bastra, "supported");
+  assert.match(claudeRow.stop_block.note, /separate approved-copy repair.*never a block decision/);
   for (const version of [CODEX_GATE_MIN_VERSION, null, "0.161.0"]) {
     const row = hostCapabilities("codex", version).capabilities;
     assert.equal(row.stop_additional_context.bastra, "unsupported", String(version));

@@ -75,7 +75,7 @@ export function dispatchLaneRoutes(
   // Stop (#35/#48/#67): the highest-frequency lane — one call at the end of
   // every answer. Always answers `{}`; the suggestions go to the pending file.
   if (url === "/hook/stop") {
-    runLane<ClaudeStopPayload>(req, res, runStopLane,notice);
+    runLane<ClaudeStopPayload>(req, res, (payload, self) => runStopLane(payload, self, { kernel: gateKernel }),notice);
     return true;
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.

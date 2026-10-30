@@ -2,7 +2,7 @@
 description: Persistent memory across sessions via the bastra-recall MCP server — recall before acting, save durable rules and hard-won fixes.
 alwaysApply: true
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 2ae31a9882515ba5) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 1dd35e09a436411e) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
