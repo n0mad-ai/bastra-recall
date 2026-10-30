@@ -244,11 +244,12 @@ test("#463 session start: shares only over starts that carry per-part data, the 
   ]);
 });
 
-test("#463 window: only day files inside the window are read, and the route is ui-gated and retention-clamped", async () => {
+test("#463 window: only day files inside the window are read, and the route is ui-gated and retention-clamped", async (t) => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-telemetry-logs-"));
   const settingsDir = await mkdtemp(join(tmpdir(), "bastra-telemetry-settings-"));
   const settingsPath = join(settingsDir, "cli-settings.json");
   const now = Date.parse("2026-09-04T12:00:00.000Z");
+  t.mock.timers.enable({ apis: ["Date"], now }); // Route and direct reader share the fixture clock.
   const line = (o: object) => JSON.stringify(o) + "\n";
   try {
     await writeFile(join(logDir, "events-2026-09-04.jsonl"), line({ kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", latency_ms_total: 5 }) + "not json\n");
