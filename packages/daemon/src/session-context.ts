@@ -103,7 +103,7 @@ export async function handleSessionContextPost(
   // assembly — only when the caller asks (SessionStart compact/clear/fork).
   const kernelReq = b.kernel && typeof b.kernel === "object" ? (b.kernel as Record<string, unknown>) : null;
   const kernelPromise = kernelReq
-    ? startupRulebookCatalog(vault, { project, active: activeFrom(kernelReq.active) })
+    ? startupRulebookCatalog(vault, { project, active: activeFrom(kernelReq.active), budgetMs: num(budget.time_ms) })
     : null;
   const due = b.assembly_only === true ? undefined : await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), typeof b.session_id === "string" ? b.session_id : "unknown", "session");
   const assembled = await assembleSessionSections(toolDeps, vault, {

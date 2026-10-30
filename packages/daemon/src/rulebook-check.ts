@@ -71,7 +71,14 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   const input = RulebookCheckArgs.parse(args);
   const sid = ctx.sessionId ?? callerSessionStore.getStore() ?? input.session_id;
   const snapshot = sid ? await loadSessionState(sid) : undefined;
-  return recordRulebookCheck(sid, input, await cachedRulebookCatalog(deps.vault, { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [], mode: "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS }));
+  const deadline = Date.now() + RULEBOOK_TOOL_BUDGET_MS;
+  const opts = { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
+  let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
+  if (input.applicable.some(id => !catalog.entries.some(e => e.id === id))) {
+    // Match list_rules' fresh view once before rejecting an ID absent from SWR.
+    catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: "content", budgetMs: Math.max(0, deadline - Date.now()) });
+  }
+  return recordRulebookCheck(sid, input, catalog);
 }
 /** Only the full successful load path calls this, for a current binding rule. */
 export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null): Promise<void> {

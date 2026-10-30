@@ -22,7 +22,7 @@ test("fix5: four scopes, memberships and floor sets share one source scan",async
  const out=await Promise.all(Array.from({length:4},(_,i)=>catalogs.cachedRulebookCatalog(f.vault,{project:`project-${i}`,active:[{id:`active-${i}`,revision:null,setAt:1}],floors:async()=>[]})));
  assert.equal(f.scans(),1);assert.ok(out.every(c=>c.entries.length===1));
 });
-test("fix5: only IDs can use bounded stale data; content and events force freshness",async t=>{
+test("fix5: only IDs can use bounded stale data; content forces freshness",async t=>{
  const f=await fixture("stale-rule"),opts={project:null,active:[],floors:async()=>[]};
  await catalogs.cachedRulebookCatalog(f.vault,opts);
  await writeFile(f.path,f.raw.replace("scope: all-projects","sensitivity: private\nscope: all-projects"));
@@ -32,6 +32,8 @@ test("fix5: only IDs can use bounded stale data; content and events force freshn
  assert.throws(()=>catalogs.rulebookPage(stale),/IDs.only/);
  assert.equal((await catalogs.cachedRulebookCatalog(f.vault,opts)).entries.length,0);
  await writeFile(f.path,f.raw);f.event();
+ // Event-coalesced IDs may retain the last view until the followup completes.
+ await catalogs.cachedRulebookCatalog(f.vault,opts);
  assert.equal((await catalogs.cachedRulebookCatalog(f.vault,{...opts,mode:"ids"} as any)).entries.length,1);
 });
 test("fix5: MCP tools have a larger budget than hooks and share the cold build",async()=>{
@@ -76,7 +78,7 @@ test("fix5: IDs expire after thirty seconds and cannot render a kernel",async t=
  const {renderRuleKernel}=await import("../src/rule-kernel.js");
  assert.throws(()=>renderRuleKernel(ids,{trigger:"fixture"}),/IDs.only/);
  await writeFile(f.path,f.raw.replace("scope: all-projects","sensitivity: private\nscope: all-projects"));f.event();
- assert.equal((await catalogs.cachedRulebookCatalog(f.vault,{...opts,mode:"ids"})).entries.length,0,"events immediately invalidate even young ID snapshots");
+ assert.equal((await catalogs.cachedRulebookCatalog(f.vault,{...opts,mode:"ids"})).entries.length,0,"the completed refresh replaces even young ID snapshots");
 });
 test("fix5: shared bytes retain independent floor and active membership projections",async()=>{
  const f=await fixture("projection-rule"),raw=f.raw.replace("rulebook: always\n","");

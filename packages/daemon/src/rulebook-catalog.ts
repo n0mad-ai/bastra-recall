@@ -96,7 +96,8 @@ export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline =
 }
 
 /** Content retains the existing two-second source validation interval. Only
- * internal IDs/counts may use SWR (at most 30 seconds, never across an event). */
+ * internal IDs/counts may use SWR (at most 30 seconds, including a bounded
+ * dirty interval while an event-coalesced rebuild completes). */
 export const RULEBOOK_CACHE_TTL_MS = RULEBOOK_SOURCE_TTL_MS;
 export const RULEBOOK_TOOL_BUDGET_MS = 5000;
 export const RULEBOOK_STARTUP_BUDGET_MS = 800;
@@ -123,7 +124,12 @@ export async function cachedRulebookCatalog(
 export async function startupRulebookCatalog(
   vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
 ): Promise<KernelCandidates> {
-  try { return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: RULEBOOK_STARTUP_BUDGET_MS }); }
+  // Reserve room for the legacy fallback and response serialization inside the
+  // Session-Lane's remaining time, including explicit small hook overrides.
+  const total = Math.max(0, Math.min(opts.budgetMs ?? 1200, 1200) - 50);
+  const deadline = Date.now() + total;
+  const primary = Math.min(RULEBOOK_STARTUP_BUDGET_MS, total * 0.7);
+  try { return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: primary }); }
   catch {
     try {
       return await withRulebookDeadline(async () => {
@@ -132,7 +138,7 @@ export async function startupRulebookCatalog(
         const selected = vault.list().filter(m => resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) }));
         const result = await collectRulebookCatalog({ get: id => vault.get(id), list: () => selected }, { ...opts, mode: "content", floors: async () => floors });
         return { ...result, fallback: true as const };
-      }, Date.now() + 300);
+      }, Math.min(deadline, Date.now() + 300));
     } catch { return { entries: [], omitted: 0, unavailable_sources: 1, fallback: true }; }
   }
 }
