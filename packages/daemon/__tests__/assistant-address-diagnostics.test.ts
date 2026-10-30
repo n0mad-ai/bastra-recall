@@ -12,8 +12,10 @@ async function fixture(t:test.TestContext){
  await writeFile(o.hostsPath,"127.0.0.1 localhost\n");await setAssistantName("Jarvis",o.settingsPath);return o;
 }
 test("#1332 P2: corrupt pending intent yields a concrete repair command instead of a Doctor loop",async t=>{
- const o=await fixture(t);await mkdir(o.runtimeDir);await writeFile(join(o.runtimeDir,"pending-admin.json"),"{broken");
- const s=await assistantAddressStatus(o);assert.match(s.repair??"",/bastra address setup jarvis/);assert.match(s.repair??"",/pending-admin.*backup|sichern/i);assert.equal(s.ready,false);
+ const o=await fixture(t);await mkdir(o.runtimeDir);for(const raw of ["{broken","null","{}",JSON.stringify({id:"00000000-0000-0000-0000-000000000000"})]){
+ await writeFile(join(o.runtimeDir,"pending-admin.json"),raw);
+ const s=await assistantAddressStatus(o);assert.match(s.repair??"",/bastra address setup jarvis/);assert.match(s.repair??"",/pending-admin\.json.*\.backup/i);assert.equal(s.ready,false);
+ }
 });
 test("#1332 P2: pending recovery blocked by Firefox remains diagnosable",async t=>{
  const o=await fixture(t);await mkdir(join(o.firefoxRoot,"profile"),{recursive:true});await writeFile(join(o.firefoxRoot,"profiles.ini"),"[Profile0]\nIsRelative=1\nPath=profile\n");let plan:any;

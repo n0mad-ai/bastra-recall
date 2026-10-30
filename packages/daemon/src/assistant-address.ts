@@ -93,6 +93,7 @@ async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions
  if(o.platform!=="darwin")return null;
  return new Promise(resolve=>execFile("/bin/launchctl",["print",`system/ai.n0mad.bastra-recall.address.${o.uid}`],{timeout:1500},(error,_out,stderr)=>{if(!error)resolve(true);else resolve(/Could not find service|service not found/i.test(stderr)?false:null);}));
 }
+class AddressIntentError extends Error {}
 type ProfileEdit={path:string;before:string|null;after:string};
 interface PendingAddress {id:string;plan:AddressAdminPlan;name:string|null;previousName:string|null;profiles:ProfileEdit[];desiredState:{version:number;name:string;firefoxFiles:string[];firefoxOwnedPrefs:Record<string,string[]>}|null;}
 const pendingPath=(o:ReturnType<typeof assistantAddressOptions>)=>join(o.runtimeDir,"pending-admin.json");
@@ -103,7 +104,10 @@ async function forgetPending(o:ReturnType<typeof assistantAddressOptions>,p:Pend
 async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOptions>):Promise<"none"|"completed"|"pending"|"partial">{
  const raw=await optional(pendingPath(o));if(!raw)return "none";
  const p=JSON.parse(raw)as PendingAddress;
- if(!/^[a-f0-9-]{36}$/.test(p.id)||p.plan.hostsPath!==o.hostsPath||p.plan.helperPath!==o.helperPath||(p.name!==null&&p.name!==normalizeAssistantName(p.name))||!p.profiles.every(e=>profileAllowed(e.path,o.firefoxRoot)||profileAllowed(join(dirname(e.path),"user.js"),o.firefoxRoot)&&e.path.endsWith(sep+"prefs.js")))throw new Error("Adress-Abgleich beschädigt; bastra doctor prüfen, keine Systemänderung wiederholen.");
+ try{
+ if(!/^[a-f0-9-]{36}$/.test(p.id)||p.plan?.hostsPath!==o.hostsPath||p.plan?.helperPath!==o.helperPath||(p.name!==null&&p.name!==normalizeAssistantName(p.name))||!Array.isArray(p.profiles)||!p.profiles.every(e=>profileAllowed(e.path,o.firefoxRoot)||profileAllowed(join(dirname(e.path),"user.js"),o.firefoxRoot)&&e.path.endsWith(sep+"prefs.js")))throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");
+ }catch{throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");}
+
  const hosts=await optional(o.hostsPath),helper=await optional(o.helperPath),receipt=await optional(receiptPath(o,p.id));
  const observedDelta=p.plan.hostsAfter!==p.plan.hostsBefore||p.plan.helperAfter!==p.plan.helperBefore;
  const completedReceipt=receipt?JSON.parse(receipt).success===true:false;
@@ -208,10 +212,10 @@ export function changeAssistantName(value:string,options:AssistantAddressOptions
 export function setupAssistantAddress(options:AssistantAddressOptions&{name?:string}={}){return addressOperation(options,()=>setupAssistantAddressUnlocked(options));}
 export function removeAssistantAddress(options:AssistantAddressOptions={}):Promise<void>{return addressOperation(options,()=>removeAssistantAddressUnlocked(options));}
 
-function addressRepair(o:ReturnType<typeof assistantAddressOptions>,name:string|null,error:string){
+function addressRepair(o:ReturnType<typeof assistantAddressOptions>,name:string|null,error:string,cause?:unknown){
  const command=`bastra address setup ${name??"<name>"} --yes`;
  if(/Firefox/i.test(error))return `Firefox vollständig schließen; dann ${command} ausführen.`;
- if(/pending|JSON|Abgleich|Unexpected|Syntax/i.test(error))return `Zuerst einen noch laufenden Admin-Dialog beenden und dessen Abschluss prüfen. Beschädigten Auftrag sichern: mv ${shellQuote(pendingPath(o))} ${shellQuote(pendingPath(o)+".backup")}. Danach ${command} ausführen. hosts vorher sichern; keine fremden Einträge löschen.`;
+ if(cause instanceof SyntaxError||cause instanceof AddressIntentError)return `Zuerst einen noch laufenden Admin-Dialog beenden und dessen Abschluss prüfen. Beschädigten Auftrag sichern: mv ${shellQuote(pendingPath(o))} ${shellQuote(pendingPath(o)+".backup")}. Danach ${command} ausführen. hosts vorher sichern; keine fremden Einträge löschen.`;
  return `hosts zuerst sichern. Veränderten eigenen bastra-recall assistant-address-Block prüfen und nur diesen als Administrator entfernen; fremde Anpassungen bewahren. Dann ${command} ausführen.`;
 }
 export async function assistantAddressStatus(options:AssistantAddressOptions={}){
@@ -224,6 +228,6 @@ export async function assistantAddressStatus(options:AssistantAddressOptions={})
  },true);}catch(e){
   // Doctor must still return useful diagnostics when recovery itself is damaged/blocked.
   const name=await getAssistantName(o.settingsPath).catch(()=>null),error=(e as Error).message;
-  return {name,enabled:false,urls:name?assistantUrls(name):null,registeredName:null,ready:false,error,pending:true,partial:false,systemSetupSupported:o.platform==="darwin",firefoxProfiles:0,bareNameNotice:"",repair:addressRepair(o,name,error)};
+  return {name,enabled:false,urls:name?assistantUrls(name):null,registeredName:null,ready:false,error,pending:true,partial:false,systemSetupSupported:o.platform==="darwin",firefoxProfiles:0,bareNameNotice:"",repair:addressRepair(o,name,error,e)};
  }
 }
