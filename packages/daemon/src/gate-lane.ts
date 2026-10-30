@@ -211,10 +211,19 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     for(const id of actionIds){
      const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];let marker;try{marker=raw?JSON.parse(raw):null;}catch{continue;}
      if(marker?.token!==actionToken)continue;
-     if(delivered){state.constants![key]=JSON.stringify({...marker,delivered:true});}
+     if(delivered){
+      const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");revisions[id]=marker.revision??null;
+      state.constants![`${action.key}:revisions`]=JSON.stringify(Object.fromEntries([...seen].slice(-200).map(id=>[id,revisions[id]??null])));
+      delete state.constants![key];
+     }
      else{seen.delete(id);delete state.constants![key];if(newActionClaims.includes(id))state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}
     }
-    if(state.constants)state.constants[action.key]=JSON.stringify([...seen]);
+    if(state.constants){
+     state.constants[action.key]=JSON.stringify([...seen].slice(-200));
+     // Retain only bounded completed agent histories; never evict an in-flight claim.
+     const keys=Object.keys(state.constants),histories=keys.filter(k=>k.startsWith("github-action-conventions-v2")&&!k.includes(":attempt:")&&!k.endsWith(":revisions")&&!keys.some(at=>at.startsWith(k+":attempt:")));
+     for(const old of histories.slice(0,-100)){delete state.constants[old];delete state.constants[old+":revisions"];}
+    }
    });
   };
   const undoAction=()=>finishAction(false);
@@ -231,6 +240,9 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     const action=deps.actionMustLoad;
     if(action&&!expired()){
       const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
+      const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");
+      for(const id of seen)if(Object.hasOwn(revisions,id)&&action.revisions?.has(id)&&revisions[id]!==action.revisions.get(id)){seen.delete(id);delete revisions[id];}
+      if(state.constants?.[`${action.key}:revisions`])state.constants[`${action.key}:revisions`]=JSON.stringify(revisions);
       // A process crash or dropped response leaves a reservation, not a spent delivery.
       for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if((!marker.delivered&&Date.now()>=marker.deadline)||(action.revisions?.has(id)&&marker.revision!==action.revisions.get(id))){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
       const loaded=new Map(subagent?[]:(state.loadedConventions??[]).map(c=>[c.id,c.revision]));
@@ -240,6 +252,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       for(const id of ids){seen.add(id);if(!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
       if(ids.length){
        (state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
+       for(const old of [...seen].slice(0,-200))delete state.constants[`${action.key}:attempt:${old}`];
        for(const id of ids)state.constants[`${action.key}:attempt:${id}`]=JSON.stringify({token:actionToken,deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),delivered:false,revision:action.revisions?.get(id)??null,newClaim:newActionClaims.includes(id)});
       }
       action.onClaim?.(ids);

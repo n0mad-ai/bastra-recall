@@ -20,10 +20,10 @@ test("#1330: a disconnected HTTP response never spends its GitHub convention del
  await new Promise(r=>setTimeout(r,30));
  const get=async()=>{const r=await fetch(`http://127.0.0.1:${port}/hook/bash-pre`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});return r.json()as Promise<any>;};
  assert.equal((await get()).hookSpecificOutput?.permissionDecision,"deny","next action must still receive the convention after an undelivered response");
- let confirmed=false,expires=0;
- for(let i=0;i<100;i++){const state=await loadSessionState("fixture-http-delivery");for(const value of Object.values(state.constants??{})){try{const marker=JSON.parse(value);if(marker?.delivered===true){confirmed=true;expires=marker.deadline;}}catch{}}if(confirmed)break;await new Promise(r=>setTimeout(r,10));}
- assert.equal(confirmed,true,"only a completed HTTP deny records a confirmed delivery");
- t.mock.method(Date,"now",()=>expires+1);
+ let confirmed=false;
+ for(let i=0;i<100;i++){const state=await loadSessionState("fixture-http-delivery"),constants=state.constants??{};confirmed=JSON.parse(constants["github-action-conventions-v2"]??"[]").includes("fixture-issue-rule")&&!Object.keys(constants).some(k=>k.includes(":attempt:"));if(confirmed)break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(confirmed,true,"completed HTTP deny compacts its confirmed delivery and removes the attempt");
+ const now=Date.now();t.mock.method(Date,"now",()=>now+60000);
  assert.notEqual((await get()).hookSpecificOutput?.permissionDecision,"deny","a confirmed delivery remains spent after its reservation deadline");
  assert.ok((await loadSessionState("fixture-http-delivery")).claimedMustLoad?.includes("fixture-issue-rule"));
 });
