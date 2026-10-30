@@ -8,7 +8,7 @@ import { renderAssistantSocketPlist, makeAddressAdminScript } from "../src/assis
 import { changeAssistantName, setupAssistantAddress, removeAssistantAddress } from "../src/assistant-address.js";
 import { getAssistantName } from "../src/assistant-address-settings.js";
 
-test("#1332: socket plist binds IPv4 loopback and drops to the installing user", () => {
+test("#1332: socket plist binds both loopbacks and drops to the installing user", () => {
  const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/address/launch.sh"});
  assert.match(xml,/<key>UserName<\/key>\s*<string>fixture<\/string>/);
  assert.match(xml,/127\.0\.0\.1/);assert.doesNotMatch(xml,/<string>::<\/string>/);assert.match(xml,/<string>80<\/string>/);
@@ -157,10 +157,10 @@ test("release B: staged multi-megabyte hosts execute with verified private paylo
  }
 });
 
-test("release F: helper gets one listening socket and no user-writable stderr path",()=>{
+test("release F: helper accepts both loopbacks and has no user-writable stderr path",()=>{
  const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/launch.sh"});
- assert.match(xml,/<key>Wait<\/key><true\/>/);assert.match(xml,/<key>StandardErrorPath<\/key><string>\/dev\/null<\/string>/);
- assert.equal((xml.match(/<key>SockNodeName<\/key>/g)??[]).length,1,"Wait=true receives one listener on stdio");
+ assert.match(xml,/<key>Wait<\/key><false\/>/);assert.match(xml,/<key>StandardErrorPath<\/key><string>\/dev\/null<\/string>/);
+ assert.equal((xml.match(/<key>SockNodeName<\/key>/g)??[]).length,2,"launchd accepts both loopback listeners");
 });
 
 test("admin hardening: staged data rejects symlinks/FIFOs and reads at most the expected byte count",async t=>{
@@ -185,4 +185,11 @@ test("admin hardening: failed PID persistence is visible and keeps a timed-out p
  t.mock.method(process.stderr,"write",(s:any)=>{warning+=String(s);return true;});
  await assert.rejects(runMacAddressAdmin({hostsPath:"fixture",hostsBefore:"",hostsAfter:"",helperPath:"fixture",helperBefore:null,helperAfter:null,label:"fixture",onStarted:async()=>{throw Error("disk write failed");},onSettled:async()=>done()},{timeoutMs:20,spawn:()=>spawn(process.execPath,["-e","setTimeout(()=>process.exit(0),100)"],{stdio:"ignore"})}),/PID.*nicht gesichert/);
  assert.match(warning,/PID.*nicht gesichert/);await completed;
+});
+
+test("final helper review: launchd owns both loopbacks and accepts before starting runtime",()=>{
+ const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/launch.sh"});
+ assert.match(xml,/<key>Wait<\/key><false\/>/);assert.match(xml,/<string>::1<\/string>/);assert.match(xml,/<string>127\.0\.0\.1<\/string>/);
+ assert.match(xml,/<key>BASTRA_ASSISTANT_ADDRESS_PROTOCOL<\/key><string>2<\/string>/);assert.match(xml,/<key>ThrottleInterval<\/key><integer>0<\/integer>/);
+ assert.doesNotMatch(xml,/BASTRA_ASSISTANT_ADDRESS_LISTEN/);
 });

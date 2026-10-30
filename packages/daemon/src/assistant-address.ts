@@ -15,7 +15,7 @@ import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
 export interface AssistantAddressOptions {
- adminStagingRoot?:string;usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
+ runtimeProcesses?:()=>Promise<Array<{pid:number;uid:number;command:string}>>;retireRuntime?:(pid:number)=>void;runtimeSourceDir?:string;runtimeNode?:string;adminStagingRoot?:string;usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
  runAdmin?:(plan:AddressAdminPlan)=>Promise<void>;ensureRuntime?:()=>Promise<void>;
 }
 export function assistantAddressOptions(o:AssistantAddressOptions={}) {
@@ -76,19 +76,64 @@ async function restoreProfiles(edits:Array<{path:string;before:string|null;after
   if(e.before===null)await rm(e.path,{force:true});else await atomic(e.path,e.before);
  });
 }
+/** Migrate listeners from before the runtime watcher existed. Only our exact
+ * versioned gateway command, owned by this user and holding a listen socket,
+ * can be retired. launchd keeps its socket; no privileged job is touched. */
+async function retireLegacyAssistantHelpers(o:ReturnType<typeof assistantAddressOptions>){
+ if(!await ownHelper(o))return;
+ if(o.platform!=="darwin"&&!o.runtimeProcesses)return;
+ const capture=(bin:string,args:string[])=>new Promise<string>((resolve,reject)=>execFile(bin,args,{timeout:2000},(error,out)=>error?reject(error):resolve(out)));
+ let processes:Array<{pid:number;uid:number;command:string}>;
+ if(o.runtimeProcesses)processes=await o.runtimeProcesses();
+ else{
+  let output:string;try{output=await capture("/usr/sbin/lsof",["-nP","-t","-a","-u",o.uid,"-iTCP:80","-sTCP:LISTEN"]);}catch(error){if((error as {code?:number|string}).code===1)return;throw error;}
+  processes=[];
+  for(const pid of new Set(output.split(/\s+/).map(Number).filter(n=>Number.isSafeInteger(n)&&n>1))){
+   try{const row=await capture("/bin/ps",["-ww","-p",String(pid),"-o","uid=","-o","args="]),match=/^\s*(\d+)\s+([^\n]+)/.exec(row);if(match)processes.push({pid,uid:Number(match[1]),command:match[2]});}catch{/* exited before inspection */}
+  }
+ }
+ const node=o.runtimeNode??stableNodeBin(),prefix=join(o.runtimeDir,"versions")+sep;
+ const prefixes=[node+" "+prefix,process.execPath+" "+prefix];
+ for(const p of processes){
+  if(!Number.isSafeInteger(p.pid)||p.pid<=1||p.pid===process.pid||p.uid!==Number(o.uid)||p.uid!==(process.getuid?.()??p.uid)||!prefixes.some(prefix=>p.command.startsWith(prefix)&&/^[a-f0-9]{64}[\/\\]assistant-address-gateway\.js --assistant-address-inetd(?: |$)/.test(p.command.slice(prefix.length))))continue;
+  try{(o.retireRuntime??(pid=>{process.kill(pid,"SIGTERM");}))(p.pid);}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")throw error;}
+ }
+}
 export async function ensureAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{
- const o=assistantAddressOptions(options),source=dirname(fileURLToPath(import.meta.url));
- const files=["assistant-address-gateway.js","assistant-address-name.js","assistant-address-files.js","http-auth.js"];
+ const o=assistantAddressOptions(options),source=o.runtimeSourceDir??dirname(fileURLToPath(import.meta.url));
+ const files=["assistant-address-bootstrap.js","assistant-address-gateway.js","assistant-address-name.js","assistant-address-files.js","http-auth.js"];
  const contents=await Promise.all(files.map(async name=>[name,await readFile(join(source,name),"utf8")]as const));
  const digest=createHash("sha256").update(contents.map(([n,c])=>n+"\n"+c).join("\n")).digest("hex");
  const version=join(o.runtimeDir,"versions",digest);await mkdir(version,{recursive:true,mode:0o700});
  for(const [name,content]of contents)if(await optional(join(version,name))!==content)await atomic(join(version,name),content);
  await atomic(join(version,"package.json"),'{"type":"module"}\n');
  await atomic(join(o.runtimeDir,"managed"),`bastra-assistant-address:${o.uid}\n`);
- const command=[stableNodeBin(),join(version,"assistant-address-gateway.js"),"--assistant-address-inetd","--settings-path",o.settingsPath,"--hosts-path",o.hostsPath,"--daemon-url",o.daemonUrl].map(shellQuote).join(" ");
- await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\nexec ${command}\n`);
+ const node=o.runtimeNode??stableNodeBin(),bootstrap=join(o.runtimeDir,"bootstrap.js");
+ await atomic(bootstrap,contents.find(([name])=>name==="assistant-address-bootstrap.js")![1]);
+ const errorBody="Bastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\n";
+ const failure=`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(errorBody)}\r\nConnection: close\r\n\r\n${errorBody}`;
+ const command=[node,bootstrap,"--assistant-address-bootstrap","--runtime-dir",o.runtimeDir].map(shellQuote).join(" ");
+ await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nread_header() { if [ -n "\${BASH_VERSION:-}" ]; then IFS= read -r -t 2 line; else IFS= read -r line; fi; }\nfail() { while read_header; do [ -z "$line" ] || [ "$line" = "$(/usr/bin/printf '\\r')" ] && break; done; /usr/bin/printf %s ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${command}\nrc=$?\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
+ await atomic(join(o.runtimeDir,"package.json"),'{"type":"module"}\n');
+ const path=join(o.runtimeDir,"current.json");
+ await withPathLock(path,async()=>{
+  const previous=await optional(path).then(raw=>{try{return raw?JSON.parse(raw):null;}catch{return null;}});
+  const endpoint=options.daemonUrl||resolveDaemonEndpoint().configured?o.daemonUrl:previous?.protocol===2?previous.daemonUrl:o.daemonUrl;
+  await atomic(path,JSON.stringify({protocol:2,generation:randomUUID(),version:digest,settingsPath:o.settingsPath,hostsPath:o.hostsPath,daemonUrl:endpoint,owner:o.uid})+"\n");
+ },{strictLocal:true});
+ await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
+/** Publish only the endpoint of an already managed runtime; never recopy code from an old daemon. */
+export async function publishAssistantAddressEndpoint(options:AssistantAddressOptions={}):Promise<void>{
+ const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))!==`bastra-assistant-address:${o.uid}\n`)return;
+ const path=join(o.runtimeDir,"current.json");
+ await withPathLock(path,async()=>{
+  const raw=await optional(path);if(!raw)return;
+  const current=JSON.parse(raw);if(current.protocol!==2||!current.version||current.daemonUrl===o.daemonUrl)return;
+  await atomic(path,JSON.stringify({...current,generation:randomUUID(),daemonUrl:o.daemonUrl})+"\n");
+ },{strictLocal:true});
+}
 async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions>):Promise<boolean|null>{
  if(o.helperLoaded)return o.helperLoaded();
  if(o.runAdmin)return null; // Test/injected IO never inspects the live launchd domain.
@@ -252,8 +297,13 @@ async function assistantAddressStatusUnlocked(options:AssistantAddressOptions={}
  const o=assistantAddressOptions(options),name=await getAssistantName(o.settingsPath),enabled=(await readSettings(o.settingsPath)).ui?.enabled??false;
  let registered:string|null=null,error:string|undefined;try{registered=managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid);}catch(e){error=(e as Error).message;}
  let listener=false;if(name&&enabled){try{const r=await fetch(`http://127.0.0.1:${o.gatewayPort??80}/.well-known/bastra-assistant-address`,{headers:{Host:`${name}.localhost:${o.gatewayPort??80}`},signal:AbortSignal.timeout(800)});const b=await r.json()as any;listener=r.ok&&b.service==="bastra-assistant-address"&&b.name===name;}catch{}}
- const repair=error?"hosts zuerst sichern (Backup). Den veränderten Block zwischen den eigenen bastra-recall assistant-address-Markierungen prüfen; eigene Anpassungen außerhalb des Blocks bewahren. Nur den vollständigen eigenen Block als Administrator entfernen, dann bastra address setup --yes erneut ausführen. Keine fremden Zeilen löschen.":undefined;
- return{repair,name,enabled,urls:name?assistantUrls(name):null,registeredName:registered,ready:listener,error,systemSetupSupported:o.platform==="darwin",firefoxProfiles:(await profileEdits(o,null)).filter(p=>p.path.endsWith(sep+"user.js")).length,bareNameNotice:"Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe."};
+ const helper=await ownHelper(o),helperLoaded=helper?await assistantHelperLoaded(o):null;
+ if(helper&&helperLoaded===false)listener=false;
+ const helperProblem=helper&&!listener&&!error&&(helperLoaded!==true||enabled);
+ if(helperProblem)error=helperLoaded===false?"Adress-Helfer eingerichtet, aber nicht geladen.":helperLoaded===true?"Adress-Helfer geladen, aber Adresse nicht erreichbar; Laufzeit prüfen.":"Adress-Helfer eingerichtet; Ladezustand unbekannt und Adresse nicht erreichbar.";
+ const repair=error?`hosts zuerst sichern (Backup). Den veränderten Block zwischen den eigenen bastra-recall assistant-address-Markierungen prüfen; eigene Anpassungen außerhalb des Blocks bewahren. Nur den vollständigen eigenen Block als Administrator entfernen, dann bastra address setup ${name??"<name>"} --yes erneut ausführen. Keine fremden Zeilen löschen.`:undefined;
+ const helperRepair=helperProblem?`Adress-Helfer mit bastra address setup ${name??"<name>"} --yes prüfen und erneut laden. Direkter UI-Zugang: ${o.daemonUrl}/ui/.`:undefined;
+ return{repair:helperRepair??repair,helperLoaded,name,enabled,urls:name?assistantUrls(name):null,registeredName:registered,ready:listener,error,systemSetupSupported:o.platform==="darwin",firefoxProfiles:(await profileEdits(o,null)).filter(p=>p.path.endsWith(sep+"user.js")).length,bareNameNotice:"Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe."};
 }
 
 export async function openAssistantAddress(url:string):Promise<void>{
@@ -306,7 +356,7 @@ export async function assistantAddressStatus(options:AssistantAddressOptions={})
   const error=partial?`Teilzustand: ${await partialDescription(o)}`:s.error;
   const raw=pending?await optional(pendingPath(o)):null;
   const pidUnknown=raw&&addressAdminProcessAlive((JSON.parse(raw)as PendingAddress).adminPid)===null;
-  let repair=error?addressRepair(o,s.name,error,undefined,partial?"partial":"hosts"):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair;
+  let repair=error?(partial?addressRepair(o,s.name,error,undefined,"partial"):s.repair??addressRepair(o,s.name,error,undefined,"hosts")):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair;
   if(pending&&!partial&&pidUnknown)repair="Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen."+(error?` Nach geklärtem Abschluss: ${repair}`:"");
   return {...s,pending,partial,error,repair};
  },true);}catch(e){

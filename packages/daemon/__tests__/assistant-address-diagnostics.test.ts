@@ -43,3 +43,13 @@ test("#1332 P2: CLI cancellation exits nonzero using only injected admin IO",asy
  const rc=await cmdAddress(parseArgs(["address","setup","Jarvis","--yes"]),{...o,runAdmin:async p=>{await p.onSettled?.(false);throw Error("User canceled (-128)");}});
  assert.equal(rc,1);assert.match(output.mock.calls.map(c=>String(c.arguments[0])).join(""),/abgebrochen.*nichts geändert/i);
 });
+
+test("final helper review: installed but unloaded helper reports a concrete status/Doctor repair",async t=>{
+ const o=await fixture(t);await setupAssistantAddress(o);
+ const s=await assistantAddressStatus({...o,helperLoaded:async()=>false});assert.equal(s.ready,false);assert.match(s.error??"",/Helfer.*nicht geladen/);assert.match(s.repair??"",/bastra address setup jarvis --yes/);
+});
+
+test("final helper review: a loaded but unreachable helper also gives a runtime repair",async t=>{
+ const {setUiEnabled}=await import("../src/settings.js");const o=await fixture(t);await setupAssistantAddress(o);await setUiEnabled(true,o.settingsPath);
+ const s=await assistantAddressStatus({...o,helperLoaded:async()=>true,gatewayPort:0});assert.equal(s.ready,false);assert.match(s.error??"",/Helfer.*nicht erreichbar/);assert.match(s.repair??"",/bastra address setup jarvis --yes/);
+});

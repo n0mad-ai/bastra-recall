@@ -41,6 +41,7 @@ function fixture() {
     manifest: async path => ({ root: path, version: "9", created_at: "now", files: [] }),
     clearBlocked: async () => {},
     install: async () => { inline = true; return 0; },
+    refreshAddress:async()=>{},
     refresh: async (_, options) => { refreshes.push(options); return { ok: true, detail: "ok" }; },
     service: () => null,
     ask: installed => { questions.push(installed); return null; },
@@ -142,3 +143,10 @@ test("provenance audit uses the same shell-free Windows npm invocation", () => {
   const f=fixture();(f.io as any).refreshAddress=async()=>{throw Object.assign(Error("old runtime missing"),{code:"ENOENT"});};
   assert.equal(await cmdUpdate(parseArgs(["update","--staged"]),f.io),0);assert.equal(f.refreshes.length,1);assert.match(warning,/assistant|Assistent/i);
  });
+
+test("final helper review: installed update refresh runs new code in the installed Node runtime",async t=>{
+ t.mock.method(process.stdout,"write",()=>true);const f=fixture();delete f.io.refreshAddress;
+ assert.equal(await cmdUpdate(parseArgs(["update","--staged"]),f.io),0);
+ const call=f.calls.find(c=>c.args.includes("--input-type=module")&&c.args.some(a=>a.includes("refreshAssistantAddressRuntime")));
+ assert.ok(call,"fresh helper refresh must be delegated, never imported in the old updater");assert.equal(call.bin,node);assert.equal(call.args.at(-1),script);
+});

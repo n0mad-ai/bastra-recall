@@ -15,11 +15,11 @@ export function renderAssistantSocketPlist(i: {uid:string;username:string;home:s
 <key>Label</key><string>ai.n0mad.bastra-recall.address.${i.uid}</string>
 <key>UserName</key><string>${xml(i.username)}</string>
 <key>ProgramArguments</key><array><string>/bin/sh</string><string>${xml(i.launcher)}</string></array>
-<key>inetdCompatibility</key><dict><key>Wait</key><true/></dict>
-<key>Sockets</key><dict><key>UI</key><array>${socket("127.0.0.1","IPv4")}</array></dict>
-<key>EnvironmentVariables</key><dict><key>HOME</key><string>${xml(i.home)}</string><key>BASTRA_ASSISTANT_ADDRESS_LISTEN</key><string>1</string><key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${i.uid}</string></dict>
+<key>inetdCompatibility</key><dict><key>Wait</key><false/></dict>
+<key>Sockets</key><dict><key>UI</key><array>${socket("127.0.0.1","IPv4")}${socket("::1","IPv6")}</array></dict>
+<key>EnvironmentVariables</key><dict><key>HOME</key><string>${xml(i.home)}</string><key>BASTRA_ASSISTANT_ADDRESS_PROTOCOL</key><string>2</string><key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${i.uid}</string></dict>
 <key>StandardErrorPath</key><string>/dev/null</string>
-<key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>1</integer>
+<key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>0</integer>
 </dict></plist>\n`;
 }
 export interface AddressAdminPlan { hostsPath:string;hostsBefore:string;hostsAfter:string;helperPath:string;helperBefore:string|null;helperAfter:string|null;label:string;launchctl?:string;rootOwnership?:boolean;onSettled?:(success:boolean)=>Promise<void>;onStarted?:(pid:number)=>Promise<void>; }

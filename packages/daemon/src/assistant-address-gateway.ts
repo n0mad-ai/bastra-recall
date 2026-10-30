@@ -7,7 +7,9 @@ import { normalizeAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
 
+export const ASSISTANT_SOCKET_PROTOCOL=2;
 export interface AssistantGatewayOptions {
+  runtimeStatePath?:string;runtimeVersion?:string;
   helperPath?: string; settingsPath: string; hostsPath: string; daemonUrl: string; owner?: string; }
 export async function readAssistantGatewayConfig(path: string): Promise<{ name: string; enabled: boolean } | null> {
   try { const data = JSON.parse(await readFile(path, "utf8")); return { name: normalizeAssistantName(data.assistant?.name), enabled: data.ui?.enabled === true }; }
@@ -26,6 +28,10 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
   const owner = opts.owner ?? String(process.getuid?.() ?? 0);
   return (req: IncomingMessage, res: ServerResponse): void => { void (async () => {
     if (!isLoopback(req)) return reply(res, 403, "loopback only");
+    if(opts.runtimeStatePath){
+      const current=JSON.parse(await readFile(opts.runtimeStatePath,"utf8"));
+      if(current.protocol!==ASSISTANT_SOCKET_PROTOCOL||current.version!==opts.runtimeVersion||current.daemonUrl!==opts.daemonUrl){res.setHeader("Connection","close");return reply(res,503,"assistant runtime changed; retry the request");}
+    }
     const config = await readAssistantGatewayConfig(opts.settingsPath);
     if (!config?.enabled) return reply(res, 404, "assistant UI is disabled");
     const rawHost = req.headers.host?.toLowerCase() ?? "";
@@ -95,21 +101,18 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
   };
 }
 
-// Wait=true hands over one listening IPv4 loopback socket on fd 0.
-// Older installed Wait=false plists retain their accepted-socket entry path
-// until the next explicitly approved setup. No root request code is involved.
-if (process.argv.includes("--assistant-address-inetd")) {
-  const arg = (key: string) => process.argv[process.argv.indexOf(key) + 1];
-  const opts = { settingsPath: arg("--settings-path"), hostsPath: arg("--hosts-path"), daemonUrl: arg("--daemon-url") };
-  try {
-    const server = createServer(assistantGatewayHandler(opts));
-    if (process.env.BASTRA_ASSISTANT_ADDRESS_LISTEN === "1") {
-      server.on("error", () => { process.stderr.write("assistant address listener unavailable\n");process.exitCode=1; });
-      server.listen({fd:0});
-    } else {
-      const socket = new Socket({ fd: 0, readable: true, writable: true });
-      socket.on("close", () => process.exit(0)); socket.setTimeout(230000, () => socket.destroy());
-      server.emit("connection", socket); socket.resume();
-    }
-  } catch { process.stderr.write("assistant address socket unavailable\n"); process.exitCode = 1; }
+/** Handles accepted sockets, plus compatibility for previously installed Wait=true jobs. */
+export async function startAssistantSocket(opts:AssistantGatewayOptions,listening=false):Promise<Server>{
+ const server=createServer(assistantGatewayHandler(opts));
+ if(listening){await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen({fd:0},()=>{server.removeListener("error",reject);server.on("error",()=>{server.closeAllConnections();server.close();});resolve();});});}
+ else{
+  const socket=new Socket({fd:0,readable:true,writable:true});
+  socket.on("error",()=>socket.destroy());socket.on("close",()=>process.exit(0));socket.setTimeout(230000,()=>socket.destroy());
+  server.emit("connection",socket);socket.resume();
+ }
+ return server;
+}
+if(process.argv.includes("--assistant-address-inetd")){
+ const arg=(key:string)=>process.argv[process.argv.indexOf(key)+1];
+ void startAssistantSocket({settingsPath:arg("--settings-path"),hostsPath:arg("--hosts-path"),daemonUrl:arg("--daemon-url")},process.env.BASTRA_ASSISTANT_ADDRESS_LISTEN==="1").catch(()=>{process.stderr.write("assistant address socket unavailable\n");process.exitCode=1;});
 }

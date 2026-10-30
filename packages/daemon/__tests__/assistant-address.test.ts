@@ -28,7 +28,7 @@ test("#1332: hosts rename/remove touches only our block and refuses foreign or d
   const foreign = "127.0.0.1 localhost\n10.0.0.1 workbox # user line\n";
   const first = patchAssistantHosts(foreign, "jarvis", "501");
   assert.match(first, /127\.0\.0\.1 jarvis jarvis\.localhost/);
-  assert.doesNotMatch(first, /::1 jarvis jarvis\.localhost/);
+  assert.match(first, /::1 jarvis jarvis\.localhost/);
   const renamed = patchAssistantHosts(first, "ruby", "501");
   assert.doesNotMatch(renamed, /jarvis/); assert.ok(renamed.startsWith(foreign));
   assert.equal(patchAssistantHosts(renamed, null, "501"), foreign);
@@ -62,10 +62,10 @@ test("release D: missing passwd entry does not prevent address defaults",async()
  assert.equal(options.username,"");
 });
 
-test("IPv4 helper: next setup removes the obsolete IPv6 alias while accepting legacy owned blocks",async()=>{
+test("dual helper: next setup restores both loopback aliases and accepts legacy IPv4 blocks",async()=>{
  const {managedAssistantHostsName}=await import("../src/assistant-address-files.js");
  const legacy="# bastra-recall assistant-address 501 begin\n127.0.0.1 jarvis jarvis.localhost\n::1 jarvis jarvis.localhost\n# bastra-recall assistant-address 501 end\n",foreign="10.0.0.3 foreign\n";
  assert.equal(managedAssistantHostsName(foreign+legacy,"501"),"jarvis");
- const updated=patchAssistantHosts(foreign+legacy,"jarvis","501");assert.doesNotMatch(updated,/::1 jarvis/);assert.equal(managedAssistantHostsName(updated,"501"),"jarvis");assert.equal(patchAssistantHosts(updated,null,"501"),foreign);
+ const updated=patchAssistantHosts(foreign+legacy.replace("::1 jarvis jarvis.localhost\n",""),"jarvis","501");assert.match(updated,/::1 jarvis/);assert.equal(managedAssistantHostsName(updated,"501"),"jarvis");assert.equal(patchAssistantHosts(updated,null,"501"),foreign);
  assert.throws(()=>managedAssistantHostsName(legacy.replace("::1 jarvis","::1 foreign"),"501"),/modified/);
 });

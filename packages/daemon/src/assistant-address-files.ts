@@ -39,7 +39,7 @@ export function patchAssistantHosts(text: string, value: string | null, owner: s
     const words = row.split("#", 1)[0].trim().split(/\s+/).slice(1);
     if (words.some(word => aliases.has(word.toLowerCase().replace(/\.$/, "")))) throw new Error(`hosts conflict: ${name}`);
   }
-  return block(part.base, part.marker, `127.0.0.1 ${name} ${name}.localhost`);
+  return block(part.base, part.marker, `127.0.0.1 ${name} ${name}.localhost\n::1 ${name} ${name}.localhost`);
 }
 export function patchFirefoxUserJs(text: string, value: string | null, owner: string): string {
   const part = owned(text, owner, "//");

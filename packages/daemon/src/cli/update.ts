@@ -406,6 +406,12 @@ export interface UpdateIo extends UpdateRuntimeIo {
   ask?: typeof askModelRecommendation;
   service?: typeof autostartService;
 }
+/** Run the new package's helper module in its own Node process after installation. */
+export async function refreshAddressFromInstalledRuntime(installed:InstalledRuntime,io:Pick<UpdateIo,"spawn">={}):Promise<void>{
+ const code="const {pathToFileURL}=await import('node:url');const {dirname,join}=await import('node:path');const m=await import(pathToFileURL(join(dirname(process.argv[1]),'assistant-address.js')).href);await m.refreshAssistantAddressRuntime();";
+ const result=(io.spawn??spawnSync)(installed.node,["--input-type=module","-e",code,installed.script],{stdio:"inherit",timeout:15000});
+ if(result.error||result.status!==0)throw Error("newly installed assistant runtime refresh failed");
+}
 export async function cmdUpdate(args: ParsedArgs, io: UpdateIo = {}): Promise<number> {
   try { return await performUpdate(args, io); }
   catch (error) {
@@ -683,9 +689,14 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
     return installRC;
   }
 
-  // Refresh the already-owned unprivileged UI helper without a new admin grant.
+  const installed = args.dryRun ? null : resolveInstalledRuntime(mode, io);
+  // Refresh from the newly installed package, never the old updater's module cache.
   if (!args.dryRun) {
-    try { await (io.refreshAddress ?? refreshAssistantAddressRuntime)(); }
+    try {
+      if(io.refreshAddress)await io.refreshAddress();
+      else if(runsInstaller){if(!installed)throw Error("new installed runtime could not be located");await refreshAddressFromInstalledRuntime(installed,io);}
+      else await refreshAssistantAddressRuntime();
+    }
     catch (error) { process.stderr.write(`warning: assistant address runtime refresh failed: ${(error as Error).message}. Run bastra address setup --yes from the updated installation.\n`); }
   }
 
@@ -701,7 +712,6 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
   //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
   //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
-  const installed = args.dryRun ? null : resolveInstalledRuntime(mode, io);
   if (!args.dryRun) {
     const autostart = await (io.refresh ?? refreshManagedAutostart)((s) => process.stdout.write(s), {
       target: installed,

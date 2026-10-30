@@ -13,10 +13,12 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
  const root=await mkdtemp(join(tmpdir(),"assistant-http-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const settingsPath=settingsFilePath();await mkdir(join(settingsPath,".."),{recursive:true});await writeFile(settingsPath,JSON.stringify({ui:{enabled:true}}));
  const hostsPath=join(root,"hosts"),helperPath=join(root,"helper.plist"),runtimeDir=join(root,"runtime"),firefoxRoot=join(root,"firefox");await writeFile(hostsPath,"127.0.0.1 localhost\n");await mkdir(firefoxRoot);
+ await mkdir(runtimeDir);await writeFile(join(runtimeDir,"managed"),`bastra-assistant-address:${process.getuid?.()??0}\n`);await writeFile(join(runtimeDir,"current.json"),JSON.stringify({protocol:2,version:"a".repeat(64),daemonUrl:"http://127.0.0.1:9"}));
  const vaultDir=join(root,"vault");await mkdir(vaultDir);const vault=new Vault(vaultDir);await vault.init();const search=new SearchIndex(vault);search.start();
  let admins=0;
  const handle=await startHttpServer({port:0,vault,search,telemetry:new Telemetry(),version:"test",toolDeps:{vault,search,telemetry:new Telemetry(),vaultPath:vaultDir},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"},assistantAddress:{port:0,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot,home:root,uid:String(process.getuid?.()??0),username:"fixture",platform:"darwin",ensureRuntime:async()=>{},openBrowser:async()=>{},runAdmin:async plan=>{admins++;await writeFile(hostsPath,plan.hostsAfter);if(plan.helperAfter)await writeFile(helperPath,plan.helperAfter);}}});
  t.after(async()=>{await handle.close();search.stop();await vault.stop?.();});const base=`http://127.0.0.1:${handle.port}`;
+ assert.equal(JSON.parse(await readFile(join(runtimeDir,"current.json"),"utf8")).daemonUrl,base,"HTTP startup publishes its actual bound port without replacing helper code");
  const post=(path:string,body:unknown,origin=base)=>fetch(base+path,{method:"POST",headers:{Origin:origin,"Content-Type":"application/json"},body:JSON.stringify(body)});
  assert.equal((await post("/ui/assistant-address",{name:"jarvis"},"https://evil.example")).status,403);
  const saved=await post("/ui/assistant-address",{name:"Jarvis"});assert.equal(saved.status,200);assert.equal((await saved.json()as any).name,"jarvis");assert.equal(admins,0);
