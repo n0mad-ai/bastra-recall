@@ -7,7 +7,8 @@ import { normalizeAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
 
-export interface AssistantGatewayOptions { settingsPath: string; hostsPath: string; daemonUrl: string; owner?: string; }
+export interface AssistantGatewayOptions {
+  helperPath?: string; settingsPath: string; hostsPath: string; daemonUrl: string; owner?: string; }
 export async function readAssistantGatewayConfig(path: string): Promise<{ name: string; enabled: boolean } | null> {
   try { const data = JSON.parse(await readFile(path, "utf8")); return { name: normalizeAssistantName(data.assistant?.name), enabled: data.ui?.enabled === true }; }
   catch { return null; }
@@ -75,6 +76,12 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
       const work = async () => {
         const config = await readAssistantGatewayConfig(opts.settingsPath);
         if (!config?.enabled) { await close(); return { ready: false }; }
+        if (opts.helperPath) {
+          try {
+            const helper = await readFile(opts.helperPath,"utf8");
+            if (helper.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${opts.owner ?? process.getuid?.() ?? 0}</string>`)) { await close(); return { ready: false }; }
+          } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") { await close(); return { ready: false }; } }
+        }
         if (server) return { ready: true, port: (server.address() as {port:number}).port };
         const candidate = createServer(assistantGatewayHandler(opts));
         return new Promise<{ready:boolean;port?:number;error?:string}>(resolve => {
@@ -88,14 +95,21 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
   };
 }
 
-// launchd's inetdCompatibility passes one accepted connection on stdin/stdout.
-// The LaunchDaemon has UserName set, so this handler never acquires root rights.
+// Wait=true hands over one listening IPv4 loopback socket on fd 0.
+// Older installed Wait=false plists retain their accepted-socket entry path
+// until the next explicitly approved setup. No root request code is involved.
 if (process.argv.includes("--assistant-address-inetd")) {
   const arg = (key: string) => process.argv[process.argv.indexOf(key) + 1];
   const opts = { settingsPath: arg("--settings-path"), hostsPath: arg("--hosts-path"), daemonUrl: arg("--daemon-url") };
   try {
-    const socket = new Socket({ fd: 0, readable: true, writable: true });
-    socket.on("close", () => process.exit(0)); socket.setTimeout(230000, () => socket.destroy());
-    const server = createServer(assistantGatewayHandler(opts)); server.emit("connection", socket); socket.resume();
+    const server = createServer(assistantGatewayHandler(opts));
+    if (process.env.BASTRA_ASSISTANT_ADDRESS_LISTEN === "1") {
+      server.on("error", () => { process.stderr.write("assistant address listener unavailable\n");process.exitCode=1; });
+      server.listen({fd:0});
+    } else {
+      const socket = new Socket({ fd: 0, readable: true, writable: true });
+      socket.on("close", () => process.exit(0)); socket.setTimeout(230000, () => socket.destroy());
+      server.emit("connection", socket); socket.resume();
+    }
   } catch { process.stderr.write("assistant address socket unavailable\n"); process.exitCode = 1; }
 }

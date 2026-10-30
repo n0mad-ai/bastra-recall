@@ -8,10 +8,10 @@ import { renderAssistantSocketPlist, makeAddressAdminScript } from "../src/assis
 import { changeAssistantName, setupAssistantAddress, removeAssistantAddress } from "../src/assistant-address.js";
 import { getAssistantName } from "../src/assistant-address-settings.js";
 
-test("#1332: socket plist binds both loopbacks and drops to the installing user", () => {
+test("#1332: socket plist binds IPv4 loopback and drops to the installing user", () => {
  const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/address/launch.sh"});
  assert.match(xml,/<key>UserName<\/key>\s*<string>fixture<\/string>/);
- assert.match(xml,/127\.0\.0\.1/);assert.match(xml,/::1/);assert.match(xml,/<string>80<\/string>/);
+ assert.match(xml,/127\.0\.0\.1/);assert.doesNotMatch(xml,/<string>::<\/string>/);assert.match(xml,/<string>80<\/string>/);
  assert.match(xml,/<key>inetdCompatibility<\/key>/);assert.doesNotMatch(xml,/<string>root<\/string>/);
  assert.throws(()=>renderAssistantSocketPlist({uid:"0",username:"root",home:"/root",launcher:"/root/launch.sh"}));
 });
@@ -155,4 +155,10 @@ test("release B: staged multi-megabyte hosts execute with verified private paylo
   }});
   if(tamper){await assert.rejects(run);assert.equal(await readFile(hosts,"utf8"),before);}else{await run;assert.equal(await readFile(hosts,"utf8"),after);}
  }
+});
+
+test("release F: helper gets one listening socket and no user-writable stderr path",()=>{
+ const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/launch.sh"});
+ assert.match(xml,/<key>Wait<\/key><true\/>/);assert.match(xml,/<key>StandardErrorPath<\/key><string>\/dev\/null<\/string>/);
+ assert.equal((xml.match(/<key>SockNodeName<\/key>/g)??[]).length,1,"Wait=true receives one listener on stdio");
 });

@@ -320,7 +320,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 
   const handle = await listenHttp(server, port);
   if (handle.port !== null) {
-    addressListener = createAssistantAddressListener({ settingsPath: addressOptions.settingsPath, hostsPath: addressOptions.hostsPath, owner: addressOptions.uid, daemonUrl: `http://127.0.0.1:${handle.port}` },opts.assistantAddress?.port??80);
+    addressListener = createAssistantAddressListener({ settingsPath: addressOptions.settingsPath, hostsPath: addressOptions.hostsPath, owner: addressOptions.uid, helperPath: addressOptions.helperPath, daemonUrl: `http://127.0.0.1:${handle.port}` },opts.assistantAddress?.port??80);
     await addressListener.refresh();
   }
   return {...handle,close:async()=>{await addressListener?.close();await handle.close();}};
