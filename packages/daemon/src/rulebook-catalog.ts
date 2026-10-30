@@ -1,8 +1,8 @@
 /** Complete, scoped rule catalog. No relevance search, embeddings or top-k. */
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import {readRulebookSources,rulebookSources,RULEBOOK_SOURCE_TTL_MS,type RulebookSource} from "./rulebook-snapshot.js";
 import { z } from "zod";
-import { computeStaleness, memoryRevision, parseMemory, resolveRulebook, stripAutoRelatedSection,
+import { computeStaleness, resolveRulebook, stripAutoRelatedSection,
   type Memory, type Vault, type StaleStatus } from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-recall/core/scope";
@@ -19,7 +19,7 @@ export interface KernelEntry {
   source_unavailable?: boolean; binding_hash?: string; scope?: string; validator?: Memory["fm"]["validator"];
 }
 export interface KernelCandidates {
-  entries: KernelEntry[]; omitted: number;
+  entries: KernelEntry[]; omitted: number; ids_only?: true; fallback?: true;
   catalog_hash?: string; unconfirmed_legacy?: number; unavailable_sources?: number; project?: string | null;
 }
 export const RULEBOOK_INDEX_CHAR_BUDGET = 8000;
@@ -35,10 +35,13 @@ export function catalogHash(c: KernelCandidates): string {
   return c.catalog_hash ?? hash(c.entries.map(e => e.binding_hash ?? [e.id, e.rulebook, e.title, e.scope, e.applies_when, e.body, e.validator]));
 }
 
-export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">, opts: {
+export type RulebookCatalogMode = "content" | "ids";
+export interface RulebookCatalogOptions {
   project: string | null; active: readonly ActiveConvention[];
   floors?: (project: string | null) => Promise<FloorEntry[]>; allProjects?: boolean;
-}): Promise<KernelCandidates> {
+  mode?: RulebookCatalogMode; budgetMs?: number;
+}
+async function projectSources(sources: RulebookSource[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
   const active = new Set(opts.active.map(a => a.id));
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
   const pinned = new Set(floors.filter(f => opts.allProjects || opts.project || !f.scope).map(f => f.memory_id));
@@ -46,44 +49,35 @@ export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">,
     ? isScopeCompatible(m.fm.scope, opts.project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)));
   let unconfirmed = 0, unavailableSources = 0;
   const entries: KernelEntry[] = [];
-  const inspect = async (indexed: Memory) => {
-    if (!servable(indexed)) return;
-    const context = { activeConvention: active.has(indexed.fm.id), floor: pinned.has(indexed.fm.id) };
-    let m = indexed, revision: string | null = null, unavailable = false;
-    if (m.filePath) {
-      try {
-        const raw = await readFile(m.filePath, "utf8");
-        m = parseMemory(raw, m.filePath, m.mtime ?? 0); revision = memoryRevision(raw);
-        if (m.fm.id !== indexed.fm.id) { unavailableSources++; return; }
-      } catch { unavailable = true; unavailableSources++; }
-    }
-    if (!servable(m)) return;
-    // Global review backlog: count it even if the rule belongs to another project.
+  for (const source of sources) {
+    const m = source.memory;
+    if (!servable(m)) continue;
+    // Unreadable source bytes cannot authorize a current privacy/content projection.
+    if (source.unavailable) { unavailableSources++; continue; }
     if (possibleLegacy(m)) unconfirmed++;
-    if (!inScope(m)) return;
-    const declaration = resolveRulebook(m.fm, context);
-    if (!declaration) return;
-    const body = unavailable ? "" : cleanRuleText(stripAutoRelatedSection(m.body)).trim();
-    const binding_hash = hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator]);
+    if (!inScope(m)) continue;
+    const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
+    if (!declaration) continue;
+    if (opts.mode === "ids") {
+      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown" });
+      continue;
+    }
+    const body = cleanRuleText(stripAutoRelatedSection(m.body)).trim();
     entries.push({ id: m.fm.id, title: oneLine(m.fm.title), scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
       group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
         m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : "user-directed",
-      revision, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
-      body: declaration.rulebook === "always" ? body : "", binding_hash,
-      ...declaration, ...(unavailable ? { source_unavailable: true } : {}) });
-  };
-  // Bound file descriptors while still checking every indexed source. Cached
-  // non-rule metadata cannot hide a newly user-directed rule from the catalog.
-  const indexed = vault.list();
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(16, indexed.length) }, async () => {
-    for (;;) { const i = next++; if (i >= indexed.length) return; await inspect(indexed[i]); }
-  }));
-  entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") ||
-    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: unavailableSources, project: opts.project };
-  c.catalog_hash = catalogHash(c);
+      revision: source.revision, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
+      body: declaration.rulebook === "always" ? body : "",
+      binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator]), ...declaration });
+  }
+  entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: unavailableSources, project: opts.project,
+    ...(opts.mode === "ids" ? { ids_only: true as const } : {}) };
+  if (!c.ids_only) c.catalog_hash = catalogHash(c);
   return c;
+}
+export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">, opts: RulebookCatalogOptions): Promise<KernelCandidates> {
+  return projectSources(await readRulebookSources(vault), opts);
 }
 
 /** Shared bound for every hook-side catalog consumer, including injected providers.
@@ -101,36 +95,46 @@ export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline =
   } finally { if (timer) clearTimeout(timer); }
 }
 
-/** Cache one current catalog per index generation/scope/membership. Disk source
- * validation repeats after a short TTL even when a cloud watcher misses events. */
-export const RULEBOOK_CACHE_TTL_MS = 2000;
-const caches = new WeakMap<object, Map<string, { expires: number; ready: boolean; pending: Promise<KernelCandidates> }>>();
+/** Content retains the existing two-second source validation interval. Only
+ * internal IDs/counts may use SWR (at most 30 seconds, never across an event). */
+export const RULEBOOK_CACHE_TTL_MS = RULEBOOK_SOURCE_TTL_MS;
+export const RULEBOOK_TOOL_BUDGET_MS = 5000;
+export const RULEBOOK_STARTUP_BUDGET_MS = 800;
 export async function cachedRulebookCatalog(
-  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
-  opts: Parameters<typeof collectRulebookCatalog>[1],
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
 ): Promise<KernelCandidates> {
-  return withRulebookDeadline(() => cachedCatalogInner(vault, opts));
+  const deadline = Date.now() + (opts.budgetMs ?? RULEBOOK_TOOL_BUDGET_MS);
+  let abandoned = false;
+  try { return await withRulebookDeadline(async () => {
+    while (!abandoned) {
+      if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
+      const view = await rulebookSources(vault, opts.mode === "ids");
+      if (abandoned) break;
+      const projected = await projectSources(view.sources, opts);
+      // Floors are asynchronous too: recheck the event generation before publishing.
+      if (view.isCurrent()) return projected;
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    throw new Error("rulebook_catalog_timeout");
+  }, deadline); } finally { abandoned = true; }
 }
-async function cachedCatalogInner(
-  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
-  opts: Parameters<typeof collectRulebookCatalog>[1],
+/** Preserve the pre-C session kernel when a full snapshot is unavailable.
+ * Read only indexed rule candidates, but validate their current bytes before delivery. */
+export async function startupRulebookCatalog(
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
 ): Promise<KernelCandidates> {
-  // Pure fixture/third-party indexes without change events cannot promise freshness.
-  if (!vault.on) return collectRulebookCatalog(vault, opts);
-  let pages = caches.get(vault);
-  if (!pages) {
-    pages = new Map(); caches.set(vault, pages);
-    const current = pages; vault.on(() => current.clear());
+  try { return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: RULEBOOK_STARTUP_BUDGET_MS }); }
+  catch {
+    try {
+      return await withRulebookDeadline(async () => {
+        const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
+        const active = new Set(opts.active.map(a => a.id)), pinned = new Set(floors.map(f => f.memory_id));
+        const selected = vault.list().filter(m => resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) }));
+        const result = await collectRulebookCatalog({ get: id => vault.get(id), list: () => selected }, { ...opts, mode: "content", floors: async () => floors });
+        return { ...result, fallback: true as const };
+      }, Date.now() + 300);
+    } catch { return { entries: [], omitted: 0, unavailable_sources: 1, fallback: true }; }
   }
-  const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
-  const key = JSON.stringify([opts.project, !!opts.allProjects, opts.active.map(a => a.id).sort(), floors]);
-  const hit = pages.get(key); if (hit && (!hit.ready || Date.now() < hit.expires)) return hit.pending;
-  if (pages.size >= 32) pages.delete(pages.keys().next().value!);
-  const pending = collectRulebookCatalog(vault, { ...opts, floors: async () => floors });
-  const entry = { expires: Infinity, ready: false, pending };
-  pages.set(key, entry);
-  try { const result = await pending; entry.ready = true; entry.expires = Date.now() + RULEBOOK_CACHE_TTL_MS; return result; }
-  catch (err) { if (pages.get(key) === entry) pages.delete(key); throw err; }
 }
 
 /** Full IDs remain loadable; only presentation title/description are shortened. */
@@ -145,6 +149,7 @@ export function rulebookCursor(c: KernelCandidates, offset: number): string {
   return Buffer.from(JSON.stringify({ hash: catalogHash(c), offset, project: c.project ?? null }), "utf8").toString("base64url");
 }
 export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RULEBOOK_INDEX_CHAR_BUDGET) {
+  if (c.ids_only) throw new Error("IDs-only catalog cannot be delivered as content");
   let offset = 0, restarted = false;
   if (cursor) {
     try {
@@ -184,5 +189,5 @@ export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { ses
     } catch { /* malformed cursor restarts from the caller scope */ }
   }
   return rulebookPage(await cachedRulebookCatalog(deps.vault, { project,
-    active: state?.activeConventions ?? [] }), input.cursor);
+    active: state?.activeConventions ?? [], mode: "content", budgetMs: RULEBOOK_TOOL_BUDGET_MS }), input.cursor);
 }

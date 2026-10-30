@@ -1,3 +1,4 @@
+import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
 import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
 /**
@@ -72,7 +73,7 @@ import { tokensByPart, writeTelemetry, type SessionHookTelemetry } from "./sessi
 export { formatBlock, mergeSessionHits } from "./session-format.js";
 export { SESSION_CONTEXT_PARTS, tokensByPart, type SessionContextPart } from "./session-lane-telemetry.js";
 
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 
 /**
  * Deadline des dichten Arms für DIESE Lane, in ms (Daniel, 07.09.2026).
@@ -89,7 +90,7 @@ const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOU
  * Modell also nicht bloß unbenutzt, sondern aus dem Speicher geworfen —
  * brauchte der erste Embed am 07.09.2026 gemessene 313 und 327 ms
  * (`vector_search_ms` zweier Recalls desselben SessionStarts). 350 deckt auch
- * diesen Fall und bleibt im Lane-Timeout von 500 ms (`HOOK_TIMEOUT_MS`), das
+ * diesen Fall und bleibt im Lane-Timeout für Sitzungsstarts (`HOOK_TIMEOUT_MS`), das
  * hier die tatsächliche Wanduhr ist.
  *
  * Ausdrücklich nur hier gesetzt und nicht am Endpunkt-Default: die
@@ -109,7 +110,7 @@ const SESSION_VECTOR_DEADLINE_MS = 350;
  * (Daniel, 07.09.2026, unter der Auflage „macht nichts langsamer").
  *
  * `BASTRA_HOOK_BUDGET_MS` (200, `http-hook-routes.ts`) ist die Wanduhr der
- * Prompt-Lane. Diese Lane hat eine andere: `HOOK_TIMEOUT_MS` = 500. Mit 350 ms
+ * Prompt-Lane. Diese Lane hat eine andere: ein eigenes Budget für die Wiederherstellung. Mit 350 ms
  * Reserve für den dichten Arm rechnet `lexicalFitsBudget` gegen die 200 immer
  * falsch (`max(lexikalisch, 350) + 7 > 200`) — die Schattenspalte stünde ab
  * sofort konstant auf `dense-primary` und würde für diese Lane nichts mehr
@@ -122,7 +123,7 @@ const SESSION_VECTOR_DEADLINE_MS = 350;
  *
  * Fest verdrahtet wie die 350 darüber, aus demselben Grund.
  */
-const SESSION_HOOK_BUDGET_MS = 500;
+const SESSION_HOOK_BUDGET_MS = HOOK_TIMEOUT_MS;
 
 /**
  * Was diese Lane tut, wenn das Modell NICHT im Speicher liegt: GAR KEINEN

@@ -77,3 +77,6 @@ export const ASSERTION_P90_TARGET_MS = 900;
 export function promptBudgetMs(mode: PromptLaneMode): number {
   return mode === "assertion" ? PROMPT_ASSERTION_BUDGET_MS : RECALL_BUDGET_MS;
 }
+
+/** Session restoration includes a fresh kernel and a bounded legacy fallback. */
+export const SESSION_START_BUDGET_MS = 1500;

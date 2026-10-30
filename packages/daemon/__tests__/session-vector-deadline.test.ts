@@ -1,3 +1,4 @@
+import { SESSION_START_BUDGET_MS } from "../src/hook-budgets.js";
 /**
  * Die 350-ms-Deadline der SessionStart-Lane, ihr Schatten-Budget und ihr
  * Degradationsfeld
@@ -10,7 +11,7 @@
  * vollständigem `ollama stop` gemessene 313-327 ms brauchte. Drei Zusagen
  * hängen daran, und jede einzelne wäre still zu brechen:
  *
- *  1. Die Lane schickt `vector_deadline_ms: 350` und `hook_budget_ms: 500` in
+ *  1. Die Lane schickt `vector_deadline_ms: 350` und the session restoration budget in
  *     ihrem Aufruf.
  *  2. Der Weg dahinter reicht die Zahl bis an den dichten Arm durch — und ohne
  *     sie bleibt es beim hookweiten Default. Ein Aufrufer, der nichts sagt
@@ -294,7 +295,7 @@ test("die SessionStart-Lane fordert 350 ms für den dichten Arm und nennt ihr Bu
       );
       assert.equal(bodies.length, 1, "genau ein Assembler-Aufruf (#265)");
       assert.equal(bodies[0].vector_deadline_ms, 350);
-      assert.equal(bodies[0].hook_budget_ms, 500, "und die Lane nennt ihre eigene Wanduhr");
+      assert.equal(bodies[0].hook_budget_ms, SESSION_START_BUDGET_MS, "und die Lane nennt ihre eigene Wanduhr");
     });
   } finally {
     await rm(logDir, { recursive: true, force: true });

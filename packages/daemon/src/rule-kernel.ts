@@ -19,11 +19,13 @@ export interface RenderedKernel {
   always_overflow?: string[]; next_cursor?: string; paged_index?: number;
 }
 export function renderRuleKernel(candidates: KernelCandidates, opts: { trigger: string; lexicalOnly?: boolean }): RenderedKernel {
+  if (candidates.ids_only) throw new Error("IDs-only catalog cannot render a rule kernel");
   const entries = candidates.entries.map(e => ({ ...e, id: oneLine(e.id), title: oneLine(e.title), revision: e.revision ? oneLine(e.revision) : null, updated: e.updated ? oneLine(e.updated) : null, body: cleanRuleText(e.body).trim() }));
   const total = entries.length;
-  if (!total && !(candidates.unconfirmed_legacy ?? 0) && !candidates.omitted && !candidates.unavailable_sources) return { text: "", full: [], degraded: [], omitted: 0, always_overflow: [] };
+  if (!total && !candidates.fallback && !(candidates.unconfirmed_legacy ?? 0) && !candidates.omitted && !candidates.unavailable_sources) return { text: "", full: [], degraded: [], omitted: 0, always_overflow: [] };
   const trigger = oneLine(opts.trigger).slice(0, 120).replaceAll('"', "&quot;");
   const header = [`<rule-kernel trigger="${trigger}">`,
+    ...(candidates.fallback ? ["Catalog unavailable: restored the legacy rule kernel from freshly checked sources; full catalog coverage is not verified."] : []),
     `Rulebook: ${total} rules; catalog=${catalogHash(candidates)}; ${candidates.unconfirmed_legacy ?? 0} possible rules without confirmation.`,
     ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">', HINT_FRAME_NOTE];
   if (candidates.unavailable_sources) header.push(`Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`);

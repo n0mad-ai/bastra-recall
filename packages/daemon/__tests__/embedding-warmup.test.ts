@@ -1,3 +1,4 @@
+import { SESSION_START_BUDGET_MS } from "../src/hook-budgets.js";
 /**
  * Der gemeinsame Warmup (#490) — Koordinator und Sitzungsstart-Lane.
  *
@@ -252,7 +253,7 @@ test("#490: ein kalter SessionStart antwortet lexikalisch im Budget, benennt es 
       // dichter Arm.
       assert.equal(bodies[0].lexical_only, true, "auf kaltem Modell läuft kein dichter Arm");
       assert.equal(bodies[0].vector_deadline_ms, undefined, "wo kein Arm läuft, gibt es keine Frist");
-      assert.equal(bodies[0].hook_budget_ms, 500, "das Schattenbudget bleibt die Wanduhr dieser Lane");
+      assert.equal(bodies[0].hook_budget_ms, SESSION_START_BUDGET_MS, "das Schattenbudget bleibt die Wanduhr dieser Lane");
       assert.ok(elapsed < 500, `die Lane bleibt in ihrer Wanduhr (${elapsed} ms)`);
       assert.equal(w.calls(), 1, "der Ladevorgang läuft NEBEN dem Recall an");
 

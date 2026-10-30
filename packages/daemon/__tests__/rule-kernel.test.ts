@@ -110,9 +110,10 @@ describe("rulebook collector compatibility and authoritative sources", () => {
   it("reports a source that cannot be read rather than delivering cached always text", async () => {
     const m = memory("unavailable", { rulebook: "always" }, "Stale cached text", join(fileDir, "missing.md"));
     const c = await collectRuleKernel(indexOf([m]), { project: null, active: [], floors: async () => [] });
-    assert.equal(c.entries[0]?.source_unavailable, true);
+    assert.equal(c.entries.length, 0, "unreadable bytes cannot authorize cached privacy metadata");
+    assert.equal(c.unavailable_sources, 1);
     const r = renderRuleKernel(c, { trigger: "compact" });
-    assert.deepEqual(r.always_overflow, ["unavailable"]); assert.doesNotMatch(r.text, /Stale cached text/);
+    assert.match(r.text, /source check incomplete/); assert.doesNotMatch(r.text, /Stale cached text/);
   });
 });
 

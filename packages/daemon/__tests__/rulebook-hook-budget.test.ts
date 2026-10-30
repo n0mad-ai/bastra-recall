@@ -35,13 +35,15 @@ for(const mode of ["slow","never","throw"])test(`fix4: ${mode} catalog preserves
  assert.match(out,/fixture-rule/);
  assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).actors.some((a:any)=>a.checked),false);
 });
-test("fix4: timed-out periodic kernel delivery stays due for the next call",{timeout:1500},async()=>{
+test("fix4: timed-out periodic kernel delivery stays due after backoff",{timeout:1500},async t=>{
  const sid="retry-kernel",p={session_id:sid,bastra_client:"claude-code",hook_event_name:"PreToolUse",tool_name:"Read",tool_input:{}};
  await mutateSessionState(sid,s=>{s.toolCalls=24;});
  const started=performance.now();
  assert.equal(await runGateLane(p,{reflexPool:()=>[],kernel:kernel("slow")}),"{}");
  assert.ok(performance.now()-started<500);
+ for(let i=0;i<80 && (await loadSessionState(sid)).toolCalls!<25;i++)await new Promise(r=>setTimeout(r,5));
  assert.ok((await loadSessionState(sid)).toolCalls!>=25);
+ const now=Date.now();t.mock.method(Date,"now",()=>now+5100);
  assert.match(await runGateLane(p,{reflexPool:()=>[],kernel:kernel("ok")}),/rule-kernel/);
  assert.equal((await loadSessionState(sid)).toolCalls,0);
 });
@@ -61,6 +63,6 @@ test("fix4: C rollback does not wait for a held state lock in the response path"
 test("fix4: the catalog cache itself bounds a stuck cold source",{timeout:1000},async()=>{
  const {cachedRulebookCatalog}=await import("../src/rulebook-catalog.js");
  const started=performance.now();
- await assert.rejects(cachedRulebookCatalog({get:()=>undefined,list:()=>[],on:()=>()=>{}},{project:null,active:[],floors:()=>new Promise(()=>{})}),/rulebook_catalog_timeout/);
+ await assert.rejects(cachedRulebookCatalog({get:()=>undefined,list:()=>[],on:()=>()=>{}},{project:null,active:[],budgetMs:150,floors:()=>new Promise(()=>{})}),/rulebook_catalog_timeout/);
  assert.ok(performance.now()-started<500);
 });

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
 /**
  * bastra-recall session-start hook — THIN CLIENT (#369, the #343 pattern).
  *
@@ -14,16 +15,16 @@
  * sequential loopback round trips the lane makes, which now run inside the
  * server that answers them.
  *
- * Budget: BASTRA_HOOK_TIMEOUT_MS + 100ms, which is exactly the wall clock the
- * fat hook allowed itself (its kill switch fired at the same point). A session
- * start must not hang on a slow vault; the lane keeps its own per-call budgets.
+ * Budget: the finite session-restoration envelope (1500 ms by default) plus
+ * 100 ms transport margin. BASTRA_HOOK_TIMEOUT_MS still overrides both clients.
+ * Startup's fresh kernel and legacy fallback do not use the 150 ms action budget.
  *
  * Discipline: fail open to `{}` on every path, exit 0, stdlib only.
  */
 import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
 
-const LANE_BUDGET_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
+const LANE_BUDGET_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_TIMEOUT_MS = LANE_BUDGET_MS + 100;
 
 let stdoutEmitted = false;

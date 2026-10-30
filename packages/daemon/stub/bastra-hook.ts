@@ -1,3 +1,4 @@
+import { SESSION_START_BUDGET_MS } from "../src/hook-budgets.js";
 /**
  * bastra-hook — the compiled thin-client stub (#344).
  *
@@ -79,7 +80,7 @@ const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "
  */
 function laneBudgetMs(lane: string): number {
   if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", STOP_BUDGET_MS);
-  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
   if (lane === "prompt") return envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
   // #1303: the gate runs on EVERY tool call and answers from session state.
   if (lane === "gate") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");

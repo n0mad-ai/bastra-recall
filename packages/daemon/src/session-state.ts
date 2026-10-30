@@ -639,9 +639,10 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
   if (!sessionId) return;
   try {
     const current = await loadSessionState(sessionId);
-    if (!current.toolCalls) return;
+    if (!current.toolCalls && !current.constants?.["rule-kernel-delivery"] && !current.constants?.["rule-kernel-retry-at"]) return;
     await mutateSessionState(sessionId, (state) => {
       delete state.toolCalls;
+      if (state.constants) { delete state.constants["rule-kernel-delivery"]; delete state.constants["rule-kernel-retry-at"]; }
     });
   } catch {
     // A missed reset re-delivers the kernel early; it never blocks the prompt.

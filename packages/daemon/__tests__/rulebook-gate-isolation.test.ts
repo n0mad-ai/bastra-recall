@@ -67,12 +67,13 @@ test("fix3: failure of the later gate write releases the earlier C reservation",
  assert.equal(denied(await runGateLane(p(sid),deps)),false);
 });
 
-test("fix3: a timed-out catalog completing late cannot spend a C attempt",async()=>{
+test("fix3: a timed-out catalog completing late cannot spend a C attempt",async t=>{
  const sid="c-late-catalog";let resolve!:(value:KernelCandidates)=>void;
  const pending=new Promise<KernelCandidates>(r=>{resolve=r;});
  const out=await runGateLane(p(sid),{reflexPool:()=>[],kernel:()=>pending});
  assert.equal(out,"{}");
  resolve(catalog);await new Promise(r=>setImmediate(r));
+ const now=Date.now();t.mock.method(Date,"now",()=>now+5100);
  const deps={reflexPool:()=>[],kernel:async()=>catalog};
  assert.equal(denied(await runGateLane(p(sid),deps)),true);
  assert.equal(denied(await runGateLane(p(sid),deps)),true);

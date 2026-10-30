@@ -175,7 +175,7 @@ export function dispatchLocalRoutes(
         // for at all.
         // #1306: revisions for the active-conventions block, off the same index.
         const out = await runPromptLane(payload, ppid, self, toolDeps.prewarmEmbedding, () =>
-          reflexPoolIds(vault), { conventionOf: vaultConventionOf(vault), kernel: (active, project) => collectRuleKernel(vault, { active, project }) },
+          reflexPoolIds(vault), { conventionOf: vaultConventionOf(vault), kernel: (active, project, mode) => collectRuleKernel(vault, { active, project, mode }) },
         );
         const due = await taskAttachment(defaultTaskContext(toolDeps), taskRequestAuth(req), String(payload.session_id ?? "unknown"), "prompt");
         let result = out;
@@ -272,7 +272,7 @@ export function dispatchLocalRoutes(
     res.once("finish", due.record); return JSON.stringify(parsed);
   }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
   () => cachedActionReflexPool(vault),
-  (active, project) => collectRuleKernel(vault, { project, active }))) return true;
+  (active, project, mode) => collectRuleKernel(vault, { project, active, mode }))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

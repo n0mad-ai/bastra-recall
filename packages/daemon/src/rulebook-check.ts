@@ -6,7 +6,7 @@ import { z } from "zod";
 import { loadSessionState, mutateSessionState, type SessionState } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
-import { cachedRulebookCatalog, withRulebookDeadline, type KernelCandidates } from "./rulebook-catalog.js";
+import { cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
 import { projectForLane } from "./scope-filter.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
@@ -71,7 +71,7 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   const input = RulebookCheckArgs.parse(args);
   const sid = ctx.sessionId ?? callerSessionStore.getStore() ?? input.session_id;
   const snapshot = sid ? await loadSessionState(sid) : undefined;
-  return recordRulebookCheck(sid, input, await cachedRulebookCatalog(deps.vault, { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [] }));
+  return recordRulebookCheck(sid, input, await cachedRulebookCatalog(deps.vault, { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [], mode: "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS }));
 }
 /** Only the full successful load path calls this, for a current binding rule. */
 export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null): Promise<void> {
@@ -82,12 +82,18 @@ export async function recordRulebookLoad(sessionId: string, id: string, agentId?
     a.checked = true; if (!a.ids.includes(id)) a.ids.push(id); put(s, state);
   });
 }
-export type CatalogProvider = (active: readonly import("./session-state.js").ActiveConvention[], project: string | null) => Promise<KernelCandidates>;
+export type CatalogProvider = (active: readonly import("./session-state.js").ActiveConvention[], project: string | null, mode?: RulebookCatalogMode) => Promise<KernelCandidates>;
+const catalogRetry = new Map<string, number>();
 export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
-  return withRulebookDeadline(async () => {
+  const key = JSON.stringify([p.session_id ?? "", p.cwd ?? ""]);
+  if ((catalogRetry.get(key) ?? 0) > Date.now()) throw new Error("rulebook_catalog_backoff");
+  try { return await withRulebookDeadline(async () => {
     const state = p.session_id ? await loadSessionState(p.session_id) : undefined;
-    return kernel(state?.activeConventions ?? [], projectForLane(p.cwd || process.cwd()));
-  });
+    return kernel(state?.activeConventions ?? [], projectForLane(p.cwd || process.cwd()), "ids");
+  }); } catch (error) {
+    if (catalogRetry.size >= 512) catalogRetry.delete(catalogRetry.keys().next().value!);
+    catalogRetry.set(key, Date.now() + 5000); throw error;
+  }
 }
 /** Undefined means C did not apply; {} permits the legacy lanes to run.
  * Legacy denials retain their own once-per-claim/session contract. */

@@ -165,11 +165,14 @@ test("outage spool is delivered once at the next prompt and replay cannot drain 
   assert.equal(denied(await gate(sid)), false);
 });
 
-test("a catalog outage at the next prompt still invalidates the preceding receipt", async () => {
+test("a catalog outage at the next prompt still invalidates the preceding receipt", async t => {
   const sid = "catalog-outage";
   await checks.recordRulebookCheck(sid, { applicable: [] }, catalog);
   await runPromptLane({ ...payload(sid), hook_event_name: "UserPromptSubmit", prompt: "ok" }, null, "http://127.0.0.1:1",
     undefined, () => [], { kernel: async () => { throw Error("unavailable"); } });
+  const {loadSessionState}=await import("../src/session-state.js");
+  assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).actors.some((a:any)=>a.checked),false);
+  const now=Date.now();t.mock.method(Date,"now",()=>now+5100);
   assert.equal(denied(await gate(sid)), true);
 });
 
@@ -230,7 +233,7 @@ test("review: cached catalog coalesces scans and invalidates on vault generation
   vault.list = () => { scans++; return list(); };
   const opts = { project: null, active: [], floors: async () => [] };
   const [first, second] = await Promise.all([cachedRulebookCatalog(vault, opts), cachedRulebookCatalog(vault, opts)]);
-  assert.strictEqual(first, second); assert.equal(scans, 1);
+  assert.deepEqual(first, second); assert.equal(scans, 1);
   await writeFile(saved.file_path, (await readFile(saved.file_path, "utf8")).replace("Invented first body.", "Invented changed body."));
   await vault.reindexFile(saved.file_path);
   const third = await cachedRulebookCatalog(vault, opts);
