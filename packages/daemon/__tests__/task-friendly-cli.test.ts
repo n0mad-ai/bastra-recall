@@ -36,7 +36,7 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
     const due = await run(["due", "--agent"]); assert.equal(due.code, 0, due.errors); assert.match(due.output, /Evaluierung/); assert.match(due.output, /fällig/); assert.match(due.output, /Europe\/Madrid/);
     const list = await run(["list", "--agent"]); assert.equal(list.code, 0); assert.match(list.output, /scharf/);
     const json = await run(["list", "--agent", "--json"]); assert.equal(JSON.parse(json.output).tasks.length, 1);
-    const capture = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--timezone", "Europe/Madrid"]); assert.equal(capture.code, 0, capture.errors); assert.match(capture.output, /unscharf/);
+    const capture = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--timezone", "Europe/Madrid"]); assert.equal(capture.code, 0, capture.errors); assert.match(capture.output, /scharf/); assert.doesNotMatch(capture.output, /unscharf/);
     const armed = await run(["create", "--agent", "--goal", "Erinnern", "--after", "7d", "--arm"]); assert.equal(armed.code, 0, armed.errors); assert.match(armed.output, /scharf/);
     const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm", "--level", "prepare"]); assert.equal(denied.code, 1); assert.match(denied.errors, /Owner/);
     assert.equal((await readTaskStore(ctx.path)).tasks.length, 3);
@@ -98,4 +98,11 @@ test("mid-flow errors name DST gap, bounded repeat and past snooze; declining re
  assert.match(friendlyTaskError("validation","snooze","snooze_past"),/Vergangenheit/);assert.match(friendlyTaskError("forbidden","resume","owner_declined"),/Nicht bestätigt/);
  const f:any={id:"t",goal:"Test",schedule:{kind:"instant",at:1},timezone:"Europe/Madrid",state:"pending",armed:false,action_level:"notify",review_reason:"Explicit owner review required",budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
  assert.ok(!friendlyTaskResult("get",f).includes("Explicit"));assert.match(friendlyTaskResult("get",f),/Budget.*60s/);assert.ok(!friendlyTaskResult("due",{cards:[{...f,due_at:1,task_id:"t",occurrence_id:"o",why_now:"Registered condition is due; evaluation is not a passed measurement gate"}],overflow:0}).includes("Registered condition"));
+});
+
+test("#1331: friendly agent notify defaults armed and help describes the actual agent permission", async () => {
+  const { COMMAND_HELP } = await import("../src/cli/help-text.js");
+  assert.equal((friendlyTaskCreate({ agent: true, goal: "Beauftragte Erinnerung", after: "7d", timezone: "Europe/Berlin" }) as any).arm, true);
+  assert.doesNotMatch(COMMAND_HELP.tasks, /--arm braucht Owner-Rolle/);
+  assert.match(COMMAND_HELP.tasks, /notify.*--agent.*scharf/s);
 });

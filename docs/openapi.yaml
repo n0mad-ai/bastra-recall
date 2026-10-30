@@ -3122,7 +3122,6 @@
                     "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
                   },
                   "arm": {
-                    "default": false,
                     "type": "boolean"
                   },
                   "origin": {
@@ -6010,7 +6009,6 @@
                     "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
                   },
                   "arm": {
-                    "default": false,
                     "type": "boolean"
                   },
                   "origin": {

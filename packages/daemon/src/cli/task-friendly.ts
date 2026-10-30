@@ -54,8 +54,11 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
     recurrence = { kind: calendar ? "calendar" : "elapsed", interval: Number(match[1]) * (calendar ? (match[2] === "w" ? 7 : 1) : ({m:60000,h:3600000,d:86400000,w:604800000}[match[2]]!)), catch_up: "latest",
       ...(options.count ? { count: Number(options.count) } : {}), ...(options.end ? { until: taskWhen(String(options.end), timezone) } : {}) };
   }
+  const agentNotify = options.agent === true && (options.level ?? "notify") === "notify";
+  const ambiguous = (schedule as any).kind === "calendar" && ambiguousTaskCalendar((schedule as any).local_time, timezone);
+  if (agentNotify && ambiguous) throw Object.assign(new Error("Mehrdeutige Ortszeit: erst den genauen Zeitpunkt bestätigen"), { code: "validation" });
   return { ...(options.agent ? { origin: { kind: "user-request", client: "cli", session: "local-terminal", context: goal } } : {}), ...(recurrence ? { recurrence } : {}), idempotency_key: randomUUID(), original_request: goal, goal, resolution_condition: String(options["resolve-when"] ?? "Owner bestätigt Erledigung"), schedule,
-    timezone, scope: { kind: "personal", name: String(options.scope ?? domain.split(",")[0]) }, owner_domains: domain.split(","), action_level: String(options.level ?? "notify"), arm: options.arm === true && !((schedule as any).kind === "calendar" && ambiguousTaskCalendar((schedule as any).local_time, timezone)) };
+    timezone, scope: { kind: "personal", name: String(options.scope ?? domain.split(",")[0]) }, owner_domains: domain.split(","), action_level: String(options.level ?? "notify"), arm: (options.arm === true || agentNotify) && !ambiguous };
 }
 export const friendlyWhyNow=(why:string)=>why.startsWith("Registered condition") ? "Der Auslöser ist fällig. Zeitablauf bestätigt kein Messergebnis." : why;
 const reviewName:Record<string,string>={"Explicit owner review required":"Owner muss ausdrücklich scharf schalten.","Owner review required before arming":"Owner muss ausdrücklich scharf schalten.","Edited binding requires explicit owner review":"Bearbeitet; Owner muss neu prüfen.","Recovered snapshot requires owner review":"Wiederhergestellt; Owner muss neu prüfen."};

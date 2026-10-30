@@ -165,3 +165,23 @@ test("pre-scrub fingerprint deduplicates secrets without merging different raw c
   assert.equal(edited.reminder_fingerprint, undefined);
   assert.notEqual((await f.call(f.agent, "task_create", { ...request, idempotency_key: "after-edit" })).id, first.id);
 });
+
+test("#1331: attributable commissioned notify defaults to armed without an owner review", async () => {
+  const f = await fixture();
+  for (const kind of ["user-request", "agent-observed"]) {
+    const task = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: `commission-${kind}`, goal: kind, origin: { ...origin, kind } });
+    assert.equal(task.armed, true, kind);
+    assert.equal(task.review_reason, undefined);
+  }
+  const proposal = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: "proposal", goal: "Unrequested proposal" });
+  assert.equal(proposal.armed, false);
+});
+test("#1331: confirmed notify does not silently reuse an unarmed duplicate", async () => {
+  const f = await fixture();
+  const draft = await f.call(f.agent, "task_create", { ...f.input, arm: false, origin });
+  assert.equal(draft.armed, false);
+  const confirmed = await f.call(f.agent, "task_create", { ...f.input, idempotency_key: "confirmed", arm: true, origin });
+  assert.equal(confirmed.id, draft.id);
+  assert.equal(confirmed.armed, true);
+  assert.equal(confirmed.review_reason, undefined);
+});

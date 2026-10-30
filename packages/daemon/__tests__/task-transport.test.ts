@@ -95,3 +95,23 @@ test("unknown errors never expose raw filesystem codes", () => {
 test("task routes enforce the same local Host gate even with a valid mapped token",async()=>{
  const f=await fixture();try{const {request}=await import("node:http");for(const host of ["foreign.invalid","localhost.evil.invalid"]){const status=await new Promise<number>((resolve,reject)=>{const r=request(f.base+"/api/v1/tasks",{headers:{Host:host,Authorization:`Bearer ${f.owner.token}`}},res=>{res.resume();resolve(res.statusCode!);});r.on("error",reject);r.end();});assert.equal(status,403);}assert.equal((await fetch(f.base+"/api/v1/tasks",{headers:{Authorization:`Bearer ${f.owner.token}`}})).status,200);}finally{await f.close();}
 });
+
+test("#1331: agent MCP and HTTP conversational callers create commissioned notify armed", async () => {
+  const f = await fixture();
+  try {
+    const auth = `Bearer ${f.agent.token}`;
+    const origin = { kind: "user-request", client: "fixture", session: "confirmed-session", context: "User explicitly requested this reminder" };
+    const result = await callTaskMcp("task_create", { ...f.input, origin }, auth, f.ctx);
+    assert.notEqual(result.isError, true, result.content[0].text);
+    assert.equal(JSON.parse(result.content[0].text).armed, true);
+    const http = await fetch(`${f.base}/api/v1/tasks`, { method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" }, body: JSON.stringify({ ...f.input, idempotency_key: "http-confirmed", goal: "HTTP reminder", origin }) });
+    assert.equal(http.status, 200);
+    assert.equal((await http.json() as any).armed, true);
+  } finally { await f.close(); }
+});
+test("#1331: task_create tells agents to arm clear requested/confirmed notify without owner review", () => {
+  const description = taskTools.find(t => t.name === "task_create")!.description;
+  assert.match(description, /requested or confirmed.*arm=true/i);
+  assert.match(description, /no (?:additional )?owner review/i);
+  assert.doesNotMatch(description, /For user requests first confirm/);
+});

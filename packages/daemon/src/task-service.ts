@@ -32,7 +32,7 @@ const editableSchema = z.strictObject({
   notification_policy: fields.notification_policy, budget: fields.budget,
 });
 export const taskCreateInputSchema = editableSchema.extend({
-  idempotency_key: identity, arm: z.boolean().default(false), origin: fields.origin,
+  idempotency_key: identity, arm: z.boolean().optional(), origin: fields.origin,
   sensitivity: fields.sensitivity.default("private"),
   action_level: fields.action_level.default("notify"), evidence: fields.evidence.default([]),
   notification_policy: fields.notification_policy.default({ muted: false, retry_interval_ms: 60000, max_attempts: 10 }),
@@ -129,7 +129,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     return view(store, findTask(store, input.id, principal));
   }
   if (operation === "task_create") {
-    const input = taskCreateInputSchema.parse(raw);
+    const parsed = taskCreateInputSchema.parse(raw);
+    // Attributable conversational notify requests need no later Owner review.
+    // Explicit drafts and prepare/execute keep their existing authority path.
+    const input = { ...parsed, arm: parsed.arm ?? (principal.role === "agent" && parsed.action_level === "notify" && parsed.origin !== undefined) };
     const legacyInput = structuredClone(input);
     if (principal.role === "agent" && input.arm && input.schedule.kind === "calendar" && ambiguousTaskCalendar(input.schedule.local_time, input.schedule.timezone))
       throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
@@ -164,7 +167,23 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       }
       if (principal.role === "agent" && input.action_level === "notify") {
         const duplicate = await reminderDuplicate(ctx.path, s, input, input.schedule.kind === "event" ? [legacyInput,previousDisplayInput] : []);
-        if (duplicate) { duplicateId = duplicate.id; return; }
+        if (duplicate) {
+          requireTaskDomains(principal, duplicate.owner_domains);
+          if (input.arm && !duplicate.armed) {
+            const disabled = process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0" || !s.controls.enabled;
+            if (disabled) duplicate.review_reason = "Conversational reminders disabled; saved unarmed";
+            else {
+              if (duplicate.state !== "pending") throw new TaskStoreError("conflict", "Matching reminder is not pending; submit a fresh confirmed request");
+              if (duplicate.schedule.kind === "event") validateEventBinding(s, duplicate.schedule, duplicate.owner_domains);
+              if (await taskDecisionStatus(ctx, duplicate)) throw new TaskStoreError("conflict", "decision binding requires review");
+              duplicate.armed = true;
+              delete duplicate.review_reason;
+              audit(duplicate, principal, "arm_notify", now);
+            }
+          }
+          duplicateId = duplicate.id;
+          return;
+        }
       }
       const { idempotency_key: _key, arm: requestedArm, ...values } = input;
       const limit = principal.role === "agent" && requestedArm && (process.env.BASTRA_CONVERSATIONAL_REMINDERS === "0" || !s.controls.enabled) ? "Conversational reminders disabled; saved unarmed" : undefined;

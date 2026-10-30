@@ -247,7 +247,9 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
   bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
 Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
-Client-Kennung. Anlegen ist standardmäßig unscharf, --arm braucht Owner-Rolle.
+Client-Kennung. Beauftragte notify-Erinnerungen werden mit --agent direkt scharf angelegt;
+--agent --arm ist für notify ohne Owner-Freigabe erlaubt. Ohne Agent-Auftrag bleibt
+Anlegen standardmäßig unscharf. prepare/execute brauchen zum Scharfschalten weiter den Owner.
 --after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
 Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
   bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
