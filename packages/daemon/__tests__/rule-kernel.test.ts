@@ -13,11 +13,10 @@
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Memory } from "@bastra-recall/core";
-import matter from "gray-matter";
 import { memoryRevision } from "@bastra-recall/core";
 import {
   collectRuleKernel,
@@ -88,32 +87,19 @@ describe("rulebook collector compatibility and authoritative sources", () => {
     assert.deepEqual(c.entries.map(e => e.id), project === "carnexus" ? ["global", "project"] : ["global"]);
     assert.ok(c.entries.every(e => e.rulebook === "always"));
   });
-  it("reads body, declaration and revision together from current source bytes", async () => {
-    const file = join(fileDir, "current.md");
-    const m = memory("current", { rulebook: "always" }, "Old cached body.", file);
-    const raw = matter.stringify("Current full body.", { ...m.fm, title: "Current title" });
-    await writeFile(file, raw);
+  it("uses the indexed body, declaration and byte revision without reopening files", async () => {
+    const m = memory("current", { rulebook: "always" }, "Indexed full body.", join(fileDir,"missing.md"));
+    m.revision = memoryRevision("indexed bytes");
     const c = await collectRuleKernel(indexOf([m]), { project: null, active: [], floors: async () => [] });
-    assert.equal(c.entries[0]?.revision, memoryRevision(raw));
-    assert.match(c.entries[0]!.body, /Current full body/);
-    assert.match(renderRuleKernel(c, { trigger: "compact" }).text, /Current full body/);
+    assert.equal(c.entries[0].revision,m.revision);
+    assert.match(renderRuleKernel(c,{trigger:"compact"}).text,/Indexed full body/);
   });
-  it("discovers a new declaration from current source even when the cached metadata was not a rule", async () => {
-    const file = join(fileDir, "late-rule.md");
-    const m = memory("late-rule", { write_origin: "agent-session" }, "Old ordinary memory.", file);
-    await writeFile(file, matter.stringify("New complete rule.", { ...m.fm, write_origin: "user-directed", rulebook: "always" }));
+  it("a missing indexed body keeps the ID and explicit load hint", async () => {
+    const m = memory("unavailable", { rulebook: "always" }, "", join(fileDir,"missing.md"));
     const c = await collectRuleKernel(indexOf([m]), { project: null, active: [], floors: async () => [] });
-    assert.deepEqual(c.entries.map(e => e.id), ["late-rule"]);
-    assert.match(renderRuleKernel(c, { trigger: "startup" }).text, /New complete rule/);
-  });
-
-  it("reports a source that cannot be read rather than delivering cached always text", async () => {
-    const m = memory("unavailable", { rulebook: "always" }, "Stale cached text", join(fileDir, "missing.md"));
-    const c = await collectRuleKernel(indexOf([m]), { project: null, active: [], floors: async () => [] });
-    assert.equal(c.entries.length, 0, "unreadable bytes cannot authorize cached privacy metadata");
-    assert.equal(c.unavailable_sources, 1);
-    const r = renderRuleKernel(c, { trigger: "compact" });
-    assert.match(r.text, /source check incomplete/); assert.doesNotMatch(r.text, /Stale cached text/);
+    assert.equal(c.entries.length,1);assert.equal(c.unavailable_sources,1);
+    const r=renderRuleKernel(c,{trigger:"compact"});
+    assert.match(r.text,/source check incomplete/);assert.match(r.text,/load_memory/);
   });
 });
 

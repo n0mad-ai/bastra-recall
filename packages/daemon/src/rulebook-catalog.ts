@@ -1,6 +1,5 @@
 /** Complete, scoped rule catalog. No relevance search, embeddings or top-k. */
 import { createHash } from "node:crypto";
-import {readRulebookSources,rulebookSources,RULEBOOK_SOURCE_TTL_MS,type RulebookSource} from "./rulebook-snapshot.js";
 import { z } from "zod";
 import { computeStaleness, resolveRulebook, stripAutoRelatedSection,
   type Memory, type Vault, type StaleStatus } from "@bastra-recall/core";
@@ -41,7 +40,7 @@ export interface RulebookCatalogOptions {
   floors?: (project: string | null) => Promise<FloorEntry[]>; allProjects?: boolean;
   mode?: RulebookCatalogMode; budgetMs?: number;
 }
-async function projectSources(sources: RulebookSource[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
+async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
   const active = new Set(opts.active.map(a => a.id));
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
   const pinned = new Set(floors.filter(f => opts.allProjects || opts.project || !f.scope).map(f => f.memory_id));
@@ -49,11 +48,8 @@ async function projectSources(sources: RulebookSource[], opts: RulebookCatalogOp
     ? isScopeCompatible(m.fm.scope, opts.project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)));
   let unconfirmed = 0, unavailableSources = 0;
   const entries: KernelEntry[] = [];
-  for (const source of sources) {
-    const m = source.memory;
+  for (const m of memories) {
     if (!servable(m)) continue;
-    // Unreadable source bytes cannot authorize a current privacy/content projection.
-    if (source.unavailable) { unavailableSources++; continue; }
     if (possibleLegacy(m)) unconfirmed++;
     if (!inScope(m)) continue;
     const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
@@ -62,12 +58,14 @@ async function projectSources(sources: RulebookSource[], opts: RulebookCatalogOp
       entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown" });
       continue;
     }
-    const body = cleanRuleText(stripAutoRelatedSection(m.body)).trim();
+    const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();
+    const unavailable = declaration.rulebook === "always" && !body;
+    if (unavailable) unavailableSources++;
     entries.push({ id: m.fm.id, title: oneLine(m.fm.title), scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
       group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
         m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : "user-directed",
-      revision: source.revision, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
-      body: declaration.rulebook === "always" ? body : "",
+      revision: m.revision ?? null, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
+      body: declaration.rulebook === "always" ? body : "", ...(unavailable ? { source_unavailable: true } : {}),
       binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator]), ...declaration });
   }
   entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -77,11 +75,13 @@ async function projectSources(sources: RulebookSource[], opts: RulebookCatalogOp
   return c;
 }
 export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">, opts: RulebookCatalogOptions): Promise<KernelCandidates> {
-  return projectSources(await readRulebookSources(vault), opts);
+  const view = indexViews.get(vault);
+  if (view) { view.generation++; view.memories = undefined; }
+  return cachedRulebookCatalog(vault, opts);
 }
 
 /** Shared bound for every hook-side catalog consumer, including injected providers.
- * Timed-out reads may finish in the background; callers must not chain late writes. */
+ * Timed-out optional lookups/providers may finish later; callers must not chain late writes. */
 export const RULEBOOK_CATALOG_BUDGET_MS = 150;
 export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline = Date.now() + RULEBOOK_CATALOG_BUDGET_MS): Promise<T> {
   if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
@@ -95,10 +95,21 @@ export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline =
   } finally { if (timer) clearTimeout(timer); }
 }
 
-/** Content retains the existing two-second source validation interval. Only
- * internal IDs/counts may use SWR (at most 30 seconds, including a bounded
- * dirty interval while an event-coalesced rebuild completes). */
-export const RULEBOOK_CACHE_TTL_MS = RULEBOOK_SOURCE_TTL_MS;
+/** Cache only the synchronous index view, invalidated by Vault.on. Projection
+ * stays per caller: scopes/floors/active membership and time-based staleness
+ * cannot leak between sessions. No disk scans, TTL, SWR or background work. */
+const indexViews = new WeakMap<object, { generation: number; memories?: Memory[] }>();
+function indexView(vault: Pick<Vault, "list"> & Partial<Pick<Vault, "on">>) {
+  if (!vault.on) return { memories: vault.list(), isCurrent: () => true };
+  let view = indexViews.get(vault);
+  if (!view) {
+    view = { generation: 0 }; indexViews.set(vault, view);
+    const own = view;
+    vault.on(() => { own.generation++; own.memories = undefined; });
+  }
+  const generation = view.generation, own = view;
+  return { memories: view.memories ??= vault.list(), isCurrent: () => generation === own.generation };
+}
 export const RULEBOOK_TOOL_BUDGET_MS = 5000;
 export const RULEBOOK_STARTUP_BUDGET_MS = 800;
 export async function cachedRulebookCatalog(
@@ -109,36 +120,29 @@ export async function cachedRulebookCatalog(
   try { return await withRulebookDeadline(async () => {
     while (!abandoned) {
       if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
-      const view = await rulebookSources(vault, opts.mode === "ids");
-      if (abandoned) break;
-      const projected = await projectSources(view.sources, opts);
-      // Floors are asynchronous too: recheck the event generation before publishing.
+      const view = indexView(vault);
+      const projected = await projectIndex(view.memories, opts);
       if (view.isCurrent()) return projected;
       await new Promise<void>(resolve => setImmediate(resolve));
     }
     throw new Error("rulebook_catalog_timeout");
   }, deadline); } finally { abandoned = true; }
 }
-/** Preserve the pre-C session kernel when a full snapshot is unavailable.
- * Read only indexed rule candidates, but validate their current bytes before delivery. */
+/** Restore indexed rules even if optional floor lookup fails. The fallback
+ * is labelled incomplete and shares the caller's remaining session budget. */
 export async function startupRulebookCatalog(
   vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>, opts: RulebookCatalogOptions,
 ): Promise<KernelCandidates> {
-  // Reserve room for the legacy fallback and response serialization inside the
-  // Session-Lane's remaining time, including explicit small hook overrides.
   const total = Math.max(0, Math.min(opts.budgetMs ?? 1200, 1200) - 50);
   const deadline = Date.now() + total;
   const primary = Math.min(RULEBOOK_STARTUP_BUDGET_MS, total * 0.7);
   try { return await cachedRulebookCatalog(vault, { ...opts, mode: "content", budgetMs: primary }); }
   catch {
     try {
-      return await withRulebookDeadline(async () => {
-        const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
-        const active = new Set(opts.active.map(a => a.id)), pinned = new Set(floors.map(f => f.memory_id));
-        const selected = vault.list().filter(m => resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) }));
-        const result = await collectRulebookCatalog({ get: id => vault.get(id), list: () => selected }, { ...opts, mode: "content", floors: async () => floors });
-        return { ...result, fallback: true as const };
-      }, Math.min(deadline, Date.now() + 300));
+      const result = await withRulebookDeadline(
+        () => collectRulebookCatalog(vault, { ...opts, mode: "content", floors: async () => [] }),
+        Math.min(deadline, Date.now() + 300));
+      return { ...result, fallback: true };
     } catch { return { entries: [], omitted: 0, unavailable_sources: 1, fallback: true }; }
   }
 }

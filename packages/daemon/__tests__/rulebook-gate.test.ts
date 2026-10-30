@@ -273,29 +273,21 @@ test("review: a continued Stop cannot block again after context reset", async ()
   assert.match(notice, /"agent_id":"worker"/);
 });
 
-test("fix2: silent cloud changes and time-based staleness expire without index events", async t => {
-  const { cachedRulebookCatalog, RULEBOOK_CACHE_TTL_MS } = await import("../src/rulebook-catalog.js");
-  const dir = await mkdtemp(join(tmpdir(), "rulebook-silent-"));
-  const path = join(dir,"rule.md");
-  t.after(()=>rm(dir,{recursive:true,force:true}));
-  const { parseMemory } = await import("@bastra-recall/core");
+test("fix7: silent changes enter the catalog through vault reindex, not hook-side disk reads", async t => {
+  const { cachedRulebookCatalog } = await import("../src/rulebook-catalog.js");
+  const { Vault } = await import("@bastra-recall/core");
+  const dir = await mkdtemp(join(tmpdir(), "rulebook-silent-")), path = join(dir,"rule.md");
   const raw = '---\nid: silent-rule\ntitle: Silent rule\ntype: workflow\nsummary: Fixture\nscope: all-projects\nwrite_origin: user-directed\nrulebook: always\napplies_when: Fixture\ntags: []\ntopic_path: [fixture]\nrecall_when: [fixture]\n---\nOriginal body';
-  await writeFile(path,raw);
-  const m=parseMemory(raw,path,0);
-  const vault={get:()=>m,list:()=>[m],on:()=>()=>{}};
+  await writeFile(path,raw);const vault=new Vault(dir);await vault.init();
+  t.after(async()=>{await vault.stop();await rm(dir,{recursive:true,force:true});});
   const opts={project:null,active:[],floors:async()=>[]};
   const first=await cachedRulebookCatalog(vault,opts);
   await writeFile(path,raw.replace('Original body','Cloud changed body'));
-  const clock=Date.now;
-  Date.now=()=>clock()+RULEBOOK_CACHE_TTL_MS+1;
-  try {
-    const fresh=await cachedRulebookCatalog(vault,opts);
-    assert.notEqual(fresh.catalog_hash,first.catalog_hash);
-    assert.match(fresh.entries[0].body,/Cloud changed body/);
-    await writeFile(path,raw.replace('scope: all-projects','sensitivity: private\nscope: all-projects'));
-    Date.now=()=>clock()+2*(RULEBOOK_CACHE_TTL_MS+1);
-    assert.equal((await cachedRulebookCatalog(vault,opts)).entries.length,0);
-  } finally {Date.now=clock;}
+  await vault.reindexFile(path);
+  const fresh=await cachedRulebookCatalog(vault,opts);
+  assert.notEqual(fresh.catalog_hash,first.catalog_hash);assert.match(fresh.entries[0].body,/Cloud changed body/);
+  await writeFile(path,raw.replace('scope: all-projects','sensitivity: private\nscope: all-projects'));
+  await vault.reindexFile(path);assert.equal((await cachedRulebookCatalog(vault,opts)).entries.length,0);
 });
 
 test("fix2: expired legacy denial leaves pending/reflex claims available", async () => {
@@ -324,8 +316,8 @@ test("fix2: stored Stop result declares summary schema and source-adapter bounda
   assert.equal(result.cases[2].hook_client,"inline-source-adapter; not the shipped hook client");
 });
 
-test("fix2: cached staleness is recomputed after TTL with no watcher notification", async t => {
-  const {cachedRulebookCatalog,RULEBOOK_CACHE_TTL_MS}=await import("../src/rulebook-catalog.js");
+test("fix7: time-based staleness is recomputed without watcher notification", async t => {
+  const {cachedRulebookCatalog}=await import("../src/rulebook-catalog.js");
   const {parseMemory}=await import("@bastra-recall/core");
   const now=Date.now();
   const raw=`---\nid: timed-rule\ntitle: Timed rule\ntype: workflow\nsummary: Fixture\nscope: all-projects\nwrite_origin: user-directed\nrulebook: always\napplies_when: Fixture\nvalid_until: ${new Date(now+86400000).toISOString()}\ntags: []\ntopic_path: [fixture]\nrecall_when: [fixture]\n---\nFixture body`;
@@ -333,7 +325,7 @@ test("fix2: cached staleness is recomputed after TTL with no watcher notificatio
   const opts={project:null,active:[],floors:async()=>[]};
   t.mock.timers.enable({apis:["Date"],now});
   assert.equal((await cachedRulebookCatalog(vault,opts)).entries[0].stale_status,"fresh");
-  t.mock.timers.tick(2*86400000+RULEBOOK_CACHE_TTL_MS);
+  t.mock.timers.tick(2*86400000);
   assert.equal((await cachedRulebookCatalog(vault,opts)).entries[0].stale_status,"expired");
 });
 

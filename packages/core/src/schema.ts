@@ -373,6 +373,8 @@ export interface DamagedField {
 }
 
 export interface Memory {
+  /** Byte revision captured with the indexed body; never persisted as frontmatter. */
+  revision?: string;
   fm: Frontmatter;
   body: string;
   filePath: string;

@@ -25,7 +25,7 @@ export function renderRuleKernel(candidates: KernelCandidates, opts: { trigger: 
   if (!total && !candidates.fallback && !(candidates.unconfirmed_legacy ?? 0) && !candidates.omitted && !candidates.unavailable_sources) return { text: "", full: [], degraded: [], omitted: 0, always_overflow: [] };
   const trigger = oneLine(opts.trigger).slice(0, 120).replaceAll('"', "&quot;");
   const header = [`<rule-kernel trigger="${trigger}">`,
-    ...(candidates.fallback ? ["Catalog unavailable: restored the legacy rule kernel from freshly checked sources; full catalog coverage is not verified."] : []),
+    ...(candidates.fallback ? ["Catalog unavailable: restored available indexed rules; full catalog/floor coverage is not verified."] : []),
     `Rulebook: ${total} rules; catalog=${catalogHash(candidates)}; ${candidates.unconfirmed_legacy ?? 0} possible rules without confirmation.`,
     ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">', HINT_FRAME_NOTE];
   if (candidates.unavailable_sources) header.push(`Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`);

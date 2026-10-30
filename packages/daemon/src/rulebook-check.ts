@@ -6,7 +6,7 @@ import { z } from "zod";
 import { loadSessionState, mutateSessionState, type SessionState } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
-import { cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
+import { collectRulebookCatalog, cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
 import { projectForLane } from "./scope-filter.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
@@ -75,8 +75,9 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   const opts = { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
   let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
   if (input.applicable.some(id => !catalog.entries.some(e => e.id === id))) {
-    // Match list_rules' fresh view once before rejecting an ID absent from SWR.
-    catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: "content", budgetMs: Math.max(0, deadline - Date.now()) });
+    // Retry the index once before rejecting an unknown ID. An unavailable
+    // refresh must still return the original IDs answer, not throw a tool error.
+    catalog = await withRulebookDeadline(() => collectRulebookCatalog(deps.vault, { ...opts, mode: "ids" }), deadline).catch(() => catalog);
   }
   return recordRulebookCheck(sid, input, catalog);
 }

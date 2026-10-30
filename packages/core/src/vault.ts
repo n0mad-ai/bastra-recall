@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join, basename, relative, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import matter from "gray-matter";
+import { memoryRevision } from "./memory-mutate.js";
 import { isMarkdownFile } from "./markdown-file.js";
 import { vaultRootPresent } from "./vault-root-guard.js";
 import { type Memory, parseMemoryWith, NotAMemoryFile } from "./schema.js";
@@ -427,6 +428,7 @@ export class Vault {
       filePath,
       st.mtimeMs,
     );
+    m.revision = memoryRevision(raw);
     // only stamped for real memories (parse throws on plain notes) — the
     // drift check in reconcile() runs over indexed files exclusively
     this.fileStats.set(filePath, { mtimeMs: st.mtimeMs, size: st.size });
