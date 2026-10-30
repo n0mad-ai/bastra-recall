@@ -49,10 +49,14 @@
  * statt still zu tun, als wäre etwas passiert.
  */
 import { z } from "zod";
+import { readRulebookContext } from "./convention-source.js";
+import { callerSessionStore } from "./caller-session.js";
 import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
   RulebookSchema,
+  resolveRulebook,
+  FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
   mutateMemoryFile,
@@ -89,7 +93,12 @@ const FrontmatterPatch = z
     valid_until: z.string().min(1).optional(),
     validator: ConventionValidatorSchema.nullable().optional(),
   })
-  .strict();
+  .strict().superRefine((patch, ctx) => {
+    if (patch.rulebook_proposed !== undefined && (patch.rulebook !== undefined || patch.applies_when !== undefined)) {
+      ctx.addIssue({ code: "custom", path: ["rulebook_proposed"],
+        message: "rulebook_proposed cannot be combined with rulebook or applies_when in the same patch" });
+    }
+  });
 
 export const EditMemoryArgs = z
   .object({
@@ -325,6 +334,7 @@ export async function editMemoryHandler(
   // Die Größen, die WIRKLICH geschrieben wurden. Sie aus der Vorschau zu
   // nehmen wäre falsch, sobald der Index nicht taufrisch ist — und dann stünde
   // im Beleg eine Zahl, die zu keiner Fassung dieser Datei gehört.
+  const rulebookContextOf = await readRulebookContext(callerSessionStore.getStore());
   let bodyBefore = 0;
   let bodyAfter = 0;
   // #661: gegen die Bytes unter dem Claim ermittelt, nicht gegen den Index.
@@ -367,7 +377,7 @@ export async function editMemoryHandler(
         // effective declaration and stage the requested replacement separately.
         const patch = args.frontmatter;
         if (patch?.rulebook !== undefined || patch?.applies_when !== undefined) {
-          const rulebook = patch.rulebook ?? fm.rulebook;
+          const rulebook = patch.rulebook ?? fm.rulebook ?? resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id))?.rulebook;
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");

@@ -8,6 +8,7 @@ import { Vault, SearchIndex, saveMemory } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { loadMemoryHandler, leanFrontmatter } from "../src/load-memory-handler.js";
 import { EditMemoryArgs, editMemoryHandler } from "../src/edit-memory-handler.js";
+import { readConventionSource } from "../src/convention-source.js";
 import { withSupersession } from "../src/recall-batch.js";
 import { MEMORY_TOOL_DEFS } from "../src/tool-defs-memory.js";
 import { loadSessionState, mutateSessionState, recordActiveConventions } from "../src/session-state.js";
@@ -45,12 +46,12 @@ test("load derives legacy defaults without writing, including active convention 
   const sid = "invented-rulebook-session";
   await mutateSessionState(sid, (state) => recordActiveConventions(state, [{ id: input.id, revision: null }]));
   const loaded = await loadMemoryHandler(deps, { id: input.id }, { sessionId: sid });
-  assert.equal(loaded.frontmatter.rulebook, "on-demand");
-  assert.equal(loaded.frontmatter.applies_when, input.summary);
+  assert.equal(loaded.frontmatter.rulebook, undefined);
+  assert.equal(loaded.frontmatter.applies_when, undefined);
   assert.equal(await readFile(saved.file_path, "utf8"), original);
   assert.ok((await loadSessionState(sid)).activeConventions?.some((c) => c.id === input.id));
   await editMemoryHandler(deps, { id: input.id, frontmatter: { rulebook: "always", applies_when: "When writing" } });
-  const projected = withSupersession({ id: input.id, score: 1 }, vault);
+  const projected = withSupersession({ id: input.id, score: 1 }, vault, await readConventionSource(vault.get(input.id)));
   assert.deepEqual(projected.rulebook_proposed, { rulebook: "always", applies_when: "When writing" });
   const reread = await loadMemoryHandler(deps, { id: input.id });
   assert.equal(reread.frontmatter.rulebook, undefined);
@@ -68,4 +69,14 @@ test("load derives legacy defaults without writing, including active convention 
   assert.equal(afterEdit.frontmatter.rulebook, "always");
   assert.equal(afterEdit.frontmatter.applies_when, "When inspecting fixtures");
   assert.deepEqual(afterEdit.frontmatter.rulebook_proposed, { rulebook: "on-demand", applies_when: "When revising fixtures" });
+});
+
+
+test("edit rejects mixed direct/proposed metadata instead of silently overwriting it", () => {
+  for (const patch of [{ rulebook: "always" }, { applies_when: "When writing" }]) {
+    assert.equal(EditMemoryArgs.safeParse({ id: input.id, frontmatter: { ...patch,
+      rulebook_proposed: { rulebook: "on-demand", applies_when: "When revising" } } }).success, false);
+  }
+  assert.equal(EditMemoryArgs.safeParse({ id: input.id, frontmatter: {
+    rulebook_proposed: { rulebook: "invalid", applies_when: "When writing" } } }).success, false);
 });

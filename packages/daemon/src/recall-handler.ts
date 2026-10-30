@@ -12,6 +12,7 @@ import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type Reca
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
+import { readRulebookSources } from "./convention-source.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
 import type { RecallStageBuckets } from "./telemetry-events.js";
 import { isWeakResult, isNoHome } from "@bastra-recall/core";
@@ -321,7 +322,7 @@ async function recallAgainstVault(
     // Teil-Recall.
     // #421: das Aufrufer-Projekt ebenso — es ist eine Eigenschaft des
     // Transports wie die Capability, nicht des gemergten Aufrufs.
-    const subOptions = { batchId: randomUUID(), trustedPrivate: options.trustedPrivate, project: options.project,
+    const subOptions = { batchId: randomUUID(), trustedPrivate: options.trustedPrivate, project: options.project, session_id: options.session_id,
       // #1128-capture: a measurement run stays one — its rows are written by the sub-recalls.
       ...(options.client === "eval" ? { client: "eval" } : {}) };
     const subs = await Promise.all(
@@ -503,7 +504,12 @@ async function recallAgainstVault(
   });
   hits = scopeFilter.hits;
   // #421: die Pool-Reflexe, mit demselben Floor wie die gerankten Treffer.
-  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), deps.vault, floor);
+  const sources = await readRulebookSources(deps.vault,
+    [...hits.map(h => h.id), ...candidatePool.map(h => h.id)], options.session_id ?? callerSessionStore.getStore());
+  const visible = (id: string) => options.trustedPrivate || sources.get(id)?.hiddenFromPublic !== true;
+  hits = hits.filter(h => visible(h.id));
+  const reflexHits = collectPoolReflexHits(candidatePool.filter(h => visible(h.id)), new Set(hits.map((h) => h.id)), deps.vault, floor)
+    .map(h => withSupersession(h, deps.vault, sources.get(h.id)));
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
@@ -543,7 +549,7 @@ async function recallAgainstVault(
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
   const projected = (full ? hits : hits.map(toLeanHit))
-    .map(hit => withSupersession(hit, deps.vault)).map(flagConflict);
+    .map(hit => withSupersession(hit, deps.vault, sources.get(hit.id))).map(flagConflict);
   const budgeted = fitRecallWithReflexToBudget(projected, reflexHits, parsed.data.max_tokens, (emitted, emittedReflex, dropped) => ({
     query: query,
     vault_size: deps.vault.size(),

@@ -13,7 +13,7 @@
  * unterscheidet, sind Parameter (Floor, ob ein Aufrufer-Projekt vorliegt) —
  * nicht der Code.
  */
-import { resolveRulebook, type RecallHit, type Vault } from "@bastra-recall/core";
+import type { RecallHit, Vault } from "@bastra-recall/core";
 import { truncateSummary } from "./recall-handler.js";
 import { applyLaneScopeFilter, laneScopeFilterMode, vaultKnowsProject, type ScopeFilterMode } from "./scope-filter.js";
 import { MUST_LOAD_SCORE } from "./prompt-lane.js";
@@ -53,7 +53,7 @@ export function collectPoolReflexHits(
   return candidatePool.flatMap((c) => {
     if (servedIds.has(c.id) || c.score < minScore) return [];
     const mem = vault.get(c.id);
-    if (mem?.fm.recall_mode !== "reflex") return [];
+    if (mem?.fm.recall_mode !== "reflex" || mem.fm.sensitivity === "private") return [];
     return [{
       id: c.id,
       title: mem.fm.title,
@@ -63,7 +63,6 @@ export function collectPoolReflexHits(
       score: c.score,
       matched_recall_when: false as const,
       recall_mode: "reflex" as const,
-      ...resolveRulebook(mem.fm),
       ...(mem.fm.validator ? { validator: mem.fm.validator } : {}),
     }];
   });

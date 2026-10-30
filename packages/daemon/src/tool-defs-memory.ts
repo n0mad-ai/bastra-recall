@@ -713,7 +713,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           description:
             "Patch for a small whitelist of fields. Any other key is " +
             "REJECTED (not silently ignored). List fields REPLACE the " +
-            "existing list — include the old entries to keep them.",
+            "existing list — include the old entries to keep them. Do not combine " +
+            "rulebook_proposed with rulebook or applies_when in the same patch.",
           properties: {
             summary: { type: "string" },
             recall_when: { type: "array", items: { type: "string" } },

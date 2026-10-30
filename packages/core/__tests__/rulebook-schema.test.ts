@@ -27,20 +27,37 @@ test("additive rulebook fields load in any language; old notes need no migration
   assert.equal(SaveMemoryInput.safeParse({ ...input, rulebook: "rule", applies_when: "Anything" }).success, false);
 });
 
-test("runtime defaults preserve legacy membership without mutating frontmatter", () => {
+test("legacy defaults require user-directed origin and reserve always for active/floor", () => {
   const fm = FrontmatterSchema.parse(base);
-  assert.equal(resolveRulebook(fm), undefined);
-  assert.deepEqual(resolveRulebook(fm, { activeConvention: true }), { rulebook: "on-demand", applies_when: input.summary });
-  assert.equal(resolveRulebook(fm, { floor: true })?.rulebook, "always");
-  assert.equal(resolveRulebook({ ...fm, recall_mode: "reflex" })?.rulebook, "on-demand");
-  assert.equal(resolveRulebook({ ...fm, write_origin: "user-directed", type: "meta-working" })?.rulebook, "always");
-  assert.equal(resolveRulebook({ ...fm, write_origin: "user-directed", type: "meta-working" }, { activeConvention: true })?.rulebook, "always");
-  assert.equal(resolveRulebook({ ...fm, write_origin: "user-directed" })?.rulebook, "on-demand");
-  assert.equal(resolveRulebook({ ...fm, rulebook_proposed: { rulebook: "always", applies_when: "When writing" } }), undefined);
-  assert.equal(resolveRulebook({ ...fm, obsolete: true }, { floor: true }), undefined);
-  assert.equal(resolveRulebook({ ...fm, superseded_by: "new-rule" }, { floor: true }), undefined);
-  assert.equal(resolveRulebook({ ...fm, type: "project-fact", write_origin: "user-directed" }), undefined);
+  for (const write_origin of [undefined, "agent-session", "capture-review"] as const) {
+    for (const context of [{}, { floor: true }, { activeConvention: true }]) {
+      assert.equal(resolveRulebook({ ...fm, write_origin, recall_mode: "reflex" }, context), undefined);
+    }
+  }
+  const directed = { ...fm, write_origin: "user-directed" as const };
+  assert.equal(resolveRulebook(directed), undefined);
+  for (const context of [{ floor: true }, { activeConvention: true }]) {
+    assert.deepEqual(resolveRulebook(directed, context), { rulebook: "always", applies_when: input.summary, applies_when_derived: true });
+  }
+  for (const type of ["meta-working", "user-preference"] as const) {
+    assert.equal(resolveRulebook({ ...directed, type })?.rulebook, "on-demand");
+    assert.equal(resolveRulebook({ ...directed, type }, { activeConvention: true })?.rulebook, "always");
+  }
+  assert.equal(resolveRulebook({ ...directed, recall_mode: "reflex" })?.rulebook, "on-demand");
+  assert.equal(resolveRulebook({ ...directed, rulebook: "on-demand", applies_when: "When writing" }, { floor: true })?.rulebook, "on-demand");
+  assert.equal(resolveRulebook({ ...directed, obsolete: true }, { floor: true }), undefined);
+  assert.equal(resolveRulebook({ ...directed, superseded_by: "new-rule" }, { floor: true }), undefined);
   assert.equal(fm.rulebook, undefined);
+});
+
+test("malformed rulebook proposals are rejected on save and visibly dropped on lenient load", () => {
+  for (const rulebook_proposed of [{ rulebook: "rule", applies_when: "When writing" }, { rulebook: "always" }, "always", null]) {
+    assert.equal(SaveMemoryInput.safeParse({ ...input, rulebook_proposed }).success, false);
+    const raw = matter.stringify(input.body, { ...base, rulebook_proposed });
+    const memory = parseMemoryWith(matter, raw, "fixture.md", 0);
+    assert.equal(memory.fm.rulebook_proposed, undefined);
+    assert.ok(memory.damaged?.some((d) => d.field === "rulebook_proposed"));
+  }
 });
 
 test("save/load keeps declarations and proposals across refreshes; only user-directed creates a binding declaration", async () => {

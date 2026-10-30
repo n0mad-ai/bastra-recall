@@ -1,4 +1,4 @@
-import {readConventionSource} from "./convention-source.js";
+import {readRulebookSources} from "./convention-source.js";
 import { randomUUID } from "node:crypto";
 import { markDraftDelivery } from './draft-delivery.js';
 import { cleanDraftField } from './draft-text.js';
@@ -601,7 +601,7 @@ export async function runHookRecall(
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
 
-      const conventionSources=body.convention_revisions===true?new Map(await Promise.all(hits.slice(0,5).map(async h=>[h.id,await readConventionSource(vault.get(h.id),true)]as const))):undefined;
+      const conventionSources = await readRulebookSources(vault, [...hits.map(h => h.id), ...candidatePool.map(h => h.id)], hookSessionId);
       const budgeted = assembleHookRecallPayload({
         hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
         hookProject, hybridActiveAtRecall, degradedReason, conventionSources,

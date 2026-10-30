@@ -17,8 +17,9 @@
  * After either merge, supersession orders retrieved successors before their
  * predecessors without changing the selected single-query scores (#1206).
  */
+import { type ConventionSource, type RulebookMetadata } from "./convention-source.js";
 import type { DraftHit } from "./draft-search.js";
-import { visitSupersession, resolveRulebook, type Frontmatter, type Vault } from "@bastra-recall/core";
+import { visitSupersession, type Frontmatter, type Vault } from "@bastra-recall/core";
 
 import { RRF_K } from "@bastra-recall/core/rrf";
 
@@ -258,13 +259,13 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
  * through both wire projections. Only an already retrieved target can affect
  * the eventual merged ordering.
  */
-export function withSupersession<T extends { id: string }>(hit: T, vault: Vault): T &
-  Pick<Frontmatter, "superseded_by" | "rulebook" | "applies_when" | "rulebook_proposed"> {
+export function withSupersession<T extends { id: string }>(hit: T, vault: Vault, source: ConventionSource | undefined): T &
+  Pick<Frontmatter, "superseded_by"> & RulebookMetadata {
   const fm = vault.get(hit.id)?.fm;
   if (!fm) return hit;
-  const declaration = resolveRulebook(fm);
-  return { ...hit, ...declaration,
-    ...(fm.rulebook_proposed ? { rulebook_proposed: fm.rulebook_proposed } : {}),
+  // Membership is supplied by the shared current-source reader, never inferred here.
+  const metadata = source?.rulebookMetadata;
+  return { ...hit, ...metadata,
     ...(fm.superseded_by ? { superseded_by: fm.superseded_by } : {}) };
 }
 

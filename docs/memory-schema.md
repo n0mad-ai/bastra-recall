@@ -38,7 +38,7 @@ The active text index is in-memory MiniSearch/BM25. Optional embeddings are stor
 
 ### Rulebook metadata (additive)
 
-Optional `rulebook: always|on-demand` selects the delivery tier. `applies_when` is a nonblank description in the user's language; new declarations require it, while older loaded notes can use their summary. `rulebook_proposed: {rulebook, applies_when}` stores unconfirmed metadata separately. Existing files need no migration. See [rulebook scope and implementation status](rulebook.md#schema-stage); schema support does not imply that the new delivery/gate is already implemented.
+Optional `rulebook: always|on-demand` selects the delivery tier. `applies_when` is a nonblank description in the user's language; new declarations require it, while older loaded notes can use their summary (response marker `applies_when_derived: true`). `rulebook_proposed: {rulebook, applies_when}` stores unconfirmed metadata separately. Existing files need no migration. See [rulebook scope and implementation status](rulebook.md#schema-stage); schema support does not imply that the new delivery/gate is already implemented.
 
 ### Minimal Frontmatter
 

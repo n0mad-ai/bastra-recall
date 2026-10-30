@@ -4,12 +4,11 @@
  * re-exports everything, so the existing import paths keep working.
  */
 import { z } from "zod";
-import { stripAutoRelatedSection, FUNCTION_WORDS, resolveRulebook } from "@bastra-recall/core";
+import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
-import { listFloors } from "./floors.js";
-import { readConventionSource } from "./convention-source.js";
-import { clearPendingMustLoad, touchLoadedMarker, loadSessionState } from "./session-state.js";
+import { readRulebookSources } from "./convention-source.js";
+import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -90,6 +89,7 @@ const LEAN_FRONTMATTER_KEYS = [
   "rulebook",
   "applies_when",
   "rulebook_proposed",
+  "applies_when_derived",
 ] as const;
 
 /** Projiziert die volle Frontmatter auf die lean-Teilmenge. Unbekannte/
@@ -164,6 +164,10 @@ export async function loadMemoryHandler(
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
 
+  const sessionId = ctx?.sessionId ?? callerSessionStore.getStore();
+  const source = (await readRulebookSources({ get: () => m }, [m.fm.id], sessionId)).get(m.fm.id)!;
+  if (source.hiddenFromPublic && !ctx?.trustedPrivate) throw new Error(`memory not found: ${parsed.data.id}`);
+
   const bodyForTelemetry = stripAutoRelatedSection(m.body);
   deps.telemetry.recordLoadedMemory({
     memory_id: parsed.data.id,
@@ -185,7 +189,6 @@ export async function loadMemoryHandler(
   // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
   // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
   // wäre kein Vergleich, sondern eine Vermutung.
-  const source = await readConventionSource(m);
   const revision = source.revision ?? undefined;
   // #1305: a real load (not an explicit lean dismissal) that answers a
   // must-load puts the rule in force for the rule kernel, with this revision.
@@ -204,17 +207,9 @@ export async function loadMemoryHandler(
   // Project current declarations and runtime legacy membership, never rewrite
   // the source file just to add new optional schema fields.
   if (source.rulebookMetadata) {
-    delete fm.rulebook; delete fm.applies_when; delete fm.rulebook_proposed;
+    delete fm.rulebook; delete fm.applies_when; delete fm.rulebook_proposed; delete fm.applies_when_derived;
     Object.assign(fm, source.rulebookMetadata);
   }
-  const sessionId = ctx?.sessionId ?? callerSessionStore.getStore();
-  const state = sessionId ? await loadSessionState(sessionId) : undefined;
-  const floors = await listFloors();
-  const declaration = resolveRulebook({ ...m.fm, ...fm }, {
-    activeConvention: state?.activeConventions?.some((c) => c.id === m.fm.id),
-    floor: floors.some((f) => f.memory_id === m.fm.id),
-  });
-  if (declaration) Object.assign(fm, declaration);
   // verify-Loop: ein Commons-Rezept, das geladen (und gleich angewendet)
   // wird, bringt seine Evidenz + die Aufforderung mit, das Ergebnis zu
   // verewigen — der Agent schließt den Kreis am Ort des Geschehens.

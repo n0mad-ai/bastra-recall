@@ -35,7 +35,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     hookProject, hybridActiveAtRecall, degradedReason,
   } = input;
   // A current private source must not leak through a stale public index.
-  const visible=(id:string)=>input.conventionSources?.get(id)?.hiddenFromPublic!==true;
+  const visible=(id:string)=>vault.get(id)?.fm.sensitivity!=="private" && input.conventionSources?.get(id)?.hiddenFromPublic!==true;
   const hits=rawHits.filter(h=>visible(h.id)),candidatePool=rawPool.filter(h=>visible(h.id));
   // Lean projection (#50): the hook CLI only consumes lean fields, so we
   // never need to send matched_terms/mode/hop/topic_path over the wire.
@@ -55,7 +55,8 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
   // and the lane keeps every floor and dedup it already applies.
   // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
   // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
-  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault);
+  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault)
+    .map(h => withSupersession(h, vault, input.conventionSources?.get(h.id)));
   // recall_mode rides along only when the user wired the memory as
   // reflex: the prompt lane's mode-"none" semantic filter keys on it
   // (19.08. incident — see prompt-lane.ts).
@@ -71,7 +72,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     // #1303: the gate's evidence that the user dictated the rule.
     ...(vault.get(h.id)?.fm.write_origin ? { write_origin: vault.get(h.id)!.fm.write_origin } : {}),
     ...(input.conventionSources?{revision:input.conventionSources.get(h.id)?.revision??null,write_origin:input.conventionSources.get(h.id)?.write_origin,summary:input.conventionSources.get(h.id)?.summary??h.summary}:{}),
-  }, vault));
+  }, vault, input.conventionSources?.get(h.id)));
   // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
   // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
   // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr
