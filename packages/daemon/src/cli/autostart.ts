@@ -39,11 +39,12 @@
 import { windowsService, type AutostartService } from "./windows-service.js";
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { tasksEnabled } from "../tasks-enabled.js";
+import { cleanManagedEnv, safeLaunchAgentSnapshot, legacySnapshotWarning } from "./autostart-env.js";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { probeDaemon, resolveVault } from "./helpers.js";
@@ -295,6 +296,7 @@ export function autostartEnv(
   platform: NodeJS.Platform = process.platform,
   existing: Record<string, string> = {},
   shell: NodeJS.ProcessEnv = process.env,
+  write?: (s: string) => void,
 ): Record<string, string> {
   const env: Record<string, string> = {
     [MANAGED_MARKER]: "1",
@@ -308,7 +310,7 @@ export function autostartEnv(
     env.BASTRA_HTTP_PORT = String(port);
   }
   // Existing opt-ins remain authoritative; explicit `on` vault/endpoint inputs win.
-  const merged: Record<string, string> = { ...bastraShellEnv(shell), ...env, ...existing,
+  const merged: Record<string, string> = { ...bastraShellEnv(shell), ...env, ...cleanManagedEnv(existing, write),
     [MANAGED_MARKER]: "1", BASTRA_VAULT_PATH: vaultPath };
   if (daemonUrl !== null && port !== null) {
     merged.BASTRA_DAEMON_URL = daemonUrl;
@@ -431,7 +433,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
   // #531 — the endpoint this process was told about, or the one the existing
   // managed plist already froze.
   const endpoint = endpointToPersist(state.endpoint);
-  const env = autostartEnv(vault.path, nodeBin, endpoint, process.platform, state.managed ? state.env : {});
+  const env = autostartEnv(vault.path, nodeBin, endpoint, process.platform, state.managed ? state.env : {}, process.env, write);
 
   if (args.dryRun) {
     write(`(dry-run — writing nothing)\n\n  would write ${state.path}\n`);
@@ -656,7 +658,7 @@ export async function refreshManagedAutostart(
     await mkdir(backupDir, { recursive: true });
     const snapshot = join(backupDir, `launchagent-${new Date().toISOString().replaceAll(":", "-")}-${randomUUID().slice(0, 8)}.plist`);
     // Create private from the first write; chmod after copy leaves an exposure window.
-    await writeFile(snapshot, await readFile(path), { mode: 0o600, flag: "wx" });
+    await writeFile(snapshot, await safeLaunchAgentSnapshot(path, state.env, plutil), { mode: 0o600, flag: "wx" });
     await chmod(path, 0o600);
     write(`  ✓ LaunchAgent snapshot: ${snapshot}\n`);
   } catch (err) {
@@ -667,8 +669,9 @@ export async function refreshManagedAutostart(
   const program = [opts.target.node, opts.target.script];
   const pointsAtInstall =
     state.program.length === program.length && state.program.every((p, i) => p === program[i]);
-  const env = { ...bastraShellEnv(opts.env ?? process.env), ...state.env };
-  const envChanged = Object.keys(env).some(key => env[key] !== state.env[key]);
+  const env = { ...bastraShellEnv(opts.env ?? process.env), ...cleanManagedEnv(state.env, write) };
+  const envChanged = Object.keys(env).length !== Object.keys(state.env).length ||
+    Object.keys(env).some(key => env[key] !== state.env[key]);
   if (!pointsAtInstall || envChanged) {
     write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — repointing it at the installed runtime\n`);
     try {
@@ -745,7 +748,12 @@ export async function refreshWindowsAutostart(write: (s: string) => void, opts: 
 }
 
 /** Was `bastra doctor` über den Autostart zu sagen hat — `null`, wenn nichts. */
-export async function autostartWarning(service = autostartService(), clientEnv: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+export async function autostartWarning(service = autostartService(), clientEnv: NodeJS.ProcessEnv = process.env, backupDir = join(homedir(), ".bastra", "backups")): Promise<string | null> {
+  const warnings = await Promise.all([managedServiceWarning(service, clientEnv), legacySnapshotWarning(backupDir)]);
+  return warnings.filter(Boolean).join("; ") || null;
+}
+
+async function managedServiceWarning(service: AutostartService | null, clientEnv: NodeJS.ProcessEnv): Promise<string | null> {
   if (!service) return null;
   let state: AutostartState;
   try { state = await service.status(); }

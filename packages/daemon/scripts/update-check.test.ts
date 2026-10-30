@@ -697,3 +697,26 @@ test("#1329 security: parser accepts captured launchctl print structure with sep
     assert.equal(state.loadedEnv?.BASTRA_VAULT_PATH, "fixture-value");
   });
 });
+
+test("#1329 legacy credentials: on and update strip known persisted keys and report names only", async () => {
+  const secrets = { BASTRA_API_TOKEN: "legacy-api-secret", BASTRA_EMBEDDING_KEY: "legacy-embedding-secret", BASTRA_TASK_TOKEN: "legacy-task-secret" };
+  const env = autostartEnv("/vault", process.execPath, null, "darwin", { ...secrets, BASTRA_TASKS: "1", CUSTOM: "kept" }, {});
+  for (const key of Object.keys(secrets)) assert.equal(env[key], undefined, key);
+  assert.equal(env.CUSTOM, "kept");
+  await withKegFixture(async ({ old, plist, launchctl, plutil, dir }) => {
+    const before = await readState(plist, launchctl, plutil);
+    await writeFile(plist, renderPlist({ ...before.env, ...secrets }, before.program));
+    let output = "";
+    const result = await refreshManagedAutostart(s => { output += s; }, { target: { node: process.execPath, script: old.script, version: old.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin", env: {} });
+    assert.equal(result.ok, true, result.detail);
+    const after = await readState(plist, launchctl, plutil);
+    assert.deepEqual(after.env, before.env, "removal must cause a rewrite even without repoint");
+    for (const key of Object.keys(secrets)) assert.match(output, new RegExp(key));
+    assert.doesNotMatch(output, /legacy-(?:api|embedding|task)-secret/);
+    const { readdir } = await import("node:fs/promises");
+    const backups = join(dir, "LaunchAgents", "backups");
+    for (const file of await readdir(backups)) {
+      assert.doesNotMatch(await readFile(join(backups, file), "utf8"), /legacy-(?:api|embedding|task)-secret/);
+    }
+  });
+});

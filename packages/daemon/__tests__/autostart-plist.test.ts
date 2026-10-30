@@ -112,3 +112,18 @@ test("#1329: doctor distinguishes persisted tasks opt-in from launchd's loaded e
   assert.equal(await autostartWarning(service, { BASTRA_TASKS: "1" }), null);
   assert.match((await autostartWarning(service, { BASTRA_TASKS: "0" }))!, /BASTRA_TASKS.*client/);
 });
+
+test("#1329 legacy backups: Doctor warns about old readable snapshots without modifying them", async (t) => {
+  const { autostartWarning } = await import("../src/cli/autostart.js");
+  const { chmod, stat, readFile } = await import("node:fs/promises");
+  const d = await dir(t);
+  const old = join(d, "launchagent-legacy.plist");
+  await writeFile(old, "private legacy bytes", { mode: 0o644 });
+  await chmod(old, 0o644);
+  const before = await stat(old);
+  assert.match((await autostartWarning(null, {}, d))!, /snapshot.*0644|readable.*snapshot|snapshot.*readable/i);
+  const after = await stat(old);
+  assert.equal(await readFile(old, "utf8"), "private legacy bytes");
+  assert.equal(after.mode, before.mode);
+  assert.equal(after.mtimeMs, before.mtimeMs);
+});
