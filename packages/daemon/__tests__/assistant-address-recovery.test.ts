@@ -113,3 +113,19 @@ test("#1332 point 7: restored recovery reports the current unloaded service with
  await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await p.onSettled?.(false);throw Error("cancelled");}}));
  const s=await assistantAddressStatus(o);assert.match(s.error??"",/derzeit nicht geladen/);assert.doesNotMatch(s.error??"",/Helfer gestoppt/);
 });
+
+test("admin hardening: dead owner alone cannot release an untracked admin intent",async t=>{
+ const {o}=await fixture(t);await assert.rejects(setupAssistantAddress({...o,runAdmin:async()=>{throw Error("lost dialog");}}));
+ const path=join(o.runtimeDir,"pending-admin.json"),p=JSON.parse(await readFile(path,"utf8"));p.createdAt=Date.now()-3600000;p.ownerPid=2147483647;delete p.adminPid;await writeFile(path,JSON.stringify(p));
+ const s=await assistantAddressStatus(o);assert.equal(s.pending,true);assert.match(s.repair??"",/Admin-PID.*nicht gesichert/);
+ await assert.rejects(setupAssistantAddress(o),/ausstehend/);
+});
+
+test("admin hardening: status removes only proven dead private staging directories",async t=>{
+ const {o}=await fixture(t),stagingRoot=join(o.home,"staging");await mkdir(stagingRoot);const dead=join(stagingRoot,"bastra-address-admin-dead"),live=join(stagingRoot,"bastra-address-admin-live"),unknown=join(stagingRoot,"bastra-address-admin-unknown");
+ for(const path of [dead,live,unknown])await mkdir(path,{mode:0o700});
+ const metadata=(adminPid:number)=>JSON.stringify({version:1,createdAt:Date.now()-3600000,adminPid});
+ await writeFile(join(dead,"process.json"),metadata(2147483647),{mode:0o600});await writeFile(join(live,"process.json"),metadata(process.pid),{mode:0o600});await writeFile(join(unknown,"payload"),"unknown old data");
+ await assistantAddressStatus({...o,adminStagingRoot:stagingRoot} as any);
+ await assert.rejects(readFile(join(dead,"process.json")),{code:"ENOENT"});assert.ok(await readFile(join(live,"process.json")));assert.ok(await readFile(join(unknown,"payload")));
+});

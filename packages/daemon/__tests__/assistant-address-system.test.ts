@@ -150,7 +150,7 @@ test("release B: staged multi-megabyte hosts execute with verified private paylo
  for(const tamper of [true,false]){
   const run=runMacAddressAdmin(plan,{spawn:(_cmd,args)=>{
    assert.ok(args.join("").length<16000);const encoded=args[1]!.slice("do shell script ".length).split(" with administrator privileges")[0]!,script=JSON.parse(encoded);
-   const path=/\/bin\/cp '([^']+)'/.exec(script)![1]!;assert.equal(statSync(path).mode&0o777,0o600);assert.equal(statSync(join(path,"..")).mode&0o777,0o700);if(tamper)writeFileSync(path,"tampered");
+   const path=/\/usr\/bin\/head -c \d+ '([^']+)'/.exec(script)![1]!;assert.equal(statSync(path).mode&0o777,0o600);assert.equal(statSync(join(path,"..")).mode&0o777,0o700);if(tamper)writeFileSync(path,"tampered");
    return spawn("/bin/sh",["-c",script],{stdio:["ignore","pipe","pipe"]});
   }});
   if(tamper){await assert.rejects(run);assert.equal(await readFile(hosts,"utf8"),before);}else{await run;assert.equal(await readFile(hosts,"utf8"),after);}
@@ -161,4 +161,28 @@ test("release F: helper gets one listening socket and no user-writable stderr pa
  const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/launch.sh"});
  assert.match(xml,/<key>Wait<\/key><true\/>/);assert.match(xml,/<key>StandardErrorPath<\/key><string>\/dev\/null<\/string>/);
  assert.equal((xml.match(/<key>SockNodeName<\/key>/g)??[]).length,1,"Wait=true receives one listener on stdio");
+});
+
+test("admin hardening: staged data rejects symlinks/FIFOs and reads at most the expected byte count",async t=>{
+ const {createHash}=await import("node:crypto"),{symlink}=await import("node:fs/promises");const root=await mkdtemp(join(tmpdir(),"assistant-hardening-"));t.after(()=>rm(root,{recursive:true,force:true}));
+ const hosts=join(root,"hosts"),payload=join(root,"payload"),content="Grüße\n",before="before\n";
+ const plan={hostsPath:hosts,hostsBefore:before,hostsAfter:content,helperPath:join(root,"helper"),helperBefore:null,helperAfter:null,label:"fixture",rootOwnership:false,launchctl:join(root,"unused-ctl")};
+ const script=makeAddressAdminScript(plan,new Map([[createHash("sha256").update(content).digest("hex"),payload]]));
+ assert.match(script,/\[ -f [^\n]+\] && \[ ! -L /,"type check must precede opening attacker-controlled data");
+ assert.match(script,new RegExp(`head -c ${Buffer.byteLength(content)} `),"bounded read must use bytes, not JS string length");
+ for(const kind of ["symlink","fifo","oversized"]){
+  await writeFile(hosts,before);await rm(payload,{force:true});
+  if(kind==="symlink")await symlink("/dev/zero",payload);
+  else if(kind==="fifo")execFileSync("/usr/bin/mkfifo",[payload]);
+  else await writeFile(payload,content+"Z".repeat(2000000));
+  if(kind==="oversized"){execFileSync("/bin/sh",["-c",script],{timeout:2000,stdio:"pipe"});assert.equal(await readFile(hosts,"utf8"),content);}
+  else{assert.throws(()=>execFileSync("/bin/sh",["-c",script],{timeout:1000,stdio:"pipe"}),(e:any)=>{assert.equal(e.signal,null,"must reject immediately instead of hanging");return true;});assert.equal(await readFile(hosts,"utf8"),before);}
+ }
+});
+
+test("admin hardening: failed PID persistence is visible and keeps a timed-out process pending",async t=>{
+ const {runMacAddressAdmin}=await import("../src/assistant-address-admin.js"),{spawn}=await import("node:child_process");let warning="",done!:()=>void;const completed=new Promise<void>(r=>done=r);
+ t.mock.method(process.stderr,"write",(s:any)=>{warning+=String(s);return true;});
+ await assert.rejects(runMacAddressAdmin({hostsPath:"fixture",hostsBefore:"",hostsAfter:"",helperPath:"fixture",helperBefore:null,helperAfter:null,label:"fixture",onStarted:async()=>{throw Error("disk write failed");},onSettled:async()=>done()},{timeoutMs:20,spawn:()=>spawn(process.execPath,["-e","setTimeout(()=>process.exit(0),100)"],{stdio:"ignore"})}),/PID.*nicht gesichert/);
+ assert.match(warning,/PID.*nicht gesichert/);await completed;
 });

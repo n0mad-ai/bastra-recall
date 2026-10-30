@@ -10,12 +10,12 @@ import { readSettings, settingsFilePath } from "./settings-file.js";
 import { normalizeAssistantName, assistantUrls } from "./assistant-address-name.js";
 import { patchAssistantHosts, managedAssistantHostsName, patchFirefoxUserJs, retiredFirefoxPreference } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
-import { renderAssistantSocketPlist, runMacAddressAdmin, shellQuote, type AddressAdminPlan } from "./assistant-address-admin.js";
+import { renderAssistantSocketPlist, runMacAddressAdmin, cleanupMacAddressAdminStaging, addressAdminProcessAlive, shellQuote, type AddressAdminPlan } from "./assistant-address-admin.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
 export interface AssistantAddressOptions {
- usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
+ adminStagingRoot?:string;usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
  runAdmin?:(plan:AddressAdminPlan)=>Promise<void>;ensureRuntime?:()=>Promise<void>;
 }
 export function assistantAddressOptions(o:AssistantAddressOptions={}) {
@@ -155,10 +155,8 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
  let receipt=await optional(receiptPath(o,p.id));
  const createdAt=p.createdAt??(await stat(pendingPath(o))).mtimeMs;
  if(!receipt && Date.now()-createdAt>300000){
-  const pid=p.adminPid??p.ownerPid;
-  let alive=false;
-  if(pid && Number.isSafeInteger(pid) && pid>0)try{process.kill(pid,0);alive=true;}catch(e){alive=(e as NodeJS.ErrnoException).code!=="ESRCH";}
-  if(!alive){receipt=JSON.stringify({success:false,orphaned:true});await atomic(receiptPath(o,p.id),receipt);}
+  // A daemon PID says nothing about a still-running privileged child.
+  if(addressAdminProcessAlive(p.adminPid)===false){receipt=JSON.stringify({success:false,orphaned:true});await atomic(receiptPath(o,p.id),receipt);}
  }
  const observedDelta=p.plan.hostsAfter!==p.plan.hostsBefore||p.plan.helperAfter!==p.plan.helperBefore;
  const outcome=receipt?JSON.parse(receipt).success:undefined;
@@ -272,7 +270,7 @@ async function addressOperation<T>(options:AssistantAddressOptions,operation:(re
  const o=assistantAddressOptions(options),path=o.settingsPath+".assistant-address-operation";
  await mkdir(dirname(path),{recursive:true,mode:0o700});
  return withPathLock(path,async assertOwnership=>{
-  assertOwnership();let recovering=false;let result:"none"|"completed"|"pending"|"partial";
+  assertOwnership();if(o.adminStagingRoot||!o.runAdmin)await cleanupMacAddressAdminStaging(o.adminStagingRoot);let recovering=false;let result:"none"|"completed"|"pending"|"partial";
   try{result=await reconcileAssistantAddress(o);}
   catch(error){
    if(!allowPending&&o.systemConsent&&error instanceof AddressSettingsConflictError&&error.settled){recovering=true;result="partial";}else throw error;
@@ -306,7 +304,9 @@ export async function assistantAddressStatus(options:AssistantAddressOptions={})
   const s=await assistantAddressStatusUnlocked(o),pending=!!await optional(pendingPath(o));
   const partial=pending&&await reconcileAssistantAddress(o)==="partial";
   const error=partial?`Teilzustand: ${await partialDescription(o)}`:s.error;
-  return {...s,pending,partial,error,repair:error?addressRepair(o,s.name,error,undefined,partial?"partial":"hosts"):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair};
+  const raw=pending?await optional(pendingPath(o)):null;
+  const pidUnknown=raw&&addressAdminProcessAlive((JSON.parse(raw)as PendingAddress).adminPid)===null;
+  return {...s,pending,partial,error,repair:pending&&!partial&&pidUnknown?"Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen.":error?addressRepair(o,s.name,error,undefined,partial?"partial":"hosts"):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair};
  },true);}catch(e){
   // Doctor must still return useful diagnostics when recovery itself is damaged/blocked.
   const name=await getAssistantName(o.settingsPath).catch(()=>null),error=(e as Error).message;

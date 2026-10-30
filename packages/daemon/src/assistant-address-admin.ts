@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, lstat, readFile, readdir, rename } from "node:fs/promises";
 const xml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const shellQuote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -32,7 +32,7 @@ export function makeAddressAdminScript(p: AddressAdminPlan, payloads?: ReadonlyM
   const write=(path:string,content:string,mode:string)=>[
     `/bin/mkdir -p ${q(dirname(path))}`,
     `tmp=$(/usr/bin/mktemp ${q(path+".bastra.XXXXXX")})`,
-    ...(payloads ? [`/bin/cp ${q(payloads.get(digest(content))!)} "$tmp"`, `[ "$(${hash} "$tmp" | /usr/bin/awk '{print $1}')" = ${q(digest(content))} ] || { echo 'address payload changed' >&2; exit 1; }`] : [`/usr/bin/printf %s ${q(content)} > "$tmp"`]),
+    ...(payloads ? [`[ -f ${q(payloads.get(digest(content))!)} ] && [ ! -L ${q(payloads.get(digest(content))!)} ] || { echo 'unsafe address payload' >&2; exit 1; }`, `/usr/bin/head -c ${Buffer.byteLength(content,"utf8")} ${q(payloads.get(digest(content))!)} > "$tmp"`, `[ "$(${hash} "$tmp" | /usr/bin/awk '{print $1}')" = ${q(digest(content))} ] || { echo 'address payload changed' >&2; exit 1; }`] : [`/usr/bin/printf %s ${q(content)} > "$tmp"`]),
     `/bin/chmod ${mode} "$tmp"`,
     ...(p.rootOwnership===false?[]:[`/usr/sbin/chown root:wheel "$tmp"`]),
     `/bin/mv "$tmp" ${q(path)}`,`tmp=''`,
@@ -49,12 +49,36 @@ export function makeAddressAdminScript(p: AddressAdminPlan, payloads?: ReadonlyM
   if(p.launchctl===undefined) lines.push("/usr/bin/dscacheutil -flushcache || true");
   return lines.join("\n")+"\n";
 }
+/** Only ESRCH proves a recorded child is gone; unknown permissions/identity stay pending. */
+export function addressAdminProcessAlive(pid:unknown):boolean|null {
+  if(typeof pid!=="number"||!Number.isSafeInteger(pid)||pid<=0)return null;
+  try{process.kill(pid,0);return true;}catch(error){return (error as NodeJS.ErrnoException).code==="ESRCH"?false:null;}
+}
+/** Remove only private staging with a durable child PID proven dead after its grace period.
+ * Unknown legacy directories and active dialogs are deliberately retained. */
+export async function cleanupMacAddressAdminStaging(root=tmpdir(),now=Date.now()):Promise<void>{
+  const uid=process.getuid?.();if(uid===undefined)return;
+  for(const name of await readdir(root).catch(()=>[] as string[])){
+    if(!/^bastra-address-admin-[a-zA-Z0-9]+$/.test(name))continue;
+    const dir=join(root,name),metadata=join(dir,"process.json");
+    try{
+      const info=await lstat(dir);if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==uid||(info.mode&0o777)!==0o700)continue;
+      const file=await lstat(metadata);if(!file.isFile()||file.isSymbolicLink()||file.uid!==uid||(file.mode&0o777)!==0o600||file.size>4096)continue;
+      const p=JSON.parse(await readFile(metadata,"utf8"));
+      if(p.version!==1||!Number.isFinite(p.createdAt)||now-p.createdAt<=300000||addressAdminProcessAlive(p.adminPid)!==false)continue;
+      await rm(dir,{recursive:true,force:true});
+    }catch{/* missing, damaged, changed or inaccessible staging is never guessed safe */}
+  }
+}
 export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(command:string,args:readonly string[],options:{stdio:["ignore","pipe","pipe"]})=>ChildProcess;timeoutMs?:number}): Promise<void> {
   io??={};
   let stage:string|undefined,finished=false;
   const settle=async(success:boolean)=>{if(finished)return;finished=true;try{await plan.onSettled?.(success);}finally{if(stage)await rm(stage,{recursive:true,force:true});}};
   try {
+    await cleanupMacAddressAdminStaging();
+    const createdAt=Date.now();
     stage=await mkdtemp(join(tmpdir(),"bastra-address-admin-"));
+    await writeFile(join(stage,"process.json"),JSON.stringify({version:1,createdAt}),{mode:0o600,flag:"wx"});
     const payloads=new Map<string,string>();
     for(const content of [plan.hostsAfter,plan.helperBefore,plan.helperAfter]){
       if(content===null||payloads.has(digest(content)))continue;
@@ -66,8 +90,16 @@ export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(c
       try{child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:["ignore","pipe","pipe"]});}
       catch{void settle(false).then(()=>reject(new Error("Systemfreigabe konnte nicht gestartet werden.")),reject);return;}
       let stderr="";child.stderr?.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-8192);});child.stdout?.resume();
-      const started=child.pid?Promise.resolve(plan.onStarted?.(child.pid)).catch(()=>{/* owner PID and deadline remain available */}):Promise.resolve();
-      const timer=setTimeout(()=>{reject(new Error("Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
+      let pidUnsecured=false;
+      const started=(async()=>{
+        if(!child.pid){pidUnsecured=true;return;}
+        try{
+          const path=join(stage!,"process.next.json");
+          await writeFile(path,JSON.stringify({version:1,createdAt,adminPid:child.pid}),{mode:0o600,flag:"wx"});await rename(path,join(stage!,"process.json"));
+          await plan.onStarted?.(child.pid);
+        }catch{pidUnsecured=true;process.stderr.write("Warnung: Admin-PID nicht gesichert; kein automatisches Freigeben ohne bestätigten Abschluss. bastra address status prüfen.\n");}
+      })();
+      const timer=setTimeout(()=>{reject(new Error(pidUnsecured?"Admin-PID nicht gesichert; Systemeinrichtung läuft möglicherweise noch. Dialogabschluss prüfen; bastra address status bleibt konservativ ausstehend.":"Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
       const complete=(success:boolean,message:string)=>{clearTimeout(timer);void started.then(()=>settle(success)).then(()=>success?resolve():reject(new Error(message)),()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));};
       child.once("error",()=>complete(false,"Systemfreigabe konnte nicht gestartet werden."));
       child.once("exit",code=>complete(code===0,/-128/.test(stderr)?"Systemeinrichtung abgebrochen, nichts geändert.":"Systemeinrichtung fehlgeschlagen; bastra address status prüfen."));
