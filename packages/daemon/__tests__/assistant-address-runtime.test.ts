@@ -86,3 +86,15 @@ test("final helper review: update retires only the old owned listener that preda
  await ensureAssistantAddressRuntime({...o,runtimeProcesses:async()=>[{pid:12345,uid:Number(o.uid),command},{pid:12346,uid:Number(o.uid)+1,command},{pid:12347,uid:Number(o.uid),command:"node unrelated-server.js"},{pid:12348,uid:Number(o.uid),command:command.replace(o.runtimeDir,join(o.home,"other-runtime"))}],retireRuntime:(pid:number)=>{retired.push(pid);}} as any);
  assert.deepEqual(retired,[12345],"pre-watcher processes require one user-owned retirement after the new runtime is durable");
 });
+
+test("runtime publication: a first-time launcher already serves UI at its atomic publication boundary",async t=>{
+ const fs=(await import("node:fs/promises")).default,{syncBuiltinESMExports}=await import("node:module");const o=await fixture(t),backend=createServer((_q,r)=>r.end("first-publication-ui"));
+ await new Promise<void>(r=>backend.listen(0,"127.0.0.1",r));t.after(()=>new Promise<void>(r=>backend.close(()=>r())));const port=await accepted(t,o),rename=fs.rename;let checked=false;
+ t.mock.method(fs,"rename",async(from:any,to:any)=>{
+  await rename(from,to);
+  if(to===join(o.runtimeDir,"launch.sh")){checked=true;const response=await call(port);assert.equal(response.status,200,"new launcher must never be visible before its runtime state is usable");assert.equal(response.body,"first-publication-ui");}
+ });
+ syncBuiltinESMExports();
+ try{await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});assert.equal(checked,true);}
+ finally{t.mock.restoreAll();syncBuiltinESMExports();}
+});

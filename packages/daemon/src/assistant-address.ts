@@ -113,7 +113,6 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  const errorBody="Bastra-Adresse nicht verfügbar. Bitte bastra address setup --yes ausführen.\n";
  const failure=`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(errorBody)}\r\nConnection: close\r\n\r\n${errorBody}`;
  const command=[node,bootstrap,"--assistant-address-bootstrap","--runtime-dir",o.runtimeDir].map(shellQuote).join(" ");
- await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nread_header() { if [ -n "\${BASH_VERSION:-}" ]; then IFS= read -r -t 2 line; else IFS= read -r line; fi; }\nfail() { while read_header; do [ -z "$line" ] || [ "$line" = "$(/usr/bin/printf '\\r')" ] && break; done; /usr/bin/printf %s ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${command}\nrc=$?\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
  await atomic(join(o.runtimeDir,"package.json"),'{"type":"module"}\n');
  const path=join(o.runtimeDir,"current.json");
  await withPathLock(path,async()=>{
@@ -121,6 +120,7 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
   const endpoint=options.daemonUrl||resolveDaemonEndpoint().configured?o.daemonUrl:previous?.protocol===2?previous.daemonUrl:o.daemonUrl;
   await atomic(path,JSON.stringify({protocol:2,generation:randomUUID(),version:digest,settingsPath:o.settingsPath,hostsPath:o.hostsPath,daemonUrl:endpoint,owner:o.uid})+"\n");
  },{strictLocal:true});
+ await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nread_header() { if [ -n "\${BASH_VERSION:-}" ]; then IFS= read -r -t 2 line; else IFS= read -r line; fi; }\nfail() { while read_header; do [ -z "$line" ] || [ "$line" = "$(/usr/bin/printf '\\r')" ] && break; done; /usr/bin/printf %s ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${command}\nrc=$?\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
  await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
