@@ -47,13 +47,14 @@ export function makeAddressAdminScript(p: AddressAdminPlan): string {
   if(p.launchctl===undefined) lines.push("/usr/bin/dscacheutil -flushcache || true");
   return lines.join("\n")+"\n";
 }
-export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(command:string,args:readonly string[],options:{stdio:"ignore"})=>ChildProcess;timeoutMs?:number}): Promise<void> {
+export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(command:string,args:readonly string[],options:{stdio:["ignore","pipe","pipe"]})=>ChildProcess;timeoutMs?:number}): Promise<void> {
   io??={};
   const script=makeAddressAdminScript(plan);
   await new Promise<void>((resolve,reject)=>{
-    const child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:"ignore"});
+    const child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:["ignore","pipe","pipe"]});
+    let stderr="";child.stderr?.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-8192);});child.stdout?.resume();
     const timer=setTimeout(()=>{reject(new Error("Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
     child.once("error",()=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(false)).then(()=>reject(new Error("Systemfreigabe konnte nicht gestartet werden.")),()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
-    child.once("exit",code=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(code===0)).then(()=>{if(code===0)resolve();else reject(new Error("Systemeinrichtung abgebrochen oder fehlgeschlagen; bastra address status prüfen."));},()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
+    child.once("exit",code=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(code===0)).then(()=>{if(code===0)resolve();else reject(new Error(/-128/.test(stderr)?"Systemeinrichtung abgebrochen, nichts geändert.":"Systemeinrichtung fehlgeschlagen; bastra address status prüfen."));},()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
   });
 }

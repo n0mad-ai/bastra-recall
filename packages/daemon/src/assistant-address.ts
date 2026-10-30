@@ -15,7 +15,7 @@ import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
 export interface AssistantAddressOptions {
- machineNames?:readonly string[];settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
+ machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
  runAdmin?:(plan:AddressAdminPlan)=>Promise<void>;ensureRuntime?:()=>Promise<void>;
 }
 export function assistantAddressOptions(o:AssistantAddressOptions={}) {
@@ -87,6 +87,12 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\nexec ${command}\n`);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
+async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions>):Promise<boolean|null>{
+ if(o.helperLoaded)return o.helperLoaded();
+ if(o.runAdmin)return null; // Test/injected IO never inspects the live launchd domain.
+ if(o.platform!=="darwin")return null;
+ return new Promise(resolve=>execFile("/bin/launchctl",["print",`system/ai.n0mad.bastra-recall.address.${o.uid}`],{timeout:1500},(error,_out,stderr)=>{if(!error)resolve(true);else resolve(/Could not find service|service not found/i.test(stderr)?false:null);}));
+}
 type ProfileEdit={path:string;before:string|null;after:string};
 interface PendingAddress {id:string;plan:AddressAdminPlan;name:string|null;previousName:string|null;profiles:ProfileEdit[];desiredState:{version:number;name:string;firefoxFiles:string[];firefoxOwnedPrefs:Record<string,string[]>}|null;}
 const pendingPath=(o:ReturnType<typeof assistantAddressOptions>)=>join(o.runtimeDir,"pending-admin.json");
@@ -94,7 +100,7 @@ const receiptPath=(o:ReturnType<typeof assistantAddressOptions>,id:string)=>join
 async function forgetPending(o:ReturnType<typeof assistantAddressOptions>,p:PendingAddress){await rm(pendingPath(o),{force:true});await rm(receiptPath(o,p.id),{force:true});}
 /** Durable intent survives a lost osascript response and a daemon restart.
  * No root work is retried here: only exact observed system outputs are adopted. */
-async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOptions>):Promise<"none"|"completed"|"pending">{
+async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOptions>):Promise<"none"|"completed"|"pending"|"partial">{
  const raw=await optional(pendingPath(o));if(!raw)return "none";
  const p=JSON.parse(raw)as PendingAddress;
  if(!/^[a-f0-9-]{36}$/.test(p.id)||p.plan.hostsPath!==o.hostsPath||p.plan.helperPath!==o.helperPath||(p.name!==null&&p.name!==normalizeAssistantName(p.name))||!p.profiles.every(e=>profileAllowed(e.path,o.firefoxRoot)||profileAllowed(join(dirname(e.path),"user.js"),o.firefoxRoot)&&e.path.endsWith(sep+"prefs.js")))throw new Error("Adress-Abgleich beschädigt; bastra doctor prüfen, keine Systemänderung wiederholen.");
@@ -108,7 +114,11 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
   const edits=[];for(const e of p.profiles){const actual=await optional(e.path);if(actual!==e.after&&!(actual===null&&e.after===""))edits.push(e);}
   await applyProfiles(edits);await setAssistantName(p.name,o.settingsPath);if(p.desiredState)await atomic(join(o.runtimeDir,"state.json"),JSON.stringify(p.desiredState)+"\n");else await rm(join(o.runtimeDir,"state.json"),{force:true});await forgetPending(o,p);if(p.name===null)await cleanupAddressRuntime(o);return "completed";
  }
- if(receipt&&JSON.parse(receipt).success===false&&hosts===p.plan.hostsBefore&&helper===p.plan.helperBefore){await forgetPending(o,p);return "none";}
+ if(receipt&&JSON.parse(receipt).success===false&&hosts===p.plan.hostsBefore&&helper===p.plan.helperBefore){
+  // bootout can succeed before a hosts write fails; file equality alone proves no rollback.
+  if(p.name===null&&p.plan.helperBefore!==null){const loaded=await assistantHelperLoaded(o);if(loaded===false)return "partial";if(loaded===null)return "pending";}
+  await forgetPending(o,p);return "none";
+ }
  return "pending"; // A late privileged process may still finish. Keep its intent.
 }
 async function hasSystem(o:ReturnType<typeof assistantAddressOptions>){return !!(await state(o)||managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid)||await ownHelper(o));}
@@ -132,8 +142,10 @@ async function setupAssistantAddressUnlocked(options:AssistantAddressOptions&{na
  const pending:PendingAddress={id:randomUUID(),plan,name,previousName,profiles,desiredState:{version:2,name,firefoxOwnedPrefs,firefoxFiles:profiles.filter(p=>p.path.endsWith(sep+"user.js")).map(p=>p.path)}};
  await atomic(pendingPath(o),JSON.stringify(pending)+"\n");
  try{await(o.runAdmin??runMacAddressAdmin)({...plan,onSettled:async success=>atomic(receiptPath(o,pending.id),JSON.stringify({success})+"\n")});}
- catch{
-  if(await reconcileAssistantAddress(o)==="completed")return {browserOpened:false,warning:"Admin-Rückmeldung fehlte; tatsächliche Systemeinrichtung geprüft und übernommen."};
+ catch(error){
+  const result=await reconcileAssistantAddress(o);
+  if(result==="none")throw new Error(/abgebrochen|cancel(?:ed|led)|-128/i.test((error as Error).message)?"Systemeinrichtung abgebrochen, nichts geändert.":"Systemeinrichtung fehlgeschlagen, nichts geändert.");
+  if(result==="completed")return {browserOpened:false,warning:"Admin-Rückmeldung fehlte; tatsächliche Systemeinrichtung geprüft und übernommen."};
   throw new Error("Systemeinrichtung nicht abschließend bestätigt, möglicherweise noch ausstehend. bastra address status prüft den tatsächlichen Zustand; Einrichtung nicht parallel wiederholen.");
  }
  try{
@@ -165,7 +177,7 @@ async function removeAssistantAddressUnlocked(options:AssistantAddressOptions={}
   pending={id:randomUUID(),plan,name:null,previousName:await getAssistantName(o.settingsPath),profiles,desiredState:null};
   await atomic(pendingPath(o),JSON.stringify(pending)+"\n");const id=pending.id;
   try{await(o.runAdmin??runMacAddressAdmin)({...plan,onSettled:async success=>atomic(receiptPath(o,id),JSON.stringify({success})+"\n")});}
-  catch{if(await reconcileAssistantAddress(o)==="completed")return;throw new Error("Entfernen nicht abschließend bestätigt; bastra address status prüft den tatsächlichen Zustand. Nicht parallel wiederholen.");}
+  catch{const result=await reconcileAssistantAddress(o);if(result==="completed")return;if(result==="partial")throw new Error("Entfernen nur teilweise ausgeführt: Helfer-Dienst gestoppt, Dateien unverändert. bastra address setup <name> --yes stellt die Adresse wieder her.");if(result==="none")throw new Error("Entfernen abgebrochen oder fehlgeschlagen, nichts geändert.");throw new Error("Entfernen nicht abschließend bestätigt; bastra address status prüft den tatsächlichen Zustand. Nicht parallel wiederholen.");}
  }
  await applyProfiles(profiles);await setAssistantName(null,o.settingsPath);if(pending)await forgetPending(o,pending);await cleanupAddressRuntime(o);
 }
@@ -190,10 +202,28 @@ export async function notifyAssistantAddressDaemon():Promise<void>{const base=re
 async function addressOperation<T>(options:AssistantAddressOptions,operation:()=>Promise<T>,allowPending=false):Promise<T>{
  const path=assistantAddressOptions(options).settingsPath+".assistant-address-operation";
  await mkdir(dirname(path),{recursive:true,mode:0o700});
- return withPathLock(path,async assertOwnership=>{assertOwnership();if(await reconcileAssistantAddress(assistantAddressOptions(options))==="pending"&&!allowPending)throw new Error("Systemeinrichtung noch ausstehend; bastra address status und bastra doctor prüfen, nicht erneut starten.");const result=await operation();assertOwnership();return result;},{strictLocal:true});
+ return withPathLock(path,async assertOwnership=>{assertOwnership();if(["pending","partial"].includes(await reconcileAssistantAddress(assistantAddressOptions(options)))&&!allowPending)throw new Error("Systemeinrichtung noch ausstehend; bastra address status und bastra doctor prüfen, nicht erneut starten.");const result=await operation();assertOwnership();return result;},{strictLocal:true});
 }
 export function changeAssistantName(value:string,options:AssistantAddressOptions={}):Promise<void>{return addressOperation(options,()=>changeAssistantNameUnlocked(value,options));}
 export function setupAssistantAddress(options:AssistantAddressOptions&{name?:string}={}){return addressOperation(options,()=>setupAssistantAddressUnlocked(options));}
 export function removeAssistantAddress(options:AssistantAddressOptions={}):Promise<void>{return addressOperation(options,()=>removeAssistantAddressUnlocked(options));}
 
-export function assistantAddressStatus(options:AssistantAddressOptions={}){return addressOperation(options,async()=>{const o=assistantAddressOptions(options),s=await assistantAddressStatusUnlocked(o),pending=!!await optional(pendingPath(o));return {...s,pending,repair:pending?"Admin-Einrichtung noch nicht abschließend bestätigt. bastra address status später erneut prüfen. Bei unverändertem Zustand: laufenden macOS-Dialog beenden; keine zweite Einrichtung parallel starten. Bei manuell verändertem Systemzustand hosts sichern und bastra doctor zur Reparatur verwenden.":s.repair};},true);}
+function addressRepair(o:ReturnType<typeof assistantAddressOptions>,name:string|null,error:string){
+ const command=`bastra address setup ${name??"<name>"} --yes`;
+ if(/Firefox/i.test(error))return `Firefox vollständig schließen; dann ${command} ausführen.`;
+ if(/pending|JSON|Abgleich|Unexpected|Syntax/i.test(error))return `Zuerst einen noch laufenden Admin-Dialog beenden und dessen Abschluss prüfen. Beschädigten Auftrag sichern: mv ${shellQuote(pendingPath(o))} ${shellQuote(pendingPath(o)+".backup")}. Danach ${command} ausführen. hosts vorher sichern; keine fremden Einträge löschen.`;
+ return `hosts zuerst sichern. Veränderten eigenen bastra-recall assistant-address-Block prüfen und nur diesen als Administrator entfernen; fremde Anpassungen bewahren. Dann ${command} ausführen.`;
+}
+export async function assistantAddressStatus(options:AssistantAddressOptions={}){
+ const o=assistantAddressOptions(options);
+ try{return await addressOperation(o,async()=>{
+  const s=await assistantAddressStatusUnlocked(o),pending=!!await optional(pendingPath(o));
+  const partial=pending&&await reconcileAssistantAddress(o)==="partial";
+  const error=partial?"Teilzustand: Helfer-Dienst gestoppt, hosts/plist noch vorhanden.":s.error;
+  return {...s,pending,partial,error,repair:error?addressRepair(o,s.name,error):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair};
+ },true);}catch(e){
+  // Doctor must still return useful diagnostics when recovery itself is damaged/blocked.
+  const name=await getAssistantName(o.settingsPath).catch(()=>null),error=(e as Error).message;
+  return {name,enabled:false,urls:name?assistantUrls(name):null,registeredName:null,ready:false,error,pending:true,partial:false,systemSetupSupported:o.platform==="darwin",firefoxProfiles:0,bareNameNotice:"",repair:addressRepair(o,name,error)};
+ }
+}

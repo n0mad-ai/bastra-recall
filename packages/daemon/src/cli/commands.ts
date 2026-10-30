@@ -498,7 +498,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printVersionPairNote();
   await printDaemonOriginNote();
   await printAutostartNote();
-  try{const a=await assistantAddressStatus();if(a.error||a.pending)process.stdout.write(`→ assistant address: ${a.error??"Systemeinrichtung ausstehend"}\n  ${a.repair}\n`);if(a.name)process.stdout.write(`→ assistant address: ${a.ready?"reachable":"not ready — run bastra address setup --yes"}\n  ${a.urls!.local}\n  hosts: ${a.registeredName===a.name?"current":"missing/stale"}; ${a.firefoxProfiles} Firefox profile(s)\n  ${a.bareNameNotice}\n`);}catch(e){process.stdout.write(`→ assistant address: ${(e as Error).message}\n`);}
+  try{const a=await assistantAddressStatus();if(a.error||a.pending)process.stdout.write(`→ assistant address: ${a.error??"Systemeinrichtung ausstehend"}\n  ${a.repair}\n`);if(a.name)process.stdout.write(`→ assistant address: ${a.ready?"reachable":`not ready — run bastra address setup ${a.name} --yes`}\n  ${a.urls!.local}\n  hosts: ${a.registeredName===a.name?"current":"missing/stale"}; ${a.firefoxProfiles} Firefox profile(s)\n  ${a.bareNameNotice}\n`);}catch(e){process.stdout.write(`→ assistant address: ${(e as Error).message}\n`);}
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printDerivedClaimsNote(resolveVaultPath(args.vaultPath));
