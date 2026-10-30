@@ -13,7 +13,6 @@ import {runPromptLane} from '../../../src/prompt-lane.js';
 import {runGateLane} from '../../../src/gate-lane.js';
 import {runStopLane} from '../../../src/stop-lane.js';
 import {loadSessionState} from '../../../src/session-state.js';
-import {checkStopRepair} from '../../../src/stop-repair.js';
 import {githubConventionGate} from '../../../src/github-conventions-lane.js';
 import {setPrimaryLanguage} from '../../../src/settings.js';
 import {inventedRules, languages, type Language} from './fixtures.js';
@@ -156,8 +155,11 @@ export async function runProbe(): Promise<ProbeResult> {
           const sid=`reply-load-${client}-${lang}`;
           assert.match(context(await prompt(sid,client,t.incoming)),/125.*index|125.*Index/);
           assert.equal((await stop(sid,client,t.draft)).decision,'block');
+          // A fresh round restores the full Stop budget. Removing the actual
+          // load below must make the first Stop block, not pass a retry guard.
+          await prompt(sid,client,t.incoming);
           await load(sid,`p5-${lang}-correspondence`);
-          assert.notEqual((await stop(sid,client,t.draft,true)).decision,'block');
+          assert.notEqual((await stop(sid,client,t.draft)).decision,'block');
         });
         await attempt(lang,client,'correspondence-empty-check-bypass',async()=>{
           // Separate fresh session: not merely the Stop retry cap being exhausted.
@@ -177,13 +179,20 @@ export async function runProbe(): Promise<ProbeResult> {
             if(!JSON.stringify(out).includes('validate_artifact')&&(await loadSessionState(sid)).repairAttempts===undefined)bypass++;
             // Positive control exercises the same bytes after explicit model task report.
             assert.equal((await check(sid,{applicable:[`p5-${lang}-correspondence`],task:'draft-for-review'})).ok,true);
-            const repair=await checkStopRepair({...common(sid,client),hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
-            if(client==='claude-code')assert.equal(repair?.action,'request');
-            else assert.equal(repair,null,'Codex length-repair is intentionally unsupported');
+            const repair=await stop(sid,client,text);
+            assert.equal(JSON.stringify(repair).includes('<copy-repair'),client==='claude-code','real Stop-lane positive control; Codex length-repair unsupported');
           }
           assert.equal(bypass,3);
           return `${bypass}/3 oversized forms bypass repair with loaded validator but omitted task; ${client==='claude-code'?'all explicit-task controls request repair':'Codex same-turn length repair unsupported even with task'}`;
         },true);
+        await attempt(lang,client,'task-before-load',async()=>{
+          const sid=`task-first-${client}-${lang}`;await prompt(sid,client,t.incoming);
+          assert.equal((await check(sid,{applicable:[],task:'draft-for-review'})).ok,true);
+          await load(sid,`p5-${lang}-correspondence`);
+          const out=await stop(sid,client,t.draft.repeat(150));
+          assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
+          return client==='claude-code'?'Late load activates repair on real Stop lane':'Codex repair unsupported; dynamic constraint retained';
+        });
         await attempt(lang,client,'harmless-prompts',async()=>{
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){
             const sid=`harmless-${client}-${lang}-${i}`;await prompt(sid,client,text);

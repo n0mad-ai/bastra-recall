@@ -1,11 +1,10 @@
 /** Round self-report, not a proof of semantic compliance. No prompt classification. */
 import { expireReceipts } from "./receipt-store.js";
-import {modelTaskValidators,freezeTaskValidators,taskValidators} from './task-validators.js';
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, taskIdFor } from "./session-state.js";
+import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, recordValidatorLimits, taskIdFor } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
 import { collectRulebookCatalog, cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
@@ -88,10 +87,9 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     if (input.task !== undefined) {
       const now = Date.now();
       const beforeConventions = s.activeConventions;
-      const binding = modelTaskValidators(s,catalog.entries.filter(e=>input.applicable.includes(e.id)));
       const startingTask = input.task !== (s.activeTask?.kind ?? "none");
       if (startingTask) {
-        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.activeTask?.validatorRuleId ? {validatorRuleId:s.activeTask.validatorRuleId} : {}) };
+        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0 };
         expireReceipts(s);
       }
       // A model report only adds stricter review obligations.
@@ -99,7 +97,6 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       if (input.task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
         id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
       })), now);
-      if(s.activeTask)freezeTaskValidators(s.activeTask,binding.bindings,binding.source);
       if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
           JSON.stringify((beforeConventions ?? []).map(e => [e.id,e.revision,e.validator]))) {
         delete s.receipts;
@@ -141,14 +138,12 @@ export async function recordRulebookLoad(sessionId: string, id: string, agentId?
     const state=read(s),a=actor(state,agentId?`agent:${agentId}`:"main");
     const obligated=a.required.some(r=>r.id===id);
     if(source&&!source.rulebookMetadata?.rulebook&&!source.validator&&!obligated)return;
-    if(!agentId&&s.activeTask&&['draft-for-review','approved-copy'].includes(s.activeTask.kind)&&s.activeTask.validatorBindings===undefined){
-      freezeTaskValidators(s.activeTask,taskValidators(s),s.activeTask.validatorBindingSource??'model');
-    }
     if (source?.rulebookMetadata?.rulebook || obligated || !source) a.checked=true;
     if(!a.ids.includes(id))a.ids.push(id);
     a.loaded=[...a.loaded.filter(r=>r.id!==id),{id,revision:source?.revision??null}].slice(-200);
     a.required=a.required.filter(r=>r.id!==id);
     if(!agentId && source){
+      recordValidatorLimits(s,[source.validator]);
       s.loadedConventions=[...(s.loadedConventions??[]).filter(r=>r.id!==id),{id,revision:source.revision,loadedAt:Date.now(),...(source.validator?{validator:source.validator}:{})}].slice(-200);
     }
     put(s,state);

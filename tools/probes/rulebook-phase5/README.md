@@ -46,9 +46,13 @@ Translated fixtures and the shared replay implementation live in
 the daemon tests. These tests deliberately reproduce the gaps; a green suite
 does not turn a `GAP` report cell into a passing acceptance case.
 
-The security follow-up (`rulebook-phase5-security.test.ts`) verifies frozen
-task-start validator parameters, order-independent model sets, monotonic
-tightening, legacy pre-task fallback and preserved user-selected channels.
-It is part of the root suite and can be run with the same test-env import.
-Different units/channels are enforced together; numeric limit ordering alone
-is insufficient. These fixes do not close the task-omission/applicability gaps.
+The security/fix1 suites (`rulebook-phase5-security.test.ts` and
+`rulebook-phase5-fix1.test.ts`) exercise the real Stop lane: dynamic session
+constraints, late loads after task reports, order-independent model reports,
+monotonic tightening and real user-selected channels through review/approval.
+There are no task snapshots or timestamp filters. Without a user-selected
+channel all loaded/active channels apply, with at most two repair requests.
+These fixes do not close the no-task/applicability gaps. The correspondence
+positive control resets the round before loading and uses a first Stop with
+`stop_hook_active=false`; omitting that load must fail it. Length-validation
+positive controls go through the real Stop lane, including task-before-load.

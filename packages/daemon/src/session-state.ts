@@ -171,6 +171,10 @@ export interface SessionState {
   activeConventions?: ActiveConvention[];
   /** Full-body loads attributed to this exact caller session; claims/hints never fill this. */
   loadedConventions?: Array<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>;
+  /** Running channel/unit minima from actual loads/activation, never a task snapshot. */
+  validatorLimits?: ConventionValidator[];
+  /** Only the user-turn candidate path may select this correspondence channel. */
+  userValidatorChannel?: string;
   /** #1306: the correspondence task the session is in (prompt-classify.ts). */
   activeTask?: ActiveTask;
   /** #1306: the "task unclear" choice line went out; only the next prompt of
@@ -283,6 +287,8 @@ export interface ReadonlySessionState {
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
   readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>[];
+  readonly validatorLimits?: readonly ConventionValidator[];
+  readonly userValidatorChannel?: string;
   readonly activeTask?: Readonly<ActiveTask>;
   readonly taskQuestion?: Readonly<TaskQuestion>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
@@ -405,6 +411,8 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       state.claimedMustLoad = parsed.claimedMustLoad.filter((id): id is string => typeof id === "string");
     }
     if(Array.isArray(parsed.loadedConventions))state.loadedConventions=parsed.loadedConventions.filter((e):e is {id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}=>!!e&&typeof e.id==="string"&&(typeof e.revision==="string"||e.revision===null)&&typeof e.loadedAt==="number").slice(-200);
+    if(Array.isArray(parsed.validatorLimits))state.validatorLimits=parsed.validatorLimits;
+    if(typeof parsed.userValidatorChannel==='string'&&parsed.userValidatorChannel)state.userValidatorChannel=parsed.userValidatorChannel;
     if (Array.isArray(parsed.activeConventions)) {
       state.activeConventions = parsed.activeConventions.filter(
         (e): e is ActiveConvention =>
@@ -552,6 +560,19 @@ export const ACTIVE_CONVENTIONS_CAP = 20;
 /** #1305: bound on denied must-load ids still waiting for their load. */
 const CLAIMED_MUST_LOAD_CAP = 20;
 
+/** Running session minima, not a task snapshot. Later loads can only tighten. */
+export function recordValidatorLimits(state:SessionState,additional:readonly (ConventionValidator|undefined)[]=[]):void{
+ const limits=new Map<string,ConventionValidator>();
+ for(const v of [...(state.validatorLimits??[]),...(state.activeConventions??[]).map(c=>c.validator),
+  ...(state.loadedConventions??[]).map(c=>c.validator),...additional]){
+  if(!v||v.tool!=='validate_artifact'||typeof v.channel!=='string'||!v.channel.trim()||
+   !Number.isInteger(v.limit)||v.limit<=0||!['codepoints','utf16'].includes(v.unit))continue;
+  const key=JSON.stringify([v.channel,v.unit]);
+  if(!limits.has(key)||limits.get(key)!.limit>v.limit)limits.set(key,{...v});
+ }
+ if(limits.size)state.validatorLimits=[...limits.values()];
+}
+
 /** #1305: put conventions in force (mutates in place). A convention set again
  *  moves to the newest position with its current revision. #1306: it keeps
  *  its original scope — a session-wide rule does
@@ -563,6 +584,7 @@ export function recordActiveConventions(
   now: number = Date.now(),
 ): void {
   if (set.length === 0) return;
+  recordValidatorLimits(state,set.map(e=>e.validator));
   const before = new Map((state.activeConventions ?? []).map((e) => [e.id, e]));
   const ids = new Set(set.map((e) => e.id));
   const kept = (state.activeConventions ?? []).filter((e) => !ids.has(e.id));
@@ -597,6 +619,7 @@ export async function bumpTaskGeneration(sessionId: string, now: number = Date.n
       delete state.taskQuestion;
       delete state.receipts;
       delete state.repairAttempts;
+      delete state.validatorLimits;
     });
   } catch {
     // A missed bump only leaves an old question answerable; it never blocks the start.
@@ -648,6 +671,7 @@ export async function clearPendingMustLoad(
   if (!memId) return;
   try {
     if(activate&&loadedSessionId)await mutateSessionState(loadedSessionId,state=>{
+     recordValidatorLimits(state,[activate.validator]);
      state.loadedConventions=[...(state.loadedConventions??[]).filter(c=>c.id!==memId),{id:memId,revision:activate.revision,loadedAt:Date.now()}].slice(-200);
     });
     const dir = sessionStateDir();
@@ -983,6 +1007,7 @@ export async function clearShown(sessionId: string): Promise<void> {
     state.shown = {};
     delete state.constants;
     delete state.loadedConventions;
+    delete state.validatorLimits;
   });
   if(current.rulebookCheck)await (await import("./rulebook-check.js")).resetRulebookContext(sessionId);
 }

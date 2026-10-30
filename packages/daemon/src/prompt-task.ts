@@ -15,13 +15,13 @@
 import type { Vault, ConventionValidator } from "@bastra-recall/core";
 import { vaultConventionOf, type ConventionSource } from "./convention-source.js";
 import { GATED_HINT_TYPES } from "./hook-recall-response.js";
-import { decideTask, taskSignals, type DetectedMode, type TaskKind } from "./prompt-classify.js";
+import { decideTask, taskSignals, splitQuoted, type DetectedMode, type TaskKind } from "./prompt-classify.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
 import { currentReceipt, expireReceipts } from "./receipt-store.js";
-import {taskValidators,freezeTaskValidators,mergeTaskValidators} from './task-validators.js';
 import {
   mutateSessionState,
   recordActiveConventions,
+  recordValidatorLimits,
   taskIdFor,
   type ActiveConvention,
   type ReadonlySessionState,
@@ -82,7 +82,8 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const current: TaskKind = snapshot.activeTask?.kind ?? "none";
   const questionOpen = snapshot.taskQuestion !== undefined && snapshot.taskQuestion.generation === generation;
   const activeIds = new Set((snapshot.activeConventions ?? []).map((e) => e.id));
-  const decision = decideTask(taskSignals(input.prompt), {
+  const signals=taskSignals(input.prompt);
+  const decision = decideTask(signals, {
     current,
     questionOpen,
     correspondenceActive: current !== "none" ||
@@ -104,10 +105,18 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const askedRevision = new Map(asked.map((e) => [e.id, e.revision]));
   const activate = entering ? [...new Set([...surfaced, ...asked.map((e) => e.id)])] : [];
   const askAbout = decision.unclear ? surfaced : [];
+  // User-turn candidates can select one unambiguous channel even before a
+  // review task exists. Quoted-only text and bare approvals cannot retarget it.
+  const channels=[...new Set(input.candidates.filter(isTaskConvention).flatMap(c=>{
+    const v=c.validator??snapshot.loadedConventions?.find(r=>r.id===c.id)?.validator??snapshot.activeConventions?.find(r=>r.id===c.id)?.validator;
+    return v?.channel?[v.channel]:[];
+  }))];
+  const userChannel=splitQuoted(input.prompt).own&&!signals.approval&&!signals.ack&&channels.length===1?channels[0]:undefined;
+  const channelChanges=userChannel!==undefined&&userChannel!==snapshot.userValidatorChannel;
 
   // Nothing in force, nothing asked, nothing starting: the common prompt costs
   // the snapshot the lane already read.
-  if (activeIds.size === 0 && current === "none" && !snapshot.taskQuestion && activate.length === 0 && !decision.unclear) {
+  if (activeIds.size === 0 && current === "none" && !snapshot.taskQuestion && activate.length === 0 && !decision.unclear && !channelChanges) {
     return null;
   }
 
@@ -133,7 +142,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
       (input.conventionOf !== undefined && JSON.stringify(sources.get(e.id)?.validator) !== JSON.stringify(e.validator)));
   });
   const needsWrite =
-    kindChanges || activate.length > 0 || decision.unclear || snapshot.taskQuestion !== undefined || revisionDrift;
+    kindChanges || activate.length > 0 || decision.unclear || snapshot.taskQuestion !== undefined || revisionDrift || channelChanges;
 
   if (!needsWrite) {
     return formatActiveConventionsBlock(
@@ -149,9 +158,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
     // A revision that moved since the convention was set: say so once, then
     // carry the new one. Unknown before is not a change.
     const changed: string[] = [];
-    if(s.activeTask&&['draft-for-review','approved-copy'].includes(s.activeTask.kind)&&s.activeTask.validatorBindings===undefined){
-      freezeTaskValidators(s.activeTask,taskValidators(s),s.activeTask.validatorBindingSource??'model');
-    }
+    recordValidatorLimits(s);
     for (const e of s.activeConventions ?? []) {
       const rev = revisions.get(e.id);
       if (!revisions.has(e.id)) continue;
@@ -166,16 +173,11 @@ async function step(input: TaskStepInput): Promise<string | null> {
       }
     }
     if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
-      const previousTask=s.activeTask;
-      const previousBindings=taskValidators(s);
-      const validatorRuleId = ["draft-for-review", "approved-copy"].includes(s.activeTask?.kind ?? "") ? s.activeTask?.validatorRuleId : undefined;
-      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}), ...(decision.next !== "none" && validatorRuleId ? {validatorRuleId} : {}) };
-      if(previousTask&&['draft-for-review','approved-copy'].includes(previousTask.kind)&&['draft-for-review','approved-copy'].includes(decision.next)){
-        freezeTaskValidators(s.activeTask,previousBindings,previousTask.validatorBindingSource??'model');
-      }
+      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}) };
       // #1310: a new task (or none) ends the receipts of the old one.
       expireReceipts(s);
       if (decision.next === "none") {
+        delete s.userValidatorChannel;
         const rest = (s.activeConventions ?? []).filter((e) => e.scope !== "task");
         if (rest.length > 0) s.activeConventions = rest;
         else delete s.activeConventions;
@@ -193,15 +195,9 @@ async function step(input: TaskStepInput): Promise<string | null> {
         validator: input.conventionOf ? sources.get(id)?.validator
           : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
       })), now);
-      if (kindChanges && entering && s.activeTask && !s.activeTask.validatorBindings) {
-        s.activeTask.validatorRuleId ??= activate.find(id => s.activeConventions?.some(c => c.id === id && c.validator));
-        const selected=(s.activeConventions??[]).filter(c=>c.id===s.activeTask!.validatorRuleId);
-        freezeTaskValidators(s.activeTask,selected.length?mergeTaskValidators(selected):taskValidators(s),'user-turn');
-      }
     }
-    if(kindChanges&&entering&&s.activeTask&&!s.activeTask.validatorBindings){
-      freezeTaskValidators(s.activeTask,taskValidators(s),'user-turn');
-    }
+    if(userChannel&&decision.next!=="none")s.userValidatorChannel=userChannel;
+    recordValidatorLimits(s);
     if (decision.unclear) {
       s.taskQuestion = {
         at: now,
