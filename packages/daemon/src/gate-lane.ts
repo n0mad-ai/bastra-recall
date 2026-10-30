@@ -80,6 +80,12 @@ export interface GatePayload {
 }
 
 export interface GateDeps {
+  /** Absolute budget when a tool-specific lane performs the lookup first. */
+  deadline?: number;
+  /** A tool-specific inline gate must not double count the catch-all call. */
+  countTool?: boolean;
+  /** Tool-specific rules delivered to this subagent, independent of its parent hints. */
+  actionMustLoad?: {ids:readonly string[];key:string;onClaim?:(ids:readonly string[])=>void};
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
   /** #1305: the rule kernel's candidates from the daemon's vault index.
@@ -184,13 +190,23 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   let claimedReflex: ReflexMatch[] = [];
   let kernelActive: ActiveConvention[] | null = null;
   const persisted = await mutateSessionState(sessionId, (state) => {
-    state.toolCalls = (state.toolCalls ?? 0) + 1;
+    if(deps.countTool!==false)state.toolCalls = (state.toolCalls ?? 0) + 1;
     claimedMustLoad = [];
     claimedReflex = [];
     kernelActive = null;
     if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
       claimedMustLoad = state.pendingMustLoad;
       delete state.pendingMustLoad;
+    }
+    const action=deps.actionMustLoad;
+    if(action){
+      const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
+      const loaded=new Set(subagent?[]:state.activeConventions?.map(c=>c.id)??[]);
+      const ids=action.ids.filter(id=>!seen.has(id)&&!loaded.has(id)&&(subagent||!state.claimedMustLoad?.includes(id))).slice(0,20);
+      const alreadyClaimed=new Set(claimedMustLoad.map(e=>e.id));
+      for(const id of ids){seen.add(id);if(!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
+      if(ids.length)(state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
+      action.onClaim?.(ids);
     }
     if (reflexCandidates.length > 0) {
       const denied = new Set(state.deniedReflex ?? []);
@@ -203,7 +219,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     }
     if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
     // #1305: a deny carries its own message; the kernel waits for the next call.
-    if (deps.kernel && claimedMustLoad.length === 0 && claimedReflex.length === 0 && state.toolCalls >= RULE_KERNEL_TOOL_CALLS) {
+    if (deps.kernel && claimedMustLoad.length === 0 && claimedReflex.length === 0 && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
       kernelActive = [...(state.activeConventions ?? [])];
       state.toolCalls = 0;
     }
@@ -219,7 +235,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     });
     return "{}";
   }
-  if (elapsed > HOOK_TIMEOUT_MS) {
+  if (elapsed > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline)) {
     // The client has most likely given up already. Persisted claims stay
     // spent, but a late response must never deny the action.
     await writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "gate_timeout" });

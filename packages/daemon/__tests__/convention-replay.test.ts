@@ -28,7 +28,7 @@ import { vaultConventionOf } from "../src/convention-source.js";
 import { callerSessionStore } from "../src/caller-session.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
 import { runStopLane } from "../src/stop-lane.js";
-import { loadSessionState } from "../src/session-state.js";
+import { loadSessionState, clearPendingMustLoad } from "../src/session-state.js";
 
 const enabled = process.env.CONVENTION_REPLAY === "1";
 const options = { skip: !enabled, timeout: 120_000 };
@@ -37,7 +37,7 @@ const SHORT = "Bitte kurz weiterarbeiten";
 const CUE = "wie beim letzten Mal";
 const ANNOUNCEMENT = "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, pourriez-vous confirmer la visite fictive demain ?";
 // Four invented memories. No private vault, model, external API or real tool action.
-const vault = [
+const vault: Array<{id:string;title:string;type:string;scope:string;summary:string;body:string;revision:string;recall_mode?:string;write_origin?:string;salience?:number;recall_when?:string[];validator?:{tool:"validate_artifact";channel:string;limit:number;unit:"utf16"}}> = [
   { id: "fixture-preference", title: "Erfundene Kurzregel", type: "user-preference", scope: "all-projects",
     summary: "Antworte in zwei erfundenen Sätzen.", body: "Antworte in zwei erfundenen Sätzen.", revision: "sha256:fixture-pref-1" },
   { id: "fixture-working", title: "Erfundene Arbeitsregel", type: "meta-working", scope: "all-projects",
@@ -51,6 +51,10 @@ const vault = [
   { id: "fixture-start", title: "Erfundener Startkontext", type: "project-fact", scope: "all-projects",
     summary: "Die erfundene Farbliste hat drei Farben.", body: "Die erfundene Farbliste hat drei Farben.", revision: "sha256:fixture-start-1" },
 ];
+vault.push(
+  {id:"fixture-issue-metadata",title:"Invented GitHub issue metadata convention",type:"workflow",scope:"all-projects",summary:"Always assign milestone and labels before GitHub issue/PR create or edit.",body:"Invented convention: every issue/PR needs a milestone and labels.",revision:"sha256:fixture-issue-meta",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
+  {id:"fixture-issue-language",title:"Invented bilingual issue convention",type:"workflow",scope:"all-projects",summary:"Issue/PR bodies are bilingual: English first, Deutsch danach.",body:"Invented convention: write English first, then German.",revision:"sha256:fixture-issue-lang",recall_when:["gh issue create", "gh issue edit", "gh pr create", "gh pr edit"]},
+);
 const mustLoadIds = vault.slice(0, 2).map(memory => memory.id);
 type Output = { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string; additionalContext?: string } };
 type RequestRow = { path: string; body: Record<string, unknown> };
@@ -90,7 +94,7 @@ async function fixture(projection = false) {
     const { body, revision: _revision, ...fm } = memory;
     const raw = matter.stringify(body, {
       ...fm, topic_path: ["fixture"], tags: ["fixture"],
-      recall_when: "recall_when" in fm ? fm.recall_when : ["fixture rule"],
+      recall_when: fm.recall_when ?? ["fixture rule"],
       created: "2026-10-29", updated: "2026-10-29",
     });
     memory.revision = memoryRevision(raw);
@@ -107,7 +111,7 @@ async function fixture(projection = false) {
   const errors: unknown[] = [];
   const promptRows: Array<{ detected_mode: string }> = [];
   const recall = (query: string, cold = false) => ({
-    hits: (cold ? vault.slice(3) : /Nachricht|fixture_send_message/.test(query) ? vault.slice(2, 3) : query === SHORT ? vault.slice(0, 2) : [])
+    hits: (cold ? vault.slice(3,4) : /gh (?:issue|pr)/.test(query) ? vault.slice(4) : /Nachricht|fixture_send_message/.test(query) ? vault.slice(2, 3) : query === SHORT ? vault.slice(0, 2) : [])
       .map(memory => ({ ...memory, score: cold ? 400 : 150, matched_recall_when: true, anchor_strength: "strong" })),
     vault_size: vault.length, recall_id: "fixture-recall", latency_ms: 1,
     score_kind: cold ? "bm25" : "rrf", score_arms: cold ? ["bm25"] : ["bm25", "vector"],
@@ -378,4 +382,32 @@ test("8 declared frontmatter validator activates through real prompt → approve
     assert.equal(validation.receipt_stored, true);
     assert.equal(await stop(true), "{}");
   } finally { await f.close(); }
+});
+
+
+test("9 GitHub writes receive issue conventions as one-shot must-load; reads and quoted mentions stay quiet (#1330)", options, async()=>{
+ const f=await fixture();try{
+  for(const [i,command]of ["gh issue create --title fixture --body fixture", "gh issue edit 42 --title fixture", "gh pr create --body-file /tmp/fixture", "gh pr edit 42 --body fixture"].entries()){
+   const input={session_id:`github-fixture-${i}`,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}};
+   const first=await f.hook("bash-pre-hook.ts",input);assert.equal(denied(first),true,command);
+   const text=(first.hookSpecificOutput?.permissionDecisionReason??"")+context(first);
+   for(const id of ["fixture-issue-metadata","fixture-issue-language"])assert.ok(text.includes(id),id);
+   assert.match(text,/must.load/i);assert.match(text,/milestone.*labels/i);assert.match(text,/English first.*Deutsch danach/i);
+   assert.equal(denied(await f.hook("bash-pre-hook.ts",input)),false,"retry is never held in an endless loop");
+  }
+  const parallel=await f.tool("Bash",{command:"gh issue create --title fixture"});
+  assert.equal(denied(parallel),true,"parallel catch-all and Bash hook still interrupt the same action");
+  for(const memory of vault.slice(4))await clearPendingMustLoad(memory.id,{revision:memory.revision});
+  const loaded=await loadSessionState("github-fixture-0");
+  for(const memory of vault.slice(4))assert.equal(loaded.activeConventions?.find(c=>c.id===memory.id)?.revision,memory.revision);
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",{session_id:"github-fixture-0",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"gh pr edit 42 --title fixture"}})),false,"successful load evidence releases later writes");
+  const workerInput={session_id:"github-fixture-0",agent_id:"fixture-worker",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"gh issue create --title fixture"}};
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",workerInput)),true,"worker must see its own action conventions");
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",workerInput)),false,"worker retry is released");
+  const before=f.requests.filter(r=>r.path==="/hook/recall").length;
+  for(const command of ["gh issue list", "gh issue view 42", "gh pr view 42", "printf '%s' 'gh issue create'", "cat <<'EOF'\ngh issue create\nEOF"]){
+   const output=await f.hook("bash-pre-hook.ts",{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}});assert.equal(denied(output),false,command);assert.doesNotMatch(context(output),/fixture-issue/);
+  }
+  assert.equal(f.requests.filter(r=>r.path==="/hook/recall").length,before,"read-only and prose never invoke GitHub convention retrieval");
+ }finally{await f.close();}
 });
