@@ -519,9 +519,18 @@ export const DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE: Readonly<Record<string, reado
     "write\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*(?![\\p{L}\\p{N}_./-])",
   ],
 };
+// Complete follow-up requests only; a language mentioned inside a new UI/docs
+// task is not approval of the current correspondence draft.
 const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
-  de: ["englisch(?:e\\p{L}*\\s+fassung)?", "(?:ü|ue)bersetz\\p{L}*"],
-  en: ["english\\s+(?:version|copy|text)", "translate(?:\\s+it)?"],
+  de: [
+    "(?:bitte\\s+)?(?:(?:auf\\s+)?englisch|englische\\s+fassung)(?:\\s+bitte)?",
+    "(?:mach(?:e)?|gib|zeig(?:e)?|liefer(?:e)?)\\s+(?:mir\\s+)?(?:die\\s+)?englische\\s+fassung(?:\\s+bitte)?",
+    "(?:ü|ue)bersetz(?:e)?(?:\\s+(?:das|es))?(?:\\s+bitte)?",
+  ],
+  en: [
+    "(?:(?:give|show|make|provide)\\s+(?:me\\s+)?(?:the\\s+)?)?english\\s+(?:version|copy|text)(?:\\s+please)?",
+    "translate(?:\\s+(?:it|this))?(?:\\s+please)?",
+  ],
 };
 const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
   de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],

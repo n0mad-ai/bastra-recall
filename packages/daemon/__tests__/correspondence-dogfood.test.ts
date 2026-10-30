@@ -74,7 +74,7 @@ test("#1328: an assistant's German review draft binds draft-for-review from Stop
 test("#1328: sending correspondence differs from writing files or quoted approvals", () => {
   const ctx = { current: "none" as const, questionOpen: false, mode: "generic" as const, hitActive: false };
   for (const text of ["die Frage an Alex schicken", "Nachricht an Alex", "send the message to Alex", "write to Alex"]) {
-    assert.equal(decideTask(taskSignals(text), ctx).next, "draft-for-review", text);
+    assert.equal(decideTask(taskSignals(text), { ...ctx, correspondenceActive: true }).next, "draft-for-review", text);
   }
   assert.equal(decideTask(taskSignals("Alex schreiben"), { ...ctx, correspondenceActive: true }).next, "draft-for-review");
   for (const text of ["Datei schreiben", "Datei nach /tmp schreiben", "write to config.json", "das Paket an den Server schicken", "> ok, mach die englische Fassung", "Die Mail liegt auf dem Server", "Die englische Fassung der Dokumentation liegt im Repo"]) {
@@ -109,4 +109,31 @@ test("#1328: target-copy cues can be supplied in another language through the us
   try {
     assert.equal(decideTask(taskSignals("version française"), { current: "draft-for-review", questionOpen: false, mode: "generic", hitActive: false }).next, "approved-copy");
   } finally { if (before === undefined) delete process.env.BASTRA_LEXICON_DIR; else process.env.BASTRA_LEXICON_DIR = before; }
+});
+
+test("#1328 counter-review: technical destinations never start correspondence without its context", () => {
+  const ctx = { current: "none" as const, questionOpen: false, mode: "generic" as const, hitActive: false };
+  for (const text of ["schick die Antwort an den Client zurück", "Sende die Nachricht an den Server", "Daten an Kafka senden", "Frage an die Datenbank optimieren", "write to disk after each batch", "write to config", "send the message to Redis"]) {
+    assert.notEqual(decideTask(taskSignals(text), ctx).next, "draft-for-review", text);
+  }
+});
+test("#1328 counter-review: UI, i18n and README language requests do not approve a message draft", () => {
+  const ctx = { current: "draft-for-review" as const, questionOpen: false, mode: "generic" as const, hitActive: true, correspondenceActive: true };
+  for (const text of ["stelle die Sprache auf Englisch um", "die UI soll auf Englisch umschaltbar sein", "übersetze die Fehlermeldungen in i18n", "ok, mach die englische Fassung der README"]) {
+    assert.notEqual(decideTask(taskSignals(text), ctx).next, "approved-copy", text);
+  }
+});
+
+test("#1328 counter-review replay: a surfaced standing rule alone does not turn technical targets into people", async () => {
+  let n = 0;
+  for (const text of ["schick die Antwort an den Client zurück", "Sende die Nachricht an den Server", "Daten an Kafka senden", "Frage an die Datenbank optimieren", "write to disk after each batch", "write to config", "send the message to Redis"]) {
+    const state = await prompt(`1328-tech-replay-${n++}`, text);
+    assert.equal(state.activeTask?.kind ?? "none", "none", text);
+  }
+  for (const text of ["stelle die Sprache auf Englisch um", "die UI soll auf Englisch umschaltbar sein", "übersetze die Fehlermeldungen in i18n", "ok, mach die englische Fassung der README"]) {
+    const sid = `1328-language-replay-${n++}`;
+    assert.equal((await prompt(sid, "ich arbeite jetzt eine eingegangene Nachricht ab")).activeTask?.kind, "draft-for-review");
+    assert.notEqual((await prompt(sid, text)).activeTask?.kind, "approved-copy", text);
+  }
+  assert.equal((await prompt("1328-hint-recovery", "ok, mach die englische Fassung")).activeTask?.kind, "approved-copy", "a current correspondence hint can still recover compound approval");
 });

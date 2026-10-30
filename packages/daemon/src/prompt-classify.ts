@@ -243,6 +243,8 @@ export function taskSignals(prompt: string): TaskSignals {
   const { own, quoted } = splitQuoted(prompt);
   const has = (cues: readonly string[]): boolean => own.length > 0 && cueRegex(cues).test(own);
   const bare = own.toLowerCase().replace(/[\s!.?…]+$/u, "").trim();
+  const ack = cueRegex(taskApprovalCues(), true).exec(own);
+  const copyRequest = (ack ? own.slice(ack[0].length) : own).replace(/^[\s,;:!.?…]+|[\s!.?…]+$/gu, "");
   return {
     translate: has(translateOnlyCues()),
     announce: has(correspondenceCues()),
@@ -254,7 +256,7 @@ export function taskSignals(prompt: string): TaskSignals {
     approvedCopy: has(approvedCopyCues()),
     sendPerson: has(sendPersonCues()),
     recipientFollowup: has(recipientFollowupCues()),
-    targetCopy: has(targetCopyCues()),
+    targetCopy: copyRequest.length > 0 && new RegExp(`^(?:${targetCopyCues().join("|")})$`, "iu").test(copyRequest),
     revision: has(copyRevisionCues()),
   };
 }
@@ -269,8 +271,10 @@ export interface TaskContext {
   hitActive: boolean;
   /** This prompt surfaced a new topic outside the active conventions. */
   hitOther?: boolean;
-  /** A correspondence rule is active, pending clarification, or surfaced now. */
+  /** A correspondence task or its clarification is already in progress. */
   correspondenceActive?: boolean;
+  /** A standing rule alone can recover explicit compound approval, not recipient intent. */
+  correspondenceHint?: boolean;
 }
 
 /** `next` null keeps the state; `unclear` asks the user with the choice line. */
@@ -295,10 +299,10 @@ export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
   if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
   if (sig.approval && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
   if (sig.targetCopy && !sig.revision && !sig.quoted &&
-      (ctx.current === "draft-for-review" || (sig.ack && ctx.correspondenceActive))) {
+      (ctx.current === "draft-for-review" || (sig.ack && (ctx.correspondenceActive || ctx.correspondenceHint)))) {
     return { next: "approved-copy", unclear: false };
   }
-  if (sig.sendPerson || (sig.recipientFollowup && ctx.correspondenceActive)) return { next: "draft-for-review", unclear: false };
+  if ((sig.sendPerson || sig.recipientFollowup) && (ctx.correspondenceActive || ctx.current !== "none")) return { next: "draft-for-review", unclear: false };
   if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
   if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
   if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };
