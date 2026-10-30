@@ -1,5 +1,6 @@
 import { catalogFor, rulebookBoundary, type RulebookDenialReceipt } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
+import { withRulebookDeadline, RULEBOOK_CATALOG_BUDGET_MS } from "./rulebook-catalog.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 import {confirmLaneDelivery} from "./lane-delivery.js";
 /**
@@ -61,7 +62,7 @@ import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel, type KernelCandidates } from 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
 // C gets only part of the hook budget; legacy gates must remain independent.
-const RULEBOOK_ACTION_BUDGET_MS = 150;
+const RULEBOOK_ACTION_BUDGET_MS = RULEBOOK_CATALOG_BUDGET_MS;
 
 /** The action context a reflex trigger is matched against stays below 8 KB. */
 export const MAX_ACTION_CONTEXT_CHARS = 8 * 1024 - 1;
@@ -311,7 +312,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
     // #1305: a deny carries its own message; the kernel waits for the next call.
     if (deps.kernel && !rulebookDenied && claimedMustLoad.length === 0 && claimedReflex.length === 0 && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
       kernelActive = [...(state.activeConventions ?? [])];
-      state.toolCalls = 0;
+      // Keep delivery due until a context response is actually delivered.
     }
   },{deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity)});
   const elapsed = Date.now() - startedAt;
@@ -335,7 +336,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
     if (rulebookDenied) return rulebookDecision;
     const active = kernelActive as ActiveConvention[] | null;
-    return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
+    return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt, deps.deadline);
   }
 
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
@@ -352,6 +353,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   if(expired()){await undoAction();await undoLegacy();return "{}";}
   if(actionIds.length)await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
   if(expired()){await undoAction();await undoLegacy();return "{}";}
+  await confirmLaneDelivery(async delivered => { if (!delivered) await undoLegacy(); }, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -405,36 +407,39 @@ async function boundedRulebookAction(payload: GatePayload, deps: GateDeps, start
 }
 
 /**
- * #1305: the rule kernel as a hint after {@link RULE_KERNEL_TOOL_CALLS} tool
- * calls without a prompt. Never a deny. The count is already reset on disk; a
- * kernel that cannot be built or comes too late answers `{}` and leaves a row.
+ * #1305: periodic rule context, never a deny. The count stays due until a
+ * context delivery is confirmed; an unavailable catalog retries next call.
  */
 async function redeliverKernel(
   payload: GatePayload,
   kernel: NonNullable<GateDeps["kernel"]>,
   active: readonly ActiveConvention[],
   startedAt: number,
+  outerDeadline?: number,
 ): Promise<string> {
   const project = projectForLane(typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd());
-  const rendered = renderRuleKernel(await kernel(active, project), { trigger: `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt` });
-  if (rendered.text === "") return "{}";
-  if (Date.now() - startedAt > HOOK_TIMEOUT_MS) {
-    await writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "gate_timeout", kernel_ids: rendered.full.concat(rendered.degraded) });
+  const deadline = Math.min(startedAt + HOOK_TIMEOUT_MS, outerDeadline ?? Infinity);
+  const resetCount = async () => {
+    await mutateSessionState(payload.session_id!, s => {
+      if ((s.toolCalls ?? 0) >= RULE_KERNEL_TOOL_CALLS) s.toolCalls = 0;
+    }, { noQueue: true, deadline });
+  };
+  try {
+    const candidates = await withRulebookDeadline(() => kernel(active, project), Math.min(deadline, Date.now() + RULEBOOK_CATALOG_BUDGET_MS));
+    const rendered = renderRuleKernel(candidates, { trigger: `${RULE_KERNEL_TOOL_CALLS} tool calls without a prompt` });
+    if (Date.now() >= deadline) return "{}";
+    if (rendered.text === "") { await resetCount(); return "{}"; }
+    recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), { source: "rule-kernel" });
+    void writeTelemetry(payload, startedAt, { outcome: "pass", kernel_ids: rendered.full,
+      kernel_degraded_ids: rendered.degraded, kernel_omitted: rendered.omitted,
+      kernel_paged_index: rendered.paged_index ?? 0, kernel_chars: rendered.text.length });
+    await confirmLaneDelivery(async delivered => { if (delivered) await resetCount(); }, deadline, "context");
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text } });
+  } catch {
+    // The counter stays due. Retry on the next call, not 25 calls later.
+    void writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "kernel_unavailable" });
     return "{}";
   }
-  // #458 shadow: the re-delivery is PreToolUse context like the tool lanes'.
-  recordBudgetShadow(payload.session_id ?? null, "hook_call", Math.ceil(rendered.text.length / 4), { source: "rule-kernel" });
-  await writeTelemetry(payload, startedAt, {
-    outcome: "pass",
-    kernel_ids: rendered.full,
-    kernel_degraded_ids: rendered.degraded,
-    kernel_omitted: rendered.omitted,
-    kernel_paged_index: rendered.paged_index ?? 0,
-    kernel_chars: rendered.text.length,
-  });
-  return JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: rendered.text },
-  });
 }
 
 function matchActionReflex(pool: readonly Memory[], toolName: string, input: Record<string, unknown>): ReflexMatch[] {

@@ -86,11 +86,32 @@ export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">,
   return c;
 }
 
+/** Shared bound for every hook-side catalog consumer, including injected providers.
+ * Timed-out reads may finish in the background; callers must not chain late writes. */
+export const RULEBOOK_CATALOG_BUDGET_MS = 150;
+export async function withRulebookDeadline<T>(work: () => Promise<T>, deadline = Date.now() + RULEBOOK_CATALOG_BUDGET_MS): Promise<T> {
+  if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([Promise.resolve().then(work), new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("rulebook_catalog_timeout")), Math.max(0, deadline - Date.now()));
+    })]);
+    if (Date.now() >= deadline) throw new Error("rulebook_catalog_timeout");
+    return result;
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 /** Cache one current catalog per index generation/scope/membership. Disk source
  * validation repeats after a short TTL even when a cloud watcher misses events. */
 export const RULEBOOK_CACHE_TTL_MS = 2000;
-const caches = new WeakMap<object, Map<string, { expires: number; pending: Promise<KernelCandidates> }>>();
+const caches = new WeakMap<object, Map<string, { expires: number; ready: boolean; pending: Promise<KernelCandidates> }>>();
 export async function cachedRulebookCatalog(
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
+  opts: Parameters<typeof collectRulebookCatalog>[1],
+): Promise<KernelCandidates> {
+  return withRulebookDeadline(() => cachedCatalogInner(vault, opts));
+}
+async function cachedCatalogInner(
   vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
   opts: Parameters<typeof collectRulebookCatalog>[1],
 ): Promise<KernelCandidates> {
@@ -103,12 +124,12 @@ export async function cachedRulebookCatalog(
   }
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
   const key = JSON.stringify([opts.project, !!opts.allProjects, opts.active.map(a => a.id).sort(), floors]);
-  const hit = pages.get(key); if (hit && Date.now() < hit.expires) return hit.pending;
+  const hit = pages.get(key); if (hit && (!hit.ready || Date.now() < hit.expires)) return hit.pending;
   if (pages.size >= 32) pages.delete(pages.keys().next().value!);
   const pending = collectRulebookCatalog(vault, { ...opts, floors: async () => floors });
-  const entry = { expires: Date.now() + RULEBOOK_CACHE_TTL_MS, pending };
+  const entry = { expires: Infinity, ready: false, pending };
   pages.set(key, entry);
-  try { return await pending; }
+  try { const result = await pending; entry.ready = true; entry.expires = Date.now() + RULEBOOK_CACHE_TTL_MS; return result; }
   catch (err) { if (pages.get(key) === entry) pages.delete(key); throw err; }
 }
 

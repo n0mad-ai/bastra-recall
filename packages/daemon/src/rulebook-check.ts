@@ -6,7 +6,7 @@ import { z } from "zod";
 import { loadSessionState, mutateSessionState, type SessionState } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
-import { cachedRulebookCatalog, type KernelCandidates } from "./rulebook-catalog.js";
+import { cachedRulebookCatalog, withRulebookDeadline, type KernelCandidates } from "./rulebook-catalog.js";
 import { projectForLane } from "./scope-filter.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
@@ -84,8 +84,10 @@ export async function recordRulebookLoad(sessionId: string, id: string, agentId?
 }
 export type CatalogProvider = (active: readonly import("./session-state.js").ActiveConvention[], project: string | null) => Promise<KernelCandidates>;
 export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
-  const state = p.session_id ? await loadSessionState(p.session_id) : undefined;
-  return kernel(state?.activeConventions ?? [], projectForLane(p.cwd || process.cwd()));
+  return withRulebookDeadline(async () => {
+    const state = p.session_id ? await loadSessionState(p.session_id) : undefined;
+    return kernel(state?.activeConventions ?? [], projectForLane(p.cwd || process.cwd()));
+  });
 }
 /** Undefined means C did not apply; {} permits the legacy lanes to run.
  * Legacy denials retain their own once-per-claim/session contract. */
@@ -113,13 +115,16 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
     await options.onDenial(async delivered => {
       if (settled) return; settled = true;
       if (delivered) return;
-      await mutateSessionState(p.session_id!, s => {
+      // Rollback is bookkeeping, never part of the response's latency budget.
+      void mutateSessionState(p.session_id!, s => {
         const current = read(s);
         if (current.context !== context || current.round !== round) return;
         const a = current.actors.find(a => a.key === identity(p));
         if (a) a.denies = Math.max(0, a.denies - 1);
         put(s, current);
-      });
+      }).then(ok => {
+        if (!ok) void recordRulebookEvent(p.session_id!, { boundary, outcome: "rollback-failed" });
+      }).catch(() => { void recordRulebookEvent(p.session_id!, { boundary, outcome: "rollback-failed" }); });
     });
   }
   if (!persisted) { await spoolRulebookFailure(p.session_id); await recordRulebookEvent(p.session_id, { boundary, outcome: "fail-open" }); return "{}"; }

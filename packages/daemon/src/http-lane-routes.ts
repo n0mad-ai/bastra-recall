@@ -1,3 +1,4 @@
+import { createLaneDelivery } from "./lane-delivery.js";
 /**
  * Route dispatch for the three hook lanes that moved daemon-side in #369:
  * POST /hook/stop, /hook/session, /hook/todo. Loopback-only — the host gate in
@@ -94,7 +95,14 @@ export function dispatchLaneRoutes(
   // #1303: catch-all PreToolUse gate — one-time must-load and reflex denies.
   // No notice: a draft line must not ride on a deny or on every tool call.
   if (url === "/hook/gate") {
-    runLane<GatePayload>(req, res, (payload) => runGateLane(payload, { reflexPool: gateReflexPool ?? (() => []), kernel: gateKernel }));
+    const delivery = createLaneDelivery(res);
+    void delivery.run(async () => {
+      try {
+        const body = await readJsonBody(req, MAX_BODY_BYTES);
+        const out = await runGateLane((body.payload ?? {}) as GatePayload, { reflexPool: gateReflexPool ?? (() => []), kernel: gateKernel });
+        delivery.answer(out);
+      } catch { delivery.answer("{}"); }
+    });
     return true;
   }
   return false;

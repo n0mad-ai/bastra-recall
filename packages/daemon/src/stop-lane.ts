@@ -110,7 +110,7 @@ export async function runStopLane(
     try {
       const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");
       if (decision && JSON.parse(decision).decision === "block") return decision;
-    } catch { await spoolRulebookFailure(payload.session_id ?? null); }
+    } catch { void spoolRulebookFailure(payload.session_id ?? null).catch(() => {}); }
   }
   const deferredRulebookStop = await takeDeferredRulebookStop(payload).catch(() => false);
   // #1311: bounded repair for an approved-copy task without a valid receipt.
