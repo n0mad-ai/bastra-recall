@@ -1,14 +1,13 @@
 import {ConventionValidatorSchema,countCopyUnits,validateCopyBlocks} from "@bastra-recall/core";
-/** Bounded Stop repair for loaded-channel copy blocks and legacy approved tasks.
- * Structural copy creates review/validation obligations, never user approval.
+/** Bounded Stop repair for review/approved tasks with loaded or active validators.
+ * Answer formatting never creates a task or user approval.
  * Receipts retain the known task/generation (not later byte-exact) limitation.
  * At most two requests per task/generation, then one exhaustion observation.
  */
 import { envOff } from "./env.js";
 import { hookClientEvidence } from "./hook-surface.js";
-import { findReceipt } from "./receipt-store.js";
 import { loadTranscript, type TranscriptTurn } from "./stop-transcript.js";
-import { loadSessionState, mutateSessionState, taskIdFor } from "./session-state.js";
+import { loadSessionState, mutateSessionState, type ReadonlySessionState } from "./session-state.js";
 import type { ClaudeStopPayload } from "./stop-transcript.js";
 
 /** Repair requests per task and generation; the next Stop records non-conformance. */
@@ -26,33 +25,21 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   if (!sessionId) return null;
   if (hookClientEvidence(payload) === "codex") return null;
   if (envOff("BASTRA_STOP_SAME_TURN")) return null;
-  let snapshot = await loadSessionState(sessionId);
-  const turns=suppliedTurns??await loadTranscript(payload).catch(()=>[]);
-  const latest=turns.at(-1);
-  const loaded=(snapshot.loadedConventions??[]).flatMap(c=>{const v=ConventionValidatorSchema.safeParse(c.validator);return v.success?[{...c,validator:v.data}]:[];});
-  const copies=latest?.role==="assistant"?fencedCopies(latest.content):[];
-  const required=loaded.map(c=>({validator:c.validator!,blocks:copies.filter(b=>!b.label||b.label===c.validator!.channel).map(b=>b.text)})).filter(c=>c.blocks.length);
-  const structural=required.length>0;
-  if(structural&&(!snapshot.activeTask||snapshot.activeTask.kind==="none")){
-    await mutateSessionState(sessionId,s=>{
-      if(!s.activeTask||s.activeTask.kind==="none"){
-        const now=Date.now();s.activeTask={id:taskIdFor("draft-for-review",now),kind:"draft-for-review",since:now,generation:s.activeTask?.generation??0};
-        delete s.receipts;
-      }
-    },{noQueue:true,deadline});
-    snapshot=await loadSessionState(sessionId);
-  }
+  const snapshot = await loadSessionState(sessionId);
   const task = snapshot.activeTask;
-  if (!task || (!structural&&task.kind!=="approved-copy")) return null;
-  if (!structural&&!(snapshot.activeConventions??[]).some(c=>c.validator))return null;
-  const contracts=required.map(c=>({...validateCopyBlocks({text:"",channel:c.validator.channel,limit:c.validator.limit,unit:c.validator.unit,normalize:"none"}),displayed:c.blocks}));
-  const fits=contracts.every(c=>c.displayed.every(text=>countCopyUnits(text,c.unit_applied)<=c.limit));
-  const hasReceipt=(state:typeof snapshot)=>structural?fits&&contracts.every(c=>(state.receipts??[]).some(r=>
-    r.taskId===task.id&&r.generation===task.generation&&r.channel===c.channel&&r.limit<=c.limit&&
-    (r.unit===c.unit_applied||r.unit==="max(codepoints,utf16)"))):!!findReceipt(state,{taskId:task.id,generation:task.generation});
-  // Task receipts still do not prove byte-exact matching for a later edit.
-  // They cannot excuse an oversized displayed block or a different channel.
-  if(hasReceipt(snapshot))return null;
+  if (!task || !["draft-for-review", "approved-copy"].includes(task.kind)) return null;
+  if (!validators(snapshot).length) return null;
+  const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
+  const latest = turns.at(-1);
+  const copy = latest?.role === "assistant" ? deliveredCopy(latest.content) : "";
+  const hasReceipt = (state: ReadonlySessionState) => validators(state).every(v => {
+    const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
+    return countCopyUnits(copy, contract.unit_applied) <= contract.limit && (state.receipts ?? []).some(r =>
+      r.taskId === task.id && r.generation === task.generation && r.channel === contract.channel && r.limit <= contract.limit &&
+      (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)"));
+  });
+  // Receipts are task/generation evidence, not byte-exact proof for later edits.
+  if (hasReceipt(snapshot)) return null;
   const seen = snapshot.repairAttempts;
   if (seen && seen.taskId === task.id && seen.generation === task.generation && seen.count > REPAIR_MAX_ATTEMPTS) {
     return null;
@@ -62,8 +49,8 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     // Re-checked under the lock: a receipt or task change that landed since
     // the snapshot wins.
     const t = s.activeTask;
-    if (!t || (!structural&&t.kind !== "approved-copy") || t.id !== task.id || t.generation !== task.generation) return;
-    if (!structural&&!(s.activeConventions ?? []).some((c) => c.validator)) return;
+    if (!t || !["draft-for-review", "approved-copy"].includes(t.kind) || t.id !== task.id || t.generation !== task.generation) return;
+    if (!validators(s).length) return;
     if (hasReceipt(s)) return;
     const r = s.repairAttempts;
     const count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
@@ -76,14 +63,37 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   return persisted ? decision : null;
 }
 
-/** Fences and exact channel labels are structure, never approval evidence. */
-function fencedCopies(text:string):{text:string;label:string}[]{
- const blocks:{text:string;label:string}[]=[];let fence="",label="",body:string[]=[];
- for(const line of text.split("\n")){
-  if(!fence){const open=/^\s*(`{3,}|~{3,})([^\n]*)$/u.exec(line);if(open){fence=open[1];label=open[2].trim();body=[];}continue;}
-  if(new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`,"u").test(line)){
-   const text=body.join("\n");if(text.trim())blocks.push({text,label});fence="";body=[];
-  }else body.push(line);
- }
- return blocks;
+/** A full load is sufficient validator activation; newer loaded metadata wins per ID. */
+function validators(state: ReadonlySessionState) {
+  const rules = new Map<string, {validator?: unknown}>((state.activeConventions ?? []).map(c => [c.id, c]));
+  for (const c of state.loadedConventions ?? []) rules.set(c.id, c);
+  return [...rules.values()].flatMap(c => {
+    const parsed = ConventionValidatorSchema.safeParse(c.validator);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/** Pick explicit copy regions structurally, independent of language/channel names.
+ * With multiple fences/quotes the largest region wins; without one, use the answer.
+ * An unclosed fence is ambiguous and falls back to the complete answer.
+ */
+function deliveredCopy(text: string): string {
+  const blocks: string[] = [];
+  let fence = "", body: string[] = [], quote: string[] = [];
+  const flushQuote = () => { if (quote.length) blocks.push(quote.join("\n")); quote = []; };
+  for (const line of text.split("\n")) {
+    if (fence) {
+      if (new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`, "u").test(line)) {
+        if (body.join("\n").trim()) blocks.push(body.join("\n"));
+        fence = ""; body = [];
+      } else body.push(line);
+      continue;
+    }
+    const open = /^\s*(`{3,}|~{3,})[^\n]*$/u.exec(line);
+    if (open) { flushQuote(); fence = open[1]; continue; }
+    const quoted = /^\s*> ?(.*)$/u.exec(line);
+    if (quoted) quote.push(quoted[1]); else flushQuote();
+  }
+  flushQuote();
+  return fence || !blocks.length ? text : blocks.reduce((a, b) => b.length > a.length ? b : a);
 }

@@ -87,7 +87,7 @@ test("#1311 repair preserves initial harvest, boundary and same-turn save output
       const task = s.activeTask!;
       const hash = "a".repeat(64);
       s.receipts = [{ taskId: task.id, generation: task.generation, hash, receipt: `sha256:${hash}`,
-        channel: "discord-dm", limit: 2000, unit: "utf16", at: Date.now() }];
+        channel: "discord-dm", limit: 2000, unit: "max(codepoints,utf16)", at: Date.now() }];
     });
     assert.equal(await runStopLane({ ...payload, stop_hook_active: true }, "http://127.0.0.1:1"), "{}");
     await assertOrdinaryWork(dir, sid);

@@ -18,6 +18,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
   const snapshot = await loadSessionState(sessionId);
   if (snapshot.activeTask && snapshot.activeTask.kind !== "none") return;
   const hasConvention = (snapshot.activeConventions ?? []).some(c => c.validator) ||
+    (snapshot.loadedConventions ?? []).some(c => c.validator) ||
     (snapshot.taskQuestion?.generation === (snapshot.activeTask?.generation ?? 0) &&
       (snapshot.taskQuestion.conventions?.length ?? 0) > 0);
   if (!hasConvention) return;
@@ -25,7 +26,8 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
   await mutateSessionState(sessionId, s => {
     if (s.activeTask && s.activeTask.kind !== "none") return;
     const question = s.taskQuestion?.generation === (s.activeTask?.generation ?? 0) ? s.taskQuestion : undefined;
-    if (!(s.activeConventions ?? []).some(c => c.validator) && !question?.conventions?.length) return;
+    if (!(s.activeConventions ?? []).some(c => c.validator) &&
+        !(s.loadedConventions ?? []).some(c => c.validator) && !question?.conventions?.length) return;
     s.activeTask = { id: taskIdFor("draft-for-review", now), kind: "draft-for-review", since: now,
       generation: s.activeTask?.generation ?? 0 };
     expireReceipts(s);

@@ -216,7 +216,7 @@ test("#1311 — approved-copy without receipt passes the loop guard twice, then 
         hookSpecificOutput?: { additionalContext?: string };
       };
       assert.equal(out.decision, undefined);
-      assert.match(out.hookSpecificOutput?.additionalContext ?? "", /approved-copy without validated receipt/);
+      assert.match(out.hookSpecificOutput?.additionalContext ?? "", /Copy task without validated receipt: run validate_artifact/);
     }
     assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");
     assert.equal(await stop({ session_id: sid, stop_hook_active: true }), "{}");

@@ -40,12 +40,12 @@ export function formatSameTurnBlock(suggestions: SaveSuggestion[]): string {
 
 /** #1311: the instruction a Stop without a valid receipt hands back (stop-repair.ts). */
 export const REPAIR_INSTRUCTION =
-  "approved-copy without validated receipt: run validate_artifact on the final text before delivering; later edits need a new receipt";
+  "Copy task without validated receipt: run validate_artifact on the final text before delivering; later edits need a new receipt";
 
 const REPAIR_NOTICE_BY_LANGUAGE: Readonly<Record<string, string>> = {
-  en: "bastra-recall: the approved text has no validation receipt yet — the agent is asked to validate it.",
-  de: "bastra-recall: Für den freigegebenen Text fehlt noch der Prüfbeleg — der Agent soll ihn prüfen.",
-  ru: "bastra-recall: для утверждённого текста ещё нет подтверждения проверки — агента просят его проверить.",
+  en: "bastra-recall: the copy text has no validation receipt yet — the agent is asked to validate it.",
+  de: "bastra-recall: Für den Kopiertext fehlt noch der Prüfbeleg — der Agent soll ihn prüfen.",
+  ru: "bastra-recall: для текста копии ещё нет подтверждения проверки — агента просят его проверить.",
 };
 
 export function repairNotice(language: string | undefined): string {

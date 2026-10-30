@@ -48,24 +48,35 @@ function ghAction(args:Array<string|null>):string|null{
  }
  const resource=args[i++],verb=args[i++];
  if(resource==="issue"||resource==="pr"){
-  if(!["create","edit","comment",...(resource==="pr"?["review"]:[])].includes(verb??"")||hasHelp(args.slice(i),GH_VALUES))return null;
+  if(!["create","edit","comment","close","reopen",...(resource==="pr"?["review","merge"]:[])].includes(verb??"")||hasHelp(args.slice(i),GH_VALUES))return null;
   return `gh ${resource} ${verb}`;
  }
  if(resource!=="api")return null;
  const all=[verb??null,...args.slice(i)],values=new Set(["-X","--method","-H","--header","-f","--raw-field","-F","--field","--input","--hostname","-q","--jq","-t","--template","--cache","--preview"]);
  if(hasHelp(all,values))return null;
  let method:string|undefined,endpoint:string|null=null,body=false;
+ const fields:string[]=[];
  for(let n=0;n<all.length;n++){
   const a=all[n];if(a===null)continue;
   if(a==="-X"||a==="--method"){method=all[++n]?.toUpperCase();continue;}
   if(a.startsWith("--method=")){method=a.slice(9).toUpperCase();continue;}
   if(a.startsWith("-X")&&a.length>2){method=a.slice(2).toUpperCase();continue;}
-  if(a==="-f"||a==="-F"||a==="--field"||a==="--raw-field"||a==="--input")body=true;
+  if(a==="-f"||a==="-F"||a==="--field"||a==="--raw-field"||a==="--input"){body=true;if(a!=="--input"&&all[n+1])fields.push(all[n+1]!);}
+  const inline=/^(?:-[fF]|--(?:field|raw-field)=)(.+)$/s.exec(a);if(inline)fields.push(inline[1]);
   if(/^(?:-[fF].+|--(?:field|raw-field|input)=)/.test(a))body=true;
   if(values.has(a)){n++;continue;}
   if(!a.startsWith("-")&&endpoint===null)endpoint=a;
  }
  method??=body?"POST":"GET";
+ if(endpoint==="graphql"){
+  for(const field of fields){
+   if(!field.startsWith("query="))continue;
+   // GraphQL API identifiers, not natural-language cues. Ignore comments/strings.
+   const query=field.slice(6).replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|#[^\n]*/g," ");
+   if(/^\s*mutation\b/.test(query)&&/\b(?:create|update|close|merge)\w*\s*(?:\(|\{)/.test(query))return "gh issue/pr mutation via gh api graphql";
+  }
+  return null;
+ }
  if(!["POST","PATCH","PUT","DELETE"].includes(method)||!endpoint)return null;
  const match=/(?:^|\/)(issues|pulls)(?:\/|\?|$)/.exec(endpoint);if(!match)return null;
  const target=match[1]==="issues"?"issue":"pr";

@@ -1618,8 +1618,9 @@
                         },
                         "reason": {
                           "type": "string",
-                          "minLength": 1,
-                          "maxLength": 500
+                          "minLength": 10,
+                          "maxLength": 500,
+                          "pattern": "[\\p{L}\\p{N}]"
                         }
                       },
                       "required": [

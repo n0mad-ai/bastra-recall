@@ -15,12 +15,12 @@ import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js
 const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
 const Actor = z.object({required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
-const State = z.object({ context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number() });
+const State = z.object({ context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
 type CheckState = z.infer<typeof State>;
 export interface RulebookPayload { session_id?: string; agent_id?: string; bastra_client?: string; bastra_codex_version?: string; cwd?: string; stop_hook_active?: boolean }
 function read(state: { readonly rulebookCheck?: string }): CheckState {
   try { return State.parse(JSON.parse(state.rulebookCheck ?? "")); }
-  catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0 }; }
+  catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0, exceptions: [] }; }
 }
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
@@ -36,15 +36,17 @@ function identity(p: RulebookPayload): string {
 const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0 }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
-    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked });
+    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, exceptions: old.exceptions });
   });
 }
 export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCandidates): Promise<string> {
   if (!p.session_id || hookClientEvidence(p) === "replay") return "";
   let unchecked = await drainRulebookFailures(p.session_id);
+  let exceptions: string[] = [];
   const persisted = await mutateSessionState(p.session_id, s => {
     const old = read(s); unchecked += old.unchecked;
-    put(s, { context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0 });
+    exceptions = old.exceptions;
+    put(s, { context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0, exceptions: [] });
   });
   if (!persisted && unchecked) await spoolRulebookFailure(p.session_id, unchecked);
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
@@ -52,14 +54,16 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const taskNote = catalog.entries.some(e=>e.validator || e.rule_categories?.includes("correspondence")) ? (de ? "Korrespondenz bei Bedarf mit rulebook_check(task:draft-for-review) verschärfen; Freigabe kommt nur vom Nutzer." : "Tighten correspondence with rulebook_check(task:draft-for-review) when relevant; only the user can approve.") : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
-    taskNote, unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
+    taskNote, exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
+const ExceptionReason = z.string().trim().min(10).max(500).regex(/[\p{L}\p{N}]/u, "Explain non-applicability with substantive text.");
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
-  not_applicable: z.array(z.object({id:z.string().min(1),reason:z.string().trim().min(1).max(500)}).strict()).max(20).optional(),
+  not_applicable: z.array(z.object({id:z.string().min(1),reason:ExceptionReason}).strict()).max(20).optional(),
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
 export async function recordRulebookCheck(sessionId: string | null | undefined, input: z.infer<typeof RulebookCheckArgs>, catalog: KernelCandidates) {
+  if (input.not_applicable?.some(e => !ExceptionReason.safeParse(e.reason).success)) return {ok:false,reason:"Non-applicability requires at least 10 characters of substantive explanation."};
   if (!sessionId) return { ok: false, reason: "Session unknown; no receipt recorded. Supply the session_id from your hook, or continue within the bounded gate." };
   if (input.task !== undefined && input.agent_id) return { ok: false, reason: "Worker task reports cannot change the main session task; omit task and report applicable IDs only." };
   if (input.task !== undefined && input.task !== "draft-for-review") return {ok:false,reason:"A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path; they cannot be asserted by a tool report."};
@@ -77,6 +81,7 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       const required=a.required.find(r=>r.id===skip.id)!;
       a.dismissed=[...a.dismissed.filter(r=>r.id!==skip.id),required].slice(-200);
       a.required=a.required.filter(r=>r.id!==skip.id);state.unchecked++;
+      state.exceptions = [...new Set([...state.exceptions, skip.id])].slice(-200);
     }
     a.checked = true; a.ids = [...new Set(input.applicable)];
     if (input.task !== undefined) {

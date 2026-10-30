@@ -77,7 +77,7 @@ async function seed(
 
 async function addReceipt(sid: string, taskId: string, generation: number, hash = "a".repeat(64)): Promise<void> {
   await mutateSessionState(sid, (s) => {
-    (s.receipts ??= []).push({ taskId, generation, hash, receipt: `sha256:${hash}`, channel: "discord-dm", limit: 2000, unit: "utf16", at: 1 });
+    (s.receipts ??= []).push({ taskId, generation, hash, receipt: `sha256:${hash}`, channel: "discord-dm", limit: 2000, unit: "max(codepoints,utf16)", at: 1 });
   });
 }
 
@@ -111,10 +111,10 @@ async function nonConformance(dir: string): Promise<Record<string, unknown>[]> {
   return rows.filter((r) => r.kind === "non_conformance");
 }
 
-test("#1311 — no validator required (or no approved-copy task): Stop behaves exactly as before", async () => {
+test("#1311 — no validator required (or no copy task): Stop behaves exactly as before", async () => {
   await withSandbox(async (dir) => {
     await seed("rp-novalidator", { validator: false });
-    await seed("rp-draft", { kind: "draft-for-review" });
+    await seed("rp-draft", { kind: "draft-for-review", validator: false });
     for (const sid of ["rp-novalidator", "rp-draft", "rp-empty"]) {
       assert.equal(await stop(sid, { stop_hook_active: true }), "{}", sid);
       assert.equal((await loadSessionState(sid)).repairAttempts, undefined, sid);
