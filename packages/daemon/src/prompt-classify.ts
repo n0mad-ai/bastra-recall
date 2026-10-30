@@ -11,6 +11,7 @@ import {
   targetCopyCues,
   copyRevisionCues,
   technicalTaskObjectCues,
+  technicalTaskDestinationCues,
   personRecipientCues,
   composeVerbCues,
   correspondenceCues,
@@ -249,18 +250,20 @@ export function taskSignals(prompt: string): TaskSignals {
   const bare = own.toLowerCase().replace(/[\s!.?…]+$/u, "").trim();
   const sendPerson = has(sendPersonCues());
   const recipientFollowup = has(recipientFollowupCues());
-  const technicalObject = has(technicalTaskObjectCues());
+  const recipients = personRecipientCues().flatMap(cue =>
+    [...own.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])(?:${cue})`, "giu"))].map(match => {
+      const name = match[1] ?? "";
+      return { name, tail: own.slice(match.index! + match[0].lastIndexOf(name)) };
+    }));
+  const service = cueRegex(technicalTaskDestinationCues(), true);
+  // Service vocabulary applies to addressed destinations, not a service
+  // merely mentioned in a message to Max/Sarah.
+  const technicalObject = has(technicalTaskObjectCues()) || recipients.some(r => r.name && service.test(r.tail));
   // A rule validator is not evidence that a receiver is a person. Recognize
   // explicit handles or name-shaped tokens; unknown targets stay neutral.
-  const personTarget = !technicalObject && (sendPerson || recipientFollowup) && personRecipientCues().some(cue => {
-    const matches = own.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])(?:${cue})`, "giu"));
-    for (const match of matches) {
-      const target = match[1] ?? "";
-      if (/^@\p{L}[\p{L}\p{M}\p{N}_-]*$/u.test(target) ||
-          /^\p{Lu}[\p{Ll}\p{M}]*(?:[-']\p{Lu}[\p{Ll}\p{M}]*)*$/u.test(target)) return true;
-    }
-    return false;
-  });
+  const personTarget = !technicalObject && (sendPerson || recipientFollowup) && recipients.some(({ name }) =>
+    /^@\p{L}[\p{L}\p{M}\p{N}_-]*$/u.test(name) ||
+    /^\p{Lu}[\p{Ll}\p{M}]*(?:[-']\p{Lu}[\p{Ll}\p{M}]*)*$/u.test(name));
   return {
     translate: has(translateOnlyCues()),
     announce: has(correspondenceCues()),

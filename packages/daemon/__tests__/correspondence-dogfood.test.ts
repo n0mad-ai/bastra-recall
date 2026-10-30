@@ -178,3 +178,38 @@ test("#1328 object vocabulary: technical exclusions can be extended without chan
     assert.equal(decideTask(taskSignals("ok, englische Fassung vom composant"), { current: "draft-for-review", questionOpen: false, mode: "generic", hitActive: true }).next, null);
   } finally { if (before === undefined) delete process.env.BASTRA_LEXICON_DIR; else process.env.BASTRA_LEXICON_DIR = before; }
 });
+
+test("#1328 service destinations: capitalized services and technical compounds are not people", () => {
+  const prompts = ["Antwort an Postgres schreiben", "send the reply to Sentry", "write to Postgres", "Antwort an Stripe schicken", "den Fehler an Sentry senden", "die Frage an Max-Service weiterleiten", "send the reply to Max-API", "write to Max-Server", "Antwort an Max-DB schreiben"];
+  for (const current of ["none", "draft-for-review"] as const) {
+    for (const text of prompts) assert.equal(decideTask(taskSignals(text), { current, questionOpen: false, mode: "generic", hitActive: true, correspondenceActive: true, correspondenceHint: true }).next, null, `${current}: ${text}`);
+  }
+  for (const destination of ["Postgres", "MySQL", "Redis", "Kafka", "Sentry", "Stripe", "S3", "Supabase", "Vercel", "GitHub", "Slack-Webhook"]) {
+    assert.equal(decideTask(taskSignals(`write to ${destination}`), { current: "draft-for-review", questionOpen: false, mode: "generic", hitActive: true }).next, null, destination);
+  }
+  for (const text of ["Antwort an Max schreiben", "send the reply to Sarah", "schick es Max", "schick das an Sarah", "schick es Max wegen Sentry", "send the reply to Sarah about Postgres", "send the reply to Sarah about Redis", "schick es Max wegen Kafka"]) {
+    assert.equal(decideTask(taskSignals(text), { current: "none", questionOpen: false, mode: "generic", hitActive: false }).next, "draft-for-review", text);
+  }
+});
+test("#1328 service destination replay: standing task rules do not turn services into recipients", async () => {
+  let n = 0;
+  for (const text of ["Antwort an Postgres schreiben", "send the reply to Sentry", "write to Postgres", "Antwort an Stripe schicken", "den Fehler an Sentry senden", "die Frage an Max-Service weiterleiten"]) {
+    const sid = `1328-service-replay-${n++}`;
+    await mutateSessionState(sid, s => { s.activeTask = { id: sid, kind: "none", since: 1, generation: 0 }; s.activeConventions = [{ id: convention.id, revision: "sha256:fixture-1328", scope: "task", setAt: 1, validator: convention.validator }]; });
+    assert.equal((await prompt(sid, text)).activeTask?.kind, "none", text);
+  }
+});
+
+test("#1328 service destination vocabulary: user data extends technical destination recognition", async () => {
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const ctx = { current: "none" as const, questionOpen: false, mode: "generic" as const, hitActive: false };
+  assert.equal(decideTask(taskSignals("write to Fictional"), ctx).next, "draft-for-review");
+  const dir = join(root, "destination-lexicon");
+  await mkdir(dir);
+  await writeFile(join(dir, "task-technical-destination.txt"), "Fictional\n");
+  const before = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    assert.equal(decideTask(taskSignals("write to Fictional"), ctx).next, null);
+  } finally { if (before === undefined) delete process.env.BASTRA_LEXICON_DIR; else process.env.BASTRA_LEXICON_DIR = before; }
+});

@@ -552,7 +552,7 @@ export function recipientFollowupCues(): string[] {
 const TASK_TECHNICAL_OBJECTS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: ["datei\\p{L}*", "datenbank\\p{L}*", "daten", "sprache\\p{L}*", "fehlermeldung\\p{L}*"],
   en: ["files?", "disk", "databases?", "data", "languages?", "error\\s+messages?"],
-  neutral: ["ui", "i18n", "readme", "api", "cli", "server", "client", "config(?:uration)?", "kafka", "redis"],
+  neutral: ["ui", "i18n", "readme", "api", "cli", "server", "client", "config(?:uration)?"],
 };
 
 /** Capture a recipient token; script-neutral name/handle checks live in classification. */
@@ -568,4 +568,18 @@ export function technicalTaskObjectCues(): string[] {
 }
 export function personRecipientCues(): string[] {
   return loadCues("person-recipient", Object.values(PERSON_RECIPIENT_BY_LANGUAGE).flat());
+}
+
+/** Common technical destinations, independent of the conversation language.
+ * Extend task-technical-destination.txt for additional local/service names. */
+const TASK_TECHNICAL_DESTINATIONS = [
+  "postgres(?:ql)?", "mysql", "mariadb", "sqlite", "mongodb", "dynamodb", "redis",
+  "kafka", "rabbitmq", "sqs", "pubsub",
+  "sentry", "datadog", "prometheus", "grafana", "newrelic",
+  "stripe", "paypal", "s3", "supabase", "vercel", "aws", "azure", "gcp", "cloudflare", "firebase",
+  "github", "gitlab", "slack[- ]webhook", "webhook",
+  "[\\p{L}\\p{M}\\p{N}_]+-(?:services?|api|servers?|db)",
+] as const;
+export function technicalTaskDestinationCues(): string[] {
+  return loadCues("task-technical-destination", TASK_TECHNICAL_DESTINATIONS);
 }
