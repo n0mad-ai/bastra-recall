@@ -130,6 +130,7 @@ async function fixtureServer(fn: (url: string) => Promise<void>) {
     req.on("end", () => {
       let response: unknown = {};
       if (req.url === "/hook/recall") response = recall;
+      if (req.url === "/hook/session-context") response = { data: { kernel: { entries: [], omitted: 0 }, recalls: [] } };
       if (req.url === "/session-context") response = { data: { recalls: (JSON.parse(input).queries ?? []).map((q: { scope: string }) => ({ scope: q.scope, resp: recall })) } };
       res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(response));
     });

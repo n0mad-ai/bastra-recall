@@ -148,6 +148,8 @@ const SESSION_HOOK_BUDGET_MS = 500;
 const TOTAL_HINTS_CAP = 7;
 
 export interface SessionPayload {
+  bastra_client?: string;
+  bastra_codex_version?: string;
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
@@ -220,10 +222,9 @@ export async function runSessionLane(
   // summary (anything given only in conversation, hook context included, is
   // gone), `/clear` empties it, `resume` restores the transcript intact. So
   // compact and clear release both; resume releases neither.
-  // #1305: compact, clear and fork come back with an emptied context, so they
-  // get the rule kernel — the session's active conventions first, read BEFORE
-  // the reset below. Never on resume: its transcript is intact (#509).
-  const kernelWanted = payload.source === "compact" || payload.source === "clear" || payload.source === "fork";
+  // Rulebook A+B is delivered on every lifecycle entry, including startup
+  // and resume. Read active membership before compact/clear/fork reset it.
+  const kernelWanted = true;
   let kernelActive: ActiveConvention[] = [];
   if (kernelWanted && payload.session_id) {
     try {
@@ -233,7 +234,7 @@ export async function runSessionLane(
     }
     // #1306: a new generation of the task state — the task and its conventions
     // carry over, an open "task unclear" question does not.
-    await bumpTaskGeneration(payload.session_id);
+    if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") await bumpTaskGeneration(payload.session_id);
   }
   resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear") {
@@ -672,8 +673,9 @@ export async function runSessionLane(
   // candidates; a cold dense arm says so, the kernel itself never needs one.
   let kernel: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
   if (kernelWanted && sideData?.kernel) {
-    kernel = renderRuleKernel(sideData.kernel, { trigger: `after ${payload.source}`, lexicalOnly: denseCold });
+    kernel = renderRuleKernel(sideData.kernel, { trigger: `after ${payload.source ?? "startup"}`, lexicalOnly: denseCold });
   }
+  if (kernelWanted && !sideData?.kernel) kernel.text = "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
   const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
   const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
@@ -730,6 +732,26 @@ export async function runSessionLane(
     updateBlock += modelNoticeOutput.block;
   }
 
+  // A complete kernel is kept whole; unrelated sections are deferred as whole
+  // blocks when the host's 10k additionalContext cap would otherwise hide it.
+  let contextDeferred = false;
+  const capContext = (value: string): string => {
+    if (!value || value === "{}") return value;
+    const parsed = JSON.parse(value);
+    const context = parsed.hookSpecificOutput?.additionalContext;
+    if (typeof context === "string" && context.length > 9900) {
+      contextDeferred = true;
+      const suffix = "\nOther session context was deferred to keep the rulebook below the host limit.";
+      const language = kernel.text.length + languageBlock.length + suffix.length + 1 <= 9900 ? languageBlock : "";
+      parsed.hookSpecificOutput.additionalContext = kernel.text + "\n" + language + suffix;
+      return JSON.stringify(parsed);
+    }
+    return value;
+  };
+  out = capContext(await appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS));
+  const deliveredTop = contextDeferred ? [] : top;
+  if (out !== "{}") injected = JSON.parse(out).hookSpecificOutput?.additionalContext ?? injected;
+
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
   recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), { source: payload.source ?? null });
@@ -742,9 +764,9 @@ export async function runSessionLane(
     queries: queries.length,
     daemon_url: url,
     daemon_reachable: responses.some((r) => r.resp !== null),
-    hint_count: top.length,
-    convention_count: conventions.length,
-    pinned_count: pinned.length,
+    hint_count: deliveredTop.length,
+    convention_count: contextDeferred ? 0 : conventions.length,
+    pinned_count: contextDeferred ? 0 : pinned.length,
     top_score: top[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     degraded_reason: degradedReason,
@@ -759,7 +781,7 @@ export async function runSessionLane(
     hint_tokens_by_part: tokensByPart(
       injected === ""
         ? {}
-        : {
+        : contextDeferred ? { kernel: kernel.text, language: injected.includes(languageBlock) ? languageBlock : "" } : {
             kernel: kernel.text,
             pinned: pinnedBlock,
             recalls: recallBlock,
@@ -774,25 +796,25 @@ export async function runSessionLane(
             doku: dokuBlock,
           },
     ),
-    hinted_ids: top.map((h) => h.id),
-    hinted_types: top.map((h) => h.type),
+    hinted_ids: deliveredTop.map((h) => h.id),
+    hinted_types: deliveredTop.map((h) => h.type),
     pending_lanes: pendingLanes,
     ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
     constants_skipped: constantsSkipped,
     ...(kernelWanted
-      ? { kernel: { full_ids: kernel.full, degraded_ids: kernel.degraded, omitted: kernel.omitted, chars: kernel.text.length } }
+      ? { kernel: { full_ids: kernel.full, degraded_ids: kernel.degraded, omitted: kernel.omitted, paged_index: kernel.paged_index, unconfirmed_legacy: sideData?.kernel?.unconfirmed_legacy, chars: kernel.text.length } }
       : {}),
     status,
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(url, top.map((h) => h.id), payload.session_id ?? null);
+  await reportHinted(url, deliveredTop.map((h) => h.id), payload.session_id ?? null);
   // #621: what this start put into the context counts as delivered for the
   // PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
-  if (payload.session_id && top.length > 0) {
+  if (payload.session_id && deliveredTop.length > 0) {
     try {
       await mutateSessionState(payload.session_id, (s) => {
-        for (const h of top) bumpShown(s, h.id);
+        for (const h of deliveredTop) bumpShown(s, h.id);
         // #1303: beside the shown-state, the must-load the gate will claim.
         bookPendingMustLoad(s, [...gated], `session:${startedAt.toString(36)}`);
       });
@@ -801,7 +823,7 @@ export async function runSessionLane(
       // already assembled when its directory is unavailable.
     }
   }
-  return appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS);
+  return out;
 }
 
 // spawnStagedUpdate / stagedToday / markStagedToday wohnen seit #81 in

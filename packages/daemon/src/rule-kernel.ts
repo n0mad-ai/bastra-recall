@@ -1,210 +1,61 @@
-/**
- * The rule kernel (#1305): the full bodies of the rules in force, delivered
- * after compact, clear or fork (session lane) and again after
- * {@link RULE_KERNEL_TOOL_CALLS} tool calls without a prompt (gate lane).
- *
- * Order is priority: (1) the session's active conventions, (2) floors,
- * (3) reflex memories, (4) user-directed `user-preference` / `meta-working`
- * memories by salience. Bodies come from the daemon's vault index, never from
- * a recall, so the kernel costs no search and no embedding.
- *
- * One explicit local bound, {@link RULE_KERNEL_CHAR_BUDGET} characters for the
- * whole block. A body is delivered whole or not at all: one that does not fit
- * is replaced by `degraded: load_memory(<id>)`. A rule is never cut, because a
- * truncated rule reads like a complete one. Full texts get room before fallback IDs.
- *
- * Shadow accounting is the caller's: the session lane charges its whole
- * block, the gate lane charges the re-delivery (session-budget.ts).
- */
-import { readFile } from "node:fs/promises";
-import type { Memory, Vault } from "@bastra-recall/core";
-import { computeStaleness, memoryRevision, stripAutoRelatedSection, type StaleStatus } from "@bastra-recall/core";
-import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-recall/core/scope";
-import { listFloors, type FloorEntry } from "./floors.js";
-import { isReflexPoolMember } from "./reflex.js";
-import type { ActiveConvention } from "./session-state.js";
+/** A: complete always bodies. B: description index plus a complete paged catalog. */
+import { HINT_FRAME_NOTE } from "@bastra-recall/core/scrub";
+import { catalogHash, cleanRuleText, oneLine, rulebookCursor, ruleIndexLine, RULEBOOK_INDEX_CHAR_BUDGET,
+  type KernelCandidates } from "./rulebook-catalog.js";
+export { collectRulebookCatalog as collectRuleKernel } from "./rulebook-catalog.js";
+export type { KernelCandidates, KernelEntry, KernelGroup } from "./rulebook-catalog.js";
 
-/** The whole block, tags and all, stays at or below this many characters. */
-export const RULE_KERNEL_CHAR_BUDGET = 6000;
-/** Legacy body-size hint; group priority now determines delivery order. */
+export const RULE_KERNEL_CHAR_BUDGET = 9400;
+/** ~2k tokens; total host additionalContext must remain below 10k characters. */
+export const RULEBOOK_ALWAYS_CHAR_BUDGET = 8000;
 export const RULE_KERNEL_SHORT_BODY_CHARS = 1500;
-/** Tool calls without a user prompt after which the gate lane re-delivers. */
 export const RULE_KERNEL_TOOL_CALLS = 25;
-/** Candidates whose revision is read from disk; the rest are counted as
- *  omitted. At ~100 characters per entry line the bound fits fewer anyway. */
-export const RULE_KERNEL_MAX_ENTRIES = 40;
-
-export const RULE_KERNEL_ASK_LINE =
-  "If a rule here seems unclear or outdated, ask the user with a choice box before deviating; never silently ignore it.";
-export const RULE_KERNEL_LEXICAL_LINE = "lexical-only: kernel built from floors, reflex and user-directed rules only";
-
-export type KernelGroup = "active-convention" | "floor" | "reflex" | "user-directed";
-
-export interface KernelEntry {
-  id: string;
-  title: string;
-  group: KernelGroup;
-  /** `memoryRevision` of the file on disk; null when it could not be read. */
-  revision: string | null;
-  updated: string | null;
-  stale_status: StaleStatus | "unknown";
-  /** Scrubbed body; "" when the memory has none. */
-  body: string;
-}
-
-export interface KernelCandidates {
-  entries: KernelEntry[];
-  /** Candidates past {@link RULE_KERNEL_MAX_ENTRIES}. */
-  omitted: number;
-}
-
-const USER_DIRECTED_TYPES = new Set(["user-preference", "meta-working"]);
-
-/** What the hook path may serve at all: nothing obsolete, private or superseded. */
-function servable(m: Memory): boolean {
-  return m.fm.obsolete !== true && m.fm.sensitivity !== "private" && !m.fm.superseded_by;
-}
-
-/** A project rule belongs to its project; without a project only global scopes. */
-function inScope(m: Memory, project: string | null): boolean {
-  const scope = typeof m.fm.scope === "string" ? m.fm.scope : "";
-  if (!scope) return true;
-  return project ? isScopeCompatible(scope, project) : GLOBAL_SCOPES.has(normalizeScopeKey(scope));
-}
-
-const salience = (m: Memory): number => (typeof m.fm.salience === "number" ? m.fm.salience : 0);
-const bySalience = (a: Memory, b: Memory): number =>
-  salience(b) - salience(a) || String(b.fm.updated ?? "").localeCompare(String(a.fm.updated ?? ""));
-
-/**
- * The kernel's candidates in priority order, deduplicated, bodies and
- * revisions resolved. Reads the vault index and at most
- * {@link RULE_KERNEL_MAX_ENTRIES} files for their revision.
- */
-export async function collectRuleKernel(
-  vault: Pick<Vault, "get" | "list">,
-  opts: {
-    project: string | null;
-    active: readonly ActiveConvention[];
-    floors?: (project: string | null) => Promise<FloorEntry[]>;
-  },
-): Promise<KernelCandidates> {
-  const picked: Array<{ m: Memory; group: KernelGroup }> = [];
-  const seen = new Set<string>();
-  const take = (m: Memory | undefined, group: KernelGroup): void => {
-    if (!m || seen.has(m.fm.id) || !servable(m)) return;
-    seen.add(m.fm.id);
-    picked.push({ m, group });
-  };
-
-  // Newest first: the convention set last is the one the task is under.
-  for (const a of [...opts.active].sort((x, y) => y.setAt - x.setAt)) {
-    const m = vault.get(a.id);
-    if (m && inScope(m, opts.project)) take(m, "active-convention");
-  }
-
-  const floors = await (opts.floors ?? defaultFloors)(opts.project).catch(() => [] as FloorEntry[]);
-  for (const f of floors) take(vault.get(f.memory_id), "floor");
-
-  const all = vault.list().filter((m) => servable(m) && inScope(m, opts.project));
-  for (const m of all.filter(isReflexPoolMember).sort(bySalience)) take(m, "reflex");
-  for (const m of all
-    .filter((m) => m.fm.write_origin === "user-directed" && USER_DIRECTED_TYPES.has(String(m.fm.type)))
-    .sort(bySalience)) {
-    take(m, "user-directed");
-  }
-
-  const kept = picked.slice(0, RULE_KERNEL_MAX_ENTRIES);
-  const entries = await Promise.all(
-    kept.map(async ({ m, group }): Promise<KernelEntry> => {
-      const revision = m.filePath
-        ? await readFile(m.filePath, "utf8").then(memoryRevision, () => null)
-        : null;
-      return {
-        id: m.fm.id,
-        title: oneLine(stripFenceMarkers(String(m.fm.title ?? ""))),
-        group,
-        revision,
-        updated: typeof m.fm.updated === "string" ? m.fm.updated : null,
-        stale_status: computeStaleness(m.fm),
-        body: cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim(),
-      };
-    }),
-  );
-  return { entries, omitted: picked.length - kept.length };
-}
-
-/** The session lane's floor rule: without a project only unscoped floors. */
-async function defaultFloors(project: string | null): Promise<FloorEntry[]> {
-  const all = await listFloors(project ?? undefined);
-  return project ? all : all.filter((e) => !e.scope);
-}
-
-function cleanRuleText(s: string): string {
-  return stripFenceMarkers(s.replace(/\r\n?/g,"\n").replace(/\t/g,"    ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,""));
-}
-function oneLine(s: string): string {
-  return cleanRuleText(s).replace(/\s+/g, " ").trim();
-}
-
-function entryHead(e: KernelEntry): string {
-  return (
-    `- [${e.group}] ${e.id} "${e.title}" revision=${e.revision ?? "unknown"} updated=${e.updated ?? "unknown"}` +
-    ` stale_status=${e.stale_status ?? "unknown"}`
-  );
-}
-
-const degradedLine = (e: KernelEntry): string => `[${e.group}] ${e.id} degraded: load_memory(${e.id})`;
-
+/** No catalog entry cap. Kept as an API compatibility constant. */
+export const RULE_KERNEL_MAX_ENTRIES = Infinity;
+export const RULE_KERNEL_ASK_LINE = "Rule applicability is decided from the descriptions; bodies are available through load_memory(id).";
+export const RULE_KERNEL_LEXICAL_LINE = "Rulebook membership is independent of search and embeddings.";
 export interface RenderedKernel {
-  /** "" when there is nothing to deliver. */
-  text: string;
-  /** Ids delivered with their full body. */
-  full: string[];
-  /** Ids delivered as `degraded: load_memory(id)`. */
-  degraded: string[];
-  /** Candidates not listed at all: past the entry cap or the char bound. */
-  omitted: number;
+  text: string; full: string[]; degraded: string[]; omitted: number;
+  always_overflow?: string[]; next_cursor?: string; paged_index?: number;
 }
-
-/** Full rules get the budget first in group priority; fallbacks carry only IDs. */
-export function renderRuleKernel(
-  candidates: KernelCandidates,
-  opts: { trigger: string; lexicalOnly?: boolean },
-): RenderedKernel {
-  const total=candidates.entries.length+candidates.omitted;
-  const empty={text:"",full:[],degraded:[],omitted:total};
-  if (!candidates.entries.length) return empty;
-  const trigger=oneLine(opts.trigger).replaceAll('"',"&quot;");
-  const open = `<rule-kernel trigger="${trigger}">`;
-  const intro=(full:number,degraded:number,omitted:number)=>`Rules (${trigger}): ${full} of ${total} full; ${degraded} ID-only; ${omitted} omitted. `+
-    `Priority: active conventions, floors, reflex, user-directed. Load ID-only rules before acting.`;
-  // Reserve the widest possible count line before selecting complete rules.
-  const lines = [open, intro(total,total,total), ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">',HINT_FRAME_NOTE];
-  const tail = ["</recall-hints>",RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
-  const omittedLine = (n: number) => `+${n} more rule(s) not listed: over the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
-  const reserve = omittedLine(total).length + 1;
+export function renderRuleKernel(candidates: KernelCandidates, opts: { trigger: string; lexicalOnly?: boolean }): RenderedKernel {
+  const entries = candidates.entries.map(e => ({ ...e, id: oneLine(e.id), title: oneLine(e.title), revision: e.revision ? oneLine(e.revision) : null, updated: e.updated ? oneLine(e.updated) : null, body: cleanRuleText(e.body).trim() }));
+  const total = entries.length;
+  if (!total && !(candidates.unconfirmed_legacy ?? 0) && !candidates.omitted && !candidates.unavailable_sources) return { text: "", full: [], degraded: [], omitted: 0, always_overflow: [] };
+  const trigger = oneLine(opts.trigger).slice(0, 120).replaceAll('"', "&quot;");
+  const lines = [`<rule-kernel trigger="${trigger}">`,
+    `Rulebook: ${total} rules; catalog=${catalogHash(candidates)}; ${candidates.unconfirmed_legacy ?? 0} possible rules without confirmation.`,
+    ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">', HINT_FRAME_NOTE];
+  if (candidates.unavailable_sources) lines.push(`Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`);
+  const full: string[] = [], degraded: string[] = [], overflow: string[] = [];
+  let aUsed = 0;
+  for (const e of entries.filter(e => (e.rulebook ?? "always") === "always")) {
+    const block = `Always ${e.id} revision=${e.revision ?? "unknown"} updated=${e.updated ?? "unknown"} stale_status=${e.stale_status ?? "unknown"}:\n` + e.body.split("\n").map(s => "  " + s).join("\n");
+    if (!e.body || aUsed + block.length + 1 > RULEBOOK_ALWAYS_CHAR_BUDGET || lines.join("\n").length + block.length + 1200 > RULE_KERNEL_CHAR_BUDGET) { overflow.push(e.id); continue; }
+    lines.push(block); full.push(e.id); aUsed += block.length + 1;
+  }
+  if (overflow.length) {
+    const names: string[] = [];
+    for (const id of overflow) { if (names.join(", ").length + id.length > 400) break; names.push(id); }
+    const named = names.join(", ") + (names.length < overflow.length ? ` (+${overflow.length - names.length} more)` : "");
+    lines.push(`Always overflow (${overflow.length}): ${named}. Complete texts did not fit or were unavailable; shorten them or set on-demand. All IDs are in list_rules.`);
+  }
+  if (candidates.omitted) lines.push(`Catalog incomplete from source: ${candidates.omitted} entries unavailable; complete restoration is not established.`);
+  lines.push("Rule index (all tiers; descriptions are facts):");
+  // Reserve enough for an opaque cursor, close tags and the factual footer.
+  const tail = ["</recall-hints>", RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
   let used = [...lines, ...tail].join("\n").length;
-  const groups: KernelGroup[] = ["active-convention", "floor", "reflex", "user-directed"];
-  const entries = candidates.entries.map((e, i) => ({ e:{...e,id:oneLine(e.id),title:oneLine(e.title),revision:e.revision?oneLine(e.revision):null,updated:e.updated?oneLine(e.updated):null,body:cleanRuleText(e.body).trim()}, i }))
-    .sort((a, b) => groups.indexOf(a.e.group) - groups.indexOf(b.e.group) || a.i - b.i).map(({ e }) => e);
-  const full: string[] = [], deferred: KernelEntry[] = [], degraded: string[] = [];
+  let offset = 0, indexUsed = 0;
   for (const e of entries) {
-    const body=e.body.split("\n").map(line=>"  "+line).join("\n");
-    const cost = entryHead(e).length + body.length + 2;
-    if (!e.body || used + cost + reserve > RULE_KERNEL_CHAR_BUDGET) { deferred.push(e); continue; }
-    lines.push(entryHead(e), body); full.push(e.id); used += cost;
+    const line = ruleIndexLine(e);
+    if (used + line.length + 1 + 300 > RULE_KERNEL_CHAR_BUDGET || indexUsed + line.length + 1 > RULEBOOK_INDEX_CHAR_BUDGET) break;
+    lines.push(line); used += line.length + 1; indexUsed += line.length + 1; offset++;
+    if (!full.includes(e.id)) degraded.push(e.id);
   }
-  for (const e of deferred) {
-    const line = degradedLine(e);
-    if (used + line.length + 1 + reserve > RULE_KERNEL_CHAR_BUDGET) continue;
-    lines.push(line); degraded.push(e.id); used += line.length + 1;
-  }
-  const omitted = candidates.omitted + deferred.length - degraded.length;
-  if(!full.length&&!degraded.length)return empty;
-  lines[1]=intro(full.length,degraded.length,omitted);
-  if (omitted) lines.push(omittedLine(omitted));
+  const next_cursor = offset < total ? rulebookCursor(candidates, offset) : undefined;
+  if (next_cursor) lines.push(`Catalog continuation: list_rules(cursor=${JSON.stringify(next_cursor)}); total=${total}, shown=${offset}.`);
+  else lines.push(`Catalog end: hash=${catalogHash(candidates)} count=${total}.`);
   lines.push(...tail);
-  return { text: lines.join("\n"), full, degraded, omitted };
+  return { text: lines.join("\n"), full, degraded, omitted: candidates.omitted, paged_index: total - offset,
+    always_overflow: overflow, ...(next_cursor ? { next_cursor } : {}) };
 }

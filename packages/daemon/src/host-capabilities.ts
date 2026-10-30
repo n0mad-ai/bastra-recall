@@ -48,7 +48,7 @@ const claudeCode: HostCapabilities = {
     stop_block: cap("supported", [claude, issue(1311)], "Host can continue after Stop; Bastra's approved-copy repair uses additionalContext and never a block decision. No before-display guarantee.", "unsupported"),
     session_fork: cap("supported", [claude, issue(1303)], "Fork source registered in SessionStart; no minimum runtime established."),
     must_load_gate: cap("supported", [issue(1303)], "One persisted deny claim, then retry passes; never permanent blocking until load."),
-    rule_kernel: cap("supported", [issue(1305)], "Compact/clear/fork recovery; bounded full bodies or explicit degraded load instruction. No kernel on resume."),
+    rule_kernel: cap("supported", [issue(1305)], "Startup/resume/clear/compact/fork: complete always bodies or explicit overflow, and a complete catalog through the index and list_rules pagination."),
     validate_artifact_tool: validate,
   },
   pre_tool_coverage: { runtimeVerified: [], documentedOnly: ["PreToolUse-covered local tools", "MCP tools"], exceptions: ["EndConversation skips PreToolUse (current host docs).", "Recall MCP tools and Bastra ToolSearch are intentionally exempt from Bastra gate denial.", "Host documentation and lane tests do not certify every tool/runtime combination."], sources: [claude, issue(1303)] },
@@ -66,7 +66,7 @@ function codexRow(verified: boolean, eligible: boolean): HostCapabilities {
       stop_block: cap(verified ? "supported" : "unverified", [`${codex}#stop`], "Current docs describe a block creating a continuation prompt; this was not runtime-probed and does not certify other/unknown versions. Bastra has no Stop repair block and offers no approved-copy Stop repair on Codex (#1311). No before-display guarantee.", "unsupported"),
       session_fork: cap(verified ? "supported" : "unverified", [spike, issue(1304)], "Runtime-confirmed source=fork only on CLI 0.162.1; adapter registers the benign fork matcher on every version, without certifying that the host emits it.", "supported"),
       must_load_gate: cap(verified ? "supported" : "preparation-only", [issue(1304), spike], eligible ? "Verified runtime matched; registration enabled. Later versions require a new probe." : "No gate registered for other, unknown, malformed or prerelease versions; preparation hints only."),
-      rule_kernel: cap(verified ? "supported" : "unverified", [issue(1305), issue(1304)], "Shared session lane renders compact/clear/fork recovery; this does not certify host delivery on other/unknown runtimes. The fork matcher is registered on all versions; interval re-delivery requires the eligible gate.", eligible ? "supported" : "preparation-only"),
+      rule_kernel: cap(verified ? "supported" : "unverified", [issue(1305), issue(1304)], "Shared session lane renders startup/resume/clear/compact/fork rulebook delivery; this does not certify host delivery on other/unknown runtimes. The fork matcher is registered on all versions; interval re-delivery requires the eligible gate.", eligible ? "supported" : "preparation-only"),
       validate_artifact_tool: validate,
     },
     pre_tool_coverage: {

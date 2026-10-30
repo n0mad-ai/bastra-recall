@@ -1,3 +1,4 @@
+import { printRulebookDoctorNote } from "./rulebook-note.js";
 import { assistantAddressStatus, hasManagedAssistantAddress, addressRemovalNeedsConsent, removeAssistantAddress, notifyAssistantAddressDaemon, type AssistantAddressOptions } from "../assistant-address.js";
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { missingVaultReason } from "../vault-presence.js";
@@ -507,6 +508,8 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printCodeGraphNote();
   await printBridgeLearningNote();
   await printClientMemoryNote(resolveVaultPath(args.vaultPath));
+  const rulebookVault = await resolveVault({ dryRun: true, vaultPath: resolveVaultPath(args.vaultPath) });
+  if (!("error" in rulebookVault)) await printRulebookDoctorNote(rulebookVault.path);
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
   await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));

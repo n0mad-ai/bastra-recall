@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { actionServerUrl } from "./gpt-action-url.js";
 import { z } from "zod";
-import { RecallArgs, LoadMemoryArgs, SaveMemoryInput, ArchiveMemoryArgs } from "../src/tool-handlers.js";
+import { RecallArgs, LoadMemoryArgs, ListRulesArgs, SaveMemoryInput, ArchiveMemoryArgs } from "../src/tool-handlers.js";
 import { EditMemoryArgs } from "../src/edit-memory-handler.js";
 import { FindDocumentArgs, ReadDocumentArgs, OpenDocumentArgs } from "../src/documents-handler.js";
 import { SaveDocumentArgs, RecategorizeDocumentArgs, MoveDocumentArgs } from "../src/documents-write-handler.js";
@@ -98,7 +98,7 @@ export function discoverGetRoutes(text?: string): Map<string, string[]> {
 // Reuse the very validators called by the handlers, rather than their less
 // precise MCP descriptions. Unknown new handlers fail closed below.
 const inputValidators: Record<string, z.ZodType> = {
-  recall: RecallArgs, load_memory: LoadMemoryArgs, save_memory: SaveMemoryInput,
+  recall: RecallArgs, load_memory: LoadMemoryArgs, list_rules: ListRulesArgs, save_memory: SaveMemoryInput,
   edit_memory: EditMemoryArgs, archive_memory: ArchiveMemoryArgs,
   find_document: FindDocumentArgs, read_document: ReadDocumentArgs, open_document: OpenDocumentArgs,
   save_document: SaveDocumentArgs, recategorize_document: RecategorizeDocumentArgs, move_document: MoveDocumentArgs,

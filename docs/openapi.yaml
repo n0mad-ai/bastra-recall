@@ -954,6 +954,66 @@
         }
       }
     },
+    "/list_rules": {
+      "post": {
+        "operationId": "list_rules",
+        "summary": "list rules",
+        "description": "Read the complete scoped rulebook catalog without search or relevance filtering. Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=tru...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cursor": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/load_memory": {
       "post": {
         "operationId": "load_memory",

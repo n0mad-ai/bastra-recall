@@ -50,6 +50,16 @@ const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: false,
 
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
+    name: "list_rules", annotations: READ_ONLY,
+    description: "Read the complete scoped rulebook catalog without search or relevance filtering. " +
+      "Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. " +
+      "Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=true. " +
+      "Descriptions are facts; decide applicability yourself and read bodies with load_memory(id). " +
+      "Unconfirmed legacy candidates are counted, never silently promoted. No write or approval is involved.",
+    inputSchema: { type: "object", properties: { cursor: { type: "string", maxLength: 2048,
+      description: "Opaque next_cursor from the preceding page or rulebook hook; omit for the first page." } } },
+  },
+  {
     name: "recall",
     annotations: READ_ONLY,
     description:

@@ -193,3 +193,5 @@ export async function archiveMemoryHandler(
 // save_memory). Sowohl der embedded MCP-Server in index.ts als auch
 // der HTTP-Forwarder mcp-forwarder.ts importieren das hier, damit Schema
 // und Description nicht aus dem Sync geraten.
+
+export { ListRulesArgs, listRulesHandler } from "./rulebook-catalog.js";

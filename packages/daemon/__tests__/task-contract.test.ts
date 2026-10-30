@@ -353,7 +353,7 @@ describe("#1306 prompt lane", () => {
 // ─── compact and fork ───────────────────────────────────────────────────────
 
 describe("#1306 generations", () => {
-  const index = [{ fm: { ...CONVENTION, updated: "2026-10-29" }, body: "Invented message convention body." }] as unknown as Memory[];
+  const index = [{ fm: { ...CONVENTION, write_origin: "user-directed", updated: "2026-10-29" }, body: "Invented message convention body." }] as unknown as Memory[];
   const vault = { list: () => index, get: (id: string) => index.find((m) => m.fm.id === id) };
 
   async function sessionStart(source: string, sessionId: string): Promise<string> {
@@ -393,7 +393,7 @@ describe("#1306 generations", () => {
     assert.ok((await loadSessionState(sid)).taskQuestion);
     const start = await sessionStart("compact", sid);
     assert.match(start, /<rule-kernel trigger="after compact">/);
-    assert.match(start, /\[active-convention\] msg-convention/);
+    assert.match(start, /Always msg-convention/);
     assert.match(start, /Invented message convention body\./);
     const state = await loadSessionState(sid);
     assert.deepEqual([state.activeTask?.kind, state.activeTask?.generation], ["draft-for-review", 1]);

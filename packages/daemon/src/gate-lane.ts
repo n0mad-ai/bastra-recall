@@ -344,6 +344,7 @@ async function redeliverKernel(
     kernel_ids: rendered.full,
     kernel_degraded_ids: rendered.degraded,
     kernel_omitted: rendered.omitted,
+    kernel_paged_index: rendered.paged_index ?? 0,
     kernel_chars: rendered.text.length,
   });
   return JSON.stringify({

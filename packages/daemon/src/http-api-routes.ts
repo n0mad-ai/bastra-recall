@@ -9,6 +9,7 @@ import { validateArtifactHandler } from "./validate-artifact-handler.js";
 import {
   recallHandler,
   loadMemoryHandler,
+  listRulesHandler,
   saveMemoryHandler,
   archiveMemoryHandler,
   type ToolDeps,
@@ -83,6 +84,7 @@ async function dispatchTool(
     case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
     case "recall":
       return await recallHandler(toolDeps, body);
+    case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId });
     case "load_memory":
       return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null });
     case "save_memory":
