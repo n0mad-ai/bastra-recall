@@ -135,3 +135,24 @@ test("#1332 review: unchanged repair waits for its admin receipt and blocks a se
  const options={helperLoaded:async()=>false,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
  await setupAssistantAddress({...options,name:"Ruby"});let settled:((success:boolean)=>Promise<void>)|undefined;await assert.rejects(setupAssistantAddress({...options,runAdmin:async p=>{settled=p.onSettled;throw new Error("timeout");}}));assert.equal((await assistantAddressStatus(options)).pending,true);await assert.rejects(changeAssistantName("Jarvis",options),/ausstehend/);assert.ok(settled);await settled(false);assert.equal((await assistantAddressStatus(options)).pending,false);assert.equal(await getAssistantName(settingsPath),"ruby");
 });
+
+test("release B: large hosts never enter osascript argv and synchronous spawn errors settle once",async()=>{
+ const {runMacAddressAdmin}=await import("../src/assistant-address-admin.js");let settled=0,argvSize=0;
+ await assert.rejects(runMacAddressAdmin({hostsPath:"fixture",hostsBefore:"",hostsAfter:"# blocked\n".repeat(300000),helperPath:"fixture",helperBefore:null,helperAfter:null,label:"fixture",onSettled:async success=>{assert.equal(success,false);settled++;}},{spawn:(_cmd,args)=>{argvSize=args.join("").length;throw Object.assign(Error("spawn E2BIG"),{code:"E2BIG"});}}));
+ assert.ok(argvSize<16000,"payload must be staged, never sent in argv");assert.equal(settled,1);
+});
+
+test("release B: staged multi-megabyte hosts execute with verified private payloads; tampering fails",async t=>{
+ const {runMacAddressAdmin}=await import("../src/assistant-address-admin.js"),{spawn}=await import("node:child_process"),{statSync,writeFileSync}=await import("node:fs");
+ const root=await mkdtemp(join(tmpdir(),"assistant-large-"));t.after(()=>rm(root,{recursive:true,force:true}));const hosts=join(root,"hosts"),ctl=join(root,"ctl"),before="localhost\n",after=before+"# blocked\n".repeat(300000);
+ await writeFile(hosts,before);await writeFile(ctl,"#!/bin/sh\nexit 0\n",{mode:0o755});
+ const plan={hostsPath:hosts,hostsBefore:before,hostsAfter:after,helperPath:join(root,"helper"),helperBefore:null,helperAfter:null,label:"fixture",rootOwnership:false,launchctl:ctl};
+ for(const tamper of [true,false]){
+  const run=runMacAddressAdmin(plan,{spawn:(_cmd,args)=>{
+   assert.ok(args.join("").length<16000);const encoded=args[1]!.slice("do shell script ".length).split(" with administrator privileges")[0]!,script=JSON.parse(encoded);
+   const path=/\/bin\/cp '([^']+)'/.exec(script)![1]!;assert.equal(statSync(path).mode&0o777,0o600);assert.equal(statSync(join(path,"..")).mode&0o777,0o700);if(tamper)writeFileSync(path,"tampered");
+   return spawn("/bin/sh",["-c",script],{stdio:["ignore","pipe","pipe"]});
+  }});
+  if(tamper){await assert.rejects(run);assert.equal(await readFile(hosts,"utf8"),before);}else{await run;assert.equal(await readFile(hosts,"utf8"),after);}
+ }
+});

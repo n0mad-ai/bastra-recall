@@ -85,3 +85,9 @@ test("#1332 follow-up: a late failed retry restores its durable original partial
  await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{late=p;throw Error("timeout");}}));const retry=JSON.parse(await readFile(path,"utf8"));assert.notEqual(retry.id,original.id);assert.equal(retry.recoveryOf.intent.id,original.id);assert.equal((await assistantAddressStatus(o)).pending,true);
  await late.onSettled(false);assert.equal((await assistantAddressStatus(o)).partial,true);assert.equal(JSON.parse(await readFile(path,"utf8")).id,original.id);assert.equal(service.loaded,false);await setupAssistantAddress(o);assert.equal(service.loaded,true);
 });
+
+test("release B: an expired intent without a living admin process stops blocking setup",async t=>{
+ const {o}=await fixture(t);await assert.rejects(setupAssistantAddress({...o,runAdmin:async()=>{throw Error("lost dialog");}}));
+ const path=join(o.runtimeDir,"pending-admin.json"),p=JSON.parse(await readFile(path,"utf8"));p.createdAt=Date.now()-3600000;p.adminPid=2147483647;p.ownerPid=2147483647;await writeFile(path,JSON.stringify(p));
+ assert.equal((await assistantAddressStatus(o)).pending,false);await setupAssistantAddress(o);assert.equal((await assistantAddressStatus(o)).pending,false);
+});

@@ -4,7 +4,7 @@ import { spawn, execFile, execFileSync } from "node:child_process";
 import { userInfo, homedir, hostname } from "node:os";
 import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { withPathLock, PathLockUnavailableError } from "./path-lock.js";
 import { readSettings, settingsFilePath } from "./settings-file.js";
 import { normalizeAssistantName, assistantUrls } from "./assistant-address-name.js";
@@ -98,7 +98,7 @@ class AddressPendingError extends Error {}
 class AddressSettingsConflictError extends Error {constructor(readonly settled:boolean){super("Einstellung während Systemfreigabe geändert.");}}
 
 type ProfileEdit={path:string;before:string|null;after:string};
-interface PendingAddress {recoveryOf?:{intent:PendingAddress;receipt:string|null};helperLoadedBefore?:boolean|null;id:string;plan:AddressAdminPlan;name:string|null;previousName:string|null;profiles:ProfileEdit[];desiredState:{version:number;name:string;firefoxFiles:string[];firefoxOwnedPrefs:Record<string,string[]>}|null;}
+interface PendingAddress {createdAt?:number;ownerPid?:number;adminPid?:number;recoveryOf?:{intent:PendingAddress;receipt:string|null};helperLoadedBefore?:boolean|null;id:string;plan:AddressAdminPlan;name:string|null;previousName:string|null;profiles:ProfileEdit[];desiredState:{version:number;name:string;firefoxFiles:string[];firefoxOwnedPrefs:Record<string,string[]>}|null;}
 const pendingPath=(o:ReturnType<typeof assistantAddressOptions>)=>join(o.runtimeDir,"pending-admin.json");
 const receiptPath=(o:ReturnType<typeof assistantAddressOptions>,id:string)=>join(o.runtimeDir,`admin-result-${id}.json`);
 async function forgetPending(o:ReturnType<typeof assistantAddressOptions>,p:PendingAddress){await rm(pendingPath(o),{force:true});await rm(receiptPath(o,p.id),{force:true});}
@@ -144,7 +144,15 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
  const p=JSON.parse(raw)as PendingAddress;
  validatePending(o,p);
 
- const hosts=await optional(o.hostsPath),helper=await optional(o.helperPath),receipt=await optional(receiptPath(o,p.id));
+ const hosts=await optional(o.hostsPath),helper=await optional(o.helperPath);
+ let receipt=await optional(receiptPath(o,p.id));
+ const createdAt=p.createdAt??(await stat(pendingPath(o))).mtimeMs;
+ if(!receipt && Date.now()-createdAt>300000){
+  const pid=p.adminPid??p.ownerPid;
+  let alive=false;
+  if(pid && Number.isSafeInteger(pid) && pid>0)try{process.kill(pid,0);alive=true;}catch(e){alive=(e as NodeJS.ErrnoException).code!=="ESRCH";}
+  if(!alive){receipt=JSON.stringify({success:false,orphaned:true});await atomic(receiptPath(o,p.id),receipt);}
+ }
  const observedDelta=p.plan.hostsAfter!==p.plan.hostsBefore||p.plan.helperAfter!==p.plan.helperBefore;
  const outcome=receipt?JSON.parse(receipt).success:undefined;
  const completedReceipt=outcome===true,settled=typeof outcome==="boolean";
@@ -188,9 +196,9 @@ async function setupAssistantAddressUnlocked(options:AssistantAddressOptions&{na
  const helperAfter=renderAssistantSocketPlist({uid:o.uid,username:o.username,home:o.home,launcher:join(o.runtimeDir,"launch.sh")});
  const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
  const previousName=await getAssistantName(o.settingsPath),firefoxOwnedPrefs=await firefoxOwnership(o,name,profiles);
- const pending:PendingAddress={recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name,previousName,profiles,desiredState:{version:2,name,firefoxOwnedPrefs,firefoxFiles:profiles.filter(p=>p.path.endsWith(sep+"user.js")).map(p=>p.path)}};
+ const pending:PendingAddress={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name,previousName,profiles,desiredState:{version:2,name,firefoxOwnedPrefs,firefoxFiles:profiles.filter(p=>p.path.endsWith(sep+"user.js")).map(p=>p.path)}};
  await atomic(pendingPath(o),JSON.stringify(pending)+"\n");
- try{await(o.runAdmin??runMacAddressAdmin)({...plan,onSettled:async success=>atomic(receiptPath(o,pending.id),JSON.stringify({success})+"\n")});}
+ try{await(o.runAdmin??runMacAddressAdmin)({...plan,onStarted:async pid=>{pending.adminPid=pid;await atomic(pendingPath(o),JSON.stringify(pending)+"\n");},onSettled:async success=>atomic(receiptPath(o,pending.id),JSON.stringify({success})+"\n")});}
  catch(error){
   const result=await reconcileAssistantAddress(o);
   const cancelled=/abgebrochen|cancel(?:ed|led)|-128/i.test((error as Error).message);
@@ -226,9 +234,9 @@ async function removeAssistantAddressUnlocked(options:AssistantAddressOptions={}
  if(hostsAfter!==hostsBefore||ownedHelper){
   if(!o.systemConsent)throw new Error("Entfernen der Systemadresse braucht Zustimmung (system consent)");if(o.platform!=="darwin")throw new Error("Systemadresse durch den Administrator entfernen");
   const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter:ownedHelper?null:helperBefore,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
-  pending={recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name:null,previousName:await getAssistantName(o.settingsPath),profiles,desiredState:null};
+  pending={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name:null,previousName:await getAssistantName(o.settingsPath),profiles,desiredState:null};
   await atomic(pendingPath(o),JSON.stringify(pending)+"\n");const id=pending.id;
-  try{await(o.runAdmin??runMacAddressAdmin)({...plan,onSettled:async success=>atomic(receiptPath(o,id),JSON.stringify({success})+"\n")});}
+  try{await(o.runAdmin??runMacAddressAdmin)({...plan,onStarted:async pid=>{pending!.adminPid=pid;await atomic(pendingPath(o),JSON.stringify(pending)+"\n");},onSettled:async success=>atomic(receiptPath(o,id),JSON.stringify({success})+"\n")});}
   catch{const result=await reconcileAssistantAddress(o);if(result==="completed")return;if(result==="partial")throw new Error(`Entfernen nur teilweise ausgeführt: ${await partialDescription(o)} bastra address setup <name> --yes stellt die Adresse wieder her.`);if(result==="none")throw new Error("Entfernen abgebrochen oder fehlgeschlagen, nichts geändert.");throw new Error("Entfernen nicht abschließend bestätigt; bastra address status prüft den tatsächlichen Zustand. Nicht parallel wiederholen.");}
  }
  await applyProfiles(profiles);await setAssistantName(null,o.settingsPath);

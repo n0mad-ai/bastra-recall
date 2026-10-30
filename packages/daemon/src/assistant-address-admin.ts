@@ -2,7 +2,9 @@
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 const xml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const shellQuote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -20,8 +22,8 @@ export function renderAssistantSocketPlist(i: {uid:string;username:string;home:s
 <key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>1</integer>
 </dict></plist>\n`;
 }
-export interface AddressAdminPlan { hostsPath:string;hostsBefore:string;hostsAfter:string;helperPath:string;helperBefore:string|null;helperAfter:string|null;label:string;launchctl?:string;rootOwnership?:boolean;onSettled?:(success:boolean)=>Promise<void>; }
-export function makeAddressAdminScript(p: AddressAdminPlan): string {
+export interface AddressAdminPlan { hostsPath:string;hostsBefore:string;hostsAfter:string;helperPath:string;helperBefore:string|null;helperAfter:string|null;label:string;launchctl?:string;rootOwnership?:boolean;onSettled?:(success:boolean)=>Promise<void>;onStarted?:(pid:number)=>Promise<void>; }
+export function makeAddressAdminScript(p: AddressAdminPlan, payloads?: ReadonlyMap<string,string>): string {
   const q=shellQuote, hash=existsSync("/usr/bin/shasum")?"/usr/bin/shasum -a 256":"/usr/bin/sha256sum";
   const ctl=q(p.launchctl??"/bin/launchctl"), domain=q(`system/${p.label}`);
   const check=(path:string,before:string|null)=>before===null
@@ -30,7 +32,7 @@ export function makeAddressAdminScript(p: AddressAdminPlan): string {
   const write=(path:string,content:string,mode:string)=>[
     `/bin/mkdir -p ${q(dirname(path))}`,
     `tmp=$(/usr/bin/mktemp ${q(path+".bastra.XXXXXX")})`,
-    `/usr/bin/printf %s ${q(content)} > "$tmp"`,
+    ...(payloads ? [`/bin/cp ${q(payloads.get(digest(content))!)} "$tmp"`, `[ "$(${hash} "$tmp" | /usr/bin/awk '{print $1}')" = ${q(digest(content))} ] || { echo 'address payload changed' >&2; exit 1; }`] : [`/usr/bin/printf %s ${q(content)} > "$tmp"`]),
     `/bin/chmod ${mode} "$tmp"`,
     ...(p.rootOwnership===false?[]:[`/usr/sbin/chown root:wheel "$tmp"`]),
     `/bin/mv "$tmp" ${q(path)}`,`tmp=''`,
@@ -49,12 +51,30 @@ export function makeAddressAdminScript(p: AddressAdminPlan): string {
 }
 export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(command:string,args:readonly string[],options:{stdio:["ignore","pipe","pipe"]})=>ChildProcess;timeoutMs?:number}): Promise<void> {
   io??={};
-  const script=makeAddressAdminScript(plan);
-  await new Promise<void>((resolve,reject)=>{
-    const child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:["ignore","pipe","pipe"]});
-    let stderr="";child.stderr?.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-8192);});child.stdout?.resume();
-    const timer=setTimeout(()=>{reject(new Error("Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
-    child.once("error",()=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(false)).then(()=>reject(new Error("Systemfreigabe konnte nicht gestartet werden.")),()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
-    child.once("exit",code=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(code===0)).then(()=>{if(code===0)resolve();else reject(new Error(/-128/.test(stderr)?"Systemeinrichtung abgebrochen, nichts geändert.":"Systemeinrichtung fehlgeschlagen; bastra address status prüfen."));},()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
-  });
+  let stage:string|undefined,finished=false;
+  const settle=async(success:boolean)=>{if(finished)return;finished=true;try{await plan.onSettled?.(success);}finally{if(stage)await rm(stage,{recursive:true,force:true});}};
+  try {
+    stage=await mkdtemp(join(tmpdir(),"bastra-address-admin-"));
+    const payloads=new Map<string,string>();
+    for(const content of [plan.hostsAfter,plan.helperBefore,plan.helperAfter]){
+      if(content===null||payloads.has(digest(content)))continue;
+      const path=join(stage,digest(content));await writeFile(path,content,{mode:0o600,flag:"wx"});payloads.set(digest(content),path);
+    }
+    const script=makeAddressAdminScript(plan,payloads);
+    await new Promise<void>((resolve,reject)=>{
+      let child:ChildProcess;
+      try{child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:["ignore","pipe","pipe"]});}
+      catch{void settle(false).then(()=>reject(new Error("Systemfreigabe konnte nicht gestartet werden.")),reject);return;}
+      let stderr="";child.stderr?.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-8192);});child.stdout?.resume();
+      const started=child.pid?Promise.resolve(plan.onStarted?.(child.pid)).catch(()=>{/* owner PID and deadline remain available */}):Promise.resolve();
+      const timer=setTimeout(()=>{reject(new Error("Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
+      const complete=(success:boolean,message:string)=>{clearTimeout(timer);void started.then(()=>settle(success)).then(()=>success?resolve():reject(new Error(message)),()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));};
+      child.once("error",()=>complete(false,"Systemfreigabe konnte nicht gestartet werden."));
+      child.once("exit",code=>complete(code===0,/-128/.test(stderr)?"Systemeinrichtung abgebrochen, nichts geändert.":"Systemeinrichtung fehlgeschlagen; bastra address status prüfen."));
+    });
+  }catch(error){
+    // A reporting timeout leaves the process and its staged payloads intact.
+    if(!finished && !/möglicherweise/.test((error as Error).message))await settle(false);
+    throw error;
+  }
 }
