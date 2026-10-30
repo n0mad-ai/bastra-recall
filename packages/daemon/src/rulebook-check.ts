@@ -89,21 +89,39 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
 }
 /** Undefined means C did not apply; {} permits the legacy lanes to run.
  * Legacy denials retain their own once-per-claim/session contract. */
-export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop"): Promise<string | undefined> {
+export type RulebookDenialReceipt = (delivered: boolean) => Promise<void>;
+export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop", options: {
+  deadline?: number; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
+} = {}): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
   if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand")) return undefined;
   if (boundary === "stop" && !["claude-code", "codex"].includes(hookClientEvidence(p))) return undefined;
   if (!p.session_id) { await spoolRulebookFailure(null); return "{}"; }
-  let deny = false, unchecked = false;
+  let deny = false, unchecked = false, context = "", round = 0;
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
+    context = state.context; round = state.round;
     if (!a.checked) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }
       else { state.unchecked++; unchecked = true; }
     }
     put(s, state);
-  });
+  }, { deadline: options.deadline });
+  if (persisted && deny && boundary === "action" && options.onDenial) {
+    let settled = false;
+    await options.onDenial(async delivered => {
+      if (settled) return; settled = true;
+      if (delivered) return;
+      await mutateSessionState(p.session_id!, s => {
+        const current = read(s);
+        if (current.context !== context || current.round !== round) return;
+        const a = current.actors.find(a => a.key === identity(p));
+        if (a) a.denies = Math.max(0, a.denies - 1);
+        put(s, current);
+      });
+    });
+  }
   if (!persisted) { await spoolRulebookFailure(p.session_id); await recordRulebookEvent(p.session_id, { boundary, outcome: "fail-open" }); return "{}"; }
   if (deny || unchecked) await recordRulebookEvent(p.session_id, { boundary, outcome: deny ? "deny" : "unchecked", agent_known: identity(p) !== "unattributed" });
   if (!deny) return "{}";

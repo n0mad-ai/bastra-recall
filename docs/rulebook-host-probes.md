@@ -47,3 +47,21 @@ Legacy pending-must-load and reflex denials retain their previous finite claims 
 The catalog cache expires after 2 seconds as well as on index events. Expiry rereads indexed source bytes and recomputes staleness, including privacy/scope changes missed by a cloud watcher; newly created unindexed files still require index discovery. This bounds reuse age, not cloud discovery or end-to-end latency.
 
 Fix-round-2 local measurement, same 1560-memory vault: six forced TTL misses through in-process `runGateLane` (catalog rebuild, state persistence and deny rendering) took 104.48, 93.99, 94.26, 90.27, 89.79 and 91.34 ms; all returned deny within the 500 ms lane budget. Fixed empty floors, global scope and no reflex candidates; no HTTP/hook-client transport or arbitrary cloud latency guarantee. Raw local output: `/private/tmp/phase3-fix2-perf.json`.
+
+## Fix-round-3: independent budgets and nested hosts
+
+The action-side catalog lookup and C boundary together get at most 150 ms of the default 500 ms gate budget (at most half the configured hook budget). An exception, timeout or never-resolving catalog makes C unavailable for that call; the old pending/reflex gates continue on their original deadline. Late catalog completion cannot acquire a fresh denial reservation. No stale-while-revalidate path was added; the existing cache TTL remains.
+
+A C action denial reserves a round attempt before the legacy write, to keep concurrent calls bounded. The lane settles that reservation at its return/delivery boundary. A passed call, timeout or later failed gate write releases the reservation for the same actor/context/round; a delayed rollback cannot alter a new round. Rollback requires working state storage, like legacy rollback; it cannot guarantee recovery while the store itself remains unwritable. Direct in-process calls settle on return. HTTP delivery receipts apply where the route supplies the existing delivery scope; this is not a host/model-reading receipt.
+
+Process ancestry now stops when the nearer host is Codex instead of crossing it to reach a launching Claude process. A Codex forwarder therefore does not read or overwrite that Claude statusline feed; a Claude launched inside Codex still finds its own nearer Claude host. This complements ignoring inherited CODEX_THREAD_ID; inherited environment alone is not host identity.
+
+### Claude subagent identity: Gate versus MCP load
+
+Primary documentation checked 2026-10-30:
+
+- [Claude Code hook common input fields](https://code.claude.com/docs/en/hooks#common-input-fields) documents agent_id/agent_type in hook payloads. Bastra's PreToolUse Gate uses that actor ID; a named worker does not inherit main's C receipt.
+- [Subagent MCP server scope](https://code.claude.com/docs/en/sub-agents#scope-mcp-servers-to-a-subagent) documents that references to existing MCP servers share the parent's connection. Separate inline servers are possible, but are not Bastra's installed shared connection.
+- [MCP dynamic headers](https://code.claude.com/docs/en/mcp#use-dynamic-headers-for-custom-authentication) describes headers helpers at connection/reconnection time, not per tool invocation; the documented helper environment names the server and URL, not the calling subagent. The [environment reference](https://code.claude.com/docs/en/env-vars) and MCP reference do not document an automatic per-call subagent identity for the shared stdio server.
+
+Conclusion (an inference from the documented surfaces, not proof of every private implementation detail): there is no supported per-call Claude subagent ID transport established for Bastra's shared MCP connection. No environment guess or last-hook-wins global actor is implemented. Headerless load_memory is attributed to the session's main actor, so a worker load can satisfy main and activate main conventions; it does not satisfy the worker's separately keyed Gate receipt. A worker answers its own Gate using rulebook_check with the explicit agent_id shown by that Gate. An omitted or false ID remains an honest-self-report limitation, not authenticated isolation. A Gate actor ID is not evidence that the subsequent shared MCP load retained that ID.

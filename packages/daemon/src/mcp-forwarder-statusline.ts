@@ -13,7 +13,8 @@ import {
 
 // Feed is namespaced by the CC session (claude ancestor PID) so concurrent
 // sessions don't clobber each other (CC sends no session id — #41836).
-// Computed once at startup; the forwarder lives for the whole session.
+// A nearer Codex host stops that walk; its forwarder never adopts a launching
+// Claude host's feed. Computed once at startup; the forwarder lives for the whole session.
 const STATUSLINE_FEED_PATH = sessionFeedPath(claudeSessionPid());
 
 /**

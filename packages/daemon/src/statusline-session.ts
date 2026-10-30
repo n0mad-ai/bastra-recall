@@ -93,9 +93,9 @@ export function claudeSessionPid(): number {
  * thin client ships its own ppid and the walk runs here. Falls back to the
  * start pid if `claude` isn't found (same contract as claudeSessionPid).
  */
-export function claudeSessionPidFrom(startPid: number): number {
+export function claudeSessionPidFrom(startPid: number, processTable?: string): number {
   try {
-    const out = execFileSync("ps", ["-axo", "pid=,ppid=,comm="], {
+    const out = processTable ?? execFileSync("ps", ["-axo", "pid=,ppid=,comm="], {
       encoding: "utf8",
     });
     const procs = new Map<number, { ppid: number; comm: string }>();
@@ -112,6 +112,9 @@ export function claudeSessionPidFrom(startPid: number): number {
     for (let i = 0; i < 12 && pid > 1; i++) {
       const e = procs.get(pid);
       if (!e) break;
+      // The nearest host owns the feed. Never cross a nested Codex host
+      // to borrow the launching Claude session. Environment variables can be inherited.
+      if (/^codex(?:$|[-.])/i.test(path.basename(e.comm))) return startPid;
       // comm is typically a basename like "claude"; match defensively.
       if (/(^|\/)claude\b/i.test(e.comm) || e.comm.toLowerCase().includes("claude"))
         return pid;

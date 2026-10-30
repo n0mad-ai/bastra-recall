@@ -1,4 +1,4 @@
-import { catalogFor, rulebookBoundary } from "./rulebook-check.js";
+import { catalogFor, rulebookBoundary, type RulebookDenialReceipt } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 import {confirmLaneDelivery} from "./lane-delivery.js";
@@ -60,6 +60,8 @@ import { RULE_KERNEL_TOOL_CALLS, renderRuleKernel, type KernelCandidates } from 
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.1.0";
+// C gets only part of the hook budget; legacy gates must remain independent.
+const RULEBOOK_ACTION_BUDGET_MS = 150;
 
 /** The action context a reflex trigger is matched against stays below 8 KB. */
 export const MAX_ACTION_CONTEXT_CHARS = 8 * 1024 - 1;
@@ -168,9 +170,17 @@ type Outcome = "pass" | "deny";
  */
 export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise<string> {
   const startedAt = Date.now();
+  let settleC: RulebookDenialReceipt | undefined;
   try {
-    return await gate(payload, deps, startedAt);
+    const output = await gate(payload, deps, startedAt, settle => { settleC = settle; });
+    if (settleC) {
+      const denied = JSON.parse(output).hookSpecificOutput?.permissionDecision === "deny";
+      if (denied) await confirmLaneDelivery(settleC, Math.min(startedAt + HOOK_TIMEOUT_MS, deps.deadline ?? Infinity));
+      else await settleC(false);
+    }
+    return output;
   } catch (err) {
+    await settleC?.(false);
     await spoolRulebookFailure(payload.session_id ?? null);
     await writeTelemetry(payload, startedAt, {
       outcome: "pass",
@@ -181,7 +191,7 @@ export async function runGateLane(payload: GatePayload, deps: GateDeps): Promise
   }
 }
 
-async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Promise<string> {
+async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onDenial: (settle: RulebookDenialReceipt) => void): Promise<string> {
   const emitTelemetry=async(fields:Record<string,unknown>&{outcome:Outcome})=>{try{if(deps.telemetry)await deps.telemetry(fields);else await writeTelemetry(payload,startedAt,fields);}catch{/* advisory only */}};
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   // #1304: Codex needs registration evidence for the proven runtime minimum.
@@ -195,7 +205,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
   // until Phase 4. Collect both reasons before emitting one denial; legacy claims keep their original finite contract.
   const rulebookDecision = deps.kernel && mutates
-    ? await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "action") : undefined;
+    ? await boundedRulebookAction(payload, deps, startedAt, onDenial) : undefined;
   const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
   if (!sessionId) return "{}";
 
@@ -350,6 +360,48 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     },
   });
   }catch(error){await undoAction();await undoLegacy();throw error;}
+}
+
+/** A catalog outage or a queued C write must not swallow a legacy denial.
+ * The deadline also guards work that completes after the timeout has won. */
+async function boundedRulebookAction(payload: GatePayload, deps: GateDeps, startedAt: number,
+  onDenial: (settle: RulebookDenialReceipt) => void): Promise<string | undefined> {
+  const deadline = Math.min(startedAt + Math.min(RULEBOOK_ACTION_BUDGET_MS, HOOK_TIMEOUT_MS / 2), deps.deadline ?? Infinity);
+  if (Date.now() >= deadline) return undefined;
+  let abandoned = false, settleC: RulebookDenialReceipt | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const work = (async () => {
+    const catalog = await catalogFor(payload, deps.kernel!);
+    if (abandoned || Date.now() >= deadline) return undefined;
+    return rulebookBoundary(payload, catalog, "action", { deadline, onDenial: async settle => {
+      settleC = settle;
+      if (abandoned || Date.now() >= deadline) await settle(false);
+      else onDenial(settle);
+    } });
+  })();
+  const timeout = Symbol("rulebook-timeout");
+  try {
+    const result = await Promise.race([work, new Promise<typeof timeout>(resolve => {
+      timer = setTimeout(() => resolve(timeout), Math.max(0, deadline - Date.now()));
+    })]);
+    if (result === timeout || Date.now() >= deadline) {
+      abandoned = true;
+      await settleC?.(false);
+      void spoolRulebookFailure(payload.session_id ?? null).catch(() => {});
+      return undefined;
+    }
+    return result;
+  } catch {
+    abandoned = true;
+    await settleC?.(false);
+    // C is unavailable; legacy claims still run on their original budget.
+    void spoolRulebookFailure(payload.session_id ?? null).catch(() => {});
+    return undefined;
+  } finally {
+    abandoned = true;
+    if (timer) clearTimeout(timer);
+    // A reservation acquired after this scope ended self-releases above.
+  }
 }
 
 /**
