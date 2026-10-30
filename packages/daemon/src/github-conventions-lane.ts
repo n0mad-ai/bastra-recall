@@ -8,12 +8,12 @@ import {isGatedHint,isUnfused,type HookRecallResponse} from "./hook-recall-respo
 import {projectForLane} from "./scope-filter.js";
 import {postLane} from "./thin-client.js";
 import {runGateLane,type GatePayload} from "./gate-lane.js";
-const PART="github-action-conventions";
+const PART="github-action-conventions-v2";
 export async function githubConventionGate(payload:GatePayload,selfBaseUrl:string,deadline:number):Promise<string|null>{
  try{
   if(payload.hook_event_name!=="PreToolUse"||payload.tool_name!=="Bash"||!payload.session_id)return null;
   const command=typeof payload.tool_input?.command==="string"?payload.tool_input.command:"";
-  const actions=githubWriteActions(command);if(!actions.length)return null;
+  const actions=await githubWriteActions(command);if(!actions.length)return null;
   const project=payload.cwd?projectForLane(payload.cwd):null;
   const remaining=deadline-Date.now();if(remaining<=0)return null;
   const resp=JSON.parse(await postLane(selfBaseUrl,"/hook/recall",{
@@ -35,9 +35,12 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   // Selection, once-only claim and persistence happen in the same gate mutation.
   // No pending hint may remain after a failed claim or leak to an unrelated tool.
   const result=JSON.parse(await runGateLane(payload,{reflexPool:()=>[],deadline,countTool:false,
-   actionMustLoad:{ids:hits.map(h=>h.id),key:part,onClaim:selected=>{ids=selected;}}}));
+   actionMustLoad:{ids:hits.map(h=>h.id),key:part,summaries:new Map(hits.map(h=>[h.id,h.summary])),onClaim:selected=>{ids=selected;}}}));
   if(result.hookSpecificOutput?.permissionDecision!=="deny")return null;
-  if(ids.length)result.hookSpecificOutput.additionalContext=contextFor(hits.filter(h=>ids.includes(h.id)));
+  if(ids.length){
+   const selected=hits.filter(h=>ids.includes(h.id));
+   result.hookSpecificOutput.additionalContext=contextFor(selected);
+  }
   return JSON.stringify(result);
  }catch{return null;} // retrieval/state failures preserve the lane's fail-open contract
 }

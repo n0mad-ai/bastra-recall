@@ -188,6 +188,7 @@ export async function loadMemoryHandler(
   await clearPendingMustLoad(
     parsed.data.id,
     parsed.data.verbosity === "lean" ? undefined : source,
+    ctx?.sessionId ?? callerSessionStore.getStore(),
   );
 
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den

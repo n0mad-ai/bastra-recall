@@ -449,3 +449,15 @@ test("#609: doctor's derived-claims note is silent without claims and lists the 
     await cleanup();
   }
 });
+
+
+test("#1330: only a full load attributed to its caller records a load receipt",async()=>{
+ const {loadSessionState}=await import("../src/session-state.js"),{deps,cleanup}=await makeDeps();
+ try{
+  const saved=await saveMemoryHandler(deps,fact());
+  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-known"});
+  assert.ok((await loadSessionState("fixture-load-known")).loadedConventions?.some(c=>c.id===saved.id));
+  await loadMemoryHandler(deps,{id:saved.id,verbosity:"lean"},{sessionId:"fixture-load-dismiss"});
+  assert.equal((await loadSessionState("fixture-load-dismiss")).loadedConventions,undefined);
+ }finally{await cleanup();}
+});

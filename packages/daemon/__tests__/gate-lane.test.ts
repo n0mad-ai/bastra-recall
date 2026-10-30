@@ -29,6 +29,7 @@ import { reflexPool } from "../src/reflex.js";
 import {
   bookPendingMustLoad,
   clearPendingMustLoad,
+  clearShown,
   loadSessionState,
   mutateSessionState,
 } from "../src/session-state.js";
@@ -447,4 +448,40 @@ describe("#1304 Codex verified gate protocol", () => {
     assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
     assert.equal(await runGateLane(codex(sid), {reflexPool: noPool}), "{}");
   });
+});
+
+describe("#1330 review action claim boundaries",()=>{
+ it("expired action deadlines do not consume the convention delivery",async()=>{
+  const sid=session("action-expired"),action={ids:["fixture-issue-rule"],key:"fixture-github"};
+  assert.equal(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,deadline:Date.now()-1,actionMustLoad:action}),"{}");
+  assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,deadline:Date.now()+5000,actionMustLoad:action})),"retry still receives the rules after timeout");
+ });
+ it("a prior must-load claim is never treated as evidence of a load",async()=>{
+  const sid=session("action-claimed");await mutateSessionState(sid,s=>{s.claimedMustLoad=["fixture-issue-rule"];});
+  assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:{ids:["fixture-issue-rule"],key:"fixture-github"}})));
+ });
+});
+
+it("#1330 review: compact invalidates earlier session load evidence",async()=>{
+ const sid=session("action-compact"),action={ids:["fixture-loaded-rule"],key:"fixture-github"};
+ await clearPendingMustLoad("fixture-loaded-rule",{revision:"sha256:fixture"},sid);
+ assert.equal(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:action}),"{}");
+ await clearShown(sid);
+ assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:action})));
+});
+
+it("#1330 review: timeout during asynchronous persistence releases the action claim",async t=>{
+ const sid=session("action-io-timeout");let now=Date.now();t.mock.method(Date,"now",()=>now);
+ const input=call(sid,"Bash",{command:"gh issue create"}),ids=["fixture-issue-rule"];
+ assert.equal(await runGateLane(input,{reflexPool:noPool,deadline:now+1000,actionMustLoad:{ids,key:"fixture-github",onClaim:()=>{queueMicrotask(()=>{now+=60000;});}}}),"{}");
+ assert.ok(denied(await runGateLane(input,{reflexPool:noPool,deadline:now+1000,actionMustLoad:{ids,key:"fixture-github"}})));
+});
+it("#1330 review: active convention metadata without a load is not load evidence",async()=>{
+ const sid=session("action-hint-only");await mutateSessionState(sid,state=>{state.activeConventions=[{id:"fixture-issue-rule",revision:"sha256:fixture",setAt:Date.now()}];});
+ assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:{ids:["fixture-issue-rule"],key:"fixture-github"}})));
+});
+it("#1330 review: an abandoned delivery reservation expires across daemon calls",async()=>{
+ const sid=session("action-abandoned"),key="fixture-github",id="fixture-issue-rule";
+ await mutateSessionState(sid,state=>{state.constants={[key]:JSON.stringify([id]),[`${key}:attempt:${id}`]:JSON.stringify({token:"abandoned",deadline:Date.now()-1,delivered:false,newClaim:true})};state.claimedMustLoad=[id];});
+ assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:{ids:[id],key}})));
 });

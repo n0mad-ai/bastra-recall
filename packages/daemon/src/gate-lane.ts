@@ -1,3 +1,4 @@
+import {confirmLaneDelivery} from "./lane-delivery.js";
 /**
  * Gate lane (#1303/#1304): the catch-all PreToolUse hook, daemon-side.
  *
@@ -85,7 +86,7 @@ export interface GateDeps {
   /** A tool-specific inline gate must not double count the catch-all call. */
   countTool?: boolean;
   /** Tool-specific rules delivered to this subagent, independent of its parent hints. */
-  actionMustLoad?: {ids:readonly string[];key:string;onClaim?:(ids:readonly string[])=>void};
+  actionMustLoad?: {ids:readonly string[];key:string;summaries?:ReadonlyMap<string,string>;onClaim?:(ids:readonly string[])=>void};
   /** The action-time reflex pool, already filtered (see actionReflexPool). */
   reflexPool: () => readonly Memory[];
   /** #1305: the rule kernel's candidates from the daemon's vault index.
@@ -189,6 +190,22 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   let claimedMustLoad: PendingMustLoad[] = [];
   let claimedReflex: ReflexMatch[] = [];
   let kernelActive: ActiveConvention[] | null = null;
+  const expired=()=>Date.now()-startedAt>HOOK_TIMEOUT_MS||(deps.deadline!==undefined&&Date.now()>=deps.deadline);
+  const actionToken=randomUUID();let actionIds:string[]=[],newActionClaims:string[]=[];
+  const finishAction=async(delivered:boolean)=>{
+   const action=deps.actionMustLoad;if(!action||!actionIds.length)return;
+   await mutateSessionState(sessionId,state=>{
+    const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
+    for(const id of actionIds){
+     const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];let marker;try{marker=raw?JSON.parse(raw):null;}catch{continue;}
+     if(marker?.token!==actionToken)continue;
+     if(delivered){state.constants![key]=JSON.stringify({...marker,delivered:true});}
+     else{seen.delete(id);delete state.constants![key];if(newActionClaims.includes(id))state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}
+    }
+    if(state.constants)state.constants[action.key]=JSON.stringify([...seen]);
+   });
+  };
+  const undoAction=()=>finishAction(false);
   const persisted = await mutateSessionState(sessionId, (state) => {
     if(deps.countTool!==false)state.toolCalls = (state.toolCalls ?? 0) + 1;
     claimedMustLoad = [];
@@ -199,13 +216,19 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       delete state.pendingMustLoad;
     }
     const action=deps.actionMustLoad;
-    if(action){
+    if(action&&!expired()){
       const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
-      const loaded=new Set(subagent?[]:state.activeConventions?.map(c=>c.id)??[]);
-      const ids=action.ids.filter(id=>!seen.has(id)&&!loaded.has(id)&&(subagent||!state.claimedMustLoad?.includes(id))).slice(0,20);
+      // A process crash or dropped response leaves a reservation, not a spent delivery.
+      for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if(!marker.delivered&&Date.now()>=marker.deadline){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
+      const loaded=new Set(subagent?[]:state.loadedConventions?.map(c=>c.id)??[]);
+      const ids=action.ids.filter(id=>!seen.has(id)&&!loaded.has(id)).slice(0,20);
+      actionIds=ids;newActionClaims=ids.filter(id=>!state.claimedMustLoad?.includes(id)&&!claimedMustLoad.some(e=>e.id===id));
       const alreadyClaimed=new Set(claimedMustLoad.map(e=>e.id));
       for(const id of ids){seen.add(id);if(!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
-      if(ids.length)(state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
+      if(ids.length){
+       (state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
+       for(const id of ids)state.constants[`${action.key}:attempt:${id}`]=JSON.stringify({token:actionToken,deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),delivered:false,newClaim:newActionClaims.includes(id)});
+      }
       action.onClaim?.(ids);
     }
     if (reflexCandidates.length > 0) {
@@ -223,7 +246,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       kernelActive = [...(state.activeConventions ?? [])];
       state.toolCalls = 0;
     }
-  });
+  },deps.actionMustLoad?{deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity)}:{});
   const elapsed = Date.now() - startedAt;
   if (!persisted) {
     // No claim reached the disk, so nothing may be denied: the call passes.
@@ -236,7 +259,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     return "{}";
   }
   if (elapsed > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline)) {
-    // The client has most likely given up already. Persisted claims stay
+    await undoAction();
+    // The client has most likely given up already. Ordinary legacy claims stay
     // spent, but a late response must never deny the action.
     await writeTelemetry(payload, startedAt, { outcome: "pass", non_conformance: "gate_timeout" });
     return "{}";
@@ -247,6 +271,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   }
 
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
+  const summaries=actionIds.map(id=>deps.actionMustLoad?.summaries?.get(id)).filter((s):s is string=>typeof s==="string");
+  if(summaries.length)reason.text+="\nApplicable saved issue/PR conventions:\n"+summaries.map(s=>"- "+stripFenceMarkers(s.slice(0,350))).join("\n");
   await writeTelemetry(payload, startedAt, {
     outcome: "deny",
     must_load_ids: claimedMustLoad.map((e) => e.id),
@@ -255,6 +281,9 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     degraded_ids: reason.degraded,
     reason_chars: reason.text.length,
   });
+  if(expired()){await undoAction();return "{}";}
+  if(actionIds.length)await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
+  if(expired()){await undoAction();return "{}";}
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",

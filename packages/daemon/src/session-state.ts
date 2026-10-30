@@ -165,6 +165,8 @@ export interface SessionState {
    * #1306: and from the prompt lane when a correspondence task starts.
    */
   activeConventions?: ActiveConvention[];
+  /** Full-body loads attributed to this exact caller session; claims/hints never fill this. */
+  loadedConventions?: Array<{id:string;revision:string|null;loadedAt:number}>;
   /** #1306: the correspondence task the session is in (prompt-classify.ts). */
   activeTask?: ActiveTask;
   /** #1306: the "task unclear" choice line went out; only the next prompt of
@@ -290,6 +292,7 @@ export interface ReadonlySessionState {
   readonly toolCalls?: number;
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
+  readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number}>[];
   readonly activeTask?: Readonly<ActiveTask>;
   readonly taskQuestion?: Readonly<TaskQuestion>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
@@ -410,6 +413,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     if (Array.isArray(parsed.claimedMustLoad)) {
       state.claimedMustLoad = parsed.claimedMustLoad.filter((id): id is string => typeof id === "string");
     }
+    if(Array.isArray(parsed.loadedConventions))state.loadedConventions=parsed.loadedConventions.filter((e):e is {id:string;revision:string|null;loadedAt:number}=>!!e&&typeof e.id==="string"&&(typeof e.revision==="string"||e.revision===null)&&typeof e.loadedAt==="number").slice(-200);
     if (Array.isArray(parsed.activeConventions)) {
       state.activeConventions = parsed.activeConventions.filter(
         (e): e is ActiveConvention =>
@@ -652,9 +656,13 @@ export async function resetToolCalls(sessionId: string): Promise<void> {
 export async function clearPendingMustLoad(
   memId: string,
   activate?: { revision: string | null; validator?: ConventionValidator },
+  loadedSessionId?:string|null,
 ): Promise<void> {
   if (!memId) return;
   try {
+    if(activate&&loadedSessionId)await mutateSessionState(loadedSessionId,state=>{
+     state.loadedConventions=[...(state.loadedConventions??[]).filter(c=>c.id!==memId),{id:memId,revision:activate.revision,loadedAt:Date.now()}].slice(-200);
+    });
     const dir = sessionStateDir();
     const needle = JSON.stringify(memId);
     for (const name of await readdir(dir)) {
@@ -983,10 +991,11 @@ export async function clearShown(sessionId: string): Promise<void> {
   // Cheap early-out kept from #354: nothing shown, nothing to write (and no
   // state file conjured for a session that never had one).
   const current = await loadSessionState(sessionId);
-  if (Object.keys(current.shown).length === 0 && current.constants === undefined) return;
+  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length) return;
   await mutateSessionState(sessionId, (state) => {
     state.shown = {};
     delete state.constants;
+    delete state.loadedConventions;
   });
 }
 

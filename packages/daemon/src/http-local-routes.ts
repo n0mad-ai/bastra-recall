@@ -1,3 +1,4 @@
+import {createLaneDelivery} from "./lane-delivery.js";
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
 import { takeDraftReview } from "./draft-review.js";
@@ -218,20 +219,16 @@ export function dispatchLocalRoutes(
   // No client-side content gates — the pattern tables and invokesOwnBinary
   // are gate logic that must stay hot-swappable, so they live in the lanes.
   if (method === "POST" && url === "/hook/bash-pre") {
-    readJsonBody(req, MAX_BODY_BYTES)
-      .then(async (body) => {
-        const out = await runBashPreLane(
-          (body.payload ?? {}) as BashHookPayload,
-          `http://127.0.0.1:${req.socket.localPort ?? 6723}`,
-          query => search.recall(query, { k: 5 }).map(hit => ({ ...hit, body: toolDeps.vault.get(hit.id)?.body })),
-        );
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(out);
-      })
-      .catch(() => {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end("{}");
-      });
+    const delivery=createLaneDelivery(res);
+    void delivery.run(async()=>{
+      try{
+        const body=await readJsonBody(req,MAX_BODY_BYTES);
+        const out=await runBashPreLane((body.payload??{})as BashHookPayload,
+          `http://127.0.0.1:${req.socket.localPort??6723}`,
+          query=>search.recall(query,{k:5}).map(hit=>({...hit,body:toolDeps.vault.get(hit.id)?.body})));
+        delivery.answer(out);
+      }catch{delivery.answer("{}");}
+    });
     return true;
   }
   if (method === "POST" && url === "/hook/bash-fail") {

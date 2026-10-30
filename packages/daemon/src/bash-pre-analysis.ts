@@ -726,24 +726,5 @@ export function shimOffLine(command: string, settings: BashVerdict, family: "rm"
   return `${lead} would have run without this stop and ${moved}. ${on}`;
 }
 
-/** #1330: only executable gh heads, never prose/search arguments. Unsupported
- * shell constructs remain fail-open instead of guessing where quoting ends. */
-export function githubWriteActions(command:string):string[]{
- const commands=simpleCommands(joinShellLines(stripDataSinkHeredocBodies(command)));
- if(!commands)return [];
- const actions:string[]=[];
- for(const {words}of commands){
-  const tokens=words.map(w=>w.text.replace(/["'\\]/g,""));let i=0;
-  if(tokens[0]==="command"&&tokens.slice(1).some(w=>w==="-v"||w==="-V"))continue;
-  while(/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]??""))i++;
-  while(["env","command","exec","nohup"].includes(tokens[i]??"")){i++;while(tokens[i]?.startsWith("-")||/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]??"")){if(tokens[i]==="-u"||tokens[i]==="--unset")i++;i++;}}
-  if(!/(?:^|\/)gh$/.test(tokens[i]??""))continue;i++;
-  while(tokens[i]?.startsWith("-")){
-   const flag=tokens[i++];if(["-R","--repo","--hostname"].includes(flag))i++;
-   else if(!/^(?:-R.+|--(?:repo|hostname)=.+)$/.test(flag)){i=-1;break;}
-  }
-  if(tokens.slice(i).some(w=>w==="--help"||w==="-h"))continue;
-  if(i>=0&&["issue","pr"].includes(tokens[i])&&["create","edit"].includes(tokens[i+1]))actions.push(`gh ${tokens[i]} ${tokens[i+1]}`);
- }
- return [...new Set(actions)];
-}
+/** #1330: portable syntax-aware action analysis, separate from warning patterns. */
+export {githubWriteActions} from "./github-shell-actions.js";

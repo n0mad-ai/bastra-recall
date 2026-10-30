@@ -37,7 +37,10 @@
     "skill",
     "shims",
     "stub/manifest.json",
-    "README.md"
+    "README.md",
+    "vendor/tree-sitter-bash.wasm",
+    "vendor/tree-sitter-bash.LICENSE",
+    "vendor/tree-sitter-bash.json"
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -67,6 +70,7 @@
     "@bastra-recall/statusline": "1.1.1",
     "@clack/prompts": "^1.8.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "web-tree-sitter": "0.27.1",
     "zod": "^4.6.6"
   },
   "devDependencies": {

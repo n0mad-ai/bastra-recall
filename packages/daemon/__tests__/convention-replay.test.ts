@@ -111,7 +111,7 @@ async function fixture(projection = false) {
   const errors: unknown[] = [];
   const promptRows: Array<{ detected_mode: string }> = [];
   const recall = (query: string, cold = false) => ({
-    hits: (cold ? vault.slice(3,4) : /gh (?:issue|pr)/.test(query) ? vault.slice(4) : /Nachricht|fixture_send_message/.test(query) ? vault.slice(2, 3) : query === SHORT ? vault.slice(0, 2) : [])
+    hits: (cold ? vault.slice(3,4) : /gh (?:issue|pr|api)/.test(query) ? vault.slice(4) : /Nachricht|fixture_send_message/.test(query) ? vault.slice(2, 3) : query === SHORT ? vault.slice(0, 2) : [])
       .map(memory => ({ ...memory, score: cold ? 400 : 150, matched_recall_when: true, anchor_strength: "strong" })),
     vault_size: vault.length, recall_id: "fixture-recall", latency_ms: 1,
     score_kind: cold ? "bm25" : "rrf", score_arms: cold ? ["bm25"] : ["bm25", "vector"],
@@ -387,17 +387,17 @@ test("8 declared frontmatter validator activates through real prompt → approve
 
 test("9 GitHub writes receive issue conventions as one-shot must-load; reads and quoted mentions stay quiet (#1330)", options, async()=>{
  const f=await fixture();try{
-  for(const [i,command]of ["gh issue create --title fixture --body fixture", "gh issue edit 42 --title fixture", "gh pr create --body-file /tmp/fixture", "gh pr edit 42 --body fixture"].entries()){
+  for(const [i,command]of ["gh issue create --title fixture --body fixture", "gh issue edit 42 --title fixture", "gh pr create --body-file /tmp/fixture", "gh pr edit 42 --body fixture", "gh issue create --body-file - <<'EOF'\nfixture\nEOF", 'gh pr create --body "$(cat <<\'EOF\'\nfixture\nEOF\n)"', "if true; then gh issue create --body fixture; fi", "gh api repos/fixture/repo/issues -X POST -f title=fixture"].entries()){
    const input={session_id:`github-fixture-${i}`,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}};
    const first=await f.hook("bash-pre-hook.ts",input);assert.equal(denied(first),true,command);
-   const text=(first.hookSpecificOutput?.permissionDecisionReason??"")+context(first);
+   const text=first.hookSpecificOutput?.permissionDecisionReason??"";
    for(const id of ["fixture-issue-metadata","fixture-issue-language"])assert.ok(text.includes(id),id);
    assert.match(text,/must.load/i);assert.match(text,/milestone.*labels/i);assert.match(text,/English first.*Deutsch danach/i);
    assert.equal(denied(await f.hook("bash-pre-hook.ts",input)),false,"retry is never held in an endless loop");
   }
   const parallel=await f.tool("Bash",{command:"gh issue create --title fixture"});
   assert.equal(denied(parallel),true,"parallel catch-all and Bash hook still interrupt the same action");
-  for(const memory of vault.slice(4))await clearPendingMustLoad(memory.id,{revision:memory.revision});
+  for(const memory of vault.slice(4))await clearPendingMustLoad(memory.id,{revision:memory.revision},"github-fixture-0");
   const loaded=await loadSessionState("github-fixture-0");
   for(const memory of vault.slice(4))assert.equal(loaded.activeConventions?.find(c=>c.id===memory.id)?.revision,memory.revision);
   assert.equal(denied(await f.hook("bash-pre-hook.ts",{session_id:"github-fixture-0",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"gh pr edit 42 --title fixture"}})),false,"successful load evidence releases later writes");
