@@ -85,7 +85,6 @@ async function step(input: TaskStepInput): Promise<string | null> {
     current,
     questionOpen,
     correspondenceActive: current !== "none" ||
-      (snapshot.activeConventions ?? []).some(c => c.scope === "task" && c.validator) ||
       (questionOpen && (snapshot.taskQuestion?.conventions?.length ?? 0) > 0),
     correspondenceHint: (snapshot.activeConventions ?? []).some(c => c.validator) ||
       input.candidates.some(c => isTaskConvention(c) && c.validator),

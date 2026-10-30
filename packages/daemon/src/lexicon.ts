@@ -513,24 +513,18 @@ export const DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE: Readonly<Record<string, reado
   de: [
     "(?:nachricht|frage|antwort)\\s+(?:[\\p{L}]+\\s+){0,5}an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
     "an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*\\s+(?:schicken|senden|schreiben)",
+    "(?:schick|send)\\p{L}*\\s+(?:das|es)\\s+(?:an\\s+)?@?[\\p{L}][\\p{L}\\p{N}_-]*",
   ],
   en: [
     "(?:send|forward)\\s+(?:the\\s+)?(?:message|question|reply)\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
     "write\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*(?![\\p{L}\\p{N}_./-])",
   ],
 };
-// Complete follow-up requests only; a language mentioned inside a new UI/docs
-// task is not approval of the current correspondence draft.
+// Natural copy requests are intentionally flexible. The requested object,
+// rather than an exact sentence shape, keeps technical work out of approval.
 const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
-  de: [
-    "(?:bitte\\s+)?(?:(?:auf\\s+)?englisch|englische\\s+fassung)(?:\\s+bitte)?",
-    "(?:mach(?:e)?|gib|zeig(?:e)?|liefer(?:e)?)\\s+(?:mir\\s+)?(?:die\\s+)?englische\\s+fassung(?:\\s+bitte)?",
-    "(?:ü|ue)bersetz(?:e)?(?:\\s+(?:das|es))?(?:\\s+bitte)?",
-  ],
-  en: [
-    "(?:(?:give|show|make|provide)\\s+(?:me\\s+)?(?:the\\s+)?)?english\\s+(?:version|copy|text)(?:\\s+please)?",
-    "translate(?:\\s+(?:it|this))?(?:\\s+please)?",
-  ],
+  de: ["englisch\\p{L}*", "(?:ü|ue)bersetz\\p{L}*"],
+  en: ["english", "translate\\p{L}*"],
 };
 const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
   de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],
@@ -551,4 +545,27 @@ const RECIPIENT_FOLLOWUP_CUES: Readonly<Record<string, readonly string[]>> = {
 };
 export function recipientFollowupCues(): string[] {
   return loadCues("recipient-followup", Object.values(RECIPIENT_FOLLOWUP_CUES).flat());
+}
+
+
+/** Technical objects veto correspondence transitions, even with a standing rule. */
+const TASK_TECHNICAL_OBJECTS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["datei\\p{L}*", "datenbank\\p{L}*", "daten", "sprache\\p{L}*", "fehlermeldung\\p{L}*"],
+  en: ["files?", "disk", "databases?", "data", "languages?", "error\\s+messages?"],
+  neutral: ["ui", "i18n", "readme", "api", "cli", "server", "client", "config(?:uration)?", "kafka", "redis"],
+};
+
+/** Capture a recipient token; script-neutral name/handle checks live in classification. */
+const PERSON_RECIPIENT_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "(?:an\\s+|(?:schick|send)\\p{L}*\\s+(?:das|es)\\s+(?:an\\s+)?)(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)(?![\\p{L}\\p{N}_./-])",
+    "(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)\\s+schreiben",
+  ],
+  en: ["to\\s+(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)(?![\\p{L}\\p{N}_./-])"],
+};
+export function technicalTaskObjectCues(): string[] {
+  return loadCues("task-technical-object", Object.values(TASK_TECHNICAL_OBJECTS_BY_LANGUAGE).flat());
+}
+export function personRecipientCues(): string[] {
+  return loadCues("person-recipient", Object.values(PERSON_RECIPIENT_BY_LANGUAGE).flat());
 }

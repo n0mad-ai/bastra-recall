@@ -137,3 +137,44 @@ test("#1328 counter-review replay: a surfaced standing rule alone does not turn 
   }
   assert.equal((await prompt("1328-hint-recovery", "ok, mach die englische Fassung")).activeTask?.kind, "approved-copy", "a current correspondence hint can still recover compound approval");
 });
+
+const NATURAL_APPROVALS = ["passt so, auf englisch", "ok, übersetz ins Englische", "ja, übersetz mal", "ok, mach mal die englische Fassung", "passt, mach englisch", "ok, englische Version", "ok, dann englisch", "passt, und jetzt englisch", "ok, translate to English"];
+test("#1328 natural approvals: ordinary affirmative follow-ups approve the message draft", () => {
+  const ctx = { current: "draft-for-review" as const, questionOpen: false, mode: "generic" as const, hitActive: true, correspondenceActive: true };
+  for (const text of NATURAL_APPROVALS) assert.equal(decideTask(taskSignals(text), ctx).next, "approved-copy", text);
+  for (const text of ["stelle die Sprache auf Englisch um", "die UI soll auf Englisch umschaltbar sein", "übersetze die Fehlermeldungen in i18n", "ok, mach die englische Fassung der README", "ok, übersetz mal die Datei", "yes, translate the config file to English"]) {
+    assert.equal(decideTask(taskSignals(text), ctx).next, null, text);
+  }
+});
+test("#1328 person targets: Sarah delivery is recognized while a draft is under review", () => {
+  const ctx = { current: "draft-for-review" as const, questionOpen: false, mode: "generic" as const, hitActive: true, correspondenceActive: true };
+  for (const text of ["schick das Sarah", "schick das an Sarah"]) {
+    assert.equal(decideTask(taskSignals(text), ctx).next, "draft-for-review", text);
+    assert.equal(decideTask(taskSignals(text), { ...ctx, current: "none" }).next, "draft-for-review", `personal recipient: ${text}`);
+  }
+});
+test("#1328 natural approval replay: task-scoped rule alone is not a personal recipient", async () => {
+  let n = 0;
+  for (const text of ["schick die Antwort an den Client zurück", "Sende die Nachricht an den Server", "Daten an Kafka senden", "Frage an die Datenbank optimieren", "write to disk after each batch", "write to config", "send the message to Redis"]) {
+    const sid = `1328-task-rule-tech-${n++}`;
+    await mutateSessionState(sid, s => { s.activeTask = { id: sid, kind: "none", since: 1, generation: 0 }; s.activeConventions = [{ id: convention.id, revision: "sha256:fixture-1328", scope: "task", setAt: 1, validator: convention.validator }]; });
+    assert.equal((await prompt(sid, text)).activeTask?.kind ?? "none", "none", text);
+  }
+  for (const text of NATURAL_APPROVALS) {
+    const sid = `1328-natural-replay-${n++}`;
+    await prompt(sid, "ich arbeite jetzt eine eingegangene Nachricht ab");
+    assert.equal((await prompt(sid, text)).activeTask?.kind, "approved-copy", text);
+  }
+});
+
+test("#1328 object vocabulary: technical exclusions can be extended without changing code", async () => {
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const dir = join(root, "object-lexicon");
+  await mkdir(dir);
+  await writeFile(join(dir, "task-technical-object.txt"), "composant\n");
+  const before = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    assert.equal(decideTask(taskSignals("ok, englische Fassung vom composant"), { current: "draft-for-review", questionOpen: false, mode: "generic", hitActive: true }).next, null);
+  } finally { if (before === undefined) delete process.env.BASTRA_LEXICON_DIR; else process.env.BASTRA_LEXICON_DIR = before; }
+});

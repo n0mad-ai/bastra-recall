@@ -46,6 +46,8 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
+  "packages/daemon/src/lexicon.ts :: keyed TASK_TECHNICAL_OBJECTS_BY_LANGUAGE": "#1328 user-extensible object vocabulary; unlisted objects retain neutral context/name checks",
+  "packages/daemon/src/lexicon.ts :: keyed PERSON_RECIPIENT_BY_LANGUAGE": "#1328 user-extensible recipient grammar; unlisted cues never invent a person, name/handle checks are script-neutral",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
   "packages/daemon/src/lexicon.ts :: name TARGET_COPY_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",

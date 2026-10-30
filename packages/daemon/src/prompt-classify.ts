@@ -10,6 +10,8 @@ import {
   recipientFollowupCues,
   targetCopyCues,
   copyRevisionCues,
+  technicalTaskObjectCues,
+  personRecipientCues,
   composeVerbCues,
   correspondenceCues,
   cueRegex,
@@ -237,14 +239,28 @@ export interface TaskSignals {
   recipientFollowup?: boolean;
   targetCopy?: boolean;
   revision?: boolean;
+  technicalObject?: boolean;
+  personTarget?: boolean;
 }
 
 export function taskSignals(prompt: string): TaskSignals {
   const { own, quoted } = splitQuoted(prompt);
   const has = (cues: readonly string[]): boolean => own.length > 0 && cueRegex(cues).test(own);
   const bare = own.toLowerCase().replace(/[\s!.?…]+$/u, "").trim();
-  const ack = cueRegex(taskApprovalCues(), true).exec(own);
-  const copyRequest = (ack ? own.slice(ack[0].length) : own).replace(/^[\s,;:!.?…]+|[\s!.?…]+$/gu, "");
+  const sendPerson = has(sendPersonCues());
+  const recipientFollowup = has(recipientFollowupCues());
+  const technicalObject = has(technicalTaskObjectCues());
+  // A rule validator is not evidence that a receiver is a person. Recognize
+  // explicit handles or name-shaped tokens; unknown targets stay neutral.
+  const personTarget = !technicalObject && (sendPerson || recipientFollowup) && personRecipientCues().some(cue => {
+    const matches = own.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])(?:${cue})`, "giu"));
+    for (const match of matches) {
+      const target = match[1] ?? "";
+      if (/^@\p{L}[\p{L}\p{M}\p{N}_-]*$/u.test(target) ||
+          /^\p{Lu}[\p{Ll}\p{M}]*(?:[-']\p{Lu}[\p{Ll}\p{M}]*)*$/u.test(target)) return true;
+    }
+    return false;
+  });
   return {
     translate: has(translateOnlyCues()),
     announce: has(correspondenceCues()),
@@ -254,9 +270,11 @@ export function taskSignals(prompt: string): TaskSignals {
     approval: bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare),
     ack: own.length > 0 && cueRegex(taskApprovalCues(), true).test(own),
     approvedCopy: has(approvedCopyCues()),
-    sendPerson: has(sendPersonCues()),
-    recipientFollowup: has(recipientFollowupCues()),
-    targetCopy: copyRequest.length > 0 && new RegExp(`^(?:${targetCopyCues().join("|")})$`, "iu").test(copyRequest),
+    sendPerson,
+    recipientFollowup,
+    targetCopy: has(targetCopyCues()),
+    technicalObject,
+    personTarget,
     revision: has(copyRevisionCues()),
   };
 }
@@ -296,13 +314,14 @@ export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
   const explicit = [sig.translate, sig.approvedCopy, sig.draftReply].filter(Boolean).length;
   if (explicit > 1) return { next: null, unclear: true };
   if (sig.translate) return { next: "translate-only", unclear: false };
+  if (sig.technicalObject) return keep;
   if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
   if (sig.approval && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
   if (sig.targetCopy && !sig.revision && !sig.quoted &&
       (ctx.current === "draft-for-review" || (sig.ack && (ctx.correspondenceActive || ctx.correspondenceHint)))) {
     return { next: "approved-copy", unclear: false };
   }
-  if ((sig.sendPerson || sig.recipientFollowup) && (ctx.correspondenceActive || ctx.current !== "none")) return { next: "draft-for-review", unclear: false };
+  if ((sig.sendPerson || sig.recipientFollowup) && (ctx.current !== "none" || sig.personTarget)) return { next: "draft-for-review", unclear: false };
   if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
   if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
   if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };
