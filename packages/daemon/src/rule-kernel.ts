@@ -11,8 +11,7 @@
  * One explicit local bound, {@link RULE_KERNEL_CHAR_BUDGET} characters for the
  * whole block. A body is delivered whole or not at all: one that does not fit
  * is replaced by `degraded: load_memory(<id>)`. A rule is never cut, because a
- * truncated rule reads like a complete one. The per-body figure only orders
- * who gets the room first; it never cuts.
+ * truncated rule reads like a complete one. Full texts get room before fallback IDs.
  *
  * Shadow accounting is the caller's: the session lane charges its whole
  * block, the gate lane charges the re-delivery (session-budget.ts).
@@ -28,8 +27,7 @@ import type { ActiveConvention } from "./session-state.js";
 
 /** The whole block, tags and all, stays at or below this many characters. */
 export const RULE_KERNEL_CHAR_BUDGET = 6000;
-/** Bodies up to this size get the room before longer ones (after the active
- *  conventions). An ordering criterion only — never a cut. */
+/** Legacy body-size hint; group priority now determines delivery order. */
 export const RULE_KERNEL_SHORT_BODY_CHARS = 1500;
 /** Tool calls without a user prompt after which the gate lane re-delivers. */
 export const RULE_KERNEL_TOOL_CALLS = 25;
@@ -167,66 +165,36 @@ export interface RenderedKernel {
   omitted: number;
 }
 
-/**
- * Render the `<rule-kernel>` block within {@link RULE_KERNEL_CHAR_BUDGET}.
- *
- * 1. Every entry gets its head line and, provisionally, its degraded line, in
- *    priority order, while that skeleton fits; the rest is counted as omitted.
- * 2. Bodies replace degraded lines while they fit whole: active conventions
- *    first, then bodies up to {@link RULE_KERNEL_SHORT_BODY_CHARS}, then the
- *    longer ones, each in priority order.
- * 3. The block is printed in priority order; its last line is the ask line.
- */
+/** Full rules get the budget first in group priority; fallbacks carry only IDs. */
 export function renderRuleKernel(
   candidates: KernelCandidates,
   opts: { trigger: string; lexicalOnly?: boolean },
 ): RenderedKernel {
-  const empty: RenderedKernel = { text: "", full: [], degraded: [], omitted: 0 };
-  if (candidates.entries.length === 0) return empty;
-
+  if (!candidates.entries.length) return { text: "", full: [], degraded: [], omitted: 0 };
   const open = `<rule-kernel trigger="${opts.trigger}">`;
-  const intro =
-    `Rules in force, restored in full (${opts.trigger}): active conventions first, then floors, reflex rules and ` +
-    `user-directed preferences. A "degraded" line means the body did not fit this ` +
-    `${RULE_KERNEL_CHAR_BUDGET}-character block — load_memory(id) before acting under that rule.`;
-  const close = "</rule-kernel>";
-  const fixed = [open, intro, ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), RULE_KERNEL_ASK_LINE, close];
-  // One newline per line; `+ 1` per added line below accounts for its own.
-  let used = fixed.join("\n").length;
-  const omittedLine = (n: number): string => `+${n} more rule(s) not listed: over the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
-  // Reserve room for the omitted line at its widest; released when unused.
-  const reserve = omittedLine(candidates.entries.length + candidates.omitted).length + 1;
-
-  const listed: KernelEntry[] = [];
-  for (const e of candidates.entries) {
-    const cost = entryHead(e).length + 1 + degradedLine(e).length + 1;
-    if (used + cost + reserve > RULE_KERNEL_CHAR_BUDGET) break;
-    used += cost;
-    listed.push(e);
-  }
-  const omitted = candidates.entries.length - listed.length + candidates.omitted;
-  if (listed.length === 0) return empty;
-  if (omitted > 0) used += omittedLine(omitted).length + 1;
-
-  const rank = (e: KernelEntry): number =>
-    e.group === "active-convention" ? 0 : e.body.length <= RULE_KERNEL_SHORT_BODY_CHARS ? 1 : 2;
-  const withBody = new Set<string>();
-  for (const e of listed.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e) - rank(b.e) || a.i - b.i).map((x) => x.e)) {
-    if (e.body === "") continue;
-    const delta = e.body.length - degradedLine(e).length;
-    if (used + delta > RULE_KERNEL_CHAR_BUDGET) continue;
-    used += delta;
-    withBody.add(e.id);
-  }
-
+  const intro = `Rules in force (${opts.trigger}): complete texts below in priority order. ` +
+    `Degraded IDs require load_memory(id) before acting; additional rules may be omitted by the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
   const lines = [open, intro, ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : [])];
-  for (const e of listed) lines.push(entryHead(e), withBody.has(e.id) ? e.body : degradedLine(e));
-  if (omitted > 0) lines.push(omittedLine(omitted));
-  lines.push(RULE_KERNEL_ASK_LINE, close);
-  return {
-    text: lines.join("\n"),
-    full: listed.filter((e) => withBody.has(e.id)).map((e) => e.id),
-    degraded: listed.filter((e) => !withBody.has(e.id)).map((e) => e.id),
-    omitted,
-  };
+  const tail = [RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
+  const omittedLine = (n: number) => `+${n} more rule(s) not listed: over the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
+  const reserve = omittedLine(candidates.entries.length + candidates.omitted).length + 1;
+  let used = [...lines, ...tail].join("\n").length;
+  const groups: KernelGroup[] = ["active-convention", "floor", "reflex", "user-directed"];
+  const entries = candidates.entries.map((e, i) => ({ e, i }))
+    .sort((a, b) => groups.indexOf(a.e.group) - groups.indexOf(b.e.group) || a.i - b.i).map(({ e }) => e);
+  const full: string[] = [], deferred: KernelEntry[] = [], degraded: string[] = [];
+  for (const e of entries) {
+    const cost = entryHead(e).length + e.body.length + 2;
+    if (!e.body || used + cost + reserve > RULE_KERNEL_CHAR_BUDGET) { deferred.push(e); continue; }
+    lines.push(entryHead(e), e.body); full.push(e.id); used += cost;
+  }
+  for (const e of deferred) {
+    const line = degradedLine(e);
+    if (used + line.length + 1 + reserve > RULE_KERNEL_CHAR_BUDGET) continue;
+    lines.push(line); degraded.push(e.id); used += line.length + 1;
+  }
+  const omitted = candidates.omitted + deferred.length - degraded.length;
+  if (omitted) lines.push(omittedLine(omitted));
+  lines.push(...tail);
+  return { text: lines.join("\n"), full, degraded, omitted };
 }

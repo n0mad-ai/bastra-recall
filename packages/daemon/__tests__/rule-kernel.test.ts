@@ -209,6 +209,19 @@ describe("#1305 rule kernel: rendering", () => {
     assert.doesNotMatch(rendered.text, /XXXX/, "no partial body");
   });
 
+  it("delivers full priority rules with forty realistic candidates instead of spending the budget on heads", () => {
+    const entries = Array.from({ length: 40 }, (_, i) => ({
+      ...entry(`saved-convention-for-project-operation-${i}`, `Complete rule ${i}: `.repeat(35), i === 0 ? "active-convention" : "floor"),
+      title: "A realistic saved rule with a descriptive title", revision: "sha256:0123456789abcdef",
+    }));
+    const rendered = renderRuleKernel({ entries, omitted: 12 }, { trigger: "after compact" });
+    assert.ok(rendered.full.length >= 3, "actual rules must get room before fallback metadata");
+    assert.equal(rendered.full[0], entries[0]!.id);
+    assert.ok(rendered.text.length <= RULE_KERNEL_CHAR_BUDGET);
+    assert.doesNotMatch(rendered.text, /restored in full/);
+    assert.equal(rendered.full.length + rendered.degraded.length + rendered.omitted, 52);
+  });
+
   it("holds the total bound with many entries and says how many were not listed", () => {
     const entries = Array.from({ length: 80 }, (_, i) => entry(`rule-${i}`, `Body ${i} `.repeat(30)));
     const rendered = renderRuleKernel({ entries, omitted: 3 }, { trigger: "after compact" });
@@ -222,7 +235,7 @@ describe("#1305 rule kernel: rendering", () => {
     }
   });
 
-  it("gives an active convention its long body before short later rules, and shorter bodies before longer ones", () => {
+  it("gives complete rules room in group priority before fallback IDs", () => {
     const long = "L".repeat(2500);
     const rendered = renderRuleKernel({
       entries: [
@@ -233,10 +246,10 @@ describe("#1305 rule kernel: rendering", () => {
       ],
       omitted: 0,
     }, { trigger: "after compact" });
-    assert.deepEqual(rendered.full, ["active-long", "reflex-short", "pref-mid"]);
-    assert.deepEqual(rendered.degraded, ["floor-long"]);
+    assert.deepEqual(rendered.full, ["active-long", "floor-long", "reflex-short"]);
+    assert.deepEqual(rendered.degraded, ["pref-mid"]);
     const order = inner(rendered.text).filter((l) => l.startsWith("- [")).map((l) => l.split(" ")[2]);
-    assert.deepEqual(order, ["active-long", "floor-long", "reflex-short", "pref-mid"], "printed in kernel order");
+    assert.deepEqual(order, ["active-long", "floor-long", "reflex-short"], "complete rules printed in kernel order");
   });
 
   it("marks a one-armed start explicitly", () => {
