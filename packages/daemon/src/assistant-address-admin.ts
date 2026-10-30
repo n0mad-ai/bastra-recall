@@ -1,6 +1,6 @@
 /** macOS system plan: launchd owns port 80; all request code runs as the user. */
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 const xml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -20,7 +20,7 @@ export function renderAssistantSocketPlist(i: {uid:string;username:string;home:s
 <key>ProcessType</key><string>Background</string><key>ThrottleInterval</key><integer>1</integer>
 </dict></plist>\n`;
 }
-export interface AddressAdminPlan { hostsPath:string;hostsBefore:string;hostsAfter:string;helperPath:string;helperBefore:string|null;helperAfter:string|null;label:string;launchctl?:string;rootOwnership?:boolean; }
+export interface AddressAdminPlan { hostsPath:string;hostsBefore:string;hostsAfter:string;helperPath:string;helperBefore:string|null;helperAfter:string|null;label:string;launchctl?:string;rootOwnership?:boolean;onSettled?:(success:boolean)=>Promise<void>; }
 export function makeAddressAdminScript(p: AddressAdminPlan): string {
   const q=shellQuote, hash=existsSync("/usr/bin/shasum")?"/usr/bin/shasum -a 256":"/usr/bin/sha256sum";
   const ctl=q(p.launchctl??"/bin/launchctl"), domain=q(`system/${p.label}`);
@@ -47,12 +47,13 @@ export function makeAddressAdminScript(p: AddressAdminPlan): string {
   if(p.launchctl===undefined) lines.push("/usr/bin/dscacheutil -flushcache || true");
   return lines.join("\n")+"\n";
 }
-export async function runMacAddressAdmin(plan: AddressAdminPlan): Promise<void> {
+export async function runMacAddressAdmin(plan: AddressAdminPlan, io?: {spawn?:(command:string,args:readonly string[],options:{stdio:"ignore"})=>ChildProcess;timeoutMs?:number}): Promise<void> {
+  io??={};
   const script=makeAddressAdminScript(plan);
   await new Promise<void>((resolve,reject)=>{
-    const child=spawn("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:"ignore"});
-    const timer=setTimeout(()=>{child.kill();reject(new Error("Systemeinrichtung nicht bestätigt; bastra address status prüfen."));},180000);
-    child.once("error",()=>{clearTimeout(timer);reject(new Error("Systemfreigabe konnte nicht gestartet werden."));});
-    child.once("exit",code=>{clearTimeout(timer);if(code===0)resolve();else reject(new Error("Systemeinrichtung abgebrochen oder fehlgeschlagen; bastra address status prüfen."));});
+    const child=(io.spawn??spawn)("/usr/bin/osascript",["-e",`do shell script ${JSON.stringify(script)} with administrator privileges with prompt "Bastra: lokalen Assistentennamen und Port 80 einrichten"`],{stdio:"ignore"});
+    const timer=setTimeout(()=>{reject(new Error("Systemeinrichtung läuft möglicherweise noch; bastra address status prüft und gleicht den tatsächlichen Zustand ab."));},io.timeoutMs??180000);
+    child.once("error",()=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(false)).then(()=>reject(new Error("Systemfreigabe konnte nicht gestartet werden.")),()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
+    child.once("exit",code=>{clearTimeout(timer);void Promise.resolve(plan.onSettled?.(code===0)).then(()=>{if(code===0)resolve();else reject(new Error("Systemeinrichtung abgebrochen oder fehlgeschlagen; bastra address status prüfen."));},()=>reject(new Error("Admin-Ergebnis nicht gespeichert; bastra address status prüfen.")));});
   });
 }

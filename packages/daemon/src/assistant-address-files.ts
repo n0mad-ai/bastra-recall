@@ -53,7 +53,8 @@ export function patchFirefoxUserJs(text: string, value: string | null, owner: st
 
 /** Firefox copies user.js into prefs.js. Remove only the exact formerly owned
  * true preference; unrelated preferences and user changes remain byte-for-byte. */
-export function retiredFirefoxPreference(text:string,userJs:string,nextName:string|null,owner:string):string{
+export function retiredFirefoxPreference(text:string,userJs:string,nextName:string|null,owner:string,provenOwned=false):string{
+ if(!provenOwned)return text;
  const part=owned(userJs,owner,"//");
  patchFirefoxUserJs(userJs,nextName,owner); // validate ownership before touching persisted state
  const prior=/^user_pref\("browser\.fixup\.domainwhitelist\.([a-z0-9-]+)", true\);$/.exec(part.body)?.[1];

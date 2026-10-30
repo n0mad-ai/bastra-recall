@@ -87,3 +87,51 @@ test("#1332: setup repairs an unchanged helper that is no longer loaded",async t
  const script=makeAddressAdminScript({hostsPath:hosts,hostsBefore:"original\n",hostsAfter:"original\n",helperPath:helper,helperBefore:"same helper",helperAfter:"same helper",label:"fixture",launchctl:ctl,rootOwnership:false});
  execFileSync("/bin/sh",["-c",script],{stdio:"pipe"});assert.match(await readFile(log,"utf8"),/bootstrap/);
 });
+
+test("#1332 review: admin failure after completed system writes reconciles settings and state",async t=>{
+ const root=await mkdtemp(join(tmpdir(),"assistant-reconcile-"));t.after(()=>rm(root,{recursive:true,force:true}));
+ const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);throw new Error("admin timeout");}};
+ await setupAssistantAddress({...options,name:"Ruby"});assert.equal(await getAssistantName(settingsPath),"ruby");assert.equal(JSON.parse(await readFile(join(runtimeDir,"state.json"),"utf8")).name,"ruby");
+});
+test("#1332 review: a late admin completion is reconciled when status is checked",async t=>{
+ const {assistantAddressStatus}=await import("../src/assistant-address.js");
+ const root=await mkdtemp(join(tmpdir(),"assistant-late-"));t.after(()=>rm(root,{recursive:true,force:true}));let plan:any;
+ const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{plan=p;throw new Error("admin timeout");}};
+ await assert.rejects(setupAssistantAddress({...options,name:"Ruby"}),/prüfen|pending|ausstehend/i);
+ await writeFile(hostsPath,plan.hostsAfter);await writeFile(helperPath,plan.helperAfter);
+ const status=await assistantAddressStatus(options);assert.equal(status.name,"ruby");assert.equal(JSON.parse(await readFile(join(runtimeDir,"state.json"),"utf8")).name,"ruby");
+});
+test("#1332 review: pre-existing user Firefox persisted whitelist is preserved",async t=>{
+ const root=await mkdtemp(join(tmpdir(),"assistant-pref-owner-"));t.after(()=>rm(root,{recursive:true,force:true}));
+ const firefoxRoot=join(root,"firefox"),profile=join(firefoxRoot,"profile"),settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper");await mkdir(profile,{recursive:true});await writeFile(join(firefoxRoot,"profiles.ini"),"[Profile0]\nIsRelative=1\nPath=profile\n");const prefs=join(profile,"prefs.js"),original='user_pref("browser.fixup.domainwhitelist.jarvis", true);\n';await writeFile(prefs,original);await writeFile(hostsPath,"127.0.0.1 localhost\n");
+ const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},systemConsent:true,runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,p.helperAfter);}};
+ await setupAssistantAddress({...options,name:"Jarvis"});await changeAssistantName("Ruby",options);assert.equal(await readFile(prefs,"utf8"),original);
+});
+test("#1332 review: Doctor status supplies a repair path for a modified owned hosts block",async t=>{
+ const {assistantAddressStatus}=await import("../src/assistant-address.js"),{patchAssistantHosts}=await import("../src/assistant-address-files.js");const root=await mkdtemp(join(tmpdir(),"assistant-doctor-"));t.after(()=>rm(root,{recursive:true,force:true}));const hostsPath=join(root,"hosts");await writeFile(hostsPath,patchAssistantHosts("","jarvis","501").replace("127.0.0.1 jarvis","10.0.0.1 jarvis"));const status=await assistantAddressStatus({hostsPath,settingsPath:join(root,"settings"),runtimeDir:join(root,"runtime"),firefoxRoot:join(root,"firefox"),uid:"501"});assert.match((status as any).repair??"",/hosts.*(sichern|backup)/i);assert.match((status as any).repair??"",/bastra address setup/);
+});
+
+test("#1332 review: machine hostname cannot become the assistant alias",async t=>{
+ const root=await mkdtemp(join(tmpdir(),"assistant-machine-"));t.after(()=>rm(root,{recursive:true,force:true}));const hostsPath=join(root,"hosts");await writeFile(hostsPath,"");await assert.rejects(changeAssistantName("Work-Mac",{hostsPath,settingsPath:join(root,"settings"),machineNames:["work-mac.local"]}));
+});
+test("#1332 review: timeout preserves the late native admin completion receipt",async()=>{
+ const {runMacAddressAdmin}=await import("../src/assistant-address-admin.js"),{spawn}=await import("node:child_process");let done!:()=>void;const completion=new Promise<void>(r=>done=r);let completed=false;
+ assert.ok(runMacAddressAdmin.length>=2,"native runner must accept isolated process IO before invocation");
+ await assert.rejects(runMacAddressAdmin({hostsPath:"fixture",hostsBefore:"",hostsAfter:"",helperPath:"fixture",helperBefore:null,helperAfter:null,label:"fixture",onSettled:async success=>{completed=success;done();}},{timeoutMs:20,spawn:()=>spawn(process.execPath,["-e","setTimeout(()=>process.exit(0),150)"],{stdio:"ignore"})}),/möglicherweise|noch/);
+ await completion;assert.equal(completed,true,"late successful admin must be observed, never killed by the reporting timeout");
+});
+
+test("#1332 review: late removal is also reconciled without a second admin action",async t=>{
+ const {assistantAddressStatus}=await import("../src/assistant-address.js");const root=await mkdtemp(join(tmpdir(),"assistant-remove-late-"));t.after(()=>rm(root,{recursive:true,force:true}));const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");let late:any;
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
+ await setupAssistantAddress({...options,name:"Ruby"});await assert.rejects(removeAssistantAddress({...options,runAdmin:async p=>{late=p;throw new Error("timeout");}}));await writeFile(hostsPath,late.hostsAfter);await rm(helperPath);
+ assert.equal((await assistantAddressStatus(options)).name,null);await assert.rejects(readFile(join(runtimeDir,"state.json")),{code:"ENOENT"});
+});
+
+test("#1332 review: unchanged repair waits for its admin receipt and blocks a second mutation",async t=>{
+ const {assistantAddressStatus}=await import("../src/assistant-address.js");const root=await mkdtemp(join(tmpdir(),"assistant-repair-receipt-"));t.after(()=>rm(root,{recursive:true,force:true}));const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
+ await setupAssistantAddress({...options,name:"Ruby"});let settled:((success:boolean)=>Promise<void>)|undefined;await assert.rejects(setupAssistantAddress({...options,runAdmin:async p=>{settled=p.onSettled;throw new Error("timeout");}}));assert.equal((await assistantAddressStatus(options)).pending,true);await assert.rejects(changeAssistantName("Jarvis",options),/ausstehend/);assert.ok(settled);await settled(false);assert.equal((await assistantAddressStatus(options)).pending,false);assert.equal(await getAssistantName(settingsPath),"ruby");
+});

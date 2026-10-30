@@ -10,7 +10,7 @@ import { setUiEnabled, readSettings } from "../src/settings.js";
 
 test("#1332: DNS name validation rejects injection, reserved/IP-like labels and normalizes the address", () => {
   assert.equal(normalizeAssistantName(" Jarvis "), "jarvis");
-  for (const value of ["localhost", "wpad", "127", "a.b", "a/b", "-name", "name-", "x".repeat(64), "a\nroot", "$(id)", "http://name"]) assert.throws(() => normalizeAssistantName(value), {name:"Error"}, value);
+  for (const value of ["localhost", "wpad", "dev", "app", "com", "home", "corp", "lan", "internal", "localdomain", "xn--jarvis", "127", "a.b", "a/b", "-name", "name-", "x".repeat(64), "a\nroot", "$(id)", "http://name"]) assert.throws(() => normalizeAssistantName(value), {name:"Error"}, value);
   assert.equal(normalizeAssistantName("a"), "a");
   assert.equal(assistantUrls("Jarvis").local, "http://jarvis.localhost/ui/");
   assert.equal(assistantUrls("Jarvis").bare, "http://jarvis/ui/");

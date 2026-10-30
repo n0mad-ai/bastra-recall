@@ -28,7 +28,7 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
     const config = await readAssistantGatewayConfig(opts.settingsPath);
     if (!config?.enabled) return reply(res, 404, "assistant UI is disabled");
     const rawHost = req.headers.host?.toLowerCase() ?? "";
-    const host = rawHost.replace(new RegExp(`:${req.socket.localPort}$`), "");
+    const host = rawHost.replace(new RegExp(`:${req.socket.localPort}$`), "").replace(/\.$/, "");
     let bareReady = false;
     if (host === config.name) {
       try { bareReady = managedAssistantHostsName(await readFile(opts.hostsPath, "utf8"), owner) === config.name; } catch { /* unknown ownership stays closed */ }

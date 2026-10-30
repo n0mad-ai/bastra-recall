@@ -27,6 +27,11 @@ test("#1332: named gateway serves only UI, rejects rebinding/foreign origins, an
   assert.equal((await call("/")).location,"/ui/");
   assert.equal((await call("/ui/")).body,"ui-ok");
   assert.equal((await call("/ui/",`jarvis:${port}`)).status,200);
+  assert.equal((await call("/ui/",`jarvis.:${port}`)).status,200);
+  assert.equal((await call("/ui/",`jarvis.localhost.:${port}`)).status,200);
+  assert.equal((await call("/ui/annotate",`jarvis.:${port}`,`http://jarvis.:${port}`,"POST")).status,200);
+  assert.equal((await call("/ui/",`jarvis..:${port}`)).status,403);
+  assert.equal((await call("/ui/annotate",`jarvis.:${port}`,`http://evil.example.:${port}`,"POST")).status,403);
   assert.equal((await call("/ui/",`evil.example:${port}`)).status,403);
   for(const path of ["/hook/recall","/api/v1/mcp","/api/v1/save_memory","/health","/ui/../hook/recall"]) assert.equal((await call(path)).status,404,path);
   const before=seen.length;
