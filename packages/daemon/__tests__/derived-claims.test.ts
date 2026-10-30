@@ -455,9 +455,11 @@ test("#1330: only a full load attributed to its caller records a load receipt",a
  const {loadSessionState}=await import("../src/session-state.js"),{deps,cleanup}=await makeDeps();
  try{
   const saved=await saveMemoryHandler(deps,fact());
-  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-known"});
+  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-known",agentId:null});
   assert.ok((await loadSessionState("fixture-load-known")).loadedConventions?.some(c=>c.id===saved.id));
-  await loadMemoryHandler(deps,{id:saved.id,verbosity:"lean"},{sessionId:"fixture-load-dismiss"});
+  await loadMemoryHandler(deps,{id:saved.id},{sessionId:"fixture-load-unknown"});
+  assert.equal((await loadSessionState("fixture-load-unknown")).loadedConventions,undefined);
+  await loadMemoryHandler(deps,{id:saved.id,verbosity:"lean"},{sessionId:"fixture-load-dismiss",agentId:null});
   assert.equal((await loadSessionState("fixture-load-dismiss")).loadedConventions,undefined);
  }finally{await cleanup();}
 });

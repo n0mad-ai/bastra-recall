@@ -25,7 +25,10 @@ function ccTurnHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
   // Send only the project key, not the client's absolute filesystem path.
   if (CLIENT_FILTER_PROJECT) h["x-bastra-project"] = encodeURIComponent(CLIENT_FILTER_PROJECT);
-  if (typeof liveStatusline.cc_session_id === "string" && liveStatusline.cc_session_id) {
+  if (process.env.CODEX_THREAD_ID) {
+    h["x-bastra-cc-session"] = process.env.CODEX_THREAD_ID;
+    h["x-bastra-agent-id"] = "main";
+  } else if (typeof liveStatusline.cc_session_id === "string" && liveStatusline.cc_session_id) {
     h["x-bastra-cc-session"] = liveStatusline.cc_session_id;
     if (liveStatusline.turn_id > 0) h["x-bastra-cc-turn"] = String(liveStatusline.turn_id);
   }
@@ -119,7 +122,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     if (!resp.ok) return null;
     const body = (await resp.json()) as { context?: string };
     sessionContextPending = false;
-    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: without verified host hooks, rules are advisory here; action and Stop enforcement are not guaranteed." } : null;
+    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex can enforce checks with installed, supported hooks; a missing statusline does not establish missing hook support." } : null;
   } catch {
     return null;
   }

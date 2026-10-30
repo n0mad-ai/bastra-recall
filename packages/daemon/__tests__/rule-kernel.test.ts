@@ -252,16 +252,17 @@ describe("#1305 rule kernel: re-delivery by the gate lane", () => {
     assert.equal(next.hookSpecificOutput, undefined, "call 1 after the prompt carries nothing");
   });
 
-  it("rulebook reads stay free and re-delivery never invents a loaded convention", async () => {
+  it("legacy read gates remain active while rulebook checking avoids reader catalog I/O", async () => {
     const sid = "kernel-gate-active";
     for (let i = 0; i < RULE_KERNEL_TOOL_CALLS - 1; i++) await runGateLane(call(sid), deps);
     await mutateSessionState(sid, s => bookPendingMustLoad(s, ["task-rule"], "prompt:test"));
     const out = parse(await runGateLane(call(sid, "ToolSearch", { query: "select:fixture_send_message" }), deps));
-    assert.equal(out.hookSpecificOutput?.permissionDecision, undefined);
-    assert.match(out.hookSpecificOutput?.additionalContext ?? "", /gate-rule/);
+    assert.equal(out.hookSpecificOutput?.permissionDecision, "deny");
     const state = await loadSessionState(sid);
-    assert.equal(state.activeConventions, undefined);
-    assert.deepEqual(state.pendingMustLoad?.map(e => e.id), ["task-rule"]);
+    assert.deepEqual(state.activeConventions?.map(a => a.id), ["gate-rule"]);
+    assert.equal(state.pendingMustLoad, undefined);
+    const retry = parse(await runGateLane(call(sid), deps));
+    assert.match(retry.hookSpecificOutput?.additionalContext ?? "", /Always gate-rule/);
   });
 
   it("a lean dismissal does not put a rule in force", async () => {

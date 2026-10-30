@@ -52,6 +52,8 @@ export interface DispatchCtx {
   documentWriteEnabled: boolean;
   /** Echte CC-Session aus den Forwarder-Headern (#74); null = unbekannt. */
   ccSessionId?: string | null;
+  /** Explicit caller actor: null is verified main, absent is unknown. */
+  agentId?: string | null;
   /** Caller context is a scope hint, never a privacy/authorization boundary. */
   cwd?: string;
   project?: string | null;
@@ -92,7 +94,7 @@ async function dispatchTool(
     case "rulebook_check": return await rulebookCheckHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
     case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
     case "load_memory":
-      return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null });
+      return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null, agentId: ctx.agentId });
     case "save_memory":
       return await saveMemoryHandler(toolDeps, body);
     // #519/#464: zwei Argumente, absichtlich. Die Private-Capability ist

@@ -60,12 +60,9 @@ export function hookClientEvidence(payload: unknown): HookClientEvidence {
  * Only the presence of the id is read: `agent_type` can be a user-defined
  * agent name, i.e. free text, and stays out of telemetry (§23).
  *
- * `null` where the payload cannot back an answer — the same rule as
- * `hookClientEvidence` (#507 Nachbesserung): a missing `agent_id` means "main
- * thread" only under Claude Code's contract. A Codex-marked payload never
- * carries the field, so its absence there is no evidence, and booking every
- * Codex call as `main` would be a guessed value in a measurement column.
- * `null` leaves the column off the row (`dimensionsFrom` allowlist).
+ * Codex hook events without agent_id belong to their session's main thread.
+ * Separate Codex threads have separate session ids; an explicit agent_id still
+ * identifies a worker. Unmarked events remain unknown rather than guessing.
  */
 export type HookAgent = "main" | "subagent";
 
@@ -73,9 +70,7 @@ export function hookAgent(payload: unknown): HookAgent | null {
   if (!payload || typeof payload !== "object") return null;
   const id = (payload as Record<string, unknown>).agent_id;
   if (typeof id === "string" && id.length > 0) return "subagent";
-  // An unmarked payload may be an older/manual Codex registration. Only a
-  // Claude Code marker makes the missing agent_id evidence of the main thread.
-  return hookClientEvidence(payload) === "claude-code" ? "main" : null;
+  return hookClient(payload) === "codex" || hookClientEvidence(payload) === "claude-code" ? "main" : null;
 }
 
 /**

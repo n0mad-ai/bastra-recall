@@ -2,7 +2,7 @@
 import { HINT_FRAME_NOTE } from "@bastra-recall/core/scrub";
 import { catalogHash, cleanRuleText, oneLine, rulebookCursor, ruleIndexLine, RULEBOOK_INDEX_CHAR_BUDGET,
   type KernelCandidates } from "./rulebook-catalog.js";
-export { collectRulebookCatalog as collectRuleKernel } from "./rulebook-catalog.js";
+export { cachedRulebookCatalog as collectRuleKernel } from "./rulebook-catalog.js";
 export type { KernelCandidates, KernelEntry, KernelGroup } from "./rulebook-catalog.js";
 
 export const RULE_KERNEL_CHAR_BUDGET = 9400;

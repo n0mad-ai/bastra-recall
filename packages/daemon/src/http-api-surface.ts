@@ -245,6 +245,8 @@ export function dispatchApiSurface(
   const ccSessionHeader = req.headers["x-bastra-cc-session"];
   const ccTurnHeader = req.headers["x-bastra-cc-turn"];
   const ccSessionId = typeof ccSessionHeader === "string" && ccSessionHeader ? ccSessionHeader : null;
+  const actorHeader = req.headers["x-bastra-agent-id"];
+  const agentId = typeof actorHeader === "string" && actorHeader ? (actorHeader === "main" ? null : actorHeader) : undefined;
   const ccTurnKey = typeof ccTurnHeader === "string" ? Number(ccTurnHeader) : null;
   const projectHeader = req.headers["x-bastra-project"];
   let callerProject: string | null = null;
@@ -260,6 +262,7 @@ export function dispatchApiSurface(
           toolDeps,
           documentWriteEnabled,
           ccSessionId,
+          agentId,
           project: callerProject,
         });
         if (result === undefined) {

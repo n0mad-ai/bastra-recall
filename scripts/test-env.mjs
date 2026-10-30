@@ -72,7 +72,7 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   // Tool-specific homes can bypass os.homedir(). A child inside this run may
   // deliberately supply its own fixture, but developer exports never reach it.
   for (const key of Object.keys(process.env)) {
-    if (["CLAUDE_CONFIG_DIR", "CODEX_HOME", "APPDATA", "LOCALAPPDATA"].includes(key) || key.startsWith("XDG_")) delete process.env[key];
+    if (["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODEX_THREAD_ID", "APPDATA", "LOCALAPPDATA"].includes(key) || key.startsWith("XDG_")) delete process.env[key];
   }
   const root = mkdtempSync(join(tmpdir(), "bastra-test-run-"));
   process.env.BASTRA_TEST_RUN_ROOT = root;

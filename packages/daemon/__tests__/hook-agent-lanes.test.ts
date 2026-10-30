@@ -178,9 +178,9 @@ describe("hook agent dimension on every lane's own row", () => {
   }
 });
 
-describe("hook agent dimension: no evidence, no column", () => {
-  it("a Codex-marked call carries no agent column on the lane row, not a guessed main", async () => {
-    // Revert-check: hookAgent defaulting to "main" for Codex → red.
+describe("hook agent dimension: Codex thread attribution", () => {
+  it("a Codex-marked call belongs to its own session main thread", async () => {
+    // Codex uses the main receipt of its own session, not another thread.
     const logDir = await mkdtemp(join(tmpdir(), "bastra-agent-codex-"));
     try {
       await withDaemon(async (base) => {
@@ -192,7 +192,7 @@ describe("hook agent dimension: no evidence, no column", () => {
       assert.ok(row, "bash_hook_call row must be written");
       const dims = row.dimensions as Record<string, unknown>;
       assert.equal(dims.client, "codex", "precondition: the row is booked as Codex");
-      assert.equal("agent" in dims, false);
+      assert.equal(dims.agent, "main");
     } finally {
       await rm(logDir, { recursive: true, force: true });
     }

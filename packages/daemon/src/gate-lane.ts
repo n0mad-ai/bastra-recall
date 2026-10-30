@@ -1,4 +1,4 @@
-import { catalogFor, rulebookBoundary } from "./rulebook-check.js";
+import { catalogFor, rulebookBoundary, claimLegacyRulebookDenial } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 import {confirmLaneDelivery} from "./lane-delivery.js";
@@ -192,22 +192,11 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   const input = payload.tool_input && typeof payload.tool_input === "object" ? payload.tool_input : {};
   if (isGateExempt(toolName, input)) return "{}";
   const mutates = await rulebookMutates(toolName, input);
-  if (deps.kernel) {
-    const catalog = await catalogFor(payload, deps.kernel);
-    if (catalog.entries.length) {
-      const decision = mutates ? await rulebookBoundary(payload, catalog, "action") : "{}";
-      if (decision !== undefined) {
-        if (decision !== "{}") return decision;
-        // Reads, checked writes and bounded fail-open calls keep the cadence.
-        let active: ActiveConvention[] | null = null;
-        if (sessionId && deps.countTool !== false) await mutateSessionState(sessionId, state => {
-          state.toolCalls = (state.toolCalls ?? 0) + 1;
-          if (state.toolCalls >= RULE_KERNEL_TOOL_CALLS) { active = [...(state.activeConventions ?? [])]; state.toolCalls = 0; }
-        });
-        return active === null ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
-      }
-    }
-  }
+  // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
+  // until Phase 4. Collect both reasons before emitting one bounded denial.
+  const rulebookDecision = deps.kernel && mutates
+    ? await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "action") : undefined;
+  const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
   if (!sessionId) return "{}";
 
   // A subagent never saw the main thread's hint block; its calls do not
@@ -289,7 +278,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     }
     if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
     // #1305: a deny carries its own message; the kernel waits for the next call.
-    if (deps.kernel && claimedMustLoad.length === 0 && claimedReflex.length === 0 && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
+    if (deps.kernel && !rulebookDenied && claimedMustLoad.length === 0 && claimedReflex.length === 0 && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
       kernelActive = [...(state.activeConventions ?? [])];
       state.toolCalls = 0;
     }
@@ -313,11 +302,14 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     return "{}";
   }
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
+    if (rulebookDenied) return rulebookDecision;
     const active = kernelActive as ActiveConvention[] | null;
     return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
   }
 
+  if (!rulebookDenied && !await claimLegacyRulebookDenial(payload)) { await undoAction(); return "{}"; }
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
+  if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision).hookSpecificOutput.permissionDecisionReason;
   if(actionIds.length)reason.text+="\n"+actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
   await emitTelemetry({
     outcome: "deny",

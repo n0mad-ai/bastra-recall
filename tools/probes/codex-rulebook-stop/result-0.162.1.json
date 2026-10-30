@@ -1,0 +1,44 @@
+{
+  "version": "codex-cli 0.162.1",
+  "provider": "local scripted Responses SSE; no model invocation",
+  "cases": [
+    {
+      "case": "block_once",
+      "exit": 0,
+      "response_requests": 2,
+      "continued": true,
+      "user_prompt_events": 1,
+      "stop_hook_active": [
+        false,
+        true
+      ],
+      "same_session": true,
+      "same_turn": true
+    },
+    {
+      "case": "continue_false",
+      "exit": 0,
+      "response_requests": 1,
+      "continued": false,
+      "user_prompt_events": 1,
+      "stop_hook_active": [
+        false
+      ],
+      "same_session": true,
+      "same_turn": true
+    },
+    {
+      "case": "bastra_rulebook",
+      "exit": 0,
+      "response_requests": 2,
+      "continued": true,
+      "user_prompt_events": 1,
+      "stop_hook_active": [
+        false,
+        true
+      ],
+      "same_session": true,
+      "same_turn": true
+    }
+  ]
+}

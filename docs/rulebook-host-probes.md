@@ -9,10 +9,29 @@ During the Phase-3 implementation, in the actual Codex session:
 - A read-only Bastra MCP `load_memory` call was executed in this session. The running daemon exempts Bastra MCP calls from denial. Successful retrieval cannot establish a denied MCP write, nor does absence of a gate log prove absence of a host boundary. MCP deny remains **unverified**. No live vault write was used as a probe.
 - An `exec_command` started a waiting Python stdin reader; `write_stdin` delivered a marker and completed it. The recent installed gate trace contained Bash events and the patch event, with no new write_stdin event. This observation is consistent with the existing #1300 probe: there is no fresh PreToolUse boundary for the resumed process. A shell continuation must not be advertised as a newly gated action.
 - The preceding #1300 runtime probe remains the deny evidence for `exec_command` (hook name Bash) and `view_image`. Sources are linked in `host-capabilities.ts`; a lane replay is not another host certification.
-- No live Codex Stop-block probe was performed. Codex Stop checking remains unimplemented/unverified; the shipped lane explicitly skips it. Claude Code uses its documented command Stop `decision: block` contract, tested with bounded lane replays. There is no guarantee that the first answer was hidden before a continuation.
+- A separate isolated Codex CLI 0.162.1 Stop protocol probe is now verified below. It certifies Stop continuation, not every MCP or patch denial and not semantic rule compliance.
 
 Local raw observation source: the installed hook telemetry, filtered to the current session and the event/tool fields above. No prompt text, credentials or user's rules are included here. The host matrix intentionally retains the distinction between observed boundary, documented behavior and runtime-verified deny.
 
 ## Deutsch
 
-Der Patch-Hook wurde in dieser Sitzung live beobachtet. Das beweist noch keine funktionierende Sperre. MCP-Schreibsperren und Codex-Stop bleiben ungeprüft; `write_stdin` hat keine neue Sperrgrenze. Die Host-Matrix weist diese Grenzen ausdrücklich aus. Die neuen automatischen Tests prüfen Bastras Verhalten, zertifizieren aber keinen zusätzlichen Host.
+Der Patch-Hook wurde in dieser Sitzung live beobachtet. Das beweist noch keine funktionierende Sperre. MCP-Schreibsperren bleiben ungeprüft; Codex-Stop ist für CLI 0.162.1 mit der separaten lokalen Probe belegt; `write_stdin` hat keine neue Sperrgrenze. Die Host-Matrix weist diese Grenzen ausdrücklich aus. Die neuen automatischen Tests prüfen Bastras Verhalten, zertifizieren aber keinen zusätzlichen Host.
+
+
+## Isolated Codex Stop protocol (counter-review correction)
+
+Primary reference: [official OpenAI Hooks documentation, Stop](https://learn.chatgpt.com/docs/hooks#stop). A blocking Stop asks for a continuation; continue:false takes precedence and terminates the turn. This is distinct from PreToolUse denial.
+
+Reproduce with `python3 tools/probes/codex-rulebook-stop/run.py` in a clean Codex account/config with no unrelated or managed hooks. The committed script refuses a normal installation containing other hooks before launching Codex; it does not move, disable or rewrite your installed configuration. The fixture invokes the installed **codex-cli 0.162.1** against a local deterministic Responses SSE server. No model is invoked, credentials are not copied, user configuration is unchanged, configured MCP clients/apps are disabled for the invocation, and only synthetic output/event metadata are retained. Vetted inline command hooks are supplied through invocation-only config overrides with hook trust bypassed. Earlier observed runs used the installed environment with additional Bastra hooks. A later attempt to rerun with hook-trust bypass was rejected by automatic approval review because unrelated installed hooks could have side effects. The stored successful protocol/source results are retained; no further such invocation was executed. An initial project-discovery attempt did not run the probe hooks and was rejected as inconclusive; the recorded successful probe explicitly verifies that the hooks ran.
+
+[Recorded result](../tools/probes/codex-rulebook-stop/result-0.162.1.json):
+
+- First Stop returned decision:block. Codex requested a second synthetic response. Stop flags were false then true. Session and turn IDs remained the same, and UserPromptSubmit ran only once.
+- A Stop returning both decision:block and continue:false stopped after one response. There was no continuation.
+- The third case runs the actual Bastra beginRulebookRound/runStopLane source behind the real native hooks. The prompt is only an invented Spanish message, with no instruction. It triggers one continuation, then finishes after the second response. The scripted provider deliberately calls no tools: this proves the bounded rulebook/Stop path, not semantic rule selection by a model.
+
+The shipped rulebook Stop path is enabled for this exact Codex version and tested with EN/JA/RU/ES pasted-message fixtures. It blocks at most once per actor/round; deferred ordinary Stop work runs in the continuation. An installed Stop registration remains required. No certification for other versions, Desktop/IDE, hidden-first-display behavior or semantic model choices follows from this protocol test. Patch/MCP write-deny gaps above remain open. The matrix marks the overall Codex rulebook gate as preparation-only at the host-certification layer while retaining its shipped implementation status.
+
+## Catalog-only performance observation
+
+Read-only local observation with 1560 vault memories: first cache build 100.18 ms; 30 subsequent cached calls caused zero additional catalog scans (one total). The fixture supplied a fixed empty floor list; these are catalog-only timings, not end-to-end hook latency. Cache membership keys include the real floor configuration in normal use. Change-event invalidation and concurrent-call coalescing have deterministic regression tests.

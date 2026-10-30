@@ -1,4 +1,4 @@
-import { catalogFor, rulebookBoundary, type CatalogProvider } from "./rulebook-check.js";
+import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 /**
  * Stop lane, daemon-side (#369/#15 — the #343/#344 pattern, applied to the lane
@@ -112,6 +112,7 @@ export async function runStopLane(
       if (decision && JSON.parse(decision).decision === "block") return decision;
     } catch { await spoolRulebookFailure(payload.session_id ?? null); }
   }
+  const deferredRulebookStop = await takeDeferredRulebookStop(payload).catch(() => false);
   // #1311: bounded repair for an approved-copy task without a valid receipt.
   // It sits before the loop guard on purpose — the follow-up Stop it causes is
   // `stop_hook_active` — and bounds itself: two requests per task, then one
@@ -136,7 +137,7 @@ export async function runStopLane(
       latency_ms_total: Date.now() - startedAt,
     });
   }
-  if (payload.stop_hook_active === true) return repairOutput ? JSON.stringify(repairOutput) : "{}";
+  if (payload.stop_hook_active === true && !deferredRulebookStop) return repairOutput ? JSON.stringify(repairOutput) : "{}";
 
   // Code awareness (#581): the end of a turn is a good moment to refresh the
   // graph, so the next turn starts from a current one.

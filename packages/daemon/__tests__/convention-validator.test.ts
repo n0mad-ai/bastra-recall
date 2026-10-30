@@ -80,7 +80,7 @@ test("action reflex gate binds explicit source metadata; load refreshes/removes 
   assert.equal(result.hookSpecificOutput.permissionDecision, "deny");
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.[0]?.validator, validator);
   await f.replace(undefined);
-  const reloaded = await loadMemoryHandler(f.deps, { id: input.id });
+  const reloaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid, agentId: null });
   assert.equal(reloaded?.frontmatter.validator, undefined);
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
@@ -90,7 +90,7 @@ test("public edit validates/adds/replaces/removes validator; normal load exports
   const f = await fixture(t);
   const sid = "validator-load";
   await mutateSessionState(sid, (state) => bookPendingMustLoad(state, [input.id], "fixture"));
-  const loaded = await loadMemoryHandler(f.deps, { id: input.id });
+  const loaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid, agentId: null });
   assert.deepEqual(loaded?.frontmatter.validator, validator);
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.[0]?.validator, validator);
   await assert.rejects(editMemoryHandler(f.deps, { id: input.id, frontmatter: { validator: { ...validator, limit: 0 } } }));
@@ -119,7 +119,7 @@ test("#1330 final review: revision and inline provenance are bound to current so
 });
 test("#1330 final review: stale cached body never records the new disk revision as loaded",async t=>{
  const f=await fixture(t),raw=await readFile(f.file,"utf8"),parsed=matter(raw);await writeFile(f.file,matter.stringify("new rule not present in cached body",parsed.data));
- await loadMemoryHandler(f.deps,{id:input.id},{sessionId:"fixture-stale-rule-load"});
+ await loadMemoryHandler(f.deps,{id:input.id},{sessionId:"fixture-stale-rule-load",agentId:null});
  assert.equal((await loadSessionState("fixture-stale-rule-load")).loadedConventions,undefined);
 });
 test("#1330 final review: source metadata cannot expose a newly private rule through a stale index",async t=>{

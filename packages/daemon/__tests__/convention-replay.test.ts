@@ -27,6 +27,7 @@ import { Vault, memoryRevision } from "@bastra-recall/core";
 import { vaultConventionOf } from "../src/convention-source.js";
 import { callerSessionStore } from "../src/caller-session.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
+import { rulebookCheckHandler } from "../src/rulebook-check.js";
 import { runStopLane } from "../src/stop-lane.js";
 import { loadSessionState, clearPendingMustLoad } from "../src/session-state.js";
 
@@ -134,7 +135,9 @@ async function fixture(projection = false) {
         // index (vaultRevisionOf); here the invented memories carry them as data.
         case "/hook/prompt": result = await runPromptLane(payload, null, base, undefined,
           () => [vault[2].id], { onTelemetry: row => promptRows.push(row),
-            conventionOf: vaultConventionOf(loadedVault) }); break;
+            conventionOf: vaultConventionOf(loadedVault), kernel: (active, project) => collectRuleKernel(kernelVault, { project, active, floors: async () => [] }) }); break;
+        case "/api/v1/rulebook_check": result = await rulebookCheckHandler({ vault: loadedVault } as import("../src/tool-deps.js").ToolDeps,
+          body, { sessionId: session_id, project: null }); break;
         case "/hook/write": result = await runWriteLane(payload, base, cwd); break;
         case "/hook/bash-pre": result = await runBashPreLane(payload, base); break;
         case "/hook/gate": result = await runGateLane(payload, { reflexPool: () => gatePool,
@@ -216,7 +219,7 @@ async function fixture(projection = false) {
     const timer = setTimeout(() => child.kill("SIGKILL"), 12_000);
     try {
       const done = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
-      child.stdin.end(JSON.stringify({ session_id, cwd, ...input }));
+      child.stdin.end(JSON.stringify({ session_id, cwd, bastra_client: "claude-code", ...input }));
       assert.equal(await done, 0, `real ${program} failed: ${stderr}`);
       assert.equal(errors.length, 0, `real daemon lane threw: ${errors.map(String).join("; ")}`);
       return JSON.parse(stdout) as Output;
@@ -242,6 +245,10 @@ async function fixture(projection = false) {
     assert.ok(hints.some(hint => mustLoadIds.every(id => context(hint).includes(id))),
       "setup: real prompt hook must expose both must-load IDs before gate assertions");
     const first = await tool("Edit", { file_path: join(cwd, "invented.ts"), old_string: "one", new_string: "two" });
+    // The scripted agent answers C through the real tool handler. Legacy
+    // must-load retry behavior stays independently observable afterward.
+    const check = await fetch(`${base}/api/v1/rulebook_check`, { method: "POST", body: JSON.stringify({ applicable: [] }) });
+    assert.equal((await check.json() as { ok: boolean }).ok, true);
     const retry = await tool("Edit", { file_path: join(cwd, "invented.ts"), old_string: "one", new_string: "two" });
     const toolSearch = await tool("ToolSearch", { query: "select:fixture_send_message" });
     const toolSearchRetry = await tool("ToolSearch", { query: "select:fixture_send_message" });

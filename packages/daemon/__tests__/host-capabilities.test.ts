@@ -66,7 +66,8 @@ test("Codex runtime certification is exact and coverage distinguishes probe from
   }
   assert.equal(tested.capabilities.stop_additional_context.bastra, "unsupported");
   assert.equal(tested.capabilities.stop_additional_context.status, "unverified");
-  assert.equal(tested.capabilities.stop_block.bastra, "unsupported");
+  assert.equal(tested.capabilities.stop_block.bastra, "supported");
+  assert.equal(tested.capabilities.rulebook_gate.status, "preparation-only");
   assert.equal(hostCapabilities("claude-code").capabilities.stop_block.bastra, "supported");
 });
 
@@ -80,7 +81,7 @@ test("#1311 — approved-copy Stop repair: additionalContext on Claude Code, uns
     const row = hostCapabilities("codex", version).capabilities;
     assert.equal(row.stop_additional_context.bastra, "unsupported", String(version));
     assert.match(row.stop_additional_context.note, /approved-copy Stop repair is not offered on Codex/);
-    assert.equal(row.stop_block.bastra, "unsupported", String(version));
+    assert.equal(row.stop_block.bastra, version === CODEX_GATE_MIN_VERSION ? "supported" : "unsupported", String(version));
     assert.match(row.stop_block.note, /no approved-copy Stop repair on Codex/);
   }
 });

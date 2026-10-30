@@ -17,11 +17,11 @@ describe("hook agent dimension: main thread vs subagent", () => {
     assert.equal(hookAgent({ session_id: "s", bastra_client: "claude-code", agent_type: "reviewer" }), "main");
   });
 
-  it("a Codex payload without agent_id backs no answer — null, not a guessed main", () => {
-    // Codex never sends agent_id, so its absence there says nothing (#507 rule).
-    assert.equal(hookAgent({ session_id: "s", bastra_client: "codex" }), null);
+  it("Codex hook calls without agent_id belong to their own main thread", () => {
+    // Codex hooks without agent_id use the main actor of their own session.
+    assert.equal(hookAgent({ session_id: "s", bastra_client: "codex" }), "main");
     assert.equal(hookAgent({ session_id: "s" }), null, "an unmarked call may be Codex and has no main-thread evidence");
-    assert.equal(hookAgent({ session_id: "s", tool_name: "apply_patch" }), null);
+    assert.equal(hookAgent({ session_id: "s", tool_name: "apply_patch" }), "main");
     // Presence is still evidence, whoever sent it.
     assert.equal(hookAgent({ session_id: "s", bastra_client: "codex", agent_id: "x" }), "subagent");
     assert.equal(hookAgent({ session_id: "s", bastra_client: "claude-code" }), "main");

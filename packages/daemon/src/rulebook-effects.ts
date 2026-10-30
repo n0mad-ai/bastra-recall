@@ -1,6 +1,6 @@
 import { shellIsReadOnly } from "./github-shell-actions.js";
 const READ_TOOLS = new Set(["Read", "Grep", "Glob", "LS", "WebSearch", "WebFetch", "view_image", "search_query", "read_file", "list_directory"]);
-const BASTRA_READ = new Set(["recall", "load_memory", "list_rules", "rulebook_check", "find_document", "read_document", "find_code", "find_affected_files", "validate_artifact", "task_get", "task_list", "task_status", "task_controls"]);
+const BASTRA_READ = new Set(["recall", "load_memory", "list_rules", "rulebook_check", "find_document", "read_document", "find_code", "find_affected_files", "validate_artifact", "task_get", "task_list", "task_status"]);
 export function bastraReadTool(name: string): boolean {
   if (BASTRA_READ.has(name)) return true;
   const match = /^(?:mcp__(?:plugin_.+_)?bastra[-_]recall__|mcp__codex_apps__bastra_recall_)(.+)$/.exec(name);

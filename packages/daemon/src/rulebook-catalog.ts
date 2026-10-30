@@ -86,6 +86,30 @@ export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">,
   return c;
 }
 
+/** Cache one current catalog per index generation/scope/membership. Disk source
+ * validation happens once per generation, never once per hook call. */
+const caches = new WeakMap<object, Map<string, Promise<KernelCandidates>>>();
+export async function cachedRulebookCatalog(
+  vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
+  opts: Parameters<typeof collectRulebookCatalog>[1],
+): Promise<KernelCandidates> {
+  // Pure fixture/third-party indexes without change events cannot promise freshness.
+  if (!vault.on) return collectRulebookCatalog(vault, opts);
+  let pages = caches.get(vault);
+  if (!pages) {
+    pages = new Map(); caches.set(vault, pages);
+    const current = pages; vault.on(() => current.clear());
+  }
+  const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
+  const key = JSON.stringify([opts.project, !!opts.allProjects, opts.active.map(a => a.id).sort(), floors]);
+  const hit = pages.get(key); if (hit) return hit;
+  if (pages.size >= 32) pages.delete(pages.keys().next().value!);
+  const pending = collectRulebookCatalog(vault, { ...opts, floors: async () => floors });
+  pages.set(key, pending);
+  try { return await pending; }
+  catch (err) { if (pages.get(key) === pending) pages.delete(key); throw err; }
+}
+
 /** Full IDs remain loadable; only presentation title/description are shortened. */
 export function ruleIndexLine(e: KernelEntry): string {
   const title = oneLine(e.title).slice(0, 55);
@@ -136,6 +160,6 @@ export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { ses
       if (decoded.project === null || typeof decoded.project === "string") project = decoded.project;
     } catch { /* malformed cursor restarts from the caller scope */ }
   }
-  return rulebookPage(await collectRulebookCatalog(deps.vault, { project,
+  return rulebookPage(await cachedRulebookCatalog(deps.vault, { project,
     active: state?.activeConventions ?? [] }), input.cursor);
 }

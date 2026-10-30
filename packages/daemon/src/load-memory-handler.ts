@@ -109,7 +109,7 @@ export async function loadMemoryHandler(
   // #74: echte CC-Session aus den Forwarder-Headern (HTTP-Pfad). Ohne sie
   // fällt recordLoadedMemory auf den zuletzt rotierten Turn zurück (inferred).
   // #464: `trustedPrivate` kommt vom TRANSPORT, nie aus `rawArgs`.
-  ctx?: { sessionId?: string | null } & PrivateAccess,
+  ctx?: { sessionId?: string | null; agentId?: string | null } & PrivateAccess,
 ): Promise<LoadMemoryResult> {
   const parsed = LoadMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -195,12 +195,12 @@ export async function loadMemoryHandler(
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" ? undefined : source,
-    source.matchesIndex===true?(ctx?.sessionId ?? callerSessionStore.getStore()):undefined,
+    parsed.data.verbosity === "lean" || ctx?.agentId !== null ? undefined : source,
+    source.matchesIndex===true && ctx?.agentId === null ? (ctx?.sessionId ?? callerSessionStore.getStore()) : undefined,
   );
 
   if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true && source.rulebookMetadata?.rulebook) {
-    await recordRulebookLoad(sessionId, parsed.data.id);
+    await recordRulebookLoad(sessionId, parsed.data.id, ctx?.agentId);
   }
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).

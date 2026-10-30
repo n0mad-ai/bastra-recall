@@ -216,10 +216,10 @@ describe("hook agent: every row a hook call causes carries the payload's agent",
     });
   }
 
-  it("a Codex payload books no agent column on any row it causes, not a guessed main", async () => {
+  it("a Codex payload books its own main thread on every row it causes", async () => {
     const rows = await rowsOf(LANES[0], { session_id: "rows-codex", bastra_client: "codex" });
     for (const r of rows) {
-      assert.equal("agent" in (r.dimensions as Row), false, `${String(r.kind)} guessed an agent for Codex`);
+      assert.equal((r.dimensions as Row).agent, "main", `${String(r.kind)} lost the Codex main attribution`);
     }
   });
 
