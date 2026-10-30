@@ -46,6 +46,16 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: name TARGET_COPY_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: keyed TARGET_COPY_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: name COPY_REVISION_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: keyed COPY_REVISION_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: name ASSISTANT_REVIEW_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: keyed ASSISTANT_REVIEW_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: name RECIPIENT_FOLLOWUP_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
+  "packages/daemon/src/lexicon.ts :: keyed RECIPIENT_FOLLOWUP_CUES": "#1328 user-extensible per-language data; unlisted cues keep state and ordinary score-gated recall; extension tested in correspondence-dogfood.test.ts",
   "packages/core/src/scrub-psk.ts :: words /psk|keyMaterial|pre-shared-key/": "#1113 XML credential element names, not conversation vocabulary or intent classification",
   "packages/daemon/src/system-turn.ts :: words /teammate|agent|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
   "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
