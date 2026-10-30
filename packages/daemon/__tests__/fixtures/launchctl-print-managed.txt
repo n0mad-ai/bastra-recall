@@ -1,0 +1,86 @@
+gui/501/ai.n0mad.bastra-recall = {
+	active count = 1
+	path = /Users/fixture/Library/LaunchAgents/ai.n0mad.bastra-recall.plist
+	type = LaunchAgent
+	state = running
+
+	program = /opt/homebrew/opt/node@24/bin/node
+	arguments = {
+		/opt/homebrew/opt/node@24/bin/node
+		/Users/fixture/Projekte/bastra-recall/packages/daemon/dist/index.js
+	}
+
+	stdout path = /tmp/bastra-daemon.out
+	stderr path = /tmp/bastra-daemon.err
+	inherited environment = {
+		SSH_AUTH_SOCK => fixture-value
+	}
+
+	default environment = {
+		PATH => fixture-value
+	}
+
+	environment = {
+		OSLogRateLimit => fixture-value
+		BASTRA_OLLAMA_URL => fixture-value
+		BASTRA_HTTP_PORT => fixture-value
+		BASTRA_VAULT_PATH => fixture-value
+		BASTRA_TRAINING_CAPTURE => fixture-value
+		BASTRA_AUTOSTART_MANAGED => fixture-value
+		BASTRA_RERANK_MODEL => fixture-value
+		PATH => fixture-value
+		BASTRA_EMBEDDING_PROVIDER => fixture-value
+		BASTRA_LOG_RETENTION_DAYS => fixture-value
+		BASTRA_DAEMON_IDLE_SHUTDOWN_MS => fixture-value
+		BASTRA_EMBEDDING_MODEL => fixture-value
+		BASTRA_CORS_ORIGIN => fixture-value
+		BASTRA_TASKS => fixture-value
+		BASTRA_EXPAND_MODEL => fixture-value
+		XPC_SERVICE_NAME => fixture-value
+	}
+
+	domain = gui/501 [100021]
+	asid = fixture-value
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	pid = fixture-value
+	immediate reason = speculative
+	forks = 148
+	execs = 1
+	initialized = 1
+	trampolined = 1
+	started suspended = 0
+	proxy started suspended = 0
+	checked allocations = 0 (queried = 1)
+	checked allocations reason = no host
+	checked allocations flags = 0x0
+	last exit code = (never exited)
+
+	resource coalition = {
+		ID = 153380
+		type = resource
+		state = active
+		active count = 1
+		name = ai.n0mad.bastra-recall
+	}
+
+	jetsam coalition = {
+		ID = 153381
+		type = jetsam
+		state = active
+		active count = 1
+		name = ai.n0mad.bastra-recall
+	}
+
+	spawn type = fixture-value
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+	sanitizer flags = 0x0
+
+	properties = keepalive | runatload | inferred program
+}

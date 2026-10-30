@@ -39,7 +39,7 @@
 import { windowsService, type AutostartService } from "./windows-service.js";
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
-import { copyFile, mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
@@ -307,18 +307,26 @@ export function autostartEnv(
     env.BASTRA_DAEMON_URL = daemonUrl;
     env.BASTRA_HTTP_PORT = String(port);
   }
-  return { ...bastraShellEnv(shell), ...env, ...existing };
+  // Existing opt-ins remain authoritative; explicit `on` vault/endpoint inputs win.
+  const merged: Record<string, string> = { ...bastraShellEnv(shell), ...env, ...existing,
+    [MANAGED_MARKER]: "1", BASTRA_VAULT_PATH: vaultPath };
+  if (daemonUrl !== null && port !== null) {
+    merged.BASTRA_DAEMON_URL = daemonUrl;
+    merged.BASTRA_HTTP_PORT = String(port);
+  }
+  return merged;
 }
 
 function bastraShellEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] =>
-    entry[0].startsWith("BASTRA_") && typeof entry[1] === "string"));
+  // Deliberate opt-ins only: never persist API keys or transient client routing.
+  const keys = ["BASTRA_TASKS", "BASTRA_TRAINING_CAPTURE"] as const;
+  return Object.fromEntries(keys.flatMap(key => typeof env[key] === "string" ? [[key, env[key]!]] : []));
 }
 
 async function writePlistAtomically(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  await writeFile(tmp, content, "utf8");
+  await writeFile(tmp, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
   try {
     await rename(tmp, path);
   } catch (err) {
@@ -327,11 +335,12 @@ async function writePlistAtomically(path: string, content: string): Promise<void
   }
 }
 
-function bootout(uid: string, launchctl = LAUNCHCTL): void {
-  spawnSync(launchctl, ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
+function bootout(uid: string, launchctl = LAUNCHCTL): boolean {
+  const result = spawnSync(launchctl, ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
     stdio: "pipe",
     timeout: 15_000,
   });
+  return result.status === 0;
 }
 
 function bootstrap(uid: string, path: string, launchctl = LAUNCHCTL): { ok: boolean; detail: string } {
@@ -356,7 +365,10 @@ export function autostartService(platform: NodeJS.Platform = process.platform): 
       if (state.exists && !state.managed && !opts.force) return { ok: false, detail: "foreign LaunchAgent" };
       await writePlistAtomically(state.path, renderPlist(env, program));
       if (!opts.reload) return { ok: true, detail: "staged" };
-      if (state.loaded) { bootout(uid); await delay(2000); }
+      if (state.loaded) {
+        if (!bootout(uid)) return { ok: false, detail: "bootout failed; service was not reloaded" };
+        await delay(2000);
+      }
       return bootstrap(uid, state.path);
     },
     async uninstall(opts = {}) {
@@ -643,7 +655,9 @@ export async function refreshManagedAutostart(
   try {
     await mkdir(backupDir, { recursive: true });
     const snapshot = join(backupDir, `launchagent-${new Date().toISOString().replaceAll(":", "-")}-${randomUUID().slice(0, 8)}.plist`);
-    await copyFile(path, snapshot, constants.COPYFILE_EXCL);
+    // Create private from the first write; chmod after copy leaves an exposure window.
+    await writeFile(snapshot, await readFile(path), { mode: 0o600, flag: "wx" });
+    await chmod(path, 0o600);
     write(`  ✓ LaunchAgent snapshot: ${snapshot}\n`);
   } catch (err) {
     write(`  ✗ could not snapshot ${path}: ${(err as Error).message}\n`);
@@ -669,11 +683,20 @@ export async function refreshManagedAutostart(
 
   if (opts.reload) {
     const uid = String(process.getuid?.() ?? 0);
-    if (state.loaded) { bootout(uid, launchctl); await delay(2000); }
+    if (state.loaded) {
+      if (!bootout(uid, launchctl)) {
+        write("  ✗ bootout failed; service was not reloaded\n");
+        return { ok: false, detail: "bootout failed; service was not reloaded" };
+      }
+      await delay(2000);
+    }
     const started = bootstrap(uid, path, launchctl);
     if (!started.ok) {
-      write(`  ✗ reload failed: ${started.detail}\n`);
-      return { ok: false, detail: started.detail };
+      const detail = state.loaded
+        ? `bootstrap failed after bootout; service is stopped: ${started.detail}`
+        : `bootstrap failed; service is not running: ${started.detail}`;
+      write(`  ✗ ${detail}\n  Recover with: launchctl bootstrap gui/${uid} "${path}"\n`);
+      return { ok: false, detail };
     }
   }
 

@@ -621,3 +621,79 @@ test("#1329: readState reports launchd's loaded opt-ins separately from the plis
     assert.notEqual(state.env.BASTRA_TASKS, "0", "plist and launchd env are distinct evidence");
   });
 });
+
+test("#1329 security: shell credentials and transient settings never enter managed plist", async () => {
+  const shell = { BASTRA_TASKS: "1", BASTRA_TRAINING_CAPTURE: "1", BASTRA_API_TOKEN: "api-secret", BASTRA_EMBEDDING_KEY: "embedding-secret", BASTRA_TASK_TOKEN: "task-secret", BASTRA_VAULT_PATH: "/transient", BASTRA_HTTP_PORT: "12345", BASTRA_DAEMON_URL: "http://localhost:12345", BASTRA_CUSTOM: "not-approved" };
+  const env = autostartEnv("/chosen", process.execPath, null, "darwin", {}, shell);
+  assert.equal(env.BASTRA_TASKS, "1");
+  assert.equal(env.BASTRA_TRAINING_CAPTURE, "1");
+  for (const key of ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN", "BASTRA_HTTP_PORT", "BASTRA_DAEMON_URL", "BASTRA_CUSTOM"]) assert.equal(env[key], undefined, key);
+  assert.equal(env.BASTRA_VAULT_PATH, "/chosen");
+  await withKegFixture(async ({ fresh, plist, launchctl, plutil, dir }) => {
+    const result = await refreshManagedAutostart(() => {}, { target: { node: process.execPath, script: fresh.script, version: fresh.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin", env: shell });
+    assert.equal(result.ok, true);
+    const after = await readState(plist, launchctl, plutil);
+    for (const key of ["BASTRA_API_TOKEN", "BASTRA_EMBEDDING_KEY", "BASTRA_TASK_TOKEN", "BASTRA_CUSTOM"]) assert.equal(after.env[key], undefined, key);
+    const { stat, readdir } = await import("node:fs/promises");
+    assert.equal((await stat(plist)).mode & 0o777, 0o600);
+    const backups = join(dir, "LaunchAgents", "backups");
+    for (const file of await readdir(backups)) {
+      assert.equal((await stat(join(backups, file))).mode & 0o777, 0o600);
+      assert.doesNotMatch(await readFile(join(backups, file), "utf8"), /api-secret|embedding-secret|task-secret/);
+    }
+  });
+});
+
+test("#1329 security: explicit autostart-on vault and endpoint override old managed values", () => {
+  const env = autostartEnv("/new-vault", process.execPath, "http://127.0.0.1:26723", "darwin", {
+    BASTRA_VAULT_PATH: "/old-vault", BASTRA_HTTP_PORT: "6723", BASTRA_DAEMON_URL: "http://127.0.0.1:6723", BASTRA_TASKS: "0", CUSTOM: "kept",
+  }, { BASTRA_TASKS: "1" });
+  assert.equal(env.BASTRA_VAULT_PATH, "/new-vault");
+  assert.equal(env.BASTRA_HTTP_PORT, "26723");
+  assert.equal(env.BASTRA_DAEMON_URL, "http://127.0.0.1:26723");
+  assert.equal(env.CUSTOM, "kept");
+});
+
+test("#1329 security: failed bootstrap after successful bootout clearly reports the service stopped", async () => {
+  await withKegFixture(async ({ old, dir, plist, plutil }) => {
+    const launchctl = join(dir, "failing-bootstrap");
+    await writeFile(launchctl, '#!/bin/sh\nif [ "$1" = bootstrap ]; then echo "fixture I/O failure" >&2; exit 5; fi\nexit 0\n', { mode: 0o755 });
+    let out = "";
+    const result = await refreshManagedAutostart(s => { out += s; }, { target: { node: process.execPath, script: old.script, version: old.version }, reload: true, plistFile: plist, launchctl, plutil, platform: "darwin" });
+    assert.equal(result.ok, false);
+    assert.match(out, /bootstrap.*failed.*service.*stopped/i);
+    assert.match(out, /launchctl bootstrap/);
+  });
+});
+
+test("#1329 security: both rewritten plist and exact backup are owner-readable only", async () => {
+  await withKegFixture(async ({ old, fresh, plist, launchctl, plutil, dir }) => {
+    const before = await readFile(plist, "utf8");
+    const result = await refreshManagedAutostart(() => {}, { target: { node: process.execPath, script: fresh.script, version: fresh.version }, reload: false, plistFile: plist, launchctl, plutil, platform: "darwin" });
+    assert.equal(result.ok, true);
+    const { stat, readdir } = await import("node:fs/promises");
+    const backupDir = join(dir, "LaunchAgents", "backups");
+    const backup = join(backupDir, (await readdir(backupDir))[0]);
+    assert.equal(await readFile(backup, "utf8"), before);
+    assert.deepEqual([(await stat(plist)).mode & 0o777, (await stat(backup)).mode & 0o777], [0o600, 0o600]);
+    assert.notEqual((await readState(plist, launchctl, plutil)).program[1], old.script);
+  });
+});
+
+test("#1329 security: parser accepts captured launchctl print structure with separate inherited env", async () => {
+  await withKegFixture(async ({ dir, plist, plutil }) => {
+    const { fileURLToPath } = await import("node:url");
+    const captured = await readFile(fileURLToPath(new URL("../__tests__/fixtures/launchctl-print-managed.txt", import.meta.url)), "utf8");
+    const output = join(dir, "launchctl-output.txt");
+    await writeFile(output, captured);
+    const launchctl = join(dir, "captured-launchctl");
+    await writeFile(launchctl, `#!/bin/sh\ncat "${output}"\n`, { mode: 0o755 });
+    const state = await readState(plist, launchctl, plutil);
+    assert.equal(state.loaded, true);
+    const own = captured.match(/\n\s*environment = \{\n([\s\S]*?)\n\s*\}/)?.[1];
+    assert.ok(own, "captured output must carry its own environment section");
+    const expectedKeys = [...own.matchAll(/^\s*(BASTRA_[A-Z0-9_]+)\s*=>/gm)].map(m => m[1]).sort();
+    assert.deepEqual(Object.keys(state.loadedEnv ?? {}).sort(), expectedKeys);
+    assert.equal(state.loadedEnv?.BASTRA_VAULT_PATH, "fixture-value");
+  });
+});
