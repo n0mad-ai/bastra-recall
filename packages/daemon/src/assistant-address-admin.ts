@@ -1,10 +1,10 @@
 /** macOS system plan: launchd owns port 80; all request code runs as the user. */
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtemp, writeFile, rm, lstat, readFile, readdir, rename } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, lstat, open, readdir, rename } from "node:fs/promises";
 const xml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const shellQuote = (s: string) => "'" + s.replaceAll("'", "'\"'\"'") + "'";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -63,8 +63,16 @@ export async function cleanupMacAddressAdminStaging(root=tmpdir(),now=Date.now()
     const dir=join(root,name),metadata=join(dir,"process.json");
     try{
       const info=await lstat(dir);if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==uid||(info.mode&0o777)!==0o700)continue;
-      const file=await lstat(metadata);if(!file.isFile()||file.isSymbolicLink()||file.uid!==uid||(file.mode&0o777)!==0o600||file.size>4096)continue;
-      const p=JSON.parse(await readFile(metadata,"utf8"));
+      // O_NOFOLLOW rejects a swapped symlink; O_NONBLOCK prevents a swapped
+      // FIFO from hanging cleanup. Validate and read the SAME open inode.
+      const handle=await open(metadata,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+      let p;
+      try{
+        const file=await handle.stat();if(!file.isFile()||file.uid!==uid||(file.mode&0o777)!==0o600||file.size>4096)continue;
+        const bytes=Buffer.alloc(4097),read=await handle.read(bytes,0,bytes.length,0);
+        if(read.bytesRead>4096)continue;
+        p=JSON.parse(bytes.toString("utf8",0,read.bytesRead));
+      }finally{await handle.close();}
       if(p.version!==1||!Number.isFinite(p.createdAt)||now-p.createdAt<=300000||addressAdminProcessAlive(p.adminPid)!==false)continue;
       await rm(dir,{recursive:true,force:true});
     }catch{/* missing, damaged, changed or inaccessible staging is never guessed safe */}

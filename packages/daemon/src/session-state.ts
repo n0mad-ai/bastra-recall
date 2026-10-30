@@ -35,6 +35,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
+import { resolveStatePath } from "./state-path.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import type { TaskKind } from "./prompt-classify.js";
 
@@ -326,12 +327,12 @@ function sessionFile(sessionId: string, dir = sessionStateDir()): string {
   // sanitize — defensive; session ids should be UUIDs but a stray slash
   // would let an attacker write outside the dir.
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return path.join(dir, `${safe}.json`);
+  return resolveStatePath(dir, path.join(dir, `${safe}.json`));
 }
 
 function loadedMarkerFile(memId: string, dir = sessionStateDir()): string {
   const safe = memId.replace(/[^a-zA-Z0-9_.\-]/g, "_");
-  return path.join(dir, `loaded-${safe}.touch`);
+  return resolveStatePath(dir, path.join(dir, `loaded-${safe}.touch`));
 }
 
 /**
