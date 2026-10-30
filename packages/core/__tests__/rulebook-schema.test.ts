@@ -35,11 +35,11 @@ test("legacy defaults require user-directed origin and reserve always for active
     }
   }
   const directed = { ...fm, write_origin: "user-directed" as const };
-  assert.equal(resolveRulebook(directed), undefined);
+  assert.equal(resolveRulebook(directed)?.rulebook, "on-demand");
   for (const context of [{ floor: true }, { activeConvention: true }]) {
     assert.deepEqual(resolveRulebook(directed, context), { rulebook: "always", applies_when: input.summary, applies_when_derived: true });
   }
-  for (const type of ["meta-working", "user-preference"] as const) {
+  for (const type of ["meta-working", "user-preference", "workflow"] as const) {
     assert.equal(resolveRulebook({ ...directed, type })?.rulebook, "on-demand");
     assert.equal(resolveRulebook({ ...directed, type }, { activeConvention: true })?.rulebook, "always");
   }
@@ -77,4 +77,10 @@ test("save/load keeps declarations and proposals across refreshes; only user-dir
     assert.equal(proposedFm.rulebook, undefined);
     assert.deepEqual(proposedFm.rulebook_proposed, { rulebook: "always", applies_when: "When writing" });
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Phase 4: user-directed workflows formerly found by the GitHub query enter B without lexical matching', () => {
+  const fm = FrontmatterSchema.parse({...base, type: 'workflow', write_origin: 'user-directed'});
+  assert.equal(resolveRulebook(fm)?.rulebook, 'on-demand');
+  assert.equal(resolveRulebook({...fm, write_origin: 'agent-session'}), undefined);
 });

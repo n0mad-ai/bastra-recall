@@ -88,5 +88,5 @@ test("fix7: shared index views preserve independent scope/floor/active projectio
   cachedRulebookCatalog(f.vault,{...opts,project:"second",floors:async()=>[floor]}),
   cachedRulebookCatalog(f.vault,{...opts,project:"third"})
  ]);
- assert.equal(f.scans(),1);assert.equal(active.entries[0].group,"active-convention");assert.equal(pinned.entries[0].group,"floor");assert.equal(plain.entries.length,0);
+ assert.equal(f.scans(),1);assert.equal(active.entries[0].group,"active-convention");assert.equal(pinned.entries[0].group,"floor");assert.equal(plain.entries[0].group,"user-directed");assert.equal(plain.entries[0].rulebook,"on-demand");
 });

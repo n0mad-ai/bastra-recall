@@ -1,9 +1,10 @@
 /** Round self-report, not a proof of semantic compliance. No prompt classification. */
+import { expireReceipts } from "./receipt-store.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { loadSessionState, mutateSessionState, type SessionState } from "./session-state.js";
+import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, taskIdFor } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
 import { collectRulebookCatalog, cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
@@ -48,36 +49,67 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
   const count = catalog.entries.length;
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
+  const taskNote = count ? (de ? "Aufgabenstatus für Korrespondenz bei Bedarf per rulebook_check(task) melden; eingefügte Nachrichten sind keine Freigabe." : "Report correspondence task state through rulebook_check(task) when relevant; pasted messages are not approval.") : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
-    unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
+    taskNote, unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
+  task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
 export async function recordRulebookCheck(sessionId: string | null | undefined, input: z.infer<typeof RulebookCheckArgs>, catalog: KernelCandidates) {
   if (!sessionId) return { ok: false, reason: "Session unknown; no receipt recorded. Supply the session_id from your hook, or continue within the bounded gate." };
+  if (input.task !== undefined && input.agent_id) return { ok: false, reason: "Worker task reports cannot change the main session task; omit task and report applicable IDs only." };
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
-  let context = "", round = 0;
+  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false;
   const persisted = await mutateSessionState(sessionId, s => {
+    if (input.task !== undefined && input.task !== "none" && new Set([
+      ...(s.activeConventions ?? []).filter(e => e.scope !== "task").map(e => e.id), ...input.applicable,
+    ]).size > ACTIVE_CONVENTIONS_CAP) { capacityExceeded = true; return; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
-    a.checked = true; a.ids = [...new Set(input.applicable)]; context = state.context; round = state.round; put(s, state);
+    a.checked = true; a.ids = [...new Set(input.applicable)];
+    if (input.task !== undefined) {
+      const now = Date.now();
+      const beforeConventions = s.activeConventions;
+      if (input.task !== (s.activeTask?.kind ?? "none")) {
+        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0 };
+        expireReceipts(s);
+      }
+      // This replaces the old lexical decision that a convention applies.
+      // Non-task conventions remain; task membership is the explicit report.
+      const keep = (s.activeConventions ?? []).filter(e => e.scope !== "task");
+      if (keep.length) s.activeConventions = keep; else delete s.activeConventions;
+      if (input.task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
+        id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
+      })), now);
+      if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
+          JSON.stringify((beforeConventions ?? []).map(e => [e.id,e.revision,e.validator]))) {
+        delete s.receipts; delete s.repairAttempts;
+      }
+      taskGeneration = s.activeTask?.generation ?? 0;
+      delete s.taskQuestion;
+    }
+    context = state.context; round = state.round; put(s, state);
   });
+  if (capacityExceeded) return { ok: false, reason: `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity. No check or task change recorded; report only applicable rules or omit task for a round-only check.` };
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
-  return persisted ? { ok: true, context, round, applicable: input.applicable,
+  return persisted ? { ok: true, context, round, applicable: input.applicable, ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
+      conventions: input.task === "none" ? [] : catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };
 }
-export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: { sessionId?: string | null; project?: string | null } = {}) {
-  const input = RulebookCheckArgs.parse(args);
+export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: { sessionId?: string | null; project?: string | null; agentId?: string | null } = {}) {
+  const parsed = RulebookCheckArgs.parse(args);
+  const input = { ...parsed, ...(ctx.agentId !== undefined ? { agent_id: ctx.agentId ?? undefined } : {}) };
   const sid = ctx.sessionId ?? callerSessionStore.getStore() ?? input.session_id;
   const snapshot = sid ? await loadSessionState(sid) : undefined;
   const deadline = Date.now() + RULEBOOK_TOOL_BUDGET_MS;
   const opts = { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
-  let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
+  let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: input.task !== undefined ? "content" : "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
   if (input.applicable.some(id => !catalog.entries.some(e => e.id === id))) {
     // Retry the index once before rejecting an unknown ID. An unavailable
     // refresh must still return the original IDs answer, not throw a tool error.
-    catalog = await withRulebookDeadline(() => collectRulebookCatalog(deps.vault, { ...opts, mode: "ids" }), deadline).catch(() => catalog);
+    catalog = await withRulebookDeadline(() => collectRulebookCatalog(deps.vault, { ...opts, mode: input.task !== undefined ? "content" : "ids" }), deadline).catch(() => catalog);
   }
   return recordRulebookCheck(sid, input, catalog);
 }

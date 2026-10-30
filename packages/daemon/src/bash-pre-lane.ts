@@ -1,4 +1,3 @@
-import { githubConventionGate } from "./github-conventions-lane.js";
 /**
  * Bash tripwire lane, daemon-side (#343/#15 pattern, shared by Claude and Codex).
  *
@@ -81,15 +80,7 @@ type RecallResponse = HookRecallResponse;
  * Run the tripwire pipeline; return the exact stdout document for the thin
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
-export async function runBashPreLane(payload:BashHookPayload,selfBaseUrl:string,draftNotes?:(query:string)=>DraftNote[]):Promise<string>{
- const github=await githubConventionGate(payload,selfBaseUrl,Date.now()+HOOK_TIMEOUT_MS);
- if(github&&JSON.parse(github).hookSpecificOutput?.permissionDecision==="deny")return github;
- const original=await runBashPreLaneOriginal(payload,selfBaseUrl,draftNotes);if(!github)return original;
- const output=JSON.parse(original),extra=JSON.parse(github).hookSpecificOutput.additionalContext;
- output.hookSpecificOutput={...output.hookSpecificOutput,hookEventName:"PreToolUse",additionalContext:[output.hookSpecificOutput?.additionalContext,extra].filter(Boolean).join("\n")};return JSON.stringify(output);
-}
-
-async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: string, draftNotes?: (query: string) => DraftNote[]): Promise<string> {
+export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string, draftNotes?: (query: string) => DraftNote[]): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt

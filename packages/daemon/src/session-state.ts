@@ -566,7 +566,7 @@ export function bookPendingMustLoad(state: SessionState, ids: readonly string[],
 }
 
 /** #1305: bound on the conventions one session keeps in force. */
-const ACTIVE_CONVENTIONS_CAP = 20;
+export const ACTIVE_CONVENTIONS_CAP = 20;
 /** #1305: bound on denied must-load ids still waiting for their load. */
 const CLAIMED_MUST_LOAD_CAP = 20;
 

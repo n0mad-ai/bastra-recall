@@ -362,9 +362,8 @@ async function runPromptLaneInner(
     if (parkedForTrivial !== null) {
       logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
     }
-    // #1306: "ok" after a draft is exactly the turn the task state is for — it
-    // may approve the copy, and the conventions in force stay visible. One
-    // state read when the session has no task.
+    // Explicit task state stays visible even when the prompt skips recall.
+    // Prompt words never approve copy; rulebook_check reports that decision.
     const taskBlock = await runTaskStep({
       sessionId: payload.session_id ?? "",
       prompt,
@@ -754,9 +753,8 @@ async function runPromptLaneInner(
   const takenBoundary = boundary as TakenBoundary | null;
   if (takenBoundary !== null) logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
 
-  // #1306: the task transition and the active-conventions block. Candidates are
-  // this prompt's hits BEFORE the session dedup: a convention shown earlier
-  // still starts the task and still counts as touched.
+  // Refresh and render explicitly reported active conventions. Recall hits
+  // are hints; they no longer decide task membership.
   const taskBlock = await runTaskStep({
     sessionId,
     prompt,

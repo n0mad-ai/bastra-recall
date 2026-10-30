@@ -55,6 +55,8 @@ test("task activation reads indexed declaration and revision together after rein
   const candidate = { id: input.id, type: input.type, matched_recall_when: true, validator };
   const step = async (prompt: string) => runTaskStep({ sessionId: sid, prompt, snapshot: await loadSessionState(sid),
     mode: "none", candidates: [candidate], surface: "claude-code", conventionOf: vaultConventionOf(f.vault) });
+  const {rulebookCheckHandler} = await import("../src/rulebook-check.js");
+  await rulebookCheckHandler(f.deps, {applicable: [input.id], task: "draft-for-review"}, {sessionId: sid});
   await step("ich arbeite jetzt eine eingegangene Nachricht ab");
   let state = await loadSessionState(sid);
   assert.deepEqual(state.activeConventions?.[0]?.validator, validator);

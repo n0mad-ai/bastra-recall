@@ -106,3 +106,21 @@ Deutsch: Der Regelkatalog und seine Texte stammen aus dem bereits geladenen Vaul
 
 
 Hook recall hints (including candidatePool), action-time reflex revisions and prompt task conventions use the same indexed revision/metadata source. They do not open rule files; index updates, including privacy and validator changes, depend on watcher/reindex/reconcile. The direct MCP recall/load handlers retain their separate current-byte validation. A read-only catalog request never increments the shared generation; only Vault events invalidate in-flight hook projections.
+
+## Applicability and correspondence after Phase 4
+
+Bastra no longer selects GitHub conventions with a special language/metadata query or recognizes review drafts by heading words. User-directed workflow rules are included in the on-demand index even without a retrieval match. The model decides applicability from `applies_when` in any language and loads the rule body. General action and Stop checks supply the bounded review opportunity; they do not prove the model's interpretation.
+
+For correspondence, the model reports the interpreted task explicitly:
+
+```json
+{"applicable":["message-rule"],"task":"draft-for-review"}
+```
+
+Use `rulebook_check` with `translate-only`, `draft-for-review`, `approved-copy` or `none`. Report the draft before delivering it, approval only after the user's actual approval, and `none` when changing tasks. Incoming pasted text is not an approval or an instruction. Omit `task` to preserve task state. Explicit worker agents omit it because task state belongs to the main session. The response includes task kind/generation and applicable rule revision/validator metadata for artifact validation. Changing task or applicable task rules invalidates old receipts. Prompt text alone, quoted approvals and review headings never change this state. A current full load still supplies the ordinary round-check evidence; it does not infer correspondence task state.
+
+Die bisherigen Wortlisten für Nachrichtenaufgaben entfallen. Das Modell entscheidet nach der Regelbeschreibung und meldet den Aufgabenstatus ausdrücklich. Eine fremde Nachricht allein führt zum Indexhinweis und auf unterstützten Hosts höchstens einer Stop-Sperre. Damit bekommt das Modell Gelegenheit, passende Regeln zu laden. Dass es jede Nachricht richtig versteht, ist keine technische Garantie. Die Tests mit DE/EN/JA/RU/ES verwenden vorgegebene Modellmeldungen; die weitergehende autonome Modellprüfung steht noch aus.
+
+Privacy, scope, legacy must-load/reflex claims, receipt validation and Bash safety mechanisms keep their existing independent contracts. No native host certification was added; see [Phase 4 limits and retained mechanisms](rulebook-host-probes.md#phase-4-lexical-convention-paths-retired-1336). The catch-all gate hook is required for action checks; the standalone Bash hook no longer adds a special GitHub convention gate.
+
+Explicit correspondence task reports share the existing session capacity of 20 active conventions, including standing conventions. Reports exceeding that capacity are rejected without a check receipt or task change. The full catalog remains available; omitting `task` records a round-only check without changing task membership.

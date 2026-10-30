@@ -1573,6 +1573,15 @@
                       "minLength": 1
                     }
                   },
+                  "task": {
+                    "type": "string",
+                    "enum": [
+                      "translate-only",
+                      "draft-for-review",
+                      "approved-copy",
+                      "none"
+                    ]
+                  },
                   "agent_id": {
                     "type": "string",
                     "minLength": 1,
