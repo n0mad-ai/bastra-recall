@@ -409,6 +409,7 @@ async function releaseFileLock(path: string, token: string, strictLocal = false)
  * call is exactly the stale read this exists to prevent.
  */
 export function withPathLock<T>(path: string, fn: (assertOwnership: () => void) => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
+  if(opts.noQueue && (depths.get(path) ?? 0)>0)return Promise.reject(new PathLockUnavailableError());
   const required = opts.requireLock || opts.strictLocal;
   const guarded = opts.crossProcess || opts.strictLocal
     ? async (): Promise<T> => {
