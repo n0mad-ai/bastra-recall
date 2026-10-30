@@ -1,4 +1,4 @@
-import { catalogFor, rulebookBoundary, claimLegacyRulebookDenial } from "./rulebook-check.js";
+import { catalogFor, rulebookBoundary } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 import {confirmLaneDelivery} from "./lane-delivery.js";
@@ -193,7 +193,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   if (isGateExempt(toolName, input)) return "{}";
   const mutates = await rulebookMutates(toolName, input);
   // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
-  // until Phase 4. Collect both reasons before emitting one bounded denial.
+  // until Phase 4. Collect both reasons before emitting one denial; legacy claims keep their original finite contract.
   const rulebookDecision = deps.kernel && mutates
     ? await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "action") : undefined;
   const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
@@ -212,6 +212,24 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   let claimedMustLoad: PendingMustLoad[] = [];
   let claimedReflex: ReflexMatch[] = [];
   let kernelActive: ActiveConvention[] | null = null;
+  let legacyPending: PendingMustLoad[] = [];
+  let previousActive: ActiveConvention[] = [];
+  let previousClaims: string[] = [];
+  const undoLegacy = async () => {
+    if (!legacyPending.length && !claimedReflex.length) return;
+    await mutateSessionState(sessionId, state => {
+      const pending = state.pendingMustLoad ?? [];
+      for (const entry of legacyPending) if (!pending.some(e => e.id === entry.id) && !state.loadedConventions?.some(c => c.id === entry.id)) pending.push(entry);
+      if (pending.length) state.pendingMustLoad = pending;
+      const reflexIds = new Set(claimedReflex.map(m => m.memory.fm.id));
+      state.deniedReflex = state.deniedReflex?.filter(id => !reflexIds.has(id));
+      // Restore only the activations this claim installed; preserve concurrent loads.
+      state.activeConventions = state.activeConventions?.filter(c => !reflexIds.has(c.id) || state.loadedConventions?.some(l => l.id === c.id));
+      for (const old of previousActive) if (reflexIds.has(old.id) && !state.activeConventions?.some(c => c.id === old.id)) (state.activeConventions ??= []).push(old);
+      const added = new Set(legacyPending.map(e => e.id).filter(id => !previousClaims.includes(id)));
+      state.claimedMustLoad = state.claimedMustLoad?.filter(id => !added.has(id));
+    });
+  };
   const expired=()=>Date.now()-startedAt>HOOK_TIMEOUT_MS||(deps.deadline!==undefined&&Date.now()>=deps.deadline);
   const actionToken=randomUUID();let actionIds:string[]=[],newActionClaims:string[]=[];
   const finishAction=async(delivered:boolean)=>{
@@ -243,8 +261,11 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     claimedMustLoad = [];
     claimedReflex = [];
     kernelActive = null;
+    previousActive = [...(state.activeConventions ?? [])];
+    previousClaims = [...(state.claimedMustLoad ?? [])];
     if (!subagent && state.pendingMustLoad !== undefined && state.pendingMustLoad.length > 0) {
       claimedMustLoad = state.pendingMustLoad;
+      legacyPending = [...claimedMustLoad];
       delete state.pendingMustLoad;
     }
     const action=deps.actionMustLoad;
@@ -282,13 +303,13 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       kernelActive = [...(state.activeConventions ?? [])];
       state.toolCalls = 0;
     }
-  },deps.actionMustLoad?{deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity)}:{});
+  },{deadline:Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity)});
   const elapsed = Date.now() - startedAt;
   if (!persisted) {
     // No claim reached the disk, so nothing may be denied: the call passes.
     await emitTelemetry({
       outcome: "pass",
-      non_conformance: "state_write_failed",
+      non_conformance: expired() ? "gate_timeout" : "state_write_failed",
       ...(claimedMustLoad.length > 0 ? { unclaimed_must_load_ids: claimedMustLoad.map((e) => e.id) } : {}),
       ...(claimedReflex.length > 0 ? { unclaimed_reflex_ids: claimedReflex.map((m) => m.memory.fm.id) } : {}),
     });
@@ -296,8 +317,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
   }
   if (elapsed > HOOK_TIMEOUT_MS || (deps.deadline !== undefined && Date.now() >= deps.deadline)) {
     await undoAction();
-    // The client has most likely given up already. Ordinary legacy claims stay
-    // spent, but a late response must never deny the action.
+    await undoLegacy();
+    // A late response must neither deny nor consume an undelivered legacy claim.
     await emitTelemetry({ outcome: "pass", non_conformance: "gate_timeout" });
     return "{}";
   }
@@ -307,7 +328,6 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt);
   }
 
-  if (!rulebookDenied && !await claimLegacyRulebookDenial(payload)) { await undoAction(); return "{}"; }
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
   if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision).hookSpecificOutput.permissionDecisionReason;
   if(actionIds.length)reason.text+="\n"+actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
@@ -319,9 +339,9 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
     degraded_ids: reason.degraded,
     reason_chars: reason.text.length,
   });
-  if(expired()){await undoAction();return "{}";}
+  if(expired()){await undoAction();await undoLegacy();return "{}";}
   if(actionIds.length)await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
-  if(expired()){await undoAction();return "{}";}
+  if(expired()){await undoAction();await undoLegacy();return "{}";}
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -329,7 +349,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number): Pr
       permissionDecisionReason: reason.text,
     },
   });
-  }catch(error){await undoAction();throw error;}
+  }catch(error){await undoAction();await undoLegacy();throw error;}
 }
 
 /**

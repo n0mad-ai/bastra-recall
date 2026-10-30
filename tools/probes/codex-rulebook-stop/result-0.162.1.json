@@ -38,7 +38,10 @@
         true
       ],
       "same_session": true,
-      "same_turn": true
+      "same_turn": true,
+      "hook_client": "inline-source-adapter; not the shipped hook client"
     }
-  ]
+  ],
+  "artifact_kind": "manual-summary",
+  "schema_note": "Handwritten summary of earlier observations; not the raw results/events/artifact_dir schema emitted by run.py."
 }

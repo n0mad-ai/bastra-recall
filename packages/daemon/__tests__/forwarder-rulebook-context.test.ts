@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 
-test("Codex forwarder carries its thread main attribution and does not equate missing statusline with missing hooks", async t => {
+test("forwarder ignores a foreign inherited Codex thread and does not equate missing statusline with missing hooks", async t => {
   let headers: IncomingHttpHeaders = {};
   const server = createServer((req, res) => {
     headers = req.headers; req.resume();
@@ -16,10 +16,26 @@ test("Codex forwarder carries its thread main attribution and does not equate mi
   process.env.CODEX_THREAD_ID = "fixture-codex-thread";
   const { callDaemon, maybeSessionContextItem } = await import("../src/mcp-forwarder-calls.js");
   await callDaemon("load_memory", { id: "fixture-rule" });
-  assert.equal(headers["x-bastra-cc-session"], "fixture-codex-thread");
-  assert.equal(headers["x-bastra-agent-id"], "main");
+  assert.equal(headers["x-bastra-cc-session"], undefined);
+  assert.equal(headers["x-bastra-agent-id"], undefined);
   const context = await maybeSessionContextItem();
-  assert.match(context?.text ?? "", /Codex can enforce checks with installed, supported hooks/);
+  assert.match(context?.text ?? "", /Codex CLI 0\.162\.1/);
   assert.doesNotMatch(context?.text ?? "", /advisory here/);
   assert.equal(await maybeSessionContextItem(), null, "first-call context/notice remains one-shot");
+});
+
+ test("fix2: Claude statusline wins over inherited Codex environment", async t => {
+  const { liveStatusline }=await import("../src/mcp-forwarder-statusline.js");
+  const { callDaemon }=await import("../src/mcp-forwarder-calls.js");
+  const old=liveStatusline.cc_session_id;
+  liveStatusline.cc_session_id="own-claude-session";
+  const fetchBefore=globalThis.fetch;
+  globalThis.fetch=async (_url,opts)=>{
+    const headers=opts?.headers as Record<string,string>;
+    assert.equal(headers["x-bastra-cc-session"],"own-claude-session");
+    assert.equal(headers["x-bastra-agent-id"],undefined);
+    return new Response('{}',{status:200});
+  };
+  try {await callDaemon("load_memory",{id:"fixture"});}
+  finally {globalThis.fetch=fetchBefore;liveStatusline.cc_session_id=old;}
 });

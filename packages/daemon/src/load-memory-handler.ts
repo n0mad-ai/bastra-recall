@@ -195,8 +195,8 @@ export async function loadMemoryHandler(
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" || ctx?.agentId !== null ? undefined : source,
-    source.matchesIndex===true && ctx?.agentId === null ? (ctx?.sessionId ?? callerSessionStore.getStore()) : undefined,
+    parsed.data.verbosity === "lean" || ctx?.agentId != null ? undefined : source,
+    source.matchesIndex===true && ctx?.agentId == null ? (ctx?.sessionId ?? callerSessionStore.getStore()) : undefined,
   );
 
   if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true && source.rulebookMetadata?.rulebook) {

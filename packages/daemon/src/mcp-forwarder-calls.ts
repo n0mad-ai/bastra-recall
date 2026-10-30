@@ -25,10 +25,8 @@ function ccTurnHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
   // Send only the project key, not the client's absolute filesystem path.
   if (CLIENT_FILTER_PROJECT) h["x-bastra-project"] = encodeURIComponent(CLIENT_FILTER_PROJECT);
-  if (process.env.CODEX_THREAD_ID) {
-    h["x-bastra-cc-session"] = process.env.CODEX_THREAD_ID;
-    h["x-bastra-agent-id"] = "main";
-  } else if (typeof liveStatusline.cc_session_id === "string" && liveStatusline.cc_session_id) {
+  // Only the Claude statusline identifies this host. Inherited Codex env is foreign.
+  if (typeof liveStatusline.cc_session_id === "string" && liveStatusline.cc_session_id) {
     h["x-bastra-cc-session"] = liveStatusline.cc_session_id;
     if (liveStatusline.turn_id > 0) h["x-bastra-cc-turn"] = String(liveStatusline.turn_id);
   }
@@ -122,7 +120,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     if (!resp.ok) return null;
     const body = (await resp.json()) as { context?: string };
     sessionContextPending = false;
-    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex can enforce checks with installed, supported hooks; a missing statusline does not establish missing hook support." } : null;
+    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex CLI 0.162.1 has bounded checks with installed hooks; other Codex versions are uncertified. Without host session attribution, use rulebook_check with the session_id from the prompt/hook. A missing statusline does not establish missing hook support." } : null;
   } catch {
     return null;
   }

@@ -47,7 +47,8 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   if (!persisted && unchecked) await spoolRulebookFailure(p.session_id, unchecked);
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
   const count = catalog.entries.length;
-  return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder rulebook_check).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or rulebook_check).`) : "",
+  const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
+  return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
     unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
@@ -74,8 +75,8 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
 }
 /** Only the full successful load path calls this, for a current binding rule. */
 export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null): Promise<void> {
-  // Missing transport attribution cannot turn a worker load into a main receipt.
-  if (!sessionId || agentId === undefined) return;
+  // Missing actor means main; explicit worker IDs remain isolated.
+  if (!sessionId) return;
   await mutateSessionState(sessionId, s => {
     const state = read(s), a = actor(state, agentId ? `agent:${agentId}` : "main");
     a.checked = true; if (!a.ids.includes(id)) a.ids.push(id); put(s, state);
@@ -87,7 +88,7 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
   return kernel(state?.activeConventions ?? [], projectForLane(p.cwd || process.cwd()));
 }
 /** Undefined means C did not apply; {} permits the legacy lanes to run.
- * Their denials use the same persisted allowance via claimLegacyRulebookDenial. */
+ * Legacy denials retain their own once-per-claim/session contract. */
 export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop"): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
   if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand")) return undefined;
@@ -112,21 +113,6 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const reason = (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
   return boundary === "stop" ? JSON.stringify({ decision: "block", reason }) : JSON.stringify({ hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
-}
-
-/** Old lanes remain active, but share C's round denial allowance. */
-export async function claimLegacyRulebookDenial(p: RulebookPayload): Promise<boolean> {
-  if (!p.session_id) return true;
-  let allow = true;
-  const persisted = await mutateSessionState(p.session_id, s => {
-    if (!s.rulebookCheck) return; // legacy-only callers retain their existing contract
-    const state = read(s), a = actor(state, identity(p));
-    if (a.denies < 2) a.denies++;
-    else { state.unchecked++; allow = false; }
-    put(s, state);
-  });
-  if (!allow) await recordRulebookEvent(p.session_id, { boundary: "legacy-action", outcome: "unchecked" });
-  return persisted && allow;
 }
 
 /** Consume deferred ordinary Stop work only when it can actually run. */

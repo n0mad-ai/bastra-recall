@@ -80,7 +80,7 @@ test("action reflex gate binds explicit source metadata; load refreshes/removes 
   assert.equal(result.hookSpecificOutput.permissionDecision, "deny");
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.[0]?.validator, validator);
   await f.replace(undefined);
-  const reloaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid, agentId: null });
+  const reloaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid });
   assert.equal(reloaded?.frontmatter.validator, undefined);
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
@@ -90,7 +90,7 @@ test("public edit validates/adds/replaces/removes validator; normal load exports
   const f = await fixture(t);
   const sid = "validator-load";
   await mutateSessionState(sid, (state) => bookPendingMustLoad(state, [input.id], "fixture"));
-  const loaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid, agentId: null });
+  const loaded = await loadMemoryHandler(f.deps, { id: input.id }, { sessionId: sid });
   assert.deepEqual(loaded?.frontmatter.validator, validator);
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.[0]?.validator, validator);
   await assert.rejects(editMemoryHandler(f.deps, { id: input.id, frontmatter: { validator: { ...validator, limit: 0 } } }));
@@ -127,4 +127,15 @@ test("#1330 final review: source metadata cannot expose a newly private rule thr
  const source=await readConventionSource(f.vault.get(input.id),true);
  const response=assembleHookRecallPayload({hits:[{...input,score:150,matched_recall_when:true,matched_terms:["fixture_copy_tool"]}],candidatePool:[{id:input.id,score:150}],vault:f.vault,maxTokens:0,totalLatencyMs:1,recallId:"fixture",weakResult:false,noHome:false,hookProject:null,hybridActiveAtRecall:true,degradedReason:undefined,conventionSources:new Map([[input.id,source]])});
  assert.equal(response.payload.hits.length,0);assert.doesNotMatch(JSON.stringify(response.payload),/PRIVATE SUMMARY|PRIVATE BODY|invented-convention/);
+});
+
+test("fix2: stdio load without ctx activates pending conventions and caller-session receipts", async t => {
+  const f=await fixture(t), sid="stdio-normal-load";
+  const {callerSessionStore}=await import("../src/caller-session.js");
+  await mutateSessionState(sid,s=>bookPendingMustLoad(s,[input.id],"stdio"));
+  await callerSessionStore.run(sid,()=>loadMemoryHandler(f.deps,{id:input.id}));
+  const state=await loadSessionState(sid);
+  assert.equal(state.loadedConventions?.[0]?.id,input.id);
+  assert.deepEqual(state.activeConventions?.[0]?.validator,validator);
+  assert.equal(state.pendingMustLoad,undefined);
 });

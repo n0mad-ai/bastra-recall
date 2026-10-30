@@ -206,7 +206,7 @@ describe("#1303 gate lane: parallel calls", () => {
 });
 
 describe("#1303 gate lane: failed persistence fails open", () => {
-  it("slow daemon processing passes with a timeout row and leaves confirmed claims spent", async (t) => {
+  it("slow daemon processing passes with a timeout row and preserves undelivered claims", async (t) => {
     const sid = session("timeout");
     await book(sid, ["pref-a"]);
     let now = Date.now();
@@ -225,10 +225,10 @@ describe("#1303 gate lane: failed persistence fails open", () => {
     assert.equal(rows[0]!.outcome, "pass");
     assert.equal(rows[0]!.non_conformance, "gate_timeout");
     const state = await loadSessionState(sid);
-    assert.equal(state.pendingMustLoad, undefined);
-    assert.deepEqual(state.deniedReflex, [RULE.fm.id]);
-    assert.equal(await runGateLane(call(sid, "Bash", { command: "fixture_send_message" }), { reflexPool: pool(RULE) }), "{}", "the retry cannot repeat a spent claim");
-    assert.equal((await gateRows(sid)).length, 1, "the retry emits no fake deny");
+    assert.deepEqual(state.pendingMustLoad?.map(e => e.id), ["pref-a"]);
+    assert.equal(state.deniedReflex, undefined);
+    assert.ok(denied(await runGateLane(call(sid, "Bash", { command: "fixture_send_message" }), { reflexPool: pool(RULE) })), "retry delivers the unspent claim once");
+    assert.equal(await runGateLane(call(sid, "Bash", { command: "fixture_send_message" }), { reflexPool: pool(RULE) }), "{}");
     assert.equal((await loadSessionState(sid)).toolCalls, 2);
   });
 
@@ -438,14 +438,15 @@ describe("#1304 Codex verified gate protocol", () => {
     assert.ok(denied(await runGateLane(codex(sid), {reflexPool: noPool})));
   });
 
-  it("a late persisted Codex claim never denies and is spent once", async (t) => {
+  it("a late Codex claim never denies and remains available", async (t) => {
     const sid = session("codex-timeout");
     await book(sid, ["pref-a"]);
     let now = Date.now();
     t.mock.method(Date, "now", () => now);
     assert.equal(await runGateLane(codex(sid), {reflexPool: () => {now += 60_000; return [];}}), "{}");
     assert.equal((await gateRows(sid))[0]?.non_conformance, "gate_timeout");
-    assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
+    assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["pref-a"]);
+    assert.ok(denied(await runGateLane(codex(sid), {reflexPool: noPool})));
     assert.equal(await runGateLane(codex(sid), {reflexPool: noPool}), "{}");
   });
 });

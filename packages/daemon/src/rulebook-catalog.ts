@@ -87,8 +87,9 @@ export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">,
 }
 
 /** Cache one current catalog per index generation/scope/membership. Disk source
- * validation happens once per generation, never once per hook call. */
-const caches = new WeakMap<object, Map<string, Promise<KernelCandidates>>>();
+ * validation repeats after a short TTL even when a cloud watcher misses events. */
+export const RULEBOOK_CACHE_TTL_MS = 2000;
+const caches = new WeakMap<object, Map<string, { expires: number; pending: Promise<KernelCandidates> }>>();
 export async function cachedRulebookCatalog(
   vault: Pick<Vault, "get" | "list"> & Partial<Pick<Vault, "on">>,
   opts: Parameters<typeof collectRulebookCatalog>[1],
@@ -102,12 +103,13 @@ export async function cachedRulebookCatalog(
   }
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
   const key = JSON.stringify([opts.project, !!opts.allProjects, opts.active.map(a => a.id).sort(), floors]);
-  const hit = pages.get(key); if (hit) return hit;
+  const hit = pages.get(key); if (hit && Date.now() < hit.expires) return hit.pending;
   if (pages.size >= 32) pages.delete(pages.keys().next().value!);
   const pending = collectRulebookCatalog(vault, { ...opts, floors: async () => floors });
-  pages.set(key, pending);
+  const entry = { expires: Date.now() + RULEBOOK_CACHE_TTL_MS, pending };
+  pages.set(key, entry);
   try { return await pending; }
-  catch (err) { if (pages.get(key) === pending) pages.delete(key); throw err; }
+  catch (err) { if (pages.get(key) === entry) pages.delete(key); throw err; }
 }
 
 /** Full IDs remain loadable; only presentation title/description are shortened. */

@@ -54,7 +54,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     description: "Record an honest self-report that you checked the rulebook index for this round. Read applicable rules with load_memory first. " +
       "Pass applicable: [IDs] or applicable: [] when none applies. No approval, full-catalog receipt or action binding required. " +
       "Valid only for the caller session, current context and round; subagents use their own agent_id. " +
-      "When transport attribution is missing, session_id must be the exact hook session. Unknown-agent hook calls cannot inherit a main-thread receipt. " +
+      "When transport attribution is missing, session_id must be the exact hook session. Missing actor IDs default to main; callers must supply their worker agent_id. A Claude subagent that omits its ID cannot be distinguished from main. " +
       "Records checking, not semantic compliance; hookless clients remain advisory.",
     inputSchema: { type: "object", additionalProperties: false, required: ["applicable"], properties: {
       applicable: { type: "array", maxItems: 10000, items: { type: "string", minLength: 1 } },

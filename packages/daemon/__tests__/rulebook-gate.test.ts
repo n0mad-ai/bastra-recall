@@ -142,7 +142,7 @@ test("real load and HTTP handlers record the receipt; lean loads and another cal
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "elsewhere" });
   assert.equal(denied(await gate("handler")), true);
   await loadMemoryHandler(deps, { id: "invented-correspondence" }, { sessionId: "unknown-load" });
-  assert.equal(denied(await gate("unknown-load")), true, "unattributed loads cannot answer main");
+  assert.equal(denied(await gate("unknown-load")), false, "missing actor is main for its known session");
   const receipt = await dispatchApi("rulebook_check", { applicable: [], session_id: "elsewhere" }, { toolDeps: deps, documentWriteEnabled: false, ccSessionId: "handler" }) as { ok: boolean };
   assert.equal(receipt.ok, true);
   assert.equal(denied(await gate("handler")), false, "transport session wins over supplied session id");
@@ -173,7 +173,7 @@ test("a catalog outage at the next prompt still invalidates the preceding receip
   assert.equal(denied(await gate(sid)), true);
 });
 
-test("review: legacy pending and reflex gates still run after a rulebook receipt, with one shared denial cap", async () => {
+test("review: legacy pending and reflex gates still run after a rulebook receipt, with independent finite legacy claims", async () => {
   const { mutateSessionState, bookPendingMustLoad, loadSessionState } = await import("../src/session-state.js");
   await checks.beginRulebookRound(payload("review-combined"), catalog);
   await mutateSessionState("review-combined", s => bookPendingMustLoad(s, ["combined-legacy"], "review"));
@@ -191,14 +191,16 @@ test("review: legacy pending and reflex gates still run after a rulebook receipt
   assert.equal((await loadSessionState(sid)).pendingMustLoad, undefined);
   for (let i = 0; i < 4; i++) {
     await mutateSessionState(sid, s => bookPendingMustLoad(s, [`legacy-${i}`], "review"));
-    assert.equal(denied(await gate(sid)), i === 0, "all legacy denials share the two-attempt cap");
+    assert.equal(denied(await gate(sid)), true, "each distinct legacy claim retains its one interruption");
   }
   const { actionReflexPool } = await import("../src/gate-lane.js");
   const reflex = { fm: { id: "invented-reflex", title: "Invented reflex", summary: "Fixture", type: "workflow", scope: "all-projects",
     recall_mode: "reflex", write_origin: "user-directed", salience: 0.9, recall_when: ["fixture_send_message"] }, body: "Invented reflex body." } as import("@bastra-recall/core").Memory;
-  await checks.recordRulebookCheck("review-reflex", { applicable: [] }, catalog);
+  await gate("review-reflex");
+  await gate("review-reflex"); // exhaust C before the reflex first matches
   const reflexOut = JSON.parse(await runGateLane(payload("review-reflex", "fixture_send_message"), { ...deps, reflexPool: () => actionReflexPool([reflex]) }));
   assert.equal(denied(reflexOut), true); assert.match(reflexOut.hookSpecificOutput.permissionDecisionReason, /invented-reflex/);
+  assert.equal(await runGateLane(payload("review-reflex", "fixture_send_message"), { ...deps, reflexPool: () => actionReflexPool([reflex]) }), "{}", "reflex remains once per session");
 
 });
 
@@ -260,4 +262,85 @@ test("review: a continued Stop cannot block again after context reset", async ()
   assert.equal(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", {kernel:deps.kernel})).decision, "block");
   await checks.resetRulebookContext(sid);
   assert.notEqual(JSON.parse(await runStopLane({...p,stop_hook_active:true}, "http://127.0.0.1:1", {kernel:deps.kernel})).decision, "block");
+});
+
+ test("fix2: prompt notice contains a ready-to-use session-bound check before Stop", async () => {
+  const notice = await checks.beginRulebookRound({...payload("notice-session"), bastra_client:"codex", agent_id:"worker"}, catalog);
+  assert.match(notice, /"session_id":"notice-session"/);
+  assert.match(notice, /"agent_id":"worker"/);
+});
+
+test("fix2: silent cloud changes and time-based staleness expire without index events", async t => {
+  const { cachedRulebookCatalog, RULEBOOK_CACHE_TTL_MS } = await import("../src/rulebook-catalog.js");
+  const dir = await mkdtemp(join(tmpdir(), "rulebook-silent-"));
+  const path = join(dir,"rule.md");
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const { parseMemory } = await import("@bastra-recall/core");
+  const raw = '---\nid: silent-rule\ntitle: Silent rule\ntype: workflow\nsummary: Fixture\nscope: all-projects\nwrite_origin: user-directed\nrulebook: always\napplies_when: Fixture\ntags: []\ntopic_path: [fixture]\nrecall_when: [fixture]\n---\nOriginal body';
+  await writeFile(path,raw);
+  const m=parseMemory(raw,path,0);
+  const vault={get:()=>m,list:()=>[m],on:()=>()=>{}};
+  const opts={project:null,active:[],floors:async()=>[]};
+  const first=await cachedRulebookCatalog(vault,opts);
+  await writeFile(path,raw.replace('Original body','Cloud changed body'));
+  const clock=Date.now;
+  Date.now=()=>clock()+RULEBOOK_CACHE_TTL_MS+1;
+  try {
+    const fresh=await cachedRulebookCatalog(vault,opts);
+    assert.notEqual(fresh.catalog_hash,first.catalog_hash);
+    assert.match(fresh.entries[0].body,/Cloud changed body/);
+    await writeFile(path,raw.replace('scope: all-projects','sensitivity: private\nscope: all-projects'));
+    Date.now=()=>clock()+2*(RULEBOOK_CACHE_TTL_MS+1);
+    assert.equal((await cachedRulebookCatalog(vault,opts)).entries.length,0);
+  } finally {Date.now=clock;}
+});
+
+test("fix2: expired legacy denial leaves pending/reflex claims available", async () => {
+  const {mutateSessionState,bookPendingMustLoad,loadSessionState}=await import("../src/session-state.js");
+  const sid="expired-legacy";
+  await gate(sid); await gate(sid);
+  await mutateSessionState(sid,s=>bookPendingMustLoad(s,["unspent-rule"],"fixture"));
+  assert.equal(await runGateLane(payload(sid),{...deps,deadline:Date.now()-1}),"{}");
+  assert.equal((await loadSessionState(sid)).pendingMustLoad?.[0]?.id,"unspent-rule");
+  assert.equal(denied(await gate(sid)),true);
+  assert.equal(denied(await gate(sid)),false,"old pending claim remains once only");
+});
+
+test("fix2: reflex arriving after C exhaustion still denies once", async () => {
+  const sid="late-reflex";
+  await gate(sid); await gate(sid);
+  const reflex={fm:{id:"late-rule",title:"Fixture",summary:"Fixture",type:"workflow",scope:"all-projects",recall_mode:"reflex",write_origin:"user-directed",salience:0.9,recall_when:["fixture_send_message"]},body:"Fixture rule"} as import("@bastra-recall/core").Memory;
+  const d={...deps,reflexPool:()=>[reflex]};
+  assert.equal(denied(JSON.parse(await runGateLane(payload(sid,"fixture_send_message"),d))),true);
+  assert.equal(denied(JSON.parse(await runGateLane(payload(sid,"fixture_send_message"),d))),false);
+});
+
+test("fix2: stored Stop result declares summary schema and source-adapter boundary", async () => {
+  const result=JSON.parse(await readFile(new URL("../../../tools/probes/codex-rulebook-stop/result-0.162.1.json",import.meta.url),"utf8"));
+  assert.equal(result.artifact_kind,"manual-summary");
+  assert.equal(result.cases[2].hook_client,"inline-source-adapter; not the shipped hook client");
+});
+
+test("fix2: cached staleness is recomputed after TTL with no watcher notification", async t => {
+  const {cachedRulebookCatalog,RULEBOOK_CACHE_TTL_MS}=await import("../src/rulebook-catalog.js");
+  const {parseMemory}=await import("@bastra-recall/core");
+  const now=Date.now();
+  const raw=`---\nid: timed-rule\ntitle: Timed rule\ntype: workflow\nsummary: Fixture\nscope: all-projects\nwrite_origin: user-directed\nrulebook: always\napplies_when: Fixture\nvalid_until: ${new Date(now+86400000).toISOString()}\ntags: []\ntopic_path: [fixture]\nrecall_when: [fixture]\n---\nFixture body`;
+  const m=parseMemory(raw,"",0),vault={get:()=>m,list:()=>[m],on:()=>()=>{}};
+  const opts={project:null,active:[],floors:async()=>[]};
+  t.mock.timers.enable({apis:["Date"],now});
+  assert.equal((await cachedRulebookCatalog(vault,opts)).entries[0].stale_status,"fresh");
+  t.mock.timers.tick(2*86400000+RULEBOOK_CACHE_TTL_MS);
+  assert.equal((await cachedRulebookCatalog(vault,opts)).entries[0].stale_status,"expired");
+});
+
+ test("fix2: expiration after telemetry rolls legacy claims back", async t => {
+  const {mutateSessionState,bookPendingMustLoad,loadSessionState}=await import("../src/session-state.js");
+  const sid="late-telemetry";
+  await mutateSessionState(sid,s=>bookPendingMustLoad(s,["late-hint"],"fixture"));
+  let now=Date.now();t.mock.method(Date,"now",()=>now);
+  const out=await runGateLane(payload(sid),{...deps,telemetry:async()=>{now+=60000;}});
+  assert.equal(out,"{}");
+  assert.equal((await loadSessionState(sid)).pendingMustLoad?.[0]?.id,"late-hint");
+  assert.equal(denied(await gate(sid)),true);
 });
