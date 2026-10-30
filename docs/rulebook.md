@@ -15,7 +15,7 @@ User-directed rules bind immediately. Agent proposals and weakening await user c
 ## Sequence
 
 0. Track scope, milestone, labels and rationale (complete).
-1. Additive schema and projections, runtime defaults without vault migration.
+1. Additive schema and projections, runtime defaults without vault migration (implemented; counter-review pending).
 2. Complete A+B delivery and pagination.
 3. Bounded gate, evidence and measured host coverage.
 4. Replace lexical paths after parity.
@@ -30,3 +30,11 @@ Small always-on context plus a description index and model-loaded bodies follows
 ## Deutsch
 
 Das Regelbuch wird schrittweise gebaut: vollständige Zustellung oder ehrliche Überlaufhinweise und begrenzte Prüfung vor Änderungen. Lesen bleibt frei, autonome Läufe bleiben ohne menschliche Eingabe arbeitsfähig. Semantische Befolgung ist nur mit passenden Validatoren prüfbar. Noch nicht umgesetzte Phasen sind keine Produktgarantie.
+
+## Schema stage
+
+Optional fields are `rulebook: always|on-demand`, `applies_when` (a nonblank description in any language) and `rulebook_proposed: {rulebook, applies_when}`. A new declaration sent to save_memory requires the description; loading an older note without it falls back to its summary. Ordinary refreshes preserve these fields.
+
+Runtime defaults use existing structural membership, without modifying notes: floors → always; active conventions and reflex → on-demand; user-directed user-preference/meta-working → always; user-directed workflow → on-demand. Explicit declarations take priority. Other user-directed facts do not become rules. Obsolete and superseded notes are excluded. Session/floor membership is supplied by the caller; it is not guessed from words.
+
+New user-directed declarations bind as metadata immediately. Other new declarations and edits to existing binding metadata become a separate proposal, preserving the effective declaration. This schema stage does not implement the full authority lifecycle for body edits, archive/supersession or user confirmation surfaces; those must be completed before enforcement is advertised. It does not change the existing rule kernel, gates or host guarantees.

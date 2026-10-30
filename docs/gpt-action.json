@@ -122,6 +122,38 @@
                   "frontmatter": {
                     "type": "object",
                     "properties": {
+                      "rulebook": {
+                        "type": "string",
+                        "enum": [
+                          "always",
+                          "on-demand"
+                        ]
+                      },
+                      "applies_when": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "rulebook_proposed": {
+                        "type": "object",
+                        "properties": {
+                          "rulebook": {
+                            "type": "string",
+                            "enum": [
+                              "always",
+                              "on-demand"
+                            ]
+                          },
+                          "applies_when": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "rulebook",
+                          "applies_when"
+                        ],
+                        "additionalProperties": false
+                      },
                       "summary": {
                         "type": "string",
                         "minLength": 1
@@ -1586,6 +1618,38 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "rulebook": {
+                    "type": "string",
+                    "enum": [
+                      "always",
+                      "on-demand"
+                    ]
+                  },
+                  "applies_when": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "rulebook_proposed": {
+                    "type": "object",
+                    "properties": {
+                      "rulebook": {
+                        "type": "string",
+                        "enum": [
+                          "always",
+                          "on-demand"
+                        ]
+                      },
+                      "applies_when": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "rulebook",
+                      "applies_when"
+                    ],
+                    "additionalProperties": false
+                  },
                   "title": {
                     "type": "string",
                     "minLength": 1

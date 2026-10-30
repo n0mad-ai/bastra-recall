@@ -92,6 +92,8 @@ export {
   isVaultRelativePath,
   DerivedClaimSchema,
   ConventionValidatorSchema,
+  RulebookSchema,
+  RulebookProposalSchema,
 } from "./schema.js";
 export type { ConventionValidator, DerivedClaim, Memory, MemoryType, Frontmatter } from "./schema.js";
 
@@ -269,3 +271,6 @@ export type {
   CopyBlocksUnitApplied,
   CopyBlocksNormalize,
 } from "./copy-blocks.js";
+
+export { resolveRulebook } from "./rulebook.js";
+export type { RulebookDeclaration, RulebookLegacyContext } from "./rulebook.js";

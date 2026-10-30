@@ -4,11 +4,12 @@
  * re-exports everything, so the existing import paths keep working.
  */
 import { z } from "zod";
-import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
+import { stripAutoRelatedSection, FUNCTION_WORDS, resolveRulebook } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
+import { listFloors } from "./floors.js";
 import { readConventionSource } from "./convention-source.js";
-import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
+import { clearPendingMustLoad, touchLoadedMarker, loadSessionState } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
@@ -86,6 +87,9 @@ const LEAN_FRONTMATTER_KEYS = [
   // separate, ephemeral `derived` block returned by load_memory.
   "derived_claims",
   "validator",
+  "rulebook",
+  "applies_when",
+  "rulebook_proposed",
 ] as const;
 
 /** Projiziert die volle Frontmatter auf die lean-Teilmenge. Unbekannte/
@@ -197,6 +201,20 @@ export async function loadMemoryHandler(
   const fm: Record<string, unknown> = { ...m.fm };
   delete fm.validator;
   if (source.validator) fm.validator = source.validator;
+  // Project current declarations and runtime legacy membership, never rewrite
+  // the source file just to add new optional schema fields.
+  if (source.rulebookMetadata) {
+    delete fm.rulebook; delete fm.applies_when; delete fm.rulebook_proposed;
+    Object.assign(fm, source.rulebookMetadata);
+  }
+  const sessionId = ctx?.sessionId ?? callerSessionStore.getStore();
+  const state = sessionId ? await loadSessionState(sessionId) : undefined;
+  const floors = await listFloors();
+  const declaration = resolveRulebook({ ...m.fm, ...fm }, {
+    activeConvention: state?.activeConventions?.some((c) => c.id === m.fm.id),
+    floor: floors.some((f) => f.memory_id === m.fm.id),
+  });
+  if (declaration) Object.assign(fm, declaration);
   // verify-Loop: ein Commons-Rezept, das geladen (und gleich angewendet)
   // wird, bringt seine Evidenz + die Aufforderung mit, das Ergebnis zu
   // verewigen — der Agent schließt den Kreis am Ort des Geschehens.

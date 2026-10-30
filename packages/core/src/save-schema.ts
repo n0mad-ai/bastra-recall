@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import type { MemoryLocator } from "./memory-locator.js";
-import { ConventionValidatorSchema, DerivedClaimSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
+import { ConventionValidatorSchema, DerivedClaimSchema, RulebookSchema, RulebookProposalSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
 import { isPathSafeFolder } from "./save-text.js";
 
 /**
@@ -24,6 +24,9 @@ import { isPathSafeFolder } from "./save-text.js";
  * layer that knows where the predecessor lives.
  */
 export const SaveMemoryInput = z.object({
+  rulebook: RulebookSchema.optional(),
+  applies_when: z.string().trim().min(1).optional(),
+  rulebook_proposed: RulebookProposalSchema.optional(),
   title: z.string().min(1),
   type: MemoryTypeEnum,
   // No `.max` here on purpose: an over-long summary is clamped in
@@ -193,6 +196,10 @@ export const SaveMemoryInput = z.object({
   og_image: z.string().optional(),
   saved_at: z.string().optional(),
   source_app: z.string().optional(),
+}).superRefine((input, ctx) => {
+  if (input.rulebook !== undefined && input.applies_when === undefined) {
+    ctx.addIssue({ code: "custom", path: ["applies_when"], message: "New rulebook declarations require applies_when in the user's language" });
+  }
 });
 export type SaveMemoryInput = z.infer<typeof SaveMemoryInput>;
 

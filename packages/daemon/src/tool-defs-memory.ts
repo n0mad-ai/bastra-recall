@@ -38,6 +38,16 @@ const VALIDATOR_INPUT = {
   description: "Explicit mechanical validator for this convention. Omit to preserve on overwrite; null removes it. No validator is inferred from prose or channel names.",
 };
 
+/** New declarations need a description; MCP edits stage proposals. */
+const RULEBOOK_INPUT = { type: "string", enum: ["always", "on-demand"],
+  description: "Rule delivery tier. New saves require applies_when. Only an explicitly user-directed new declaration binds; agent declarations and edits remain proposals." };
+const APPLIES_WHEN_INPUT = { type: "string", minLength: 1,
+  description: "One sentence describing when this rule applies, in the user's language. No keyword list. Required for a new rulebook declaration." };
+const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: false,
+  properties: { rulebook: RULEBOOK_INPUT, applies_when: APPLIES_WHEN_INPUT },
+  required: ["rulebook", "applies_when"],
+  description: "Unconfirmed proposal. Excluded from the binding catalog and catalog hash until user confirmation in CLI/UI." };
+
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
     name: "recall",
@@ -412,6 +422,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "spends the strongest signal on text that is indexed anyway. " +
             "Name the situation, not the content.",
         },
+        rulebook: RULEBOOK_INPUT,
+        applies_when: APPLIES_WHEN_INPUT,
+        rulebook_proposed: RULEBOOK_PROPOSED_INPUT,
         validator: VALIDATOR_INPUT,
         verify_cmd: {
           type: "string",
@@ -651,7 +664,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "- append: add text at the end of the body (it lands before the " +
       "auto-related block, never inside it).\n" +
       "- frontmatter: patch summary, recall_when, tags, issues, related, " +
-      "confidence, valid_until or validator (null removes it). Nothing else — id, scope, type, sensitivity " +
+      "confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator (null removes it). Nothing else — id, scope, type, sensitivity " +
       "and write_origin are rejected here and belong to save_memory or a " +
       "dedicated tool. A list field (recall_when, tags, issues, related) " +
       "REPLACES the whole list: to add a trigger, send the existing entries " +
@@ -709,6 +722,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             related: { type: "array", items: { type: "string" } },
             confidence: { type: "number" },
             valid_until: { type: "string" },
+            rulebook: RULEBOOK_INPUT,
+            applies_when: APPLIES_WHEN_INPUT,
+            rulebook_proposed: RULEBOOK_PROPOSED_INPUT,
             validator: VALIDATOR_INPUT,
           },
         },

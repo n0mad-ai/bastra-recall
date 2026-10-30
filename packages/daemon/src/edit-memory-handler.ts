@@ -52,6 +52,8 @@ import { z } from "zod";
 import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
+  RulebookSchema,
+  RulebookProposalSchema,
   memoryRevision,
   mutateMemoryFile,
   type Memory,
@@ -75,6 +77,9 @@ import type { ToolDeps } from "./tool-deps.js";
  */
 const FrontmatterPatch = z
   .object({
+    rulebook: RulebookSchema.optional(),
+    applies_when: z.string().trim().min(1).optional(),
+    rulebook_proposed: RulebookProposalSchema.optional(),
     summary: z.string().min(1).optional(),
     recall_when: z.array(z.string().min(1)).min(1).optional(),
     tags: z.array(z.string().min(1)).min(1).optional(),
@@ -357,7 +362,19 @@ export async function editMemoryHandler(
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
         dropped = droppedListEntries(fm, args.frontmatter);
-        const next = { ...fm, ...(args.frontmatter ?? {}), updated: today };
+        const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), updated: today };
+        // MCP edits cannot confirm a binding metadata change. Keep the
+        // effective declaration and stage the requested replacement separately.
+        const patch = args.frontmatter;
+        if (patch?.rulebook !== undefined || patch?.applies_when !== undefined) {
+          const rulebook = patch.rulebook ?? fm.rulebook;
+          const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
+          const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when });
+          if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
+          if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
+          if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
+          next.rulebook_proposed = proposal.data;
+        }
         if (next.validator === null) delete next.validator;
         return next;
       },

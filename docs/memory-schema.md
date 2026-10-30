@@ -36,6 +36,10 @@ Legacy flat vaults still load because scanning is recursive and does not require
 
 The active text index is in-memory MiniSearch/BM25. Optional embeddings are stored at `<vault>/.bastra/embeddings.json`. Audit logs and trash are stored under `<vault>/.bastra/`.
 
+### Rulebook metadata (additive)
+
+Optional `rulebook: always|on-demand` selects the delivery tier. `applies_when` is a nonblank description in the user's language; new declarations require it, while older loaded notes can use their summary. `rulebook_proposed: {rulebook, applies_when}` stores unconfirmed metadata separately. Existing files need no migration. See [rulebook scope and implementation status](rulebook.md#schema-stage); schema support does not imply that the new delivery/gate is already implemented.
+
 ### Minimal Frontmatter
 
 All normal memories and document sidecars share these required fields:
@@ -692,6 +696,9 @@ No 1.x release rewrites existing files in bulk to produce its own format. Where 
 <a id="deutsch"></a>
 
 ## Deutsch
+
+Optionale Regelbuch-Felder: `rulebook: always|on-demand`, die Anwendungsbeschreibung `applies_when` und getrennte Vorschläge in `rulebook_proposed: {rulebook, applies_when}`. Neue Deklarationen brauchen die Beschreibung, bestehende Dateien werden nicht migriert. Der [Umsetzungsstand](rulebook.md#schema-stage) unterscheidet Schema-Unterstützung von späterer Zustellung und Durchsetzung.
+
 
 Dieses Schema beschreibt eine gespeicherte Erinnerung oder einen Dokument-Sidecar. Dateien sind reines Markdown mit YAML-Frontmatter, damit sie in Obsidian und von Hand bearbeitbar bleiben.
 

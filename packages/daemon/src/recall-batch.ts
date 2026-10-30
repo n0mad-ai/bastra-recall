@@ -18,7 +18,7 @@
  * predecessors without changing the selected single-query scores (#1206).
  */
 import type { DraftHit } from "./draft-search.js";
-import { visitSupersession, type Vault } from "@bastra-recall/core";
+import { visitSupersession, resolveRulebook, type Frontmatter, type Vault } from "@bastra-recall/core";
 
 import { RRF_K } from "@bastra-recall/core/rrf";
 
@@ -254,12 +254,18 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
   };
 }
 
-/** The forwarder has no vault: carry this edge through both wire projections.
- * Only an already retrieved target can affect the eventual merged ordering.
+/** The forwarder has no vault: carry the edge and additive rulebook metadata
+ * through both wire projections. Only an already retrieved target can affect
+ * the eventual merged ordering.
  */
-export function withSupersession<T extends { id: string }>(hit: T, vault: Vault): T & { superseded_by?: string } {
-  const successor = vault.get(hit.id)?.fm.superseded_by;
-  return successor ? { ...hit, superseded_by: successor } : hit;
+export function withSupersession<T extends { id: string }>(hit: T, vault: Vault): T &
+  Pick<Frontmatter, "superseded_by" | "rulebook" | "applies_when" | "rulebook_proposed"> {
+  const fm = vault.get(hit.id)?.fm;
+  if (!fm) return hit;
+  const declaration = resolveRulebook(fm);
+  return { ...hit, ...declaration,
+    ...(fm.rulebook_proposed ? { rulebook_proposed: fm.rulebook_proposed } : {}),
+    ...(fm.superseded_by ? { superseded_by: fm.superseded_by } : {}) };
 }
 
 function orderSuperseded(hits: BatchHit[]): BatchHit[] {

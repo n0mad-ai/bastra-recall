@@ -13,7 +13,7 @@
  * unterscheidet, sind Parameter (Floor, ob ein Aufrufer-Projekt vorliegt) —
  * nicht der Code.
  */
-import type { RecallHit, Vault } from "@bastra-recall/core";
+import { resolveRulebook, type RecallHit, type Vault } from "@bastra-recall/core";
 import { truncateSummary } from "./recall-handler.js";
 import { applyLaneScopeFilter, laneScopeFilterMode, vaultKnowsProject, type ScopeFilterMode } from "./scope-filter.js";
 import { MUST_LOAD_SCORE } from "./prompt-lane.js";
@@ -21,6 +21,8 @@ import { MUST_LOAD_SCORE } from "./prompt-lane.js";
 /** Ein Reflex-Treffer aus dem Kandidatenpool, in der Form, die
  *  `/hook/recall` seit 20.08. als `reflex_hits` liefert. */
 export interface PoolReflexHit {
+  rulebook?: "always" | "on-demand";
+  applies_when?: string;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;
@@ -61,6 +63,7 @@ export function collectPoolReflexHits(
       score: c.score,
       matched_recall_when: false as const,
       recall_mode: "reflex" as const,
+      ...resolveRulebook(mem.fm),
       ...(mem.fm.validator ? { validator: mem.fm.validator } : {}),
     }];
   });

@@ -13,7 +13,7 @@
  * (`save-target.ts`), ob geschrieben werden darf (`save-commit.ts`) und wie
  * der Text serialisiert wird (der Aufrufer).
  */
-import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema } from "./schema.js";
+import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RulebookSchema, RulebookProposalSchema } from "./schema.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -82,6 +82,9 @@ export const SAVE_MANAGED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "verify_cmd",
   "derived_claims",
   "validator",
+  "rulebook",
+  "applies_when",
+  "rulebook_proposed",
   "superseded_by",
   "salience",
   "emotion",
@@ -230,6 +233,7 @@ export function buildFrontmatter(
     ),
     ...(input.validator === null ? {} : optional("validator", input.validator,
       (value) => ConventionValidatorSchema.safeParse(value).success)),
+    ...rulebookFrontmatter(input, prev),
     ...optional("superseded_by", undefined, isStr),
     confidence: input.confidence ?? kept(prev.confidence, isNum) ?? 1,
     // #217: `!= null` statt truthy — salience 0 ist ein gültiger Wert.
@@ -285,4 +289,29 @@ export function buildFrontmatter(
   }
 
   return { fm, summaryTruncated };
+}
+
+/** A new agent declaration is a proposal; changing existing binding metadata
+ * also preserves the binding values. Confirmation belongs to a user surface. */
+function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const existing = RulebookSchema.safeParse(prev.rulebook);
+  if (existing.success) out.rulebook = existing.data;
+  if (typeof prev.applies_when === "string") out.applies_when = prev.applies_when;
+  const previousProposal = RulebookProposalSchema.safeParse(prev.rulebook_proposed);
+  if (previousProposal.success) out.rulebook_proposed = previousProposal.data;
+  if (input.rulebook_proposed) out.rulebook_proposed = input.rulebook_proposed;
+  if (input.rulebook !== undefined) {
+    if (!input.applies_when?.trim()) throw new Error("New rulebook declarations require applies_when");
+    const declaration = { rulebook: input.rulebook, applies_when: input.applies_when.trim() };
+    if (!existing.success && input.write_origin === "user-directed") {
+      Object.assign(out, declaration);
+    } else if (existing.success && existing.data === input.rulebook && prev.applies_when === input.applies_when) {
+      // An identical refresh never creates a redundant proposal.
+    } else out.rulebook_proposed = declaration;
+  } else if (input.applies_when !== undefined) {
+    if (existing.success) out.rulebook_proposed = { rulebook: existing.data, applies_when: input.applies_when };
+    else out.applies_when = input.applies_when;
+  }
+  return out;
 }
