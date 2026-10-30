@@ -109,7 +109,13 @@ test("passive owner displays are quiet and acknowledged unfinished work resurfac
   const f = await fixture(); try {
     const { taskAttachment } = await import("../src/task-delivery.js");
     const first = await taskAttachment(f.ctx, `Bearer ${f.owner.token}`, "one", "prompt"); assert.ok(first); first.record();
-    await new Promise(resolve => setTimeout(resolve, 30)); const bytes = await import("node:fs/promises").then(fs => fs.readFile(f.ctx.path, "utf8"));
+    // record() deliberately queues durable IO; a fixed 30ms sleep races under load.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if ((await readTaskStore(f.ctx.path)).occurrences[0].attempts.length > 0) break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].attempts.length, 1, "first delivery must finish before testing that quiet reads do not write");
+    const bytes = await import("node:fs/promises").then(fs => fs.readFile(f.ctx.path, "utf8"));
     for (let i = 0; i < 6; i++) assert.equal(await taskAttachment(f.ctx, `Bearer ${f.owner.token}`, `two-${i}`, "prompt"), undefined);
     assert.equal(await import("node:fs/promises").then(fs => fs.readFile(f.ctx.path, "utf8")), bytes);
     let s = await readTaskStore(f.ctx.path); await callTaskCrud(f.ctx, `Bearer ${f.owner.token}`, "task_acknowledge", { id: s.tasks[0].id, expected_revision: `${s.recovery_epoch}:${s.tasks[0].revision}`, occurrence_id: s.occurrences[0].id });
