@@ -70,7 +70,7 @@ test("#1332 follow-up: bootstrap failure distinguishes a previously unloaded ser
  const {o,service}=await fixture(t);await setupAssistantAddress(o);service.loaded=false;
  await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await p.onSettled?.(false);throw Error("bootstrap failed");}}),/weiterhin nicht geladen|bereits entladen/i);assert.equal((await assistantAddressStatus(o)).partial,false);
  await writeFile(o.helperPath,(await readFile(o.helperPath,"utf8"))+"<!-- old version -->");
- await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await writeFile(o.helperPath,p.helperAfter!);await p.onSettled?.(false);throw Error("bootstrap failed");}}),/weiterhin nicht geladen/i);assert.equal((await assistantAddressStatus(o)).partial,true);
+ await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await writeFile(o.helperPath,p.helperAfter!);await p.onSettled?.(false);throw Error("bootstrap failed");}}),/derzeit nicht geladen/i);assert.equal((await assistantAddressStatus(o)).partial,true);
 });
 test("#1332 follow-up: full uninstall can clear a local partial intent when system cleanup is already done",async t=>{
  const {cmdUninstall,parseArgs}=await import("../src/cli/commands.js"),{ADAPTERS}=await import("../src/cli/registry.js");assert.ok(cmdUninstall.length>=2,"isolated address IO must exist before invoking full uninstall");assert.ok(process.env.BASTRA_TEST_RUN_ROOT);
@@ -96,4 +96,20 @@ test("release D: uninstall reports damaged address state instead of throwing",as
  const {cmdUninstall,parseArgs}=await import("../src/cli/commands.js");const {o}=await fixture(t);
  t.mock.method(process.stderr,"write",()=>true);await writeFile(o.hostsPath,"# bastra-recall assistant-address 501 broken\n");
  assert.equal(await cmdUninstall(parseArgs(["uninstall","all"]),{address:o}),1);
+});
+
+test("#1332 point 6: replacing repeated partial retries removes intermediate receipts",async t=>{
+ const {readdir}=await import("node:fs/promises");const {o,service}=await fixture(t);await setupAssistantAddress(o);await stopAndFail(o,service);
+ const original=JSON.parse(await readFile(join(o.runtimeDir,"pending-admin.json"),"utf8"));
+ for(let i=0;i<3;i++){
+  await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await writeFile(o.helperPath,p.helperAfter+`<!-- partial ${i} -->`);await p.onSettled?.(false);throw Error("partial retry");}}));
+  const active=JSON.parse(await readFile(join(o.runtimeDir,"pending-admin.json"),"utf8")),receipts=(await readdir(o.runtimeDir)).filter(n=>n.startsWith("admin-result-"));
+  assert.deepEqual(receipts.sort(),[`admin-result-${original.id}.json`,`admin-result-${active.id}.json`].sort());
+ }
+ await setupAssistantAddress(o);assert.deepEqual((await readdir(o.runtimeDir)).filter(n=>n.startsWith("admin-result-")),[]);
+});
+test("#1332 point 7: restored recovery reports the current unloaded service without stale history",async t=>{
+ const {o,service}=await fixture(t);await setupAssistantAddress(o);await stopAndFail(o,service);
+ await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{await p.onSettled?.(false);throw Error("cancelled");}}));
+ const s=await assistantAddressStatus(o);assert.match(s.error??"",/derzeit nicht geladen/);assert.doesNotMatch(s.error??"",/Helfer gestoppt/);
 });

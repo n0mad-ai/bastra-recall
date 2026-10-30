@@ -131,13 +131,18 @@ async function finishIntent(o:ReturnType<typeof assistantAddressOptions>,p:Pendi
  }
  await forgetPending(o,p);
 }
-async function partialDescription(o:ReturnType<typeof assistantAddressOptions>,p?:PendingAddress){
- if(!p){const raw=await optional(pendingPath(o));if(raw)p=JSON.parse(raw)as PendingAddress;}
+async function partialDescription(o:ReturnType<typeof assistantAddressOptions>){
  const loaded=await assistantHelperLoaded(o);
- if(loaded===false&&p?.helperLoadedBefore===false)return "Helfer weiterhin nicht geladen; Dateien oder lokaler Zustand teilweise geändert.";
- if(loaded===false&&p?.helperLoadedBefore===true)return "Helfer gestoppt; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
- if(loaded===false)return "Helfer nicht geladen; vorheriger Dienstzustand unbekannt.";
- return "Dienst-/Dateizustand nicht vollständig abgeglichen; kein vollständiger Erfolg bestätigt.";
+ if(loaded===false)return "Helfer derzeit nicht geladen; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
+ if(loaded===true)return "Helfer derzeit geladen; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
+ return "Aktueller Dienstzustand unbekannt; Dateien oder lokaler Zustand noch nicht vollständig abgeglichen.";
+}
+async function replacePending(o:ReturnType<typeof assistantAddressOptions>,p:PendingAddress){
+ const raw=await optional(pendingPath(o)),old=raw?JSON.parse(raw)as PendingAddress:null;
+ if(old)validatePending(o,old);
+ // Keep the old evidence until its replacement is durable; retain the origin receipt.
+ await atomic(pendingPath(o),JSON.stringify(p)+"\n");
+ if(old && old.id!==p.recoveryOf?.intent.id)await rm(receiptPath(o,old.id),{force:true});
 }
 /** Durable intent survives a lost osascript response and a daemon restart.
  * No root work is retried here: only exact observed system outputs are adopted. */
@@ -199,7 +204,7 @@ async function setupAssistantAddressUnlocked(options:AssistantAddressOptions&{na
  const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
  const previousName=await getAssistantName(o.settingsPath),firefoxOwnedPrefs=await firefoxOwnership(o,name,profiles);
  const pending:PendingAddress={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name,previousName,profiles,desiredState:{version:2,name,firefoxOwnedPrefs,firefoxFiles:profiles.filter(p=>p.path.endsWith(sep+"user.js")).map(p=>p.path)}};
- await atomic(pendingPath(o),JSON.stringify(pending)+"\n");
+ await replacePending(o,pending);
  try{await(o.runAdmin??runMacAddressAdmin)({...plan,onStarted:async pid=>{pending.adminPid=pid;await atomic(pendingPath(o),JSON.stringify(pending)+"\n");},onSettled:async success=>atomic(receiptPath(o,pending.id),JSON.stringify({success})+"\n")});}
  catch(error){
   const result=await reconcileAssistantAddress(o);
@@ -237,7 +242,7 @@ async function removeAssistantAddressUnlocked(options:AssistantAddressOptions={}
   if(!o.systemConsent)throw new Error("Entfernen der Systemadresse braucht Zustimmung (system consent)");if(o.platform!=="darwin")throw new Error("Systemadresse durch den Administrator entfernen");
   const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter:ownedHelper?null:helperBefore,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
   pending={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name:null,previousName:await getAssistantName(o.settingsPath),profiles,desiredState:null};
-  await atomic(pendingPath(o),JSON.stringify(pending)+"\n");const id=pending.id;
+  await replacePending(o,pending);const id=pending.id;
   try{await(o.runAdmin??runMacAddressAdmin)({...plan,onStarted:async pid=>{pending!.adminPid=pid;await atomic(pendingPath(o),JSON.stringify(pending)+"\n");},onSettled:async success=>atomic(receiptPath(o,id),JSON.stringify({success})+"\n")});}
   catch{const result=await reconcileAssistantAddress(o);if(result==="completed")return;if(result==="partial")throw new Error(`Entfernen nur teilweise ausgeführt: ${await partialDescription(o)} bastra address setup <name> --yes stellt die Adresse wieder her.`);if(result==="none")throw new Error("Entfernen abgebrochen oder fehlgeschlagen, nichts geändert.");throw new Error("Entfernen nicht abschließend bestätigt; bastra address status prüft den tatsächlichen Zustand. Nicht parallel wiederholen.");}
  }
