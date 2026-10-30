@@ -19,7 +19,7 @@
 import { readFile } from "node:fs/promises";
 import type { Memory, Vault } from "@bastra-recall/core";
 import { computeStaleness, memoryRevision, stripAutoRelatedSection, type StaleStatus } from "@bastra-recall/core";
-import { stripFenceMarkers } from "@bastra-recall/core/scrub";
+import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-recall/core/scope";
 import { listFloors, type FloorEntry } from "./floors.js";
 import { isReflexPoolMember } from "./reflex.js";
@@ -128,7 +128,7 @@ export async function collectRuleKernel(
         revision,
         updated: typeof m.fm.updated === "string" ? m.fm.updated : null,
         stale_status: computeStaleness(m.fm),
-        body: stripFenceMarkers(stripAutoRelatedSection(m.body ?? "").trim()),
+        body: cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim(),
       };
     }),
   );
@@ -141,8 +141,11 @@ async function defaultFloors(project: string | null): Promise<FloorEntry[]> {
   return project ? all : all.filter((e) => !e.scope);
 }
 
+function cleanRuleText(s: string): string {
+  return stripFenceMarkers(s.replace(/\r\n?/g,"\n").replace(/\t/g,"    ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,""));
+}
 function oneLine(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
+  return cleanRuleText(s).replace(/\s+/g, " ").trim();
 }
 
 function entryHead(e: KernelEntry): string {
@@ -152,7 +155,7 @@ function entryHead(e: KernelEntry): string {
   );
 }
 
-const degradedLine = (e: KernelEntry): string => `degraded: load_memory(${e.id})`;
+const degradedLine = (e: KernelEntry): string => `[${e.group}] ${e.id} degraded: load_memory(${e.id})`;
 
 export interface RenderedKernel {
   /** "" when there is nothing to deliver. */
@@ -170,23 +173,28 @@ export function renderRuleKernel(
   candidates: KernelCandidates,
   opts: { trigger: string; lexicalOnly?: boolean },
 ): RenderedKernel {
-  if (!candidates.entries.length) return { text: "", full: [], degraded: [], omitted: 0 };
-  const open = `<rule-kernel trigger="${opts.trigger}">`;
-  const intro = `Rules in force (${opts.trigger}): complete texts below in priority order. ` +
-    `Degraded IDs require load_memory(id) before acting; additional rules may be omitted by the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
-  const lines = [open, intro, ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : [])];
-  const tail = [RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
+  const total=candidates.entries.length+candidates.omitted;
+  const empty={text:"",full:[],degraded:[],omitted:total};
+  if (!candidates.entries.length) return empty;
+  const trigger=oneLine(opts.trigger).replaceAll('"',"&quot;");
+  const open = `<rule-kernel trigger="${trigger}">`;
+  const intro=(full:number,degraded:number,omitted:number)=>`Rules (${trigger}): ${full} of ${total} full; ${degraded} ID-only; ${omitted} omitted. `+
+    `Priority: active conventions, floors, reflex, user-directed. Load ID-only rules before acting.`;
+  // Reserve the widest possible count line before selecting complete rules.
+  const lines = [open, intro(total,total,total), ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">',HINT_FRAME_NOTE];
+  const tail = ["</recall-hints>",RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
   const omittedLine = (n: number) => `+${n} more rule(s) not listed: over the ${RULE_KERNEL_CHAR_BUDGET}-character bound.`;
-  const reserve = omittedLine(candidates.entries.length + candidates.omitted).length + 1;
+  const reserve = omittedLine(total).length + 1;
   let used = [...lines, ...tail].join("\n").length;
   const groups: KernelGroup[] = ["active-convention", "floor", "reflex", "user-directed"];
-  const entries = candidates.entries.map((e, i) => ({ e, i }))
+  const entries = candidates.entries.map((e, i) => ({ e:{...e,id:oneLine(e.id),title:oneLine(e.title),revision:e.revision?oneLine(e.revision):null,updated:e.updated?oneLine(e.updated):null,body:cleanRuleText(e.body).trim()}, i }))
     .sort((a, b) => groups.indexOf(a.e.group) - groups.indexOf(b.e.group) || a.i - b.i).map(({ e }) => e);
   const full: string[] = [], deferred: KernelEntry[] = [], degraded: string[] = [];
   for (const e of entries) {
-    const cost = entryHead(e).length + e.body.length + 2;
+    const body=e.body.split("\n").map(line=>"  "+line).join("\n");
+    const cost = entryHead(e).length + body.length + 2;
     if (!e.body || used + cost + reserve > RULE_KERNEL_CHAR_BUDGET) { deferred.push(e); continue; }
-    lines.push(entryHead(e), e.body); full.push(e.id); used += cost;
+    lines.push(entryHead(e), body); full.push(e.id); used += cost;
   }
   for (const e of deferred) {
     const line = degradedLine(e);
@@ -194,6 +202,8 @@ export function renderRuleKernel(
     lines.push(line); degraded.push(e.id); used += line.length + 1;
   }
   const omitted = candidates.omitted + deferred.length - degraded.length;
+  if(!full.length&&!degraded.length)return empty;
+  lines[1]=intro(full.length,degraded.length,omitted);
   if (omitted) lines.push(omittedLine(omitted));
   lines.push(...tail);
   return { text: lines.join("\n"), full, degraded, omitted };
