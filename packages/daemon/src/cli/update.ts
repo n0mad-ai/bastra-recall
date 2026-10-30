@@ -402,6 +402,7 @@ export interface UpdateIo extends UpdateRuntimeIo {
   clearBlocked?: typeof clearBlockedUpdate;
   install?: typeof cmdInstall;
   refresh?: typeof refreshManagedAutostart;
+  refreshAddress?: typeof refreshAssistantAddressRuntime;
   ask?: typeof askModelRecommendation;
   service?: typeof autostartService;
 }
@@ -683,7 +684,10 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
   }
 
   // Refresh the already-owned unprivileged UI helper without a new admin grant.
-  if (!args.dryRun) await refreshAssistantAddressRuntime();
+  if (!args.dryRun) {
+    try { await (io.refreshAddress ?? refreshAssistantAddressRuntime)(); }
+    catch (error) { process.stderr.write(`warning: assistant address runtime refresh failed: ${(error as Error).message}. Run bastra address setup --yes from the updated installation.\n`); }
+  }
 
   // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
   //

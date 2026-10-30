@@ -136,3 +136,9 @@ test("provenance audit uses the same shell-free Windows npm invocation", () => {
   assert.deepEqual(f.calls[0].args, [npmCli, "audit", "signatures"]);
   assert.equal((f.calls[0].opts as { cwd: string }).cwd, root);
 });
+
+ test("release C: missing old assistant runtime does not abort managed update refresh", async t => {
+  t.mock.method(process.stdout,"write",()=>true);let warning="";t.mock.method(process.stderr,"write",(s:any)=>{warning+=s;return true;});
+  const f=fixture();(f.io as any).refreshAddress=async()=>{throw Object.assign(Error("old runtime missing"),{code:"ENOENT"});};
+  assert.equal(await cmdUpdate(parseArgs(["update","--staged"]),f.io),0);assert.equal(f.refreshes.length,1);assert.match(warning,/assistant|Assistent/i);
+ });

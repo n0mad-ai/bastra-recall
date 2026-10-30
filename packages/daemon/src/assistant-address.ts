@@ -15,12 +15,14 @@ import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
 export interface AssistantAddressOptions {
- machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
+ usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
  runAdmin?:(plan:AddressAdminPlan)=>Promise<void>;ensureRuntime?:()=>Promise<void>;
 }
 export function assistantAddressOptions(o:AssistantAddressOptions={}) {
  const home=o.home??homedir(),uid=o.uid??String(process.getuid?.()??0),platform=o.platform??process.platform;
- return {...o,home,uid,platform,username:o.username??userInfo().username,settingsPath:o.settingsPath??settingsFilePath(),runtimeDir:o.runtimeDir??join(home,".bastra","assistant-address"),
+ let username=o.username;
+ if(username===undefined)try{username=(o.usernameLookup??(()=>userInfo().username))();}catch{username="";}
+ return {...o,home,uid,platform,username,settingsPath:o.settingsPath??settingsFilePath(),runtimeDir:o.runtimeDir??join(home,".bastra","assistant-address"),
  hostsPath:o.hostsPath??(platform==="win32"?join(process.env.SystemRoot??"C:\\Windows","System32","drivers","etc","hosts"):"/etc/hosts"),
  helperPath:o.helperPath??`/Library/LaunchDaemons/ai.n0mad.bastra-recall.address.${uid}.plist`,
  firefoxRoot:o.firefoxRoot??(platform==="darwin"?join(home,"Library","Application Support","Firefox"):platform==="win32"?join(process.env.APPDATA??home,"Mozilla","Firefox"):join(home,".mozilla","firefox")),daemonUrl:o.daemonUrl??resolveDaemonEndpoint().baseUrl};

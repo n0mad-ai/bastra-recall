@@ -91,3 +91,9 @@ test("release B: an expired intent without a living admin process stops blocking
  const path=join(o.runtimeDir,"pending-admin.json"),p=JSON.parse(await readFile(path,"utf8"));p.createdAt=Date.now()-3600000;p.adminPid=2147483647;p.ownerPid=2147483647;await writeFile(path,JSON.stringify(p));
  assert.equal((await assistantAddressStatus(o)).pending,false);await setupAssistantAddress(o);assert.equal((await assistantAddressStatus(o)).pending,false);
 });
+
+test("release D: uninstall reports damaged address state instead of throwing",async t=>{
+ const {cmdUninstall,parseArgs}=await import("../src/cli/commands.js");const {o}=await fixture(t);
+ t.mock.method(process.stderr,"write",()=>true);await writeFile(o.hostsPath,"# bastra-recall assistant-address 501 broken\n");
+ assert.equal(await cmdUninstall(parseArgs(["uninstall","all"]),{address:o}),1);
+});

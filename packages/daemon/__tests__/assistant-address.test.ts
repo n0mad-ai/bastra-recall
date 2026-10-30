@@ -51,3 +51,13 @@ test("#1332: address CLI flags/help cover consent and a dry-run does not install
  assert.match(COMMAND_HELP.address,/browser|Browser/);assert.match(COMMAND_HELP.address,/--yes/);
  assert.deepEqual(parseArgs(["config","set","assistant.name","Jarvis"]).errors,[]);
 });
+
+test("release D: UID prefixes in foreign hosts and Firefox markers remain foreign",()=>{
+ const foreign=patchAssistantHosts("","ruby","10001");assert.equal(patchAssistantHosts(foreign,null,"1000"),foreign);
+ const prefs=patchFirefoxUserJs("","ruby","10001");assert.equal(patchFirefoxUserJs(prefs,null,"1000"),prefs);
+});
+test("release D: missing passwd entry does not prevent address defaults",async()=>{
+ const {assistantAddressOptions}=await import("../src/assistant-address.js");
+ const options=assistantAddressOptions({usernameLookup:()=>{throw Error("uv_os_get_passwd ENOENT");}} as any);
+ assert.equal(options.username,"");
+});

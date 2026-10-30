@@ -7,7 +7,7 @@ function owned(text: string, owner: string, comment: string) {
   const starts = [...text.matchAll(new RegExp(`^${marker} begin(?: joined)?\\r?$`, "gm"))];
   const ends = [...text.matchAll(new RegExp(`^${marker} end\\r?$`, "gm"))];
   if (!starts.length && !ends.length) {
-    if (text.includes(marker)) throw new Error("damaged managed address marker");
+    if (text.split(/\r?\n/).some(line => line === marker || line.startsWith(marker + " "))) throw new Error("damaged managed address marker");
     return { base: text, body: "", marker };
   }
   if (starts.length !== 1 || ends.length !== 1 || ends[0].index! <= starts[0].index!) throw new Error("damaged managed address block");

@@ -375,6 +375,7 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 }
 
 export async function cmdUninstall(args: ParsedArgs,io?:{address?:AssistantAddressOptions;notify?:()=>Promise<void>}): Promise<number> {
+  try {
   if(args.surface === "all" && await hasManagedAssistantAddress(io?.address)) {
     if(args.dryRun) process.stdout.write("→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n");
     else {
@@ -383,6 +384,7 @@ export async function cmdUninstall(args: ParsedArgs,io?:{address?:AssistantAddre
       try{await removeAssistantAddress({...io?.address,systemConsent:needs});await(io?.notify??notifyAssistantAddressDaemon)();}catch(e){process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);return 1;}
     }
   }
+  } catch(e) { process.stderr.write(`Assistenten-Adresse nicht geprüft/entfernt: ${(e as Error).message}. bastra address status prüfen.\n`);return 1; }
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
     process.stderr.write(`error: ${targets.error}\n`);
