@@ -128,3 +128,12 @@ The Bash AST classifier does not resolve aliases, variables used as command name
 No live-vault rule currently declares `rule_categories` (read-only source scan, 2026-10-30); existing GitHub rules therefore still use the legacy lookup. The suggested next step is a `bastra rules review` workflow to assign categories. It is not implemented in this phase. No new native host probe or Phase 5 semantic certification was performed.
 
 Exceptions now require an exact outstanding ID and at least ten characters of substantive explanation (not punctuation alone). Their IDs are retained for the next prompt as explicit exceptions, in addition to the existing audit and unchecked counter. This is a deliberately simple quality floor, not semantic verification of the explanation.
+
+
+## Phase 4 fix 3: task channel and copy candidates
+
+Stop repair selects only the validator of the rule that started the current task (`validatorRuleId`, preserved across review/approval and state reload). If no such usable binding exists, it selects the valid validator with the latest load/activation timestamp. One matching receipt for this channel suffices; unrelated loaded validators do not force extra receipts or their limits onto the copy. Prompt task candidates, explicitly applicable model task rules and the legacy draft question can establish the binding.
+
+All prose outside fences/quotes is also a copy candidate. The largest candidate wins, so a short fenced or quoted decoy cannot hide oversized prose. Without an established task the repair still does not run; a model can omit task creation where the user/legacy transition does not supply it. This is explicitly left for Phase 5 testing, not certified away here.
+
+Additional AST coverage: `gh issue delete`, `transfer`, `lock`, `gh pr ready`, and literal GraphQL mutation identifiers `addComment`, `reopenIssue`, `deleteIssue`. Existing query/string/comment/help exclusions remain. Alias, variable/dynamic executable, curl-REST and dynamic/file GraphQL payload gaps described above remain. No new natural-language cues, native host probe or Phase 5 work.

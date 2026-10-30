@@ -37,7 +37,8 @@ import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
 import { resolveStatePath } from "./state-path.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
-import type { TaskKind } from "./prompt-classify.js";
+import { decodeActiveTask, taskIdFor, type ActiveTask } from "./task-state.js";
+export { taskIdFor, type ActiveTask } from "./task-state.js";
 
 export interface ShownEntry {
   count: number;
@@ -189,22 +190,6 @@ export interface RepairAttempts {
   taskId: string;
   generation: number;
   count: number;
-}
-
-/** #1306: the task state. `generation` rises on compact, clear and fork. */
-export interface ActiveTask {
-  /** #1310: stable id of this task, {@link taskIdFor}; a new kind is a new task. */
-  id: string;
-  kind: TaskKind;
-  approvalSource?: "user-turn";
-  /** ms epoch when `kind` was entered. */
-  since: number;
-  generation: number;
-}
-
-/** #1310: the id of the task entered as `kind` at `since`. */
-export function taskIdFor(kind: TaskKind, since: number): string {
-  return `${kind}@${since}`;
 }
 
 /** #1310: one successful validation, bound to the task and generation it ran in. */
@@ -427,12 +412,8 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       );
     }
     // #1306: the task state — same reason, every lane's save carries it.
-    const task = parsed.activeTask;
-    if (task && TASK_KINDS.has(task.kind) && typeof task.since === "number" && typeof task.generation === "number") {
-      // #1310: a state written before task ids existed gets the same derived id.
-      const id = typeof task.id === "string" ? task.id : taskIdFor(task.kind, task.since);
-      state.activeTask = { id, kind: task.kind, since: task.since, generation: task.generation, ...(task.approvalSource === "user-turn" ? {approvalSource:"user-turn" as const} : {}) };
-    }
+    const task = decodeActiveTask(parsed.activeTask);
+    if (task) state.activeTask = task;
     // #1310: receipts — same reason, every lane's save carries them.
     if (Array.isArray(parsed.receipts)) {
       state.receipts = parsed.receipts.filter(
@@ -599,7 +580,6 @@ export function recordActiveConventions(
   state.activeConventions = kept.slice(-ACTIVE_CONVENTIONS_CAP);
 }
 
-const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>(["translate-only", "draft-for-review", "approved-copy", "none"]);
 
 /**
  * #1306: compact, clear and fork start a new generation of the task state. The

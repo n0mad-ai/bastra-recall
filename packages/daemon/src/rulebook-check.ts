@@ -87,8 +87,9 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     if (input.task !== undefined) {
       const now = Date.now();
       const beforeConventions = s.activeConventions;
-      if (input.task !== (s.activeTask?.kind ?? "none")) {
-        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0 };
+      const startingTask = input.task !== (s.activeTask?.kind ?? "none");
+      if (startingTask) {
+        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.activeTask?.validatorRuleId ? {validatorRuleId:s.activeTask.validatorRuleId} : {}) };
         expireReceipts(s);
       }
       // A model report only adds stricter review obligations.
@@ -96,6 +97,9 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       if (input.task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
         id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
       })), now);
+      if (startingTask && s.activeTask && !s.activeTask.validatorRuleId) {
+        s.activeTask.validatorRuleId = input.applicable.find(id => catalog.entries.some(e => e.id === id && e.validator));
+      }
       if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
           JSON.stringify((beforeConventions ?? []).map(e => [e.id,e.revision,e.validator]))) {
         delete s.receipts;

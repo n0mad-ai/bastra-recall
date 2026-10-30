@@ -48,7 +48,7 @@ function ghAction(args:Array<string|null>):string|null{
  }
  const resource=args[i++],verb=args[i++];
  if(resource==="issue"||resource==="pr"){
-  if(!["create","edit","comment","close","reopen",...(resource==="pr"?["review","merge"]:[])].includes(verb??"")||hasHelp(args.slice(i),GH_VALUES))return null;
+  if(!["create","edit","comment","close","reopen",...(resource==="pr"?["review","merge","ready"]:["delete","transfer","lock"])].includes(verb??"")||hasHelp(args.slice(i),GH_VALUES))return null;
   return `gh ${resource} ${verb}`;
  }
  if(resource!=="api")return null;
@@ -73,7 +73,7 @@ function ghAction(args:Array<string|null>):string|null{
    if(!field.startsWith("query="))continue;
    // GraphQL API identifiers, not natural-language cues. Ignore comments/strings.
    const query=field.slice(6).replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|#[^\n]*/g," ");
-   if(/^\s*mutation\b/.test(query)&&/\b(?:create|update|close|merge)\w*\s*(?:\(|\{)/.test(query))return "gh issue/pr mutation via gh api graphql";
+   if(/^\s*mutation\b/.test(query)&&/\b(?:create|update|close|merge|addComment|reopenIssue|deleteIssue)\w*\s*(?:\(|\{)/.test(query))return "gh issue/pr mutation via gh api graphql";
   }
   return null;
  }

@@ -28,16 +28,19 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const snapshot = await loadSessionState(sessionId);
   const task = snapshot.activeTask;
   if (!task || !["draft-for-review", "approved-copy"].includes(task.kind)) return null;
-  if (!validators(snapshot).length) return null;
+  if (!taskValidator(snapshot)) return null;
   const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
   const latest = turns.at(-1);
-  const copy = latest?.role === "assistant" ? deliveredCopy(latest.content) : "";
-  const hasReceipt = (state: ReadonlySessionState) => validators(state).every(v => {
+  const response = latest?.role === "assistant" ? latest.content : "";
+  const hasReceipt = (state: ReadonlySessionState) => {
+    const v = taskValidator(state);
+    if (!v) return false;
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
+    const copy = deliveredCopy(response, contract.unit_applied);
     return countCopyUnits(copy, contract.unit_applied) <= contract.limit && (state.receipts ?? []).some(r =>
       r.taskId === task.id && r.generation === task.generation && r.channel === contract.channel && r.limit <= contract.limit &&
       (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)"));
-  });
+  };
   // Receipts are task/generation evidence, not byte-exact proof for later edits.
   if (hasReceipt(snapshot)) return null;
   const seen = snapshot.repairAttempts;
@@ -50,7 +53,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     // the snapshot wins.
     const t = s.activeTask;
     if (!t || !["draft-for-review", "approved-copy"].includes(t.kind) || t.id !== task.id || t.generation !== task.generation) return;
-    if (!validators(s).length) return;
+    if (!taskValidator(s)) return;
     if (hasReceipt(s)) return;
     const r = s.repairAttempts;
     const count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
@@ -63,22 +66,29 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   return persisted ? decision : null;
 }
 
-/** A full load is sufficient validator activation; newer loaded metadata wins per ID. */
-function validators(state: ReadonlySessionState) {
-  const rules = new Map<string, {validator?: unknown}>((state.activeConventions ?? []).map(c => [c.id, c]));
-  for (const c of state.loadedConventions ?? []) rules.set(c.id, c);
-  return [...rules.values()].flatMap(c => {
+/** Prefer the task's triggering rule; otherwise the latest loaded/active source.
+ * Compare real activation timestamps, never answer labels or natural-language cues.
+ */
+function taskValidator(state: ReadonlySessionState) {
+  const rules = new Map<string, {id: string; at: number; validator?: unknown}>();
+  for (const c of state.activeConventions ?? []) rules.set(c.id, {...c, at: c.setAt});
+  for (const c of state.loadedConventions ?? []) {
+    if (c.loadedAt >= (rules.get(c.id)?.at ?? -Infinity)) rules.set(c.id, {...c, at: c.loadedAt});
+  }
+  const valid = [...rules.values()].flatMap(c => {
     const parsed = ConventionValidatorSchema.safeParse(c.validator);
-    return parsed.success ? [parsed.data] : [];
+    return parsed.success ? [{id: c.id, at: c.at, validator: parsed.data}] : [];
   });
+  const bound = valid.find(c => c.id === state.activeTask?.validatorRuleId);
+  return (bound ?? valid.reverse().sort((a, b) => b.at - a.at)[0])?.validator;
 }
 
 /** Pick explicit copy regions structurally, independent of language/channel names.
- * With multiple fences/quotes the largest region wins; without one, use the answer.
+ * Fences, quotes and all remaining prose are competing copy candidates.
  * An unclosed fence is ambiguous and falls back to the complete answer.
  */
-function deliveredCopy(text: string): string {
-  const blocks: string[] = [];
+function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1]): string {
+  const blocks: string[] = [], prose: string[] = [];
   let fence = "", body: string[] = [], quote: string[] = [];
   const flushQuote = () => { if (quote.length) blocks.push(quote.join("\n")); quote = []; };
   for (const line of text.split("\n")) {
@@ -92,8 +102,15 @@ function deliveredCopy(text: string): string {
     const open = /^\s*(`{3,}|~{3,})[^\n]*$/u.exec(line);
     if (open) { flushQuote(); fence = open[1]; continue; }
     const quoted = /^\s*> ?(.*)$/u.exec(line);
-    if (quoted) quote.push(quoted[1]); else flushQuote();
+    if (quoted) quote.push(quoted[1]); else { flushQuote(); prose.push(line); }
   }
   flushQuote();
-  return fence || !blocks.length ? text : blocks.reduce((a, b) => b.length > a.length ? b : a);
+  if (prose.join("\n").trim()) blocks.push(prose.join("\n").trim());
+  if (fence || !blocks.length) return text;
+  let largest = "", size = -1;
+  for (const block of blocks) {
+    const count = countCopyUnits(block, unit);
+    if (count > size) { largest = block; size = count; }
+  }
+  return largest;
 }

@@ -46,7 +46,7 @@ test('largest fenced or quoted copy is checked; channel comes from rule regardle
  assert.equal(await stop('largest','```markdown\nA short copy\n```'),null);
  assert.equal((await stop('largest','```text\nshort\n```\n```markdown\n'+'x'.repeat(3000)+'\n```'))?.action,'request');
  await load('quote');await task('quote','approved-copy');await receipt('quote');
- assert.equal(await stop('quote','An explanation.\n\n> Short copy.\n\n'+'Outside explanation. '.repeat(200)),null);
+ assert.equal((await stop('quote','An explanation.\n\n> Short copy.\n\n'+'Outside explanation. '.repeat(200)))?.action,'request','oversized prose remains a candidate alongside a short quote');
 });
 test('not_applicable needs a substantive reason and reports the exact exception ID next round',async()=>{
  for(const reason of ['.','..........','          ','short','!!!!!!!!!!!']){

@@ -162,7 +162,8 @@ async function step(input: TaskStepInput): Promise<string | null> {
       }
     }
     if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
-      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}) };
+      const validatorRuleId = ["draft-for-review", "approved-copy"].includes(s.activeTask?.kind ?? "") ? s.activeTask?.validatorRuleId : undefined;
+      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}), ...(decision.next !== "none" && validatorRuleId ? {validatorRuleId} : {}) };
       // #1310: a new task (or none) ends the receipts of the old one.
       expireReceipts(s);
       if (decision.next === "none") {
@@ -183,6 +184,9 @@ async function step(input: TaskStepInput): Promise<string | null> {
         validator: input.conventionOf ? sources.get(id)?.validator
           : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
       })), now);
+      if (kindChanges && entering && s.activeTask && !s.activeTask.validatorRuleId) {
+        s.activeTask.validatorRuleId = activate.find(id => s.activeConventions?.some(c => c.id === id && c.validator));
+      }
     }
     if (decision.unclear) {
       s.taskQuestion = {

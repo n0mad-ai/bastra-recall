@@ -35,6 +35,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
     if (asked.length) recordActiveConventions(s, asked.map(c => ({
       ...s.activeConventions?.find(active => active.id === c.id), ...c, scope: "task" as const,
     })), now);
+    s.activeTask.validatorRuleId = asked.find(c => s.activeConventions?.some(a => a.id === c.id && a.validator))?.id;
     delete s.taskQuestion;
   }, { noQueue: true, deadline: now + 100 });
 }
