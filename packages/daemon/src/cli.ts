@@ -19,6 +19,7 @@ import {
 import { showHelp } from "./cli/help-text.js";
 import { cmdStatus } from "./cli/status.js";
 import { cmdUpdate } from "./cli/update.js";
+import { cmdAddress } from "./cli/address-cmd.js";
 import { cmdConfig } from "./cli/config-cmd.js";
 import { cmdEmbeddings } from "./cli/embeddings-cmd.js";
 import { cmdModels, modelNoticeAfterCommand } from "./cli/models-cmd.js";
@@ -84,6 +85,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       return rc;
     }
     case "config": return cmdConfig(args);
+    case "address": return cmdAddress(args);
     case "embeddings": return cmdEmbeddings({ sub: args.surface });
     case "models": return cmdModels({ sub: args.surface, positional: args.positional });
     case "token": return cmdToken({ sub: args.surface, json: args.json, origin: args.origin });

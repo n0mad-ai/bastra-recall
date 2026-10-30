@@ -1,0 +1,12 @@
+/** Assistant setting: same-origin JSON only; never insert user text as HTML. */
+export function createAssistantAddressSettings(){
+ const dialog=document.getElementById("assistant-settings"),form=document.getElementById("assistant-name-form"),input=document.getElementById("assistant-name"),status=document.getElementById("assistant-address-status"),links=document.getElementById("assistant-address-links"),setup=document.getElementById("assistant-address-setup");
+ if(!dialog||!form||!input)return;
+ const message=text=>{status.textContent=text;};
+ async function call(path,body){const r=await fetch(path,body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok){const e=new Error(data.error||"Adresse konnte nicht geändert werden");e.code=data.code;throw e;}return data;}
+ function render(data){input.value=data.name||"";links.replaceChildren();if(data.urls)for(const [label,url]of [["Lokale Adresse",data.urls.local],["Kurzer Name",data.urls.bare]]){const p=document.createElement("p"),a=document.createElement("a");a.textContent=`${label}: ${url}`;a.href=url;a.target="_blank";a.rel="noopener";p.append(a);links.append(p);}setup.disabled=!data.name||!data.systemSetupSupported;message(`${data.ready?"Adresse erreichbar.":"Für die Adresse ohne Port: einmal lokal einrichten."} ${data.bareNameNotice}`);}
+ document.getElementById("assistant-settings-open")?.addEventListener("click",async()=>{dialog.showModal();try{render(await call("/ui/assistant-address"));}catch(e){message(e.message);}});
+ document.getElementById("assistant-settings-close")?.addEventListener("click",()=>dialog.close());
+ form.addEventListener("submit",async e=>{e.preventDefault();const button=form.querySelector("button");button.disabled=true;try{let data;try{data=await call("/ui/assistant-address",{name:input.value});}catch(error){if(error.code!=="system_consent_required"||!window.confirm("Der neue Name ersetzt deine bisherige lokale Adresse und den eigenen Firefox-Eintrag. macOS fragt nach Systemfreigabe. Fortfahren?"))throw error;data=await call("/ui/assistant-address",{name:input.value,systemConsent:true});}render(data);}catch(error){message(error.message);}finally{button.disabled=false;}});
+ setup.addEventListener("click",async()=>{setup.disabled=true;message("Bitte die macOS-Systemfreigabe bestätigen. Der Browser wird danach einmal geöffnet.");try{render(await call("/ui/assistant-address/setup",{systemConsent:true}));}catch(e){message(e.message);setup.disabled=false;}});
+}

@@ -39,6 +39,8 @@ Commands:
                              daemon restart. From a source checkout: run it
                              after pulling AND building (it verifies the build,
                              it never runs one).
+  address <status|setup [name]|remove>  Eigener Assistentenname als Browser-Adresse.
+                             System-/Browser-Einrichtung nur mit Zustimmung.
   autostart <on|off|status>  Keep the daemon running permanently (off by
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' installs a service;
@@ -218,6 +220,18 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  address: `bastra address — lokale Assistenten-Adresse
+Usage:
+  bastra config set assistant.name Jarvis
+  bastra address status [--json]
+  bastra address setup [name] [--yes] [--dry-run]
+  bastra address remove [--yes] [--dry-run]
+Auf macOS: einmalige Admin-Freigabe für eigenen Loopback-Port-80-Helfer und hosts.
+Node läuft als normaler Nutzer. Eigene Firefox-Pref für den Namen; Firefox vorher schließen und danach neu starten.
+Nach Einrichtung wird http://<name>/ einmal im Standardbrowser geöffnet.
+Pur <name> ist Such-/Verlaufsheuristik: <name>/ oder <name>.localhost ist eindeutig.
+Windows/Linux: Port-80-/hosts-Einrichtung durch Administrator; keine automatische Elevation.
+`,
   tasks: `Vorschau: standardmäßig aus. BASTRA_TASKS=1 im Daemon und in Clients/Hooks setzen; Prozesse neu starten.
 
 bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)

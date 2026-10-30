@@ -1,3 +1,4 @@
+import { refreshAssistantAddressRuntime } from "../assistant-address.js";
 /** Installer update orchestration and cross-client restart guidance (#15). */
 import { spawnSync } from "node:child_process";
 import { captureUpdateNpm, runUpdateNpm, globalDaemonScript, updatePaths, type UpdateRuntimeIo } from "./update-npm.js";
@@ -680,6 +681,9 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
     process.stdout.write("✗ re-register failed — fix the surface errors above, then re-run\n");
     return installRC;
   }
+
+  // Refresh the already-owned unprivileged UI helper without a new admin grant.
+  if (!args.dryRun) await refreshAssistantAddressRuntime();
 
   // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
   //

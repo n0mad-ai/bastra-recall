@@ -59,7 +59,7 @@ export function dispatchUiRoutes(
   }
   // Import review (#208): open candidate count for the session hook —
   // loopback-only like /hook/care.
-  if (method === "GET" && url === "/hook/import") {
+  if (method === "GET" && (url === "/hook/import" || url === "/ui/import-count")) {
     handleHookImport(res, toolDeps.vaultPath).catch(() => sendJson(res, 500, { error: "import error" }));
     return true;
   }

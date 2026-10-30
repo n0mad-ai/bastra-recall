@@ -20,6 +20,7 @@ export const COMMANDS = [
   "logs",
   "update",
   "config",
+  "address",
   "embeddings",
   "models",
   "token",

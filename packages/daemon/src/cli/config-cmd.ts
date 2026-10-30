@@ -1,3 +1,7 @@
+import { notifyAssistantAddressDaemon } from "../assistant-address.js";
+import { configureAssistantName } from "./address-cmd.js";
+import { getAssistantName } from "../assistant-address-settings.js";
+import { assistantUrls } from "../assistant-address-name.js";
 /**
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
@@ -54,7 +58,7 @@ import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainD
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "coverageMap.enabled", "battery.saver"] as const;
+const KNOWN_KEYS = ["assistant.name", "update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "coverageMap.enabled", "battery.saver"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -84,6 +88,7 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
 
 async function cmdConfigGet(key: KnownKey): Promise<number> {
   switch (key) {
+    case "assistant.name": process.stdout.write(`${await getAssistantName() ?? "(unset)"}\n`); return 0;
     case "update.mode":
       process.stdout.write(`${await getUpdateMode()}\n`);
       return 0;
@@ -176,6 +181,11 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
 
 async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number> {
   switch (key) {
+    case "assistant.name": {
+      if(value===null||value==="") {process.stderr.write("Name angeben; entfernen mit bastra address remove.\n");return 2;}
+      await configureAssistantName(value);
+      process.stdout.write(`✓ assistant.name = ${await getAssistantName()}\n  ${assistantUrls(value).local}\n  Einmalige Einrichtung: bastra address setup --yes\n`);return 0;
+    }
     case "update.mode": {
       if (value === null || !(UPDATE_MODES as readonly string[]).includes(value)) {
         process.stderr.write(
@@ -252,6 +262,7 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         return 2;
       }
       await setUiEnabled(on);
+      await notifyAssistantAddressDaemon();
       process.stdout.write(`✓ ui.enabled = ${on}\n  stored in ${settingsFilePath()}\n`);
       // #531 — one line, naming THE configured endpoint. The second line here
       // printed the default port unconditionally and contradicted the first.

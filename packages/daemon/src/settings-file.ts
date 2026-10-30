@@ -1,3 +1,4 @@
+import { normalizeAssistantName } from "./assistant-address-name.js";
 import { bastraDataDir } from "./platform-paths.js";
 /**
  * bastra-recall local CLI settings — the file itself (split out of
@@ -110,6 +111,7 @@ export interface CliSettings {
   // serves the static viewer on /ui (loopback-only). Read per-request, so
   // toggling does not require a daemon restart.
   ui?: { enabled: boolean };
+  assistant?: { name: string };
   // Reflex-Lane (#217): undefined = enabled (Reflex feuert nur auf Memories,
   // die der User explizit auf recall_mode:"reflex" promotet hat — der Opt-in
   // liegt am Memory, nicht am Feature). maxPerTurn deckelt die Injektionen
@@ -264,6 +266,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "generation",
   "modelRecommendation",
   "ui",
+  "assistant",
   "reflex",
   "size",
   "language",
@@ -362,7 +365,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
 /** Validates the file's text into settings. `corrupt` = not JSON at all (and
  *  said so on stderr); the settings are the defaults then. */
 function parseSettingsText(raw: string, path: string): { settings: CliSettings; corrupt: boolean } {
-  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown; live?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
+  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown; live?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; assistant?: { name?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
   } catch (e) {
@@ -470,6 +473,9 @@ function parseSettingsText(raw: string, path: string): { settings: CliSettings; 
     (MODEL_RECOMMENDATION_ANSWERS as readonly unknown[]).includes(recData.answer)
   ) {
     settings.modelRecommendation = { id: recData.id, answer: recData.answer as ModelRecommendationAnswer, at: recData.at };
+  }
+  if (typeof data?.assistant?.name === "string") {
+    try { settings.assistant = { name: normalizeAssistantName(data.assistant.name) }; } catch { /* invalid alias stays disabled */ }
   }
   if (typeof data?.ui?.enabled === "boolean") {
     settings.ui = { enabled: data.ui.enabled };

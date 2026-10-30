@@ -271,7 +271,7 @@ export function createLiveUpdates(deps) {
       el.classList.add("bump");
     },
     fetchSize: async () => {
-      const res = await fetch("/health");
+      const res = await fetch("/ui/health");
       if (!res.ok) return null;
       const data = await res.json();
       return typeof data.vault_size === "number" ? data.vault_size : null;

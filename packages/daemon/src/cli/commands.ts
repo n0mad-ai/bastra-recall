@@ -1,3 +1,4 @@
+import { assistantAddressStatus, hasManagedAssistantAddress, addressRemovalNeedsConsent, removeAssistantAddress, notifyAssistantAddressDaemon } from "../assistant-address.js";
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { missingVaultReason } from "../vault-presence.js";
 import { resolveTargets } from "./registry.js";
@@ -374,6 +375,14 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
 }
 
 export async function cmdUninstall(args: ParsedArgs): Promise<number> {
+  if(args.surface === "all" && await hasManagedAssistantAddress()) {
+    if(args.dryRun) process.stdout.write("→ assistant address: would remove only owned hosts/browser/socket entries after system consent\n");
+    else {
+      const needs=await addressRemovalNeedsConsent();
+      if(needs && !(process.stdin.isTTY&&process.stdout.isTTY&&await confirm("Eigene Assistenten-Systemadresse entfernen? macOS fragt nach Administratorrechten."))) {process.stderr.write("Eigene Systemadresse zuerst mit bastra address remove --yes entfernen. Nichts deinstalliert.\n");return 1;}
+      try{await removeAssistantAddress({systemConsent:needs});await notifyAssistantAddressDaemon();}catch(e){process.stderr.write(`Assistenten-Adresse nicht entfernt: ${(e as Error).message}\n`);return 1;}
+    }
+  }
   const targets = resolveTargets(args.surface);
   if ("error" in targets) {
     process.stderr.write(`error: ${targets.error}\n`);
@@ -489,6 +498,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printVersionPairNote();
   await printDaemonOriginNote();
   await printAutostartNote();
+  try{const a=await assistantAddressStatus();if(a.name)process.stdout.write(`→ assistant address: ${a.ready?"reachable":"not ready — run bastra address setup --yes"}\n  ${a.urls!.local}\n  hosts: ${a.registeredName===a.name?"current":"missing/stale"}; ${a.firefoxProfiles} Firefox profile(s)\n  ${a.bareNameNotice}\n`);}catch(e){process.stdout.write(`→ assistant address: ${(e as Error).message}\n`);}
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printDerivedClaimsNote(resolveVaultPath(args.vaultPath));

@@ -63,7 +63,7 @@ export function createImportDialog({ modal, opener }) {
   const IDLE_TITLE = opener.title;
   async function refreshBadge() {
     try {
-      const r = await fetch("/hook/import");
+      const r = await fetch("/ui/import-count");
       if (!r.ok) return;
       const d = await r.json();
       const n = typeof d.open === "number" ? d.open : 0;

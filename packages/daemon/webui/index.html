@@ -6,6 +6,7 @@
   <title>Bastra Recall — Vault Map</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%2338d9f5'/%3E%3Ccircle cx='26' cy='8' r='3' fill='%2338d9f5' opacity='.6'/%3E%3Ccircle cx='7' cy='24' r='2' fill='%2338d9f5' opacity='.4'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/assistant-address.css" />
 </head>
 <body>
   <div id="stage">
@@ -48,6 +49,7 @@
     </div>
 
     <div class="topbar-right">
+      <button id="assistant-settings-open" class="opt-btn">Einstellungen</button>
       <span id="stat-count" class="stat" title="memories in the vault">—</span>
       <!-- weather-slot anchors the picker under its own button -->
       <div id="weather-slot">
@@ -471,6 +473,13 @@
   <div id="hint">drag to pan · scroll to zoom · click a node to inspect · drag a label to move its cloud</div>
 
   <script src="vendor/ctxmenu.js"></script>
+  <dialog id="assistant-settings" aria-labelledby="assistant-settings-title">
+    <h2 id="assistant-settings-title">Name des Assistenten</h2>
+    <form id="assistant-name-form"><label>Wie heißt dein Assistent?<input id="assistant-name" placeholder="Jarvis" maxlength="63" required autocomplete="off" /></label><button class="skill-declare">Namen speichern</button></form>
+    <p>Der Name wird auch deine lokale Browser-Adresse. Einmalige Systemfreigabe richtet den kurzen Namen und die Adresse ohne Port ein; Bastra selbst bleibt ohne Administratorrechte. Firefox dafür vorher schließen und danach neu starten.</p>
+    <div id="assistant-address-links"></div><p id="assistant-address-status" role="status"></p>
+    <footer><button id="assistant-address-setup" class="skill-declare">Lokal einrichten</button><button id="assistant-settings-close" class="skill-declare">Schließen</button></footer>
+  </dialog>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

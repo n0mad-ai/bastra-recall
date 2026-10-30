@@ -129,7 +129,7 @@ export async function fetchTelemetry(days) {
 
 export async function fetchHealth() {
   try {
-    const res = await fetch("/health");
+    const res = await fetch("/ui/health");
     if (!res.ok) return null;
     return await res.json();
   } catch {

@@ -1,3 +1,6 @@
+import { createAssistantAddressListener } from "./assistant-address-gateway.js";
+import { assistantAddressOptions, type AssistantAddressOptions } from "./assistant-address.js";
+import { handleAssistantAddressUi } from "./http-assistant-address.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * Local HTTP endpoint for Claude Code hooks (PreToolUse / SessionStart / …)
@@ -116,6 +119,7 @@ export {
 export { mergeHookRecallHits } from "./hook-recall-merge.js";
 
 export interface HttpOptions {
+  assistantAddress?: AssistantAddressOptions & { port?: number };
   port: number;
   vault: Vault;
   search: SearchIndex;
@@ -211,6 +215,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   // request (http-context.ts).
   const ctx = await createHttpServerContext(opts);
 
+  let addressListener: ReturnType<typeof createAssistantAddressListener> | null = null;
+  const addressOptions = assistantAddressOptions(opts.assistantAddress);
   const server = createServer((req, res) => {
     if (tasksEnabled()) installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
     const t0 = Date.now();
@@ -247,6 +253,12 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         return;
       }
     }
+
+    if (url.split("?",1)[0].startsWith("/ui/assistant-address")) {
+      void handleAssistantAddressUi(req,res,method,url.split("?",1)[0],{...addressOptions,daemonUrl:`http://127.0.0.1:${req.socket.localPort}`},()=>addressListener?.refresh()??Promise.resolve({}));
+      return;
+    }
+    if (method === "GET" && url === "/ui/health") { sendJson(res,200,ctx.healthPayload()); return; }
 
     // CORS preflight for /api/v1/*
     if (method === "OPTIONS" && url.startsWith("/api/v1/")) {
@@ -306,5 +318,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     sendJson(res, 404, { error: `not found: ${method} ${url}` });
   });
 
-  return listenHttp(server, port);
+  const handle = await listenHttp(server, port);
+  if (handle.port !== null) {
+    addressListener = createAssistantAddressListener({ settingsPath: addressOptions.settingsPath, hostsPath: addressOptions.hostsPath, owner: addressOptions.uid, daemonUrl: `http://127.0.0.1:${handle.port}` },opts.assistantAddress?.port??80);
+    await addressListener.refresh();
+  }
+  return {...handle,close:async()=>{await addressListener?.close();await handle.close();}};
 }
