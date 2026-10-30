@@ -93,6 +93,7 @@ export {
   DerivedClaimSchema,
   ConventionValidatorSchema,
   RulebookSchema,
+  RuleCategoriesSchema,
   RulebookProposalSchema,
 } from "./schema.js";
 export type { ConventionValidator, DerivedClaim, Memory, MemoryType, Frontmatter } from "./schema.js";

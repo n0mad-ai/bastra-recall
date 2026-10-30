@@ -14,6 +14,7 @@ export type KernelGroup = "active-convention" | "floor" | "reflex" | "user-direc
 export interface KernelEntry {
   id: string; title: string; group: KernelGroup; revision: string | null;
   updated: string | null; stale_status: StaleStatus | "unknown"; body: string;
+  rule_categories?: Memory["fm"]["rule_categories"]; write_origin?: Memory["fm"]["write_origin"]; type?: string; summary?: string;
   rulebook?: "always" | "on-demand"; applies_when?: string; applies_when_derived?: true;
   source_unavailable?: boolean; binding_hash?: string; scope?: string; validator?: Memory["fm"]["validator"];
 }
@@ -55,16 +56,16 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
     if (!declaration) continue;
     if (opts.mode === "ids") {
-      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown" });
+      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
       continue;
     }
     const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();
-    entries.push({ id: m.fm.id, title: oneLine(m.fm.title), scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
+    entries.push({ id: m.fm.id, title: oneLine(m.fm.title), rule_categories:m.fm.rule_categories, write_origin:m.fm.write_origin, type:m.fm.type, summary:m.fm.summary, scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
       group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
         m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : "user-directed",
       revision: m.revision ?? null, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
       body: declaration.rulebook === "always" ? body : "",
-      binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator]), ...declaration });
+      binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator, m.fm.rule_categories]), ...declaration });
   }
   entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: 0, project: opts.project,
@@ -174,7 +175,7 @@ export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RU
   return { catalog_hash: catalogHash(c), total: c.entries.length, offset: start,
     unconfirmed_legacy: c.unconfirmed_legacy ?? 0, unavailable_sources: c.unavailable_sources ?? 0,
     rules: c.entries.slice(start, offset).map(e => ({ id: e.id, title: e.title, scope: e.scope,
-      rulebook: e.rulebook ?? "always", applies_when: e.applies_when ?? "",
+      rulebook: e.rulebook ?? "always", applies_when: e.applies_when ?? "", ...(e.rule_categories?{rule_categories:e.rule_categories}:{}),
       ...(e.applies_when_derived ? { applies_when_derived: true as const } : {}), revision: e.revision,
       ...(e.source_unavailable ? { source_unavailable: true } : {}) })),
     ...(offset < c.entries.length ? { next_cursor: rulebookCursor(c, offset) } : {}),

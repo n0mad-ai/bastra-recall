@@ -1,3 +1,5 @@
+import {loadMemoryHandler} from "../src/load-memory-handler.js";
+import {Telemetry} from "../src/telemetry.js";
 /**
  * Opt-in red baseline for #1278/#1302. No production enforcement is implemented here.
  * 1 pending-load/one-shot gate -> #1303; 2 action-time reflex -> #1303/#1304;
@@ -23,13 +25,13 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
-import { Vault, memoryRevision } from "@bastra-recall/core";
+import { Vault, SearchIndex, memoryRevision } from "@bastra-recall/core";
 import { vaultConventionOf } from "../src/convention-source.js";
 import { callerSessionStore } from "../src/caller-session.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
 import { rulebookCheckHandler } from "../src/rulebook-check.js";
 import { runStopLane } from "../src/stop-lane.js";
-import { loadSessionState } from "../src/session-state.js";
+import { loadSessionState, clearPendingMustLoad } from "../src/session-state.js";
 
 const enabled = process.env.CONVENTION_REPLAY === "1";
 const options = { skip: !enabled, timeout: 120_000 };
@@ -103,6 +105,8 @@ async function fixture(projection = false) {
   }
   const loadedVault = new Vault(vaultRoot);
   await loadedVault.init();
+  const search=new SearchIndex(loadedVault);search.start();
+  const loadFor=(sessionId:string,id:string,agentId?:string)=>loadMemoryHandler({vault:loadedVault,search,telemetry:new Telemetry(),vaultPath:vaultRoot},{id,session_id:sessionId,...(agentId?{agent_id:agentId}:{})});
   const index = loadedVault.list();
   const gatePool = actionReflexPool(index);
   // #1305 ADAPTER: the daemon's vault index as the kernel source (data only;
@@ -238,10 +242,6 @@ async function fixture(projection = false) {
     if (contexts.length < 2) return context(gate) ? gate : lane;
     return { ...lane, hookSpecificOutput: { ...lane.hookSpecificOutput, additionalContext: contexts.join("\n") } };
   };
-  async function report(task: "draft-for-review" | "approved-copy", applicable = [vault[2].id]) {
-    const response = await fetch(`${base}/api/v1/rulebook_check`, {method: "POST", body: JSON.stringify({applicable, task})});
-    assert.equal((await response.json() as {ok: boolean}).ok, true);
-  }
   async function replay() {
     const start = await hook("session-hook.ts", { hook_event_name: "SessionStart", source: "compact" });
     assert.ok(context(start).includes(vault[3].id), "setup: lexical-only compact start must reach real session formatter");
@@ -264,7 +264,6 @@ async function fixture(projection = false) {
     const cueRequests = requests.slice(cueStart);
     const cueModes = promptRows.slice(cueRowStart).map(row => row.detected_mode);
     const message = await prompt(ANNOUNCEMENT);
-    await report("draft-for-review");
     const followup = await prompt("ok");
     return { start, hints, first, retry, toolSearch, toolSearchRetry, bash, cue, cueRequests, cueModes, message, followup };
   }
@@ -273,9 +272,9 @@ async function fixture(projection = false) {
     // Skills are conditional, so the installer's SKILL.md is not an always-on projection.
     return global;
   }
-  return { replay, prompt, report, tool, hook, requests, promptRows, dir, cwd, stateDir, set, startupProjection,
+  return { replay, prompt, tool, hook, loadFor, requests, promptRows, dir, cwd, stateDir, set, startupProjection,
     async close() {
-      await loadedVault.stop();
+      search.stop();await loadedVault.stop();
       await new Promise<void>(resolve => server.close(() => resolve()));
       for (const [key, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -375,9 +374,7 @@ test("8 declared frontmatter validator activates through real prompt → approve
   try {
     f.set("BASTRA_STOP_SAME_TURN", "1");
     await f.prompt(ANNOUNCEMENT);
-    await f.report("draft-for-review");
     await f.prompt("ok");
-    await f.report("approved-copy");
     const sid = "replay-fixture-conventions";
     const state = await loadSessionState(sid);
     assert.equal(state.activeTask?.kind, "approved-copy");
@@ -399,17 +396,31 @@ test("8 declared frontmatter validator activates through real prompt → approve
 });
 
 
-test("9 GitHub writes use the general rulebook boundary; Bash lane has no convention search (#1336)", options, async()=>{
+test("9 GitHub writes receive issue conventions as one-shot must-load; reads and quoted mentions stay quiet (#1330)", options, async()=>{
  const f=await fixture();try{
-  await f.prompt("Create the invented issue");
-  const first=await f.tool("Bash",{command:"gh issue create --title fixture"});
-  assert.equal(denied(first),true);assert.match(first.hookSpecificOutput?.permissionDecisionReason??"",/rulebook_check/);
-  await f.report("draft-for-review",["fixture-issue-metadata","fixture-issue-language"]);
-  assert.equal(denied(await f.tool("Bash",{command:"gh pr edit 42 --title fixture"})),false);
-  const before=f.requests.filter(r=>r.path==="/hook/recall").length;
-  for(const command of ["gh issue create --title fixture", "gh issue list", "printf '%s' 'gh issue create'"]){
-   await f.hook("bash-pre-hook.ts",{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}});
+  for(const [i,command]of ["gh issue create --title fixture --body fixture", "gh issue edit 42 --title fixture", "gh pr create --body-file /tmp/fixture", "gh pr edit 42 --body fixture", "gh issue create --body-file - <<'EOF'\nfixture\nEOF", 'gh pr create --body "$(cat <<\'EOF\'\nfixture\nEOF\n)"', "if true; then gh issue create --body fixture; fi", "gh api repos/fixture/repo/issues -X POST -f title=fixture"].entries()){
+   const input={session_id:`github-fixture-${i}`,hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}};
+   const first=await f.hook("bash-pre-hook.ts",input);assert.equal(denied(first),true,command);
+   const text=first.hookSpecificOutput?.permissionDecisionReason??"";
+   for(const id of ["fixture-issue-metadata","fixture-issue-language"])assert.ok(text.includes(id),id);
+   assert.match(text,/must.load/i);assert.match(text,/milestone.*labels/i);assert.match(text,/English first.*Deutsch danach/i);
+   for(const memory of vault.slice(4))await f.loadFor(input.session_id,memory.id);
+   assert.equal(denied(await f.hook("bash-pre-hook.ts",input)),false,"successful actual loads release retry");
   }
-  assert.equal(f.requests.filter(r=>r.path==="/hook/recall").length,before);
+  const parallel=await f.tool("Bash",{command:"gh issue create --title fixture"});
+  assert.equal(denied(parallel),true,"parallel catch-all and Bash hook still interrupt the same action");
+  for(const memory of vault.slice(4))await clearPendingMustLoad(memory.id,{revision:memory.revision},"github-fixture-0");
+  const loaded=await loadSessionState("github-fixture-0");
+  for(const memory of vault.slice(4))assert.equal(loaded.activeConventions?.find(c=>c.id===memory.id)?.revision,memory.revision);
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",{session_id:"github-fixture-0",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"gh pr edit 42 --title fixture"}})),false,"successful load evidence releases later writes");
+  const workerInput={session_id:"github-fixture-0",agent_id:"fixture-worker",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:"gh issue create --title fixture"}};
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",workerInput)),true,"worker must see its own action conventions");
+  for(const memory of vault.slice(4))await f.loadFor(workerInput.session_id,memory.id,workerInput.agent_id);
+  assert.equal(denied(await f.hook("bash-pre-hook.ts",workerInput)),false,"worker actual loads release its own retry");
+  const before=f.requests.filter(r=>r.path==="/hook/recall").length;
+  for(const command of ["gh issue list", "gh issue view 42", "gh pr view 42", "printf '%s' 'gh issue create'", "cat <<'EOF'\ngh issue create\nEOF"]){
+   const output=await f.hook("bash-pre-hook.ts",{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command}});assert.equal(denied(output),false,command);assert.doesNotMatch(context(output),/fixture-issue/);
+  }
+  assert.equal(f.requests.filter(r=>r.path==="/hook/recall").length,before,"read-only and prose never invoke GitHub convention retrieval");
  }finally{await f.close();}
 });

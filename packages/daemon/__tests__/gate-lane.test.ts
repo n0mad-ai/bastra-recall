@@ -490,7 +490,7 @@ it("#1330 final review: a changed loaded or previously delivered revision is del
  const sid=session("action-revision"),id="fixture-revision-rule",key="fixture-github";await clearPendingMustLoad(id,{revision:"sha256:A"},sid);
  const action=(revision:string)=>({ids:[id],key,revisions:new Map([[id,revision]])});const input=call(sid,"Bash",{command:"gh issue create"});
  assert.equal(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:A")}),"{}");
- assert.ok(denied(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:B")})));assert.equal(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:B")}),"{}");
+ assert.ok(denied(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:B")})));await clearPendingMustLoad(id,{revision:"sha256:B"},sid);assert.equal(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:B")}),"{}");
  assert.ok(denied(await runGateLane(input,{reflexPool:noPool,actionMustLoad:action("sha256:C")})));
 });
 it("#1330 final review: telemetry exceptions cannot swallow an otherwise valid delivery",async()=>{
@@ -507,7 +507,7 @@ it("release E: completed GitHub attempts are compact and agent histories stay bo
  const sid=session("action-history-bound"),id="fixture-history-rule";
  for(let i=0;i<205;i++){
   const key=`github-action-conventions-v2:agent-${i}`;
-  assert.ok(denied(await runGateLane(call(sid,"Bash",{command:"gh issue create"}),{reflexPool:noPool,actionMustLoad:{ids:[id],key,revisions:new Map([[id,"sha256:A"]])}})));
+  assert.ok(denied(await runGateLane({...call(sid,"Bash",{command:"gh issue create"}),agent_id:`agent-${i}`},{reflexPool:noPool,actionMustLoad:{ids:[id],key,revisions:new Map([[id,"sha256:A"]])}})));
  }
  const state=await loadSessionState(sid),keys=Object.keys(state.constants??{});
  assert.equal(keys.filter(k=>k.includes(":attempt:")).length,0,"delivered attempts must not accumulate");

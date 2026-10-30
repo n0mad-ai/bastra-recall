@@ -13,6 +13,7 @@
  */
 
 export interface HookRecallHit {
+  rule_categories?: ("github-issues-prs"|"correspondence")[];
   rulebook?: "always" | "on-demand";
   applies_when?: string;
   applies_when_derived?: true;

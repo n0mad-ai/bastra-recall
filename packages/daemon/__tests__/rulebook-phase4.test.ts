@@ -19,7 +19,14 @@ let dir:string;const previous=process.env.BASTRA_HOOK_STATE_DIR;
 before(async()=>{dir=await mkdtemp(join(tmpdir(),'phase4-'));process.env.BASTRA_HOOK_STATE_DIR=dir;process.env.BASTRA_TELEMETRY='off';});
 after(async()=>{if(previous===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=previous;await rm(dir,{recursive:true,force:true});});
 const p=(sid:string)=>({session_id:sid,bastra_client:'claude-code',hook_event_name:'PreToolUse'});
-const report=async(sid:string,task:string,ids=['messages'])=>recordRulebookCheck(sid,RulebookCheckArgs.parse({applicable:ids,task}),catalog);
+// Model reports may tighten only. Approval/end below use the real user-turn path.
+const report=async(sid:string,task:string,ids=['messages'])=>{
+ if(task==='draft-for-review')return recordRulebookCheck(sid,RulebookCheckArgs.parse({applicable:ids,task}),catalog);
+ if(task==='approved-copy'&&!(await loadSessionState(sid)).activeTask)await recordRulebookCheck(sid,{applicable:ids,task:'draft-for-review'},catalog);
+ const {runTaskStep}=await import('../src/prompt-task.js');
+ return runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:task==='none'?'A separate new subject':'ok',mode:task==='none'?'generic':'trivial',
+ candidates:task==='none'?[{id:'other-subject',type:'project-fact'}]:[],surface:'claude-code'});
+};
 test('A/B describes both old lanes independently of wording',()=>{const text=renderRuleKernel(catalog,{trigger:"startup"});assert.match(JSON.stringify(text),/messages/);assert.match(JSON.stringify(text),/issues/);});
 for(const [lang,incoming] of Object.entries({de:'Kannst du morgen kommen?',en:'Could you come tomorrow?',ja:'明日来られますか。',ru:'Вы можете прийти завтра?',es:'¿Puedes venir mañana?'}))test(`parity ${lang}: pasted text, review and GitHub writes`,async()=>{
  const sid=`p4-${lang}`,common=p(sid);
@@ -44,10 +51,10 @@ test('task report clears only task rules, expires receipts and cannot leak from 
  const worker=await recordRulebookCheck('worker',RulebookCheckArgs.parse({applicable:['messages'],task:'draft-for-review',agent_id:'child'}),catalog);
  assert.equal(worker.ok,false);assert.equal((await loadSessionState('worker')).activeTask,undefined);
 });
-test('old convention wordlists and GitHub query are retired',async()=>{
- const lexicon=await readFile(new URL('../src/lexicon.ts',import.meta.url),'utf8');
- assert.doesNotMatch(lexicon,/ASSISTANT_REVIEW_CUES|DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE|TASK_TECHNICAL_OBJECTS_BY_LANGUAGE/);
- const bash=await readFile(new URL('../src/bash-pre-lane.ts',import.meta.url),'utf8');assert.doesNotMatch(bash,/githubConventionGate/);
+test('legacy discovery remains explicitly restricted to uncategorized rules during transition',async()=>{
+ const source=await readFile(new URL('../src/github-conventions-lane.ts',import.meta.url),'utf8');
+ assert.match(source,/!h\.rule_categories\?\.length/);
+ assert.match(source,/\/hook\/action-conventions/);
 });
 test('same task report retains receipts; changed rule metadata or task removes them',async()=>{
  const {storeReceipt}=await import('../src/receipt-store.js');
@@ -57,7 +64,8 @@ test('same task report retains receipts; changed rule metadata or task removes t
  assert.ok(result.receipt);assert.equal(await storeReceipt(sid,{...result,receipt:result.receipt!},undefined),'stored');
  await report(sid,'approved-copy');assert.equal((await loadSessionState(sid)).receipts?.length,1);
  const changed={...catalog,entries:catalog.entries.map(e=>({...e,revision:'changed'}))};
- await recordRulebookCheck(sid,{applicable:['messages'],task:'approved-copy'},changed);
+ const {runTaskStep}=await import('../src/prompt-task.js');
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'keep this draft',mode:'generic',candidates:[],surface:'claude-code',conventionOf:async()=>({revision:changed.entries[0].revision,validator})});
  assert.equal((await loadSessionState(sid)).receipts,undefined);
  const before=(await loadSessionState(sid)).activeTask;
  await recordRulebookCheck(sid,{applicable:[]},catalog);

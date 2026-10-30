@@ -1,3 +1,4 @@
+import {recordReviewDraft} from "./stop-task.js";
 import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 /**
@@ -117,7 +118,14 @@ export async function runStopLane(
   // `stop_hook_active` — and bounds itself: two requests per task, then one
   // non-conformance row. An ordinary Stop must still book harvest, park its
   // boundary and evaluate saves; only hook-active follow-ups skip that work.
-  const repair = await checkStopRepair(payload).catch(() => null);
+  let turns: TranscriptTurn[] | null = null;
+  try {
+    turns = await loadTranscript(payload);
+  } catch {
+    turns = null;
+  }
+  await recordReviewDraft(payload.session_id,turns??[]).catch(()=>{});
+  const repair = await checkStopRepair(payload, turns ?? []).catch(() => null);
   let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
   if (repair?.action === "request") {
     repairOutput = {
@@ -158,12 +166,6 @@ export async function runStopLane(
   // and its telemetry row, exactly as before. So a throw here is swallowed,
   // the boundary goes without reads (wider, never narrower), and
   // `evaluateStop` repeats the read inside its try.
-  let turns: TranscriptTurn[] | null = null;
-  try {
-    turns = await loadTranscript(payload);
-  } catch {
-    turns = null;
-  }
   await parkBoundaryNote(payload, turns ?? []).catch(() => {});
   // #675: book the session for the after-session harvest (a daemon job reads
   // the transcript once the session has gone quiet — nothing of it runs here).

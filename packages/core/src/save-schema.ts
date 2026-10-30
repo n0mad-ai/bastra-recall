@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import type { MemoryLocator } from "./memory-locator.js";
-import { ConventionValidatorSchema, DerivedClaimSchema, RulebookSchema, RulebookProposalSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
+import { ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, MemoryTypeEnum, isPathSafeComponent } from "./schema.js";
 import { isPathSafeFolder } from "./save-text.js";
 
 /**
@@ -25,6 +25,7 @@ import { isPathSafeFolder } from "./save-text.js";
  */
 export const SaveMemoryInput = z.object({
   rulebook: RulebookSchema.optional(),
+    rule_categories: RuleCategoriesSchema.optional(),
   applies_when: z.string().trim().min(1).optional(),
   rulebook_proposed: RulebookProposalSchema.optional(),
   title: z.string().min(1),

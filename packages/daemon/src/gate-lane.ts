@@ -1,3 +1,4 @@
+import {requireActionRules} from "./rulebook-check.js";
 import { catalogFor, rulebookBoundary, type RulebookDenialReceipt, type CatalogProvider } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { withRulebookDeadline, RULEBOOK_CATALOG_BUDGET_MS } from "./rulebook-catalog.js";
@@ -106,10 +107,12 @@ export interface GateDeps {
 /** Recalled text stays reference-only; only owner-directed text is inlined. */
 export function actionConventionFrame(ids:readonly string[],summaries?:ReadonlyMap<string,string>,origins?:ReadonlyMap<string,string|undefined>){
  const line=(s:string)=>stripFenceMarkers(s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu," ")).replace(/\s+/gu," ").trim();
- return ['<recall-hints trigger="github-write">',HINT_FRAME_NOTE,
-  "MUST-LOAD — load the applicable saved issue/PR conventions before deciding:",
-  ...ids.map(id=>{const text=summaries?.get(id);return origins?.get(id)==="user-directed"&&typeof text==="string"?`- ${line(id)}: ${line(text).slice(0,350)}`:`- ${line(id)}: load_memory(${JSON.stringify(line(id))})`; }),
-  '</recall-hints>'].join("\n");
+ const head=['<recall-hints trigger="github-write">',HINT_FRAME_NOTE,"MUST-LOAD — load the applicable saved issue/PR conventions before deciding:"];
+ const rows:string[]=[];let used=head.join("\n").length;
+ for(const id of ids){const text=summaries?.get(id);const row=origins?.get(id)==="user-directed"&&typeof text==="string"?`- ${line(id)}: ${line(text).slice(0,350)}`:`- ${line(id)}: load_memory(${JSON.stringify(line(id))})`;
+  if(used+row.length>7600)break;rows.push(row);used+=row.length+1;
+ }
+ return [...head,...rows,...(rows.length<ids.length?[`${ids.length-rows.length} further required IDs are not displayed here; read list_rules for the complete categorized catalog.`]:[]),'</recall-hints>'].join("\n");
 }
 
 /** Read/check tools always pass; Bastra writes participate in round checking. */
@@ -207,8 +210,13 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const mutates = await rulebookMutates(toolName, input);
   // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
   // until Phase 4. Collect both reasons before emitting one denial; legacy claims keep their original finite contract.
-  const rulebookDecision = deps.kernel && mutates
-    ? await boundedRulebookAction(payload, deps, startedAt, onDenial) : undefined;
+  let rulebookDecision:string|undefined;
+  if(deps.actionMustLoad){
+    const refs=deps.actionMustLoad.ids.map(id=>({id,revision:deps.actionMustLoad?.revisions?.get(id)??null}));
+    await requireActionRules(payload,refs,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
+    const catalog:import("./rulebook-catalog.js").KernelCandidates={entries:refs.map(r=>({...r,title:"",body:"",group:"explicit",updated:null,stale_status:"unknown",rulebook:"on-demand"})),omitted:0};
+    rulebookDecision=await rulebookBoundary(payload,catalog,"action",{requiredOnly:true,deadline:deps.deadline,onDenial});
+  }else rulebookDecision=deps.kernel&&mutates?await boundedRulebookAction(payload,deps,startedAt,onDenial):undefined;
   const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
   if (!sessionId) return "{}";
 
@@ -301,7 +309,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
       delete state.pendingMustLoad;
     }
     const action=deps.actionMustLoad;
-    if(action&&!expired()){
+    if(action&&rulebookDenied&&!expired()){
       const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
       const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");
       for(const id of seen)if(Object.hasOwn(revisions,id)&&action.revisions?.has(id)&&revisions[id]!==action.revisions.get(id)){seen.delete(id);delete revisions[id];}
@@ -359,13 +367,13 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
     return "{}";
   }
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
-    if (rulebookDenied) return rulebookDecision;
+    if (rulebookDenied) return rulebookDecision!;
     const active = kernelActive as ActiveConvention[] | null;
     return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt, finishKernel, deps.deadline);
   }
 
   const reason = denyReason(claimedMustLoad.map((e) => e.id), claimedReflex);
-  if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision).hookSpecificOutput.permissionDecisionReason;
+  if (rulebookDenied) reason.text += "\n" + JSON.parse(rulebookDecision!).hookSpecificOutput.permissionDecisionReason;
   if(actionIds.length)reason.text+="\n"+actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
   await emitTelemetry({
     outcome: "deny",

@@ -169,7 +169,7 @@ export interface SessionState {
    */
   activeConventions?: ActiveConvention[];
   /** Full-body loads attributed to this exact caller session; claims/hints never fill this. */
-  loadedConventions?: Array<{id:string;revision:string|null;loadedAt:number}>;
+  loadedConventions?: Array<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>;
   /** #1306: the correspondence task the session is in (prompt-classify.ts). */
   activeTask?: ActiveTask;
   /** #1306: the "task unclear" choice line went out; only the next prompt of
@@ -196,6 +196,7 @@ export interface ActiveTask {
   /** #1310: stable id of this task, {@link taskIdFor}; a new kind is a new task. */
   id: string;
   kind: TaskKind;
+  approvalSource?: "user-turn";
   /** ms epoch when `kind` was entered. */
   since: number;
   generation: number;
@@ -296,7 +297,7 @@ export interface ReadonlySessionState {
   readonly toolCalls?: number;
   readonly claimedMustLoad?: readonly string[];
   readonly activeConventions?: readonly Readonly<ActiveConvention>[];
-  readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number}>[];
+  readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>[];
   readonly activeTask?: Readonly<ActiveTask>;
   readonly taskQuestion?: Readonly<TaskQuestion>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
@@ -418,7 +419,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     if (Array.isArray(parsed.claimedMustLoad)) {
       state.claimedMustLoad = parsed.claimedMustLoad.filter((id): id is string => typeof id === "string");
     }
-    if(Array.isArray(parsed.loadedConventions))state.loadedConventions=parsed.loadedConventions.filter((e):e is {id:string;revision:string|null;loadedAt:number}=>!!e&&typeof e.id==="string"&&(typeof e.revision==="string"||e.revision===null)&&typeof e.loadedAt==="number").slice(-200);
+    if(Array.isArray(parsed.loadedConventions))state.loadedConventions=parsed.loadedConventions.filter((e):e is {id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}=>!!e&&typeof e.id==="string"&&(typeof e.revision==="string"||e.revision===null)&&typeof e.loadedAt==="number").slice(-200);
     if (Array.isArray(parsed.activeConventions)) {
       state.activeConventions = parsed.activeConventions.filter(
         (e): e is ActiveConvention =>
@@ -430,7 +431,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     if (task && TASK_KINDS.has(task.kind) && typeof task.since === "number" && typeof task.generation === "number") {
       // #1310: a state written before task ids existed gets the same derived id.
       const id = typeof task.id === "string" ? task.id : taskIdFor(task.kind, task.since);
-      state.activeTask = { id, kind: task.kind, since: task.since, generation: task.generation };
+      state.activeTask = { id, kind: task.kind, since: task.since, generation: task.generation, ...(task.approvalSource === "user-turn" ? {approvalSource:"user-turn" as const} : {}) };
     }
     // #1310: receipts — same reason, every lane's save carries them.
     if (Array.isArray(parsed.receipts)) {
@@ -997,12 +998,13 @@ export async function clearShown(sessionId: string): Promise<void> {
   // Cheap early-out kept from #354: nothing shown, nothing to write (and no
   // state file conjured for a session that never had one).
   const current = await loadSessionState(sessionId);
-  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length) return;
+  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length && !current.rulebookCheck) return;
   await mutateSessionState(sessionId, (state) => {
     state.shown = {};
     delete state.constants;
     delete state.loadedConventions;
   });
+  if(current.rulebookCheck)await (await import("./rulebook-check.js")).resetRulebookContext(sessionId);
 }
 
 /**

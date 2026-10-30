@@ -54,7 +54,7 @@ import { callerSessionStore } from "./caller-session.js";
 import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
-  RulebookSchema,
+  RuleCategoriesSchema, RulebookSchema,
   resolveRulebook,
   FrontmatterSchema,
   RulebookProposalSchema,
@@ -82,6 +82,7 @@ import type { ToolDeps } from "./tool-deps.js";
 const FrontmatterPatch = z
   .object({
     rulebook: RulebookSchema.optional(),
+    rule_categories: RuleCategoriesSchema.optional(),
     applies_when: z.string().trim().min(1).optional(),
     rulebook_proposed: RulebookProposalSchema.optional(),
     summary: z.string().min(1).optional(),
@@ -94,7 +95,7 @@ const FrontmatterPatch = z
     validator: ConventionValidatorSchema.nullable().optional(),
   })
   .strict().superRefine((patch, ctx) => {
-    if (patch.rulebook_proposed !== undefined && (patch.rulebook !== undefined || patch.applies_when !== undefined)) {
+    if (patch.rulebook_proposed !== undefined && (patch.rulebook !== undefined || patch.applies_when !== undefined || patch.rule_categories !== undefined)) {
       ctx.addIssue({ code: "custom", path: ["rulebook_proposed"],
         message: "rulebook_proposed cannot be combined with rulebook or applies_when in the same patch" });
     }
@@ -376,13 +377,14 @@ export async function editMemoryHandler(
         // MCP edits cannot confirm a binding metadata change. Keep the
         // effective declaration and stage the requested replacement separately.
         const patch = args.frontmatter;
-        if (patch?.rulebook !== undefined || patch?.applies_when !== undefined) {
+        if (patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined) {
           const rulebook = patch.rulebook ?? fm.rulebook ?? resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id))?.rulebook;
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
-          const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when });
+          const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
           if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
           if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
+          if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;
           next.rulebook_proposed = proposal.data;
         }
         if (next.validator === null) delete next.validator;

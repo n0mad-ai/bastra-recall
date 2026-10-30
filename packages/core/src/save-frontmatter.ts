@@ -13,7 +13,7 @@
  * (`save-target.ts`), ob geschrieben werden darf (`save-commit.ts`) und wie
  * der Text serialisiert wird (der Aufrufer).
  */
-import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RulebookSchema, RulebookProposalSchema } from "./schema.js";
+import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema } from "./schema.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -83,6 +83,7 @@ export const SAVE_MANAGED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "derived_claims",
   "validator",
   "rulebook",
+  "rule_categories",
   "applies_when",
   "rulebook_proposed",
   "superseded_by",
@@ -312,6 +313,15 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   } else if (input.applies_when !== undefined) {
     if (existing.success) out.rulebook_proposed = { rulebook: existing.data, applies_when: input.applies_when };
     else out.applies_when = input.applies_when;
+  }
+  const categories = RuleCategoriesSchema.safeParse(prev.rule_categories);
+  if (categories.success) out.rule_categories = categories.data;
+  if (input.rule_categories !== undefined) {
+    if (input.write_origin === "user-directed" && !prev.id) out.rule_categories = input.rule_categories;
+    else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
+      out.rulebook_proposed = { rulebook: existing.success ? existing.data : "on-demand",
+        applies_when: input.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
+    }
   }
   return out;
 }

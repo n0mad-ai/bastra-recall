@@ -130,6 +130,17 @@
                           "on-demand"
                         ]
                       },
+                      "rule_categories": {
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "github-issues-prs",
+                            "correspondence"
+                          ]
+                        }
+                      },
                       "applies_when": {
                         "type": "string",
                         "minLength": 1
@@ -143,6 +154,17 @@
                               "always",
                               "on-demand"
                             ]
+                          },
+                          "rule_categories": {
+                            "maxItems": 2,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "github-issues-prs",
+                                "correspondence"
+                              ]
+                            }
                           },
                           "applies_when": {
                             "type": "string",
@@ -1030,6 +1052,16 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "agent_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
                   "verbosity": {
                     "type": "string",
                     "enum": [
@@ -1574,6 +1606,29 @@
                       "minLength": 1
                     }
                   },
+                  "not_applicable": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "task": {
                     "type": "string",
                     "enum": [
@@ -1773,6 +1828,17 @@
                       "on-demand"
                     ]
                   },
+                  "rule_categories": {
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "github-issues-prs",
+                        "correspondence"
+                      ]
+                    }
+                  },
                   "applies_when": {
                     "type": "string",
                     "minLength": 1
@@ -1786,6 +1852,17 @@
                           "always",
                           "on-demand"
                         ]
+                      },
+                      "rule_categories": {
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "github-issues-prs",
+                            "correspondence"
+                          ]
+                        }
                       },
                       "applies_when": {
                         "type": "string",

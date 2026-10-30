@@ -1,4 +1,4 @@
-/** Advisory audit rows carry IDs/counters, never prompt or artifact text. */
+/** Advisory audit rows carry IDs/counters and explicit bounded exception reasons; no automatic prompt/artifact capture. */
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { envFirst, envOff } from "./env.js";

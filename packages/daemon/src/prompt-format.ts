@@ -196,6 +196,7 @@ const TASK_MEANING: Readonly<Record<TaskKind, string>> = {
 
 export interface ActiveConventionsView {
   task: TaskKind;
+  approvalSource?: "user-turn";
   generation: number;
   conventions: readonly Readonly<ActiveConvention>[];
   /** Ids whose file revision changed since they were set. */
@@ -216,7 +217,7 @@ export function formatActiveConventionsBlock(view: ActiveConventionsView, surfac
   const head =
     `<active-conventions surface="${escapeAttr(surface)}" task="${escapeAttr(view.task)}" generation="${view.generation}">`;
   const lines = [
-    `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${TASK_MEANING[view.task]}.`,
+    `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${view.task === "approved-copy" && view.approvalSource !== "user-turn" ? "reported copy state; user approval is unverified" : TASK_MEANING[view.task]}.`,
   ];
   if (view.conventions.length > 0) {
     lines.push("Conventions in force (bodies: load_memory(id) or the rule kernel):");

@@ -1,3 +1,4 @@
+import {indexedActionConventions} from "./action-conventions.js";
 import {createLaneDelivery} from "./lane-delivery.js";
 import { taskAttachment, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
@@ -120,6 +121,14 @@ export function dispatchLocalRoutes(
       .reconcile()
       .then((count) => sendJson(res, 200, { count }))
       .catch(() => sendJson(res, 200, { count: vault.size() }));
+    return true;
+  }
+
+  if (method === "POST" && url === "/hook/action-conventions") {
+    readJsonBody(req,MAX_BODY_BYTES).then(async body=>{
+      if(body.category!=="github-issues-prs"){sendJson(res,400,{error:"Unknown structural category"});return;}
+      sendJson(res,200,await indexedActionConventions(vault,typeof body.project==="string"?body.project:null,"github-issues-prs"));
+    }).catch(()=>sendJson(res,200,{hits:[],unavailable:true}));
     return true;
   }
 

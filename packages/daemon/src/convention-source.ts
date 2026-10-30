@@ -6,7 +6,7 @@ import { parseMemory, memoryRevision, resolveRulebook, type Memory, type Vault,
 import { listFloors } from "./floors.js";
 import { loadSessionState } from "./session-state.js";
 
-export type RulebookMetadata = Partial<RulebookDeclaration> & Pick<Frontmatter, "rulebook_proposed">;
+export type RulebookMetadata = Partial<RulebookDeclaration> & Pick<Frontmatter, "rulebook_proposed" | "rule_categories">;
 export interface ConventionSource {
   matchesIndex?: boolean;
   hiddenFromPublic?: boolean;
@@ -19,6 +19,7 @@ export interface ConventionSource {
 
 export function projectRulebookMetadata(fm: Frontmatter, context: RulebookLegacyContext = {}): RulebookMetadata {
   return { ...resolveRulebook(fm, context),
+    ...(fm.rule_categories ? {rule_categories:fm.rule_categories} : {}),
     ...(fm.applies_when !== undefined ? { applies_when: fm.applies_when } : {}),
     ...(fm.rulebook_proposed ? { rulebook_proposed: fm.rulebook_proposed } : {}) };
 }

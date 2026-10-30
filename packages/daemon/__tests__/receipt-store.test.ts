@@ -156,8 +156,12 @@ test("a generation jump (compact/clear/fork) expires the receipts", async () => 
 test("the task ending (kind none) expires the receipts", async () => {
   await seedTask("rs-none", "draft-for-review");
   await storeReceipt("rs-none", passing(), undefined);
-  const {recordRulebookCheck} = await import("../src/rulebook-check.js");
-  await recordRulebookCheck("rs-none", {applicable: [], task: "none"}, {entries: [], omitted: 0});
+  const snapshot = await loadSessionState("rs-none");
+  // A plain prompt with its own new match outside the active conventions ends the task (#1306).
+  await runTaskStep({
+    sessionId: "rs-none", prompt: "Wie spät ist es in Tokio?", snapshot, mode: "generic",
+    candidates: [{ id: "tokio-topic", type: "project-fact", matched_recall_when: true }], surface: "claude-code",
+  });
   const state = await loadSessionState("rs-none");
   assert.equal(state.activeTask?.kind, "none");
   assert.equal(state.receipts, undefined);

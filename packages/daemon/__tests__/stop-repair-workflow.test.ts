@@ -15,7 +15,6 @@ import { callerSessionStore } from "../src/caller-session.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runStopLane } from "../src/stop-lane.js";
 import { loadSessionState } from "../src/session-state.js";
-import {rulebookCheckHandler} from "../src/rulebook-check.js";
 import { validateArtifactHandler } from "../src/validate-artifact-handler.js";
 
 const ANNOUNCE = "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, pourrais-tu confirmer la visite fictive demain ?";
@@ -47,7 +46,7 @@ before(async () => {
   await saveMemory(vaultRoot, { id: CONVENTION.id, title: CONVENTION.title, type: "workflow",
     summary: CONVENTION.summary, body: "Translate, draft, validate approved copy.",
     scope: "all-projects", topic_path: ["fixture"], tags: ["fixture"], recall_when: ["eingegangene Nachricht"],
-    write_origin: "user-directed", validator: CONVENTION.validator });
+    validator: CONVENTION.validator });
   vault = new Vault(vaultRoot);
   await vault.init();
   server = createServer((req, res) => {
@@ -84,13 +83,10 @@ async function prompt(sid: string, text: string): Promise<string> {
 }
 
 async function approved(sid: string): Promise<void> {
-  await prompt(sid, ANNOUNCE);
-  const deps={vault} as import("../src/tool-deps.js").ToolDeps;
-  assert.equal((await rulebookCheckHandler(deps,{applicable:[CONVENTION.id],task:"draft-for-review"},{sessionId:sid})).ok,true);
+  assert.match(await prompt(sid, ANNOUNCE), /draft-for-review/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.find((c) => c.id === CONVENTION.id)?.validator, CONVENTION.validator);
-  await prompt(sid, "ok");
-  assert.equal((await rulebookCheckHandler(deps,{applicable:[CONVENTION.id],task:"approved-copy"},{sessionId:sid})).ok,true);
+  assert.match(await prompt(sid, "ok"), /approved-copy/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "approved-copy");
 }
 

@@ -19,6 +19,8 @@ import { resolveDerivedClaims, type DerivedClaimResult } from "./derived-claims.
 
 export const LoadMemoryArgs = z.object({
   id: z.string().min(1),
+  session_id:z.string().min(1).max(200).optional(),
+  agent_id:z.string().min(1).max(200).optional(),
   /**
    * Payload-Verbosity (#50). Default `"lean"` — essenzielle Frontmatter
    * (id, title, type, scope, summary, topic_path, tags, recall_when,
@@ -88,6 +90,7 @@ const LEAN_FRONTMATTER_KEYS = [
   "derived_claims",
   "validator",
   "rulebook",
+  "rule_categories",
   "applies_when",
   "rulebook_proposed",
   "applies_when_derived",
@@ -113,15 +116,17 @@ export async function loadMemoryHandler(
 ): Promise<LoadMemoryResult> {
   const parsed = LoadMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
+  const sessionId=ctx?.sessionId??callerSessionStore.getStore()??parsed.data.session_id;
+  const agentId=ctx?.agentId!==undefined?ctx.agentId:parsed.data.agent_id;
 
   // Commons-Fallback: persönlicher Vault gewinnt; nur wenn die ID dort
   // nicht existiert, wird im read-only Commons-Index nachgeschlagen.
   const own = deps.search.loadFull(parsed.data.id);
   const m = own ?? deps.commonsSearch?.loadFull(parsed.data.id);
   const fromCommons = !own && m !== undefined;
-  const hookHint = deps.telemetry.findHookHintFor(parsed.data.id, ctx?.sessionId ?? callerSessionStore.getStore() ?? null);
+  const hookHint = deps.telemetry.findHookHintFor(parsed.data.id, sessionId ?? null);
   const followsRecall = deps.telemetry.recentRecallId();
-  const servedBy = deps.telemetry.findRecallFor(parsed.data.id, ctx?.sessionId ?? callerSessionStore.getStore() ?? null); // #1128-capture
+  const servedBy = deps.telemetry.findRecallFor(parsed.data.id, sessionId ?? null); // #1128-capture
   // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
   // Projektion — ein Load, der nichts liefert, trägt keine.
   const logLoad = (delivered?: {
@@ -147,8 +152,8 @@ export async function loadMemoryHandler(
               origin: hookHint ? "hook" : followsRecall ? "recall" : "direct",
             }
           : {}),
-        caller_session: ctx?.sessionId ?? callerSessionStore.getStore() ?? null,
-        session_known: !!(ctx?.sessionId ?? callerSessionStore.getStore()),
+        caller_session: sessionId ?? null,
+        session_known: !!sessionId,
       }),
     );
 
@@ -165,7 +170,6 @@ export async function loadMemoryHandler(
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
 
-  const sessionId = ctx?.sessionId ?? callerSessionStore.getStore();
   const source = (await readCurrentRulebookSources({ get: () => m }, [m.fm.id], sessionId)).get(m.fm.id)!;
   if (source.hiddenFromPublic && !ctx?.trustedPrivate) throw new Error(`memory not found: ${parsed.data.id}`);
 
@@ -176,7 +180,7 @@ export async function loadMemoryHandler(
     hook_hint: hookHint
       ? { recall_id: hookHint.recall_id, score: hookHint.score }
       : null,
-    session_id: ctx?.sessionId ?? callerSessionStore.getStore() ?? null,
+    session_id: sessionId ?? null,
   });
 
   // Reset-signal for the hook's per-session dedup (#32): touch a marker
@@ -195,12 +199,12 @@ export async function loadMemoryHandler(
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" || ctx?.agentId != null ? undefined : source,
-    source.matchesIndex===true && ctx?.agentId == null ? (ctx?.sessionId ?? callerSessionStore.getStore()) : undefined,
+    parsed.data.verbosity === "lean" || agentId != null ? undefined : source,
+    source.matchesIndex===true && agentId == null ? sessionId : undefined,
   );
 
-  if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true && source.rulebookMetadata?.rulebook) {
-    await recordRulebookLoad(sessionId, parsed.data.id, ctx?.agentId);
+  if (sessionId && parsed.data.verbosity !== "lean" && source.matchesIndex === true) {
+    await recordRulebookLoad(sessionId, parsed.data.id, agentId, source);
   }
   // Lean-by-default (#50): essenzielle Frontmatter + body ohne den
   // Auto-Related-Block. `verbosity: "full"` liefert alles (Mac-App / Debug).
@@ -211,7 +215,7 @@ export async function loadMemoryHandler(
   // Project current declarations and runtime legacy membership, never rewrite
   // the source file just to add new optional schema fields.
   if (source.rulebookMetadata) {
-    delete fm.rulebook; delete fm.applies_when; delete fm.rulebook_proposed; delete fm.applies_when_derived;
+    delete fm.rulebook; delete fm.rule_categories; delete fm.applies_when; delete fm.rulebook_proposed; delete fm.applies_when_derived;
     Object.assign(fm, source.rulebookMetadata);
   }
   // verify-Loop: ein Commons-Rezept, das geladen (und gleich angewendet)

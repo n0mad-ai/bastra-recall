@@ -162,13 +162,16 @@ export type ConventionValidator = z.infer<typeof ConventionValidatorSchema>;
 
 /** Additive rulebook metadata; descriptions are authored in the user's language. */
 export const RulebookSchema = z.enum(["always", "on-demand"]);
+export const RuleCategoriesSchema = z.array(z.enum(["github-issues-prs", "correspondence"])).max(2);
 export const RulebookProposalSchema = z.object({
   rulebook: RulebookSchema,
+  rule_categories: RuleCategoriesSchema.optional(),
   applies_when: z.string().trim().min(1),
 }).strict();
 
 export const FrontmatterSchema = z.object({
   rulebook: RulebookSchema.optional(),
+  rule_categories: RuleCategoriesSchema.optional(),
   applies_when: z.string().trim().min(1).optional(),
   rulebook_proposed: RulebookProposalSchema.optional(),
   id: z.string().min(1).refine(isPathSafeComponent, { message: pathSafeMessage }),

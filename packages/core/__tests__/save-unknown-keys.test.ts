@@ -194,6 +194,7 @@ test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATT
     verify_cmd: "npm test",
     derived_claims: [{ id: "steps", resolver: "count.markdown-numbered-list.v1", source: "ops/runbook.md", expect: 4 }],
     rulebook: "always",
+    rule_categories: ["github-issues-prs"],
     applies_when: "When testing invented artifacts",
     rulebook_proposed: { rulebook: "on-demand", applies_when: "When changing the fixture" },
     validator: { tool: "validate_artifact", channel: "discord-dm", limit: 2000, unit: "utf16" },

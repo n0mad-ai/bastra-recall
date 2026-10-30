@@ -20,7 +20,7 @@ export function resolveRulebook(fm: Frontmatter, context: RulebookLegacyContext 
   let rulebook = fm.rulebook;
   if (!rulebook && fm.write_origin === "user-directed") {
     if (context.floor || context.activeConvention) rulebook = "always";
-    else if (fm.recall_mode === "reflex" || fm.type === "meta-working" || fm.type === "user-preference" || fm.type === "workflow") rulebook = "on-demand";
+    else if (fm.recall_mode === "reflex" || fm.type === "meta-working" || fm.type === "user-preference" || fm.type === "workflow" || fm.rule_categories?.length) rulebook = "on-demand";
   }
   return rulebook ? { rulebook, applies_when: fm.applies_when ?? fm.summary,
     ...(fm.applies_when === undefined ? { applies_when_derived: true as const } : {}) } : undefined;

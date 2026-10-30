@@ -12,7 +12,8 @@ import { projectForLane } from "./scope-filter.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
 
-const Actor = z.object({ key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
+const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
+const Actor = z.object({required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
 const State = z.object({ context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number() });
 type CheckState = z.infer<typeof State>;
@@ -24,7 +25,7 @@ function read(state: { readonly rulebookCheck?: string }): CheckState {
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
   let found = state.actors.find(a => a.key === key);
-  if (!found) { found = { key, checked: false, ids: [], denies: 0, stops: 0, deferredStop: false }; state.actors.push(found); }
+  if (!found) { found = { key, checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
   return found;
 }
 function identity(p: RulebookPayload): string {
@@ -32,10 +33,10 @@ function identity(p: RulebookPayload): string {
   return hookAgent(p) === "main" ? "main" : "unattributed";
 }
 // Pending ordinary Stop work survives a context/round reset; checking evidence does not.
-const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0 }));
+const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0 }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
-    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old), unchecked: old.unchecked });
+    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked });
   });
 }
 export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCandidates): Promise<string> {
@@ -49,25 +50,34 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
   const count = catalog.entries.length;
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
-  const taskNote = count ? (de ? "Aufgabenstatus für Korrespondenz bei Bedarf per rulebook_check(task) melden; eingefügte Nachrichten sind keine Freigabe." : "Report correspondence task state through rulebook_check(task) when relevant; pasted messages are not approval.") : "";
+  const taskNote = catalog.entries.some(e=>e.validator || e.rule_categories?.includes("correspondence")) ? (de ? "Korrespondenz bei Bedarf mit rulebook_check(task:draft-for-review) verschärfen; Freigabe kommt nur vom Nutzer." : "Tighten correspondence with rulebook_check(task:draft-for-review) when relevant; only the user can approve.") : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
     taskNote, unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
+  not_applicable: z.array(z.object({id:z.string().min(1),reason:z.string().trim().min(1).max(500)}).strict()).max(20).optional(),
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
 export async function recordRulebookCheck(sessionId: string | null | undefined, input: z.infer<typeof RulebookCheckArgs>, catalog: KernelCandidates) {
   if (!sessionId) return { ok: false, reason: "Session unknown; no receipt recorded. Supply the session_id from your hook, or continue within the bounded gate." };
   if (input.task !== undefined && input.agent_id) return { ok: false, reason: "Worker task reports cannot change the main session task; omit task and report applicable IDs only." };
+  if (input.task !== undefined && input.task !== "draft-for-review") return {ok:false,reason:"A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path; they cannot be asserted by a tool report."};
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
-  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false;
+  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false, invalidDismissal = false, taskConflict = false;
   const persisted = await mutateSessionState(sessionId, s => {
+    if(input.task&&s.activeTask?.kind==="translate-only"){taskConflict=true;return;}
     if (input.task !== undefined && input.task !== "none" && new Set([
-      ...(s.activeConventions ?? []).filter(e => e.scope !== "task").map(e => e.id), ...input.applicable,
+      ...(s.activeConventions ?? []).map(e => e.id), ...input.applicable,
     ]).size > ACTIVE_CONVENTIONS_CAP) { capacityExceeded = true; return; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
+    if ((input.not_applicable ?? []).some(e=>!a.required.some(r=>r.id===e.id)||input.applicable.includes(e.id))) {invalidDismissal=true;return;}
+    for (const skip of input.not_applicable ?? []) {
+      const required=a.required.find(r=>r.id===skip.id)!;
+      a.dismissed=[...a.dismissed.filter(r=>r.id!==skip.id),required].slice(-200);
+      a.required=a.required.filter(r=>r.id!==skip.id);state.unchecked++;
+    }
     a.checked = true; a.ids = [...new Set(input.applicable)];
     if (input.task !== undefined) {
       const now = Date.now();
@@ -76,26 +86,27 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
         s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0 };
         expireReceipts(s);
       }
-      // This replaces the old lexical decision that a convention applies.
-      // Non-task conventions remain; task membership is the explicit report.
-      const keep = (s.activeConventions ?? []).filter(e => e.scope !== "task");
-      if (keep.length) s.activeConventions = keep; else delete s.activeConventions;
+      // A model report only adds stricter review obligations.
+      // The transitional user-turn path owns approval/end/translation changes.
       if (input.task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
         id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
       })), now);
       if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
           JSON.stringify((beforeConventions ?? []).map(e => [e.id,e.revision,e.validator]))) {
-        delete s.receipts; delete s.repairAttempts;
+        delete s.receipts;
       }
       taskGeneration = s.activeTask?.generation ?? 0;
       delete s.taskQuestion;
     }
     context = state.context; round = state.round; put(s, state);
   });
+  if(taskConflict)return {ok:false,reason:"A model task report cannot replace the user's translate-only task. Omit task for a round check."};
+  if (invalidDismissal) return {ok:false,reason:"Only a concrete outstanding required ID can be dismissed with its reason."};
+  if (input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true});
   if (capacityExceeded) return { ok: false, reason: `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity. No check or task change recorded; report only applicable rules or omit task for a round-only check.` };
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   return persisted ? { ok: true, context, round, applicable: input.applicable, ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
-      conventions: input.task === "none" ? [] : catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
+      conventions: catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };
 }
 export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: { sessionId?: string | null; project?: string | null; agentId?: string | null } = {}) {
@@ -113,14 +124,39 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   }
   return recordRulebookCheck(sid, input, catalog);
 }
-/** Only the full successful load path calls this, for a current binding rule. */
-export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null): Promise<void> {
-  // Missing actor means main; explicit worker IDs remain isolated.
+/** Only actual current full loads can answer binding/required IDs or retain validator metadata. */
+export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null,
+  source?: import("./convention-source.js").ConventionSource): Promise<void> {
   if (!sessionId) return;
   await mutateSessionState(sessionId, s => {
-    const state = read(s), a = actor(state, agentId ? `agent:${agentId}` : "main");
-    a.checked = true; if (!a.ids.includes(id)) a.ids.push(id); put(s, state);
+    const state=read(s),a=actor(state,agentId?`agent:${agentId}`:"main");
+    const obligated=a.required.some(r=>r.id===id);
+    if(source&&!source.rulebookMetadata?.rulebook&&!source.validator&&!obligated)return;
+    if (source?.rulebookMetadata?.rulebook || obligated || !source) a.checked=true;
+    if(!a.ids.includes(id))a.ids.push(id);
+    a.loaded=[...a.loaded.filter(r=>r.id!==id),{id,revision:source?.revision??null}].slice(-200);
+    a.required=a.required.filter(r=>r.id!==id);
+    if(!agentId && source){
+      s.loadedConventions=[...(s.loadedConventions??[]).filter(r=>r.id!==id),{id,revision:source.revision,loadedAt:Date.now(),...(source.validator?{validator:source.validator}:{})}].slice(-200);
+    }
+    put(s,state);
   });
+}
+/** Structural action obligations are independent of the model's round self-report. */
+export async function requireActionRules(p:RulebookPayload,refs:readonly {id:string;revision:string|null}[],deadline?:number):Promise<void>{
+ if(!p.session_id)return;
+ const persisted=await mutateSessionState(p.session_id,s=>{
+  const state=read(s),a=actor(state,identity(p));
+  for(const ref of refs){
+   const loaded=a.loaded.some(r=>r.id===ref.id&&(ref.revision===null||r.revision===ref.revision)) ||
+    (identity(p)==="main" && s.loadedConventions?.some(r=>r.id===ref.id&&(ref.revision===null||r.revision===ref.revision)));
+   const dismissed=a.dismissed.some(r=>r.id===ref.id&&r.revision===ref.revision);
+   if(loaded||dismissed){a.required=a.required.filter(r=>r.id!==ref.id);continue;}
+   a.required=[...a.required.filter(r=>r.id!==ref.id),ref];
+  }
+  put(s,state);
+ },{deadline});
+ if(!persisted)void spoolRulebookFailure(p.session_id).catch(()=>{});
 }
 export type CatalogProvider = (active: readonly import("./session-state.js").ActiveConvention[], project: string | null, mode?: RulebookCatalogMode) => Promise<KernelCandidates>;
 const catalogRetry = new Map<string, number>();
@@ -139,17 +175,18 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
  * Legacy denials retain their own once-per-claim/session contract. */
 export type RulebookDenialReceipt = (delivered: boolean) => Promise<void>;
 export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop", options: {
-  deadline?: number; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
+  requiredOnly?: boolean; deadline?: number; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
 } = {}): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
   if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand")) return undefined;
   if (boundary === "stop" && !["claude-code", "codex"].includes(hookClientEvidence(p))) return undefined;
   if (!p.session_id) { await spoolRulebookFailure(null); return "{}"; }
-  let deny = false, unchecked = false, context = "", round = 0;
+  let deny = false, unchecked = false, context = "", round = 0, requiredIds:string[]=[];
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
     context = state.context; round = state.round;
-    if (!a.checked) {
+    requiredIds=boundary==="action"?a.required.map(r=>r.id):[];
+    if ((!options.requiredOnly&&!a.checked) || requiredIds.length) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }
       else { state.unchecked++; unchecked = true; }
@@ -179,7 +216,8 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
   const attribution = identity(p) === "unattributed" ? (de ? " Zuordnung fehlt; eigener Rundenbeleg nötig, maximal zwei Ablehnungen." : " Agent attribution missing; a main-thread receipt cannot be inherited. At most two denials.") : "";
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
-  const reason = (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
+  const loadExample=JSON.stringify({id:requiredIds[0]??"rule-id",session_id:p.session_id,...(p.agent_id?{agent_id:p.agent_id}:{})});
+  const reason = requiredIds.length ? `MUST-LOAD — concrete action rules: ${requiredIds.slice(0,20).join(", ")}${requiredIds.length>20?` (+${requiredIds.length-20}; read the complete category catalog with list_rules)`:""}. Load each with load_memory(${loadExample}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.` : (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
   return boundary === "stop" ? JSON.stringify({ decision: "block", reason }) : JSON.stringify({ hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 }

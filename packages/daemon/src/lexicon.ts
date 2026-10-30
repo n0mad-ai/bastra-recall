@@ -420,15 +420,166 @@ export function previousConventionCues(): string[] {
   return loadCues("previous-convention", Object.values(DEFAULT_PREVIOUS_CONVENTION_CUES_BY_LANGUAGE).flat());
 }
 
-// Rulebook applicability and correspondence task state are reported by the
-// model through rulebook_check, never inferred from language-specific cues.
+/**
+ * #1306 — the task contract's cues (prompt-classify.ts `taskSignals`). Per-
+ * language data like the lists above, each extended by a user file of the same
+ * name (`correspondence.txt`, `translate-only.txt`, …).
+ *
+ * They are matched against the user's OWN text only: quoted incoming text (a
+ * blockquote, a `<pasted_content>` block, everything below a "… schrieb:" /
+ * "… wrote:" header) is cut off first and never read for a cue, so an
+ * instruction inside an incoming message cannot change the task state.
+ *
+ * The neutral path for a language without a list: no cue fires, so the state
+ * stays as it is. Pasted or quoted text is recognised structurally in every
+ * language and, without a recognised verb, produces the "task unclear" choice
+ * line — never a silent approval. Approval needs a listed word, so an unlisted
+ * language can never approve copy by accident.
+ */
+export const DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "eingegangene\\s+(?:nachricht|mail|e-?mail)\\p{L}*", "korrespondenz\\s+abarbeiten", "nachricht(?:en)?\\s+abarbeiten",
+    "mails?\\s+abarbeiten", "posteingang\\s+abarbeiten",
+  ],
+  en: [
+    "incoming\\s+(?:message|mail|email)s?", "work\\s+through\\s+(?:the\\s+)?(?:correspondence|messages|inbox)",
+    "process\\s+(?:the\\s+)?correspondence", "handle\\s+(?:the\\s+)?correspondence",
+  ],
+};
 
-/** Retained for quoted-source isolation in retrieval hints (#1307), not applicability. */
+export const DEFAULT_TRANSLATE_ONLY_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["nur\\s+(?:ü|ue)bersetz\\p{L}*", "(?:ü|ue)bersetz\\p{L}*\\s+nur", "blo(?:ß|ss)\\s+(?:ü|ue)bersetz\\p{L}*"],
+  en: ["translate\\s+only", "only\\s+translate", "just\\s+translate", "translation\\s+only"],
+};
+
+/** A whole short prompt that approves the draft under review — never a substring. */
+export const DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["ok", "okay", "passt", "passt\\s+so", "ja", "go", "los", "freigegeben"],
+  en: ["ok", "okay", "yes", "go", "approved", "lgtm"],
+};
+
+/** An explicit approval phrase, anywhere in the prompt — also the answer to the choice line. */
+export const DEFAULT_APPROVED_COPY_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["freigegeben", "kopierfertig", "freigabe\\s+erteilt"],
+  en: ["approved\\s+copy", "copy\\s+approved", "ready\\s+to\\s+copy"],
+};
+
+/** An explicit request for a reply draft — also the answer to the choice line. */
+export const DEFAULT_DRAFT_REPLY_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["antwortentwurf", "entwurf", "antwort\\s+entwerfen", "entwirf\\s+(?:eine\\s+)?antwort"],
+  en: ["draft\\s+(?:a\\s+)?(?:reply|response|answer)", "draft\\s+reply", "reply\\s+draft"],
+};
+
+/** The header line an e-mail client puts above a quoted message ("Max schrieb:"). */
 export const DEFAULT_QUOTE_HEADER_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: ["schrieb", "hat\\s+geschrieben"],
   en: ["wrote"],
   ru: ["написал\\p{L}*"],
 };
+
+/** Correspondence-announcement cues: defaults extended by ~/.bastra/lexicon/correspondence.txt. */
+export function correspondenceCues(): string[] {
+  return loadCues("correspondence", Object.values(DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE).flat());
+}
+
+/** Translate-only cues: defaults extended by ~/.bastra/lexicon/translate-only.txt. */
+export function translateOnlyCues(): string[] {
+  return loadCues("translate-only", Object.values(DEFAULT_TRANSLATE_ONLY_CUES_BY_LANGUAGE).flat());
+}
+
+/** Whole-prompt approval cues: defaults extended by ~/.bastra/lexicon/task-approval.txt. */
+export function taskApprovalCues(): string[] {
+  return loadCues("task-approval", Object.values(DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE).flat());
+}
+
+/** Explicit approved-copy cues: defaults extended by ~/.bastra/lexicon/approved-copy.txt. */
+export function approvedCopyCues(): string[] {
+  return loadCues("approved-copy", Object.values(DEFAULT_APPROVED_COPY_CUES_BY_LANGUAGE).flat());
+}
+
+/** Draft-reply cues: defaults extended by ~/.bastra/lexicon/draft-reply.txt. */
+export function draftReplyCues(): string[] {
+  return loadCues("draft-reply", Object.values(DEFAULT_DRAFT_REPLY_CUES_BY_LANGUAGE).flat());
+}
+
+/** Quote-header cues: defaults extended by ~/.bastra/lexicon/quote-header.txt. */
 export function quoteHeaderCues(): string[] {
   return loadCues("quote-header", Object.values(DEFAULT_QUOTE_HEADER_CUES_BY_LANGUAGE).flat());
+}
+
+
+/** #1328: recipient intent, copy requests and review labels remain extensible data. */
+export const DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "(?:nachricht|frage|antwort)\\s+(?:[\\p{L}]+\\s+){0,5}an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
+    "an\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*\\s+(?:schicken|senden|schreiben)",
+    "(?:schick|send)\\p{L}*\\s+(?:das|es)\\s+(?:an\\s+)?@?[\\p{L}][\\p{L}\\p{N}_-]*",
+  ],
+  en: [
+    "(?:send|forward)\\s+(?:the\\s+)?(?:message|question|reply)\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*",
+    "write\\s+to\\s+@?[\\p{L}][\\p{L}\\p{N}_-]*(?![\\p{L}\\p{N}_./-])",
+  ],
+};
+// Natural copy requests are intentionally flexible. The requested object,
+// rather than an exact sentence shape, keeps technical work out of approval.
+const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["englisch\\p{L}*", "(?:ü|ue)bersetz\\p{L}*"],
+  en: ["english", "translate\\p{L}*"],
+};
+const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],
+  en: ["but", "shorter", "wrong", "correct", "revise", "change"],
+};
+const ASSISTANT_REVIEW_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
+  en: ["german\\s+draft(?:\\s+for\\s+review)?"],
+};
+export function sendPersonCues(): string[] { return loadCues("send-person", Object.values(DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE).flat()); }
+export function targetCopyCues(): string[] { return loadCues("target-copy", Object.values(TARGET_COPY_CUES).flat()); }
+export function copyRevisionCues(): string[] { return loadCues("copy-revision", Object.values(COPY_REVISION_CUES).flat()); }
+export function assistantReviewCues(): string[] { return loadCues("assistant-review", Object.values(ASSISTANT_REVIEW_CUES).flat()); }
+
+/** Short recipient follow-ups need a correspondence context to avoid file-writing cues. */
+const RECIPIENT_FOLLOWUP_CUES: Readonly<Record<string, readonly string[]>> = {
+  de: ["(?<![./])@?[\\p{L}][\\p{L}\\p{N}_-]*\\s+schreiben"],
+};
+export function recipientFollowupCues(): string[] {
+  return loadCues("recipient-followup", Object.values(RECIPIENT_FOLLOWUP_CUES).flat());
+}
+
+
+/** Technical objects veto correspondence transitions, even with a standing rule. */
+const TASK_TECHNICAL_OBJECTS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["datei\\p{L}*", "datenbank\\p{L}*", "daten", "sprache\\p{L}*", "fehlermeldung\\p{L}*"],
+  en: ["files?", "disk", "databases?", "data", "languages?", "error\\s+messages?"],
+  neutral: ["ui", "i18n", "readme", "api", "cli", "server", "client", "config(?:uration)?"],
+};
+
+/** Capture a recipient token; script-neutral name/handle checks live in classification. */
+const PERSON_RECIPIENT_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "(?:an\\s+|(?:schick|send)\\p{L}*\\s+(?:das|es)\\s+(?:an\\s+)?)(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)(?![\\p{L}\\p{N}_./-])",
+    "(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)\\s+schreiben",
+  ],
+  en: ["to\\s+(@?[\\p{L}][\\p{L}\\p{M}\\p{N}_'-]*)(?![\\p{L}\\p{N}_./-])"],
+};
+export function technicalTaskObjectCues(): string[] {
+  return loadCues("task-technical-object", Object.values(TASK_TECHNICAL_OBJECTS_BY_LANGUAGE).flat());
+}
+export function personRecipientCues(): string[] {
+  return loadCues("person-recipient", Object.values(PERSON_RECIPIENT_BY_LANGUAGE).flat());
+}
+
+/** Common technical destinations, independent of the conversation language.
+ * Extend task-technical-destination.txt for additional local/service names. */
+const TASK_TECHNICAL_DESTINATIONS = [
+  "postgres(?:ql)?", "mysql", "mariadb", "sqlite", "mongodb", "dynamodb", "redis",
+  "kafka", "rabbitmq", "sqs", "pubsub",
+  "sentry", "datadog", "prometheus", "grafana", "newrelic",
+  "stripe", "paypal", "s3", "supabase", "vercel", "aws", "azure", "gcp", "cloudflare", "firebase",
+  "github", "gitlab", "slack[- ]webhook", "webhook",
+  "[\\p{L}\\p{M}\\p{N}_]+-(?:services?|api|servers?|db)",
+] as const;
+export function technicalTaskDestinationCues(): string[] {
+  return loadCues("task-technical-destination", TASK_TECHNICAL_DESTINATIONS);
 }
