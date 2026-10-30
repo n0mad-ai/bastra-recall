@@ -15,7 +15,7 @@ before(async()=>{root=await mkdtemp(join(tmpdir(),'phase4-fix2-'));process.env.B
 after(async()=>{if(previous===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=previous;await rm(root,{recursive:true,force:true});});
 async function load(sid:string){await recordRulebookLoad(sid,'copy-rule',null,{revision:'r1',validator});}
 async function task(sid:string,kind:'draft-for-review'|'approved-copy'|'none'|'translate-only'){
- await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind,since:1,generation:0,...(kind==='approved-copy'?{approvalSource:'user-turn' as const}:{})};});
+ await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind,since:Date.now(),generation:0,...(kind==='approved-copy'?{approvalSource:'user-turn' as const}:{})};});
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
 test('loaded validator plus review/approved task checks all delivered forms, without activeConventions',async()=>{

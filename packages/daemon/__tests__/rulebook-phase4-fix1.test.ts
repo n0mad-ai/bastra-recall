@@ -194,7 +194,7 @@ test('structural repair respects the validator counting unit and a real matching
  const result=await callerSessionStore.run(sid,()=>validateArtifactHandler({text,channel:v.channel,limit:v.limit,unit:v.unit,normalize:'none'}));
  assert.equal(result.receipt_stored,true);assert.equal(await checkStopRepair(p),null);
 });
-test('answer labels cannot select an older loaded channel over the newest validator',async()=>{
+test('answer labels cannot drop either frozen model-task channel constraint',async()=>{
  const sid='copy-two-channels';for(const channel of ['channel-a','channel-b'])await recordRulebookLoad(sid,channel,null,{revision:'r',validator:{...validator,channel,limit:100},rulebookMetadata:{rulebook:'on-demand',applies_when:'Messages'}});
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  await mutateSessionState(sid,s=>{s.loadedConventions!.forEach((c,i)=>{c.loadedAt=i+1;});});

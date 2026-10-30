@@ -45,3 +45,10 @@ Translated fixtures and the shared replay implementation live in
 `packages/daemon/__tests__/fixtures/rulebook-phase5/` and are typechecked with
 the daemon tests. These tests deliberately reproduce the gaps; a green suite
 does not turn a `GAP` report cell into a passing acceptance case.
+
+The security follow-up (`rulebook-phase5-security.test.ts`) verifies frozen
+task-start validator parameters, order-independent model sets, monotonic
+tightening, legacy pre-task fallback and preserved user-selected channels.
+It is part of the root suite and can be run with the same test-env import.
+Different units/channels are enforced together; numeric limit ordering alone
+is insufficient. These fixes do not close the task-omission/applicability gaps.

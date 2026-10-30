@@ -18,6 +18,7 @@ import { GATED_HINT_TYPES } from "./hook-recall-response.js";
 import { decideTask, taskSignals, type DetectedMode, type TaskKind } from "./prompt-classify.js";
 import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
 import { currentReceipt, expireReceipts } from "./receipt-store.js";
+import {taskValidators,freezeTaskValidators,mergeTaskValidators} from './task-validators.js';
 import {
   mutateSessionState,
   recordActiveConventions,
@@ -148,6 +149,9 @@ async function step(input: TaskStepInput): Promise<string | null> {
     // A revision that moved since the convention was set: say so once, then
     // carry the new one. Unknown before is not a change.
     const changed: string[] = [];
+    if(s.activeTask&&['draft-for-review','approved-copy'].includes(s.activeTask.kind)&&s.activeTask.validatorBindings===undefined){
+      freezeTaskValidators(s.activeTask,taskValidators(s),s.activeTask.validatorBindingSource??'model');
+    }
     for (const e of s.activeConventions ?? []) {
       const rev = revisions.get(e.id);
       if (!revisions.has(e.id)) continue;
@@ -162,8 +166,13 @@ async function step(input: TaskStepInput): Promise<string | null> {
       }
     }
     if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
+      const previousTask=s.activeTask;
+      const previousBindings=taskValidators(s);
       const validatorRuleId = ["draft-for-review", "approved-copy"].includes(s.activeTask?.kind ?? "") ? s.activeTask?.validatorRuleId : undefined;
       s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}), ...(decision.next !== "none" && validatorRuleId ? {validatorRuleId} : {}) };
+      if(previousTask&&['draft-for-review','approved-copy'].includes(previousTask.kind)&&['draft-for-review','approved-copy'].includes(decision.next)){
+        freezeTaskValidators(s.activeTask,previousBindings,previousTask.validatorBindingSource??'model');
+      }
       // #1310: a new task (or none) ends the receipts of the old one.
       expireReceipts(s);
       if (decision.next === "none") {
@@ -184,9 +193,14 @@ async function step(input: TaskStepInput): Promise<string | null> {
         validator: input.conventionOf ? sources.get(id)?.validator
           : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
       })), now);
-      if (kindChanges && entering && s.activeTask && !s.activeTask.validatorRuleId) {
-        s.activeTask.validatorRuleId = activate.find(id => s.activeConventions?.some(c => c.id === id && c.validator));
+      if (kindChanges && entering && s.activeTask && !s.activeTask.validatorBindings) {
+        s.activeTask.validatorRuleId ??= activate.find(id => s.activeConventions?.some(c => c.id === id && c.validator));
+        const selected=(s.activeConventions??[]).filter(c=>c.id===s.activeTask!.validatorRuleId);
+        freezeTaskValidators(s.activeTask,selected.length?mergeTaskValidators(selected):taskValidators(s),'user-turn');
       }
+    }
+    if(kindChanges&&entering&&s.activeTask&&!s.activeTask.validatorBindings){
+      freezeTaskValidators(s.activeTask,taskValidators(s),'user-turn');
     }
     if (decision.unclear) {
       s.taskQuestion = {

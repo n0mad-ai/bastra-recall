@@ -16,14 +16,16 @@ before(async()=>{root=await mkdtemp(join(tmpdir(),'phase4-fix3-'));process.env.B
 after(async()=>{if(prev===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=prev;await rm(root,{recursive:true,force:true});});
 async function seed(sid:string,channel='email'){
  await mutateSessionState(sid,s=>{
-  s.activeTask={id:sid,kind:'approved-copy',since:1,generation:0,approvalSource:'user-turn'};
+  // The user selected this channel after the rules were loaded. A later load
+  // is no longer allowed to choose/relax the task's validator.
+  s.activeTask={id:sid,kind:'approved-copy',since:40,generation:0,approvalSource:'user-turn',validatorRuleId:channel==='email'?'email-rule':'discord-rule'};
   s.loadedConventions=[{id:'discord-rule',revision:'r',loadedAt:10,validator:discord},{id:'email-rule',revision:'r',loadedAt:20,validator:email}];
   s.receipts=[{taskId:sid,generation:0,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:1}];
  });
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
 const catalog:KernelCandidates={entries:[['discord-rule',discord],['email-rule',email]].map(([id,validator])=>({id:id as string,title:'Rule',group:'explicit' as const,rulebook:'on-demand' as const,body:'Fixture',applies_when:'Fixture',revision:'r',updated:null,stale_status:'unknown' as const,validator:validator as typeof discord})),omitted:0};
-test('P2.1 only the latest loaded/active channel needs a receipt, not every loaded validator',async()=>{
+test('P2.1 only the user-bound channel needs a receipt, not every loaded validator',async()=>{
  await seed('latest-email');assert.equal(await stop('latest-email','x'.repeat(3200)),null);
  await seed('latest-active','discord-dm');await mutateSessionState('latest-active',s=>{s.activeConventions=[{id:'discord-rule',revision:'r',setAt:30,validator:discord}];});
  assert.equal(await stop('latest-active','Short Discord copy'),null);

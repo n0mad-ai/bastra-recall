@@ -1,4 +1,5 @@
-import {ConventionValidatorSchema,countCopyUnits,validateCopyBlocks} from "@bastra-recall/core";
+import {countCopyUnits,validateCopyBlocks} from "@bastra-recall/core";
+import {taskValidators} from './task-validators.js';
 /** Bounded Stop repair for review/approved tasks with loaded or active validators.
  * Answer formatting never creates a task or user approval.
  * Receipts retain the known task/generation (not later byte-exact) limitation.
@@ -28,18 +29,20 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const snapshot = await loadSessionState(sessionId);
   const task = snapshot.activeTask;
   if (!task || !["draft-for-review", "approved-copy"].includes(task.kind)) return null;
-  if (!taskValidator(snapshot)) return null;
+  if (!taskValidators(snapshot).length) return null;
   const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
   const latest = turns.at(-1);
   const response = latest?.role === "assistant" ? latest.content : "";
   const hasReceipt = (state: ReadonlySessionState) => {
-    const v = taskValidator(state);
-    if (!v) return false;
+    const validators = taskValidators(state);
+    if (!validators.length) return false;
+    return validators.every(({validator:v})=>{
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
     const copy = deliveredCopy(response, contract.unit_applied);
     return countCopyUnits(copy, contract.unit_applied) <= contract.limit && (state.receipts ?? []).some(r =>
       r.taskId === task.id && r.generation === task.generation && r.channel === contract.channel && r.limit <= contract.limit &&
       (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)"));
+    });
   };
   // Receipts are task/generation evidence, not byte-exact proof for later edits.
   if (hasReceipt(snapshot)) return null;
@@ -53,7 +56,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     // the snapshot wins.
     const t = s.activeTask;
     if (!t || !["draft-for-review", "approved-copy"].includes(t.kind) || t.id !== task.id || t.generation !== task.generation) return;
-    if (!taskValidator(s)) return;
+    if (!taskValidators(s).length) return;
     if (hasReceipt(s)) return;
     const r = s.repairAttempts;
     const count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
@@ -64,23 +67,6 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
       : { action: "exhausted", taskId: t.id, generation: t.generation, attempts: count };
   }, { noQueue: true, deadline });
   return persisted ? decision : null;
-}
-
-/** Prefer the task's triggering rule; otherwise the latest loaded/active source.
- * Compare real activation timestamps, never answer labels or natural-language cues.
- */
-function taskValidator(state: ReadonlySessionState) {
-  const rules = new Map<string, {id: string; at: number; validator?: unknown}>();
-  for (const c of state.activeConventions ?? []) rules.set(c.id, {...c, at: c.setAt});
-  for (const c of state.loadedConventions ?? []) {
-    if (c.loadedAt >= (rules.get(c.id)?.at ?? -Infinity)) rules.set(c.id, {...c, at: c.loadedAt});
-  }
-  const valid = [...rules.values()].flatMap(c => {
-    const parsed = ConventionValidatorSchema.safeParse(c.validator);
-    return parsed.success ? [{id: c.id, at: c.at, validator: parsed.data}] : [];
-  });
-  const bound = valid.find(c => c.id === state.activeTask?.validatorRuleId);
-  return (bound ?? valid.reverse().sort((a, b) => b.at - a.at)[0])?.validator;
 }
 
 /** Pick explicit copy regions structurally, independent of language/channel names.

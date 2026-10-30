@@ -2,6 +2,7 @@
 import { assistantReviewCues, cueRegex } from "./lexicon.js";
 import { loadSessionState, mutateSessionState, recordActiveConventions, taskIdFor } from "./session-state.js";
 import { expireReceipts } from "./receipt-store.js";
+import {taskValidators,freezeTaskValidators} from './task-validators.js';
 import type { TranscriptTurn } from "./stop-transcript.js";
 
 export async function recordReviewDraft(sessionId: string | undefined, turns: readonly TranscriptTurn[]): Promise<void> {
@@ -36,6 +37,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
       ...s.activeConventions?.find(active => active.id === c.id), ...c, scope: "task" as const,
     })), now);
     s.activeTask.validatorRuleId = asked.find(c => s.activeConventions?.some(a => a.id === c.id && a.validator))?.id;
+    freezeTaskValidators(s.activeTask,taskValidators(s),s.activeTask.validatorRuleId?'user-turn':'model');
     delete s.taskQuestion;
   }, { noQueue: true, deadline: now + 100 });
 }
