@@ -23,6 +23,8 @@ import { liveStatusline } from "./mcp-forwarder-statusline.js";
 
 function ccTurnHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
+  // Send only the project key, not the client's absolute filesystem path.
+  if (CLIENT_FILTER_PROJECT) h["x-bastra-project"] = encodeURIComponent(CLIENT_FILTER_PROJECT);
   if (typeof liveStatusline.cc_session_id === "string" && liveStatusline.cc_session_id) {
     h["x-bastra-cc-session"] = liveStatusline.cc_session_id;
     if (liveStatusline.turn_id > 0) h["x-bastra-cc-turn"] = String(liveStatusline.turn_id);

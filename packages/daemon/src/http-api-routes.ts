@@ -41,6 +41,7 @@ import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
 import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
+import { projectForFilter } from "./scope-filter.js";
 import { callerSessionStore } from "./caller-session.js";
 
 // ─── /api/v1 dispatcher ──────────────────────────────────────────
@@ -50,6 +51,9 @@ export interface DispatchCtx {
   documentWriteEnabled: boolean;
   /** Echte CC-Session aus den Forwarder-Headern (#74); null = unbekannt. */
   ccSessionId?: string | null;
+  /** Caller context is a scope hint, never a privacy/authorization boundary. */
+  cwd?: string;
+  project?: string | null;
 }
 
 export async function dispatchApi(
@@ -84,7 +88,7 @@ async function dispatchTool(
     case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
     case "recall":
       return await recallHandler(toolDeps, body);
-    case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId });
+    case "list_rules": return await listRulesHandler(toolDeps, body, { sessionId: ctx.ccSessionId, project: ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null });
     case "load_memory":
       return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null });
     case "save_memory":

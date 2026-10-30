@@ -23,39 +23,59 @@ export function renderRuleKernel(candidates: KernelCandidates, opts: { trigger: 
   const total = entries.length;
   if (!total && !(candidates.unconfirmed_legacy ?? 0) && !candidates.omitted && !candidates.unavailable_sources) return { text: "", full: [], degraded: [], omitted: 0, always_overflow: [] };
   const trigger = oneLine(opts.trigger).slice(0, 120).replaceAll('"', "&quot;");
-  const lines = [`<rule-kernel trigger="${trigger}">`,
+  const header = [`<rule-kernel trigger="${trigger}">`,
     `Rulebook: ${total} rules; catalog=${catalogHash(candidates)}; ${candidates.unconfirmed_legacy ?? 0} possible rules without confirmation.`,
     ...(opts.lexicalOnly ? [RULE_KERNEL_LEXICAL_LINE] : []), '<recall-hints trigger="rule-kernel">', HINT_FRAME_NOTE];
-  if (candidates.unavailable_sources) lines.push(`Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`);
-  const full: string[] = [], degraded: string[] = [], overflow: string[] = [];
+  if (candidates.unavailable_sources) header.push(`Catalog source check incomplete: ${candidates.unavailable_sources} sources unavailable; listed entries do not prove full restoration.`);
+  const always = entries.filter(e => (e.rulebook ?? "always") === "always");
+  const full: string[] = [], bodies: string[] = [], overflow: string[] = [];
   let aUsed = 0;
-  for (const e of entries.filter(e => (e.rulebook ?? "always") === "always")) {
+  for (const e of always) {
     const block = `Always ${e.id} revision=${e.revision ?? "unknown"} updated=${e.updated ?? "unknown"} stale_status=${e.stale_status ?? "unknown"}:\n` + e.body.split("\n").map(s => "  " + s).join("\n");
-    if (!e.body || aUsed + block.length + 1 > RULEBOOK_ALWAYS_CHAR_BUDGET || lines.join("\n").length + block.length + 1200 > RULE_KERNEL_CHAR_BUDGET) { overflow.push(e.id); continue; }
-    lines.push(block); full.push(e.id); aUsed += block.length + 1;
+    if (!e.body || aUsed + block.length + 1 > RULEBOOK_ALWAYS_CHAR_BUDGET) { overflow.push(e.id); continue; }
+    bodies.push(block); full.push(e.id); aUsed += block.length + 1;
   }
-  if (overflow.length) {
+  const overflowLine = () => {
+    if (!overflow.length) return [];
     const names: string[] = [];
     for (const id of overflow) { if (names.join(", ").length + id.length > 400) break; names.push(id); }
     const named = names.join(", ") + (names.length < overflow.length ? ` (+${overflow.length - names.length} more)` : "");
-    lines.push(`Always overflow (${overflow.length}): ${named}. Complete texts did not fit or were unavailable; shorten them or set on-demand. All IDs are in list_rules.`);
-  }
-  if (candidates.omitted) lines.push(`Catalog incomplete from source: ${candidates.omitted} entries unavailable; complete restoration is not established.`);
-  lines.push("Rule index (all tiers; descriptions are facts):");
-  // Reserve enough for an opaque cursor, close tags and the factual footer.
+    return [`Always overflow (${overflow.length}): ${named}. Complete texts did not fit or were unavailable; shorten them or set on-demand. All IDs are in list_rules.`];
+  };
+  const base = () => [...header, ...bodies, ...overflowLine(),
+    ...(candidates.omitted ? [`Catalog incomplete from source: ${candidates.omitted} entries unavailable; complete restoration is not established.`] : []),
+    "Rule index (all tiers; descriptions are facts):"];
   const tail = ["</recall-hints>", RULE_KERNEL_ASK_LINE, "</rule-kernel>"];
-  let used = [...lines, ...tail].join("\n").length;
+  const footer = (offset: number) => offset < total
+    ? `Catalog continuation: list_rules(cursor=${JSON.stringify(rulebookCursor(candidates, offset))}); total=${total}, shown=${offset}.`
+    : `Catalog end: hash=${catalogHash(candidates)} count=${total}.`;
+  const measured = (lines: string[], offset: number) => [...lines, footer(offset), ...tail].join("\n").length;
+  // Reserve the ACTUAL cursor, including its encoded project key. Whole A
+  // entries may be deferred, but neither their bodies nor the cursor is cut.
+  while (bodies.length && measured(base(), 0) > RULE_KERNEL_CHAR_BUDGET) {
+    bodies.pop(); overflow.push(full.pop()!);
+  }
+  const minimal = (): RenderedKernel => ({
+    text: [`<rule-kernel trigger="${trigger}">`,
+      `Rulebook: ${total} rules; ${candidates.unconfirmed_legacy ?? 0} possible rules without confirmation.`,
+      "The complete catalog and Always-overflow IDs are available through list_rules(); the cursor did not fit this context.",
+      "</rule-kernel>"].join("\n"),
+    full: [], degraded: [], omitted: candidates.omitted, paged_index: total,
+    always_overflow: always.map(e => e.id),
+  });
+  if (measured(base(), 0) > RULE_KERNEL_CHAR_BUDGET) return minimal();
+  const lines = base(), degraded: string[] = [];
   let offset = 0, indexUsed = 0;
   for (const e of entries) {
     const line = ruleIndexLine(e);
-    if (used + line.length + 1 + 300 > RULE_KERNEL_CHAR_BUDGET || indexUsed + line.length + 1 > RULEBOOK_INDEX_CHAR_BUDGET) break;
-    lines.push(line); used += line.length + 1; indexUsed += line.length + 1; offset++;
+    if (indexUsed + line.length + 1 > RULEBOOK_INDEX_CHAR_BUDGET || measured([...lines, line], offset + 1) > RULE_KERNEL_CHAR_BUDGET) break;
+    lines.push(line); indexUsed += line.length + 1; offset++;
     if (!full.includes(e.id)) degraded.push(e.id);
   }
   const next_cursor = offset < total ? rulebookCursor(candidates, offset) : undefined;
-  if (next_cursor) lines.push(`Catalog continuation: list_rules(cursor=${JSON.stringify(next_cursor)}); total=${total}, shown=${offset}.`);
-  else lines.push(`Catalog end: hash=${catalogHash(candidates)} count=${total}.`);
-  lines.push(...tail);
-  return { text: lines.join("\n"), full, degraded, omitted: candidates.omitted, paged_index: total - offset,
+  const text = [...lines, footer(offset), ...tail].join("\n");
+  // Hard boundary, independent of metadata/cursor lengths.
+  if (text.length > RULE_KERNEL_CHAR_BUDGET) return minimal();
+  return { text, full, degraded, omitted: candidates.omitted, paged_index: total - offset,
     always_overflow: overflow, ...(next_cursor ? { next_cursor } : {}) };
 }

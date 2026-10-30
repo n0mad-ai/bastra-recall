@@ -147,3 +147,34 @@ test("source metadata cannot close the rule frame or inject additional rule head
   assert.equal(text.split("</rule-kernel>").length, 2);
   assert.doesNotMatch(text, /\u202e/); assert.doesNotMatch(text, /\nAlways spoof/);
 });
+
+test("naked HTTP list_rules preserves the caller cwd project", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "bastra-rulebook-http-project-"));
+  const vault = new Vault(root); await vault.init(); const search = new SearchIndex(vault); search.start();
+  t.after(async () => { search.stop(); await vault.stop(); await rm(root, { recursive: true, force: true }); });
+  const all = [memory("global"), memory("project", { scope: "fixture-project" })];
+  for (const m of all) { const saved = await saveMemory(root, { ...m.fm, body: m.body }); await vault.reindexFile(saved.file_path); }
+  const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath: root };
+  const { dispatchApi } = await import("../src/http-api-routes.js");
+  const page = await dispatchApi("list_rules", {}, { toolDeps: deps, documentWriteEnabled: false,
+    cwd: "/home/fixture/projects/fixture-project" }) as Awaited<ReturnType<typeof catalog.listRulesHandler>>;
+  assert.equal(page.total, 2); assert.deepEqual(page.rules.map(r => r.id), ["global", "project"]);
+  const oldToken = process.env.BASTRA_API_TOKEN;
+  process.env.BASTRA_API_TOKEN = "fixture-http-project-token";
+  const { startHttpServer } = await import("../src/http.js");
+  const http = await startHttpServer({ port: 0, vault, search, telemetry: deps.telemetry, version: "fixture",
+    toolDeps: deps, documentWriteEnabled: false, embedding: { on: false, providerId: null, source: "none" } });
+  t.after(async () => { await http.close(); if (oldToken === undefined) delete process.env.BASTRA_API_TOKEN; else process.env.BASTRA_API_TOKEN = oldToken; });
+  const response = await fetch(`http://127.0.0.1:${http.port}/api/v1/list_rules`, { method: "POST", body: "{}",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer fixture-http-project-token", "x-bastra-project": encodeURIComponent("fixture-project") } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), page);
+});
+test("actual cursor length with a long Unicode project never breaks the kernel bound", async () => {
+  const c = await collect([memory("always", { rulebook: "always" }, "a".repeat(7000)),
+    ...Array.from({ length: 300 }, (_, i) => memory(`row-${i}`))]);
+  c.project = "ø".repeat(600);
+  const r = renderRuleKernel(c, { trigger: "compact" });
+  assert.ok(r.text.length <= RULE_KERNEL_CHAR_BUDGET, `${r.text.length} > ${RULE_KERNEL_CHAR_BUDGET}`);
+  assert.ok(r.next_cursor); assert.ok(r.text.includes(r.next_cursor!));
+});

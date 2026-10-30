@@ -1,3 +1,4 @@
+import { capSessionContext } from "./session-context-cap.js";
 /**
  * SessionStart lane, daemon-side (#369/#15 — the #343/#344 pattern, applied to the
  * lane that greets every new session).
@@ -732,25 +733,20 @@ export async function runSessionLane(
     updateBlock += modelNoticeOutput.block;
   }
 
-  // A complete kernel is kept whole; unrelated sections are deferred as whole
-  // blocks when the host's 10k additionalContext cap would otherwise hide it.
-  let contextDeferred = false;
-  const capContext = (value: string): string => {
-    if (!value || value === "{}") return value;
-    const parsed = JSON.parse(value);
+  // Defer only whole optional sections that must go. Preserve the complete
+  // kernel/language and name every deferred protocol section in the suffix.
+  out = await appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS);
+  if (out !== "{}") {
+    const parsed = JSON.parse(out);
     const context = parsed.hookSpecificOutput?.additionalContext;
-    if (typeof context === "string" && context.length > 9900) {
-      contextDeferred = true;
-      const suffix = "\nOther session context was deferred to keep the rulebook below the host limit.";
-      const language = kernel.text.length + languageBlock.length + suffix.length + 1 <= 9900 ? languageBlock : "";
-      parsed.hookSpecificOutput.additionalContext = kernel.text + "\n" + language + suffix;
-      return JSON.stringify(parsed);
+    if (typeof context === "string") {
+      const capped = capSessionContext(context, [kernel.text, languageBlock]);
+      parsed.hookSpecificOutput.additionalContext = capped.text;
+      out = JSON.stringify(parsed); injected = capped.text;
     }
-    return value;
-  };
-  out = capContext(await appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS));
-  const deliveredTop = contextDeferred ? [] : top;
-  if (out !== "{}") injected = JSON.parse(out).hookSpecificOutput?.additionalContext ?? injected;
+  }
+  const retained = (part: string) => part.trim() && injected.includes(part.trim()) ? part : "";
+  const deliveredTop = retained(recallBlock) ? top : [];
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
@@ -765,8 +761,8 @@ export async function runSessionLane(
     daemon_url: url,
     daemon_reachable: responses.some((r) => r.resp !== null),
     hint_count: deliveredTop.length,
-    convention_count: contextDeferred ? 0 : conventions.length,
-    pinned_count: contextDeferred ? 0 : pinned.length,
+    convention_count: retained(taxonomyBlock) ? conventions.length : 0,
+    pinned_count: retained(pinnedBlock) ? pinned.length : 0,
     top_score: top[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     degraded_reason: degradedReason,
@@ -781,19 +777,19 @@ export async function runSessionLane(
     hint_tokens_by_part: tokensByPart(
       injected === ""
         ? {}
-        : contextDeferred ? { kernel: kernel.text, language: injected.includes(languageBlock) ? languageBlock : "" } : {
-            kernel: kernel.text,
-            pinned: pinnedBlock,
-            recalls: recallBlock,
-            taxonomy: taxonomyBlock,
-            language: languageBlock,
-            care: careBlock,
-            import: importBlock,
-            onboarding: onboardingBlock,
-            update: updateBlock,
-            patch: patchBlock,
-            pending: pendingBlock,
-            doku: dokuBlock,
+        : {
+            kernel: retained(kernel.text),
+            pinned: retained(pinnedBlock),
+            recalls: retained(recallBlock),
+            taxonomy: retained(taxonomyBlock),
+            language: retained(languageBlock),
+            care: retained(careBlock),
+            import: retained(importBlock),
+            onboarding: retained(onboardingBlock),
+            update: retained(updateBlock),
+            patch: retained(patchBlock),
+            pending: retained(pendingBlock),
+            doku: retained(dokuBlock),
           },
     ),
     hinted_ids: deliveredTop.map((h) => h.id),

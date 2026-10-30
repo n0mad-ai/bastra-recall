@@ -172,7 +172,7 @@ describe("#1305 rule kernel: session lane", () => {
   it("keeps the complete rulebook when unrelated session extras exceed the host cap", async () => {
     const { ctx } = await startWith("startup", "lifecycle-large-extras", undefined, "codex", true);
     assert.ok(ctx.length < 10000); assert.match(ctx, /Reflex rule body/);
-    assert.match(ctx, /rule-pref/); assert.match(ctx, /Other session context was deferred/);
+    assert.match(ctx, /rule-pref/); assert.match(ctx, /Deferred session sections: vault-taxonomy/);
     assert.doesNotMatch(ctx, /huge-extra/);
   });
 

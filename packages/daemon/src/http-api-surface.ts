@@ -246,6 +246,11 @@ export function dispatchApiSurface(
   const ccTurnHeader = req.headers["x-bastra-cc-turn"];
   const ccSessionId = typeof ccSessionHeader === "string" && ccSessionHeader ? ccSessionHeader : null;
   const ccTurnKey = typeof ccTurnHeader === "string" ? Number(ccTurnHeader) : null;
+  const projectHeader = req.headers["x-bastra-project"];
+  let callerProject: string | null = null;
+  if (typeof projectHeader === "string") {
+    try { callerProject = decodeURIComponent(projectHeader); } catch { /* unknown caller scope */ }
+  }
 
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
@@ -255,6 +260,7 @@ export function dispatchApiSurface(
           toolDeps,
           documentWriteEnabled,
           ccSessionId,
+          project: callerProject,
         });
         if (result === undefined) {
           sendJson(res, 404, { error: `unknown tool: ${tool}` });

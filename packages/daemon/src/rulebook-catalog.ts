@@ -130,6 +130,8 @@ export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { ses
   let project = ctx.project ?? null;
   if (input.cursor) {
     try {
+      // Scope is caller-selectable, including through the cursor. It is a
+      // retrieval filter, not authorization; private entries remain excluded.
       const decoded = JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8"));
       if (decoded.project === null || typeof decoded.project === "string") project = decoded.project;
     } catch { /* malformed cursor restarts from the caller scope */ }
