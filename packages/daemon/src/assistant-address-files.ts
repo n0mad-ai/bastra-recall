@@ -27,7 +27,7 @@ export function managedAssistantHostsName(text: string, owner: string): string |
   if (!part.body) return null;
   const rows = part.body.split(/\r?\n/);
   const first = /^127\.0\.0\.1 ([a-z0-9-]+) \1\.localhost$/.exec(rows[0]);
-  if (!first || rows.length !== 2 || rows[1] !== `::1 ${first[1]} ${first[1]}.localhost`) throw new Error("modified managed hosts block");
+  if (!first || !(rows.length === 1 || rows.length === 2 && rows[1] === `::1 ${first[1]} ${first[1]}.localhost`)) throw new Error("modified managed hosts block");
   return normalizeAssistantName(first[1]);
 }
 export function patchAssistantHosts(text: string, value: string | null, owner: string): string {
@@ -39,7 +39,7 @@ export function patchAssistantHosts(text: string, value: string | null, owner: s
     const words = row.split("#", 1)[0].trim().split(/\s+/).slice(1);
     if (words.some(word => aliases.has(word.toLowerCase().replace(/\.$/, "")))) throw new Error(`hosts conflict: ${name}`);
   }
-  return block(part.base, part.marker, `127.0.0.1 ${name} ${name}.localhost\n::1 ${name} ${name}.localhost`);
+  return block(part.base, part.marker, `127.0.0.1 ${name} ${name}.localhost`);
 }
 export function patchFirefoxUserJs(text: string, value: string | null, owner: string): string {
   const part = owned(text, owner, "//");

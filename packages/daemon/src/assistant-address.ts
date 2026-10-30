@@ -306,7 +306,9 @@ export async function assistantAddressStatus(options:AssistantAddressOptions={})
   const error=partial?`Teilzustand: ${await partialDescription(o)}`:s.error;
   const raw=pending?await optional(pendingPath(o)):null;
   const pidUnknown=raw&&addressAdminProcessAlive((JSON.parse(raw)as PendingAddress).adminPid)===null;
-  return {...s,pending,partial,error,repair:pending&&!partial&&pidUnknown?"Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen.":error?addressRepair(o,s.name,error,undefined,partial?"partial":"hosts"):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair};
+  let repair=error?addressRepair(o,s.name,error,undefined,partial?"partial":"hosts"):pending?`Admin-Einrichtung noch ausstehend. Laufenden Dialog zuerst beenden; bastra address status erneut prüfen. Erst nach bestätigtem Abschluss bastra address setup ${s.name??"<name>"} --yes ausführen.`:s.repair;
+  if(pending&&!partial&&pidUnknown)repair="Admin-PID nicht gesichert; laufenden Dialog und tatsächlichen Abschluss zuerst prüfen. Automatische Freigabe ist ohne Prozessnachweis gesperrt; bastra address status erneut ausführen."+(error?` Nach geklärtem Abschluss: ${repair}`:"");
+  return {...s,pending,partial,error,repair};
  },true);}catch(e){
   // Doctor must still return useful diagnostics when recovery itself is damaged/blocked.
   const name=await getAssistantName(o.settingsPath).catch(()=>null),error=(e as Error).message;

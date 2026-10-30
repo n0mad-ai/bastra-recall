@@ -78,3 +78,12 @@ test("release F: one unprivileged child accepts multiple connections on inherite
   assert.equal(reply,"persistent-ui");assert.equal(child.exitCode,null,stderr);
  }
 });
+
+test("IPv4-only test listener: curl -4 succeeds, -6 refuses, dual resolution falls back",async t=>{
+ const {execFile}=await import("node:child_process"),{promisify}=await import("node:util");const run=promisify(execFile),server=createServer((q,r)=>r.end("local fixture"));
+ await new Promise<void>(r=>server.listen(0,"127.0.0.1",r));t.after(()=>new Promise<void>(r=>server.close(()=>r())));const port=(server.address()as any).port;
+ const args=["--noproxy","*","--silent","--show-error","--output","/dev/null","--write-out","%{time_connect} %{time_total} %{http_code}","--connect-timeout","2","--max-time","3","--resolve",`fixture.invalid:${port}:[::1],127.0.0.1`,`http://fixture.invalid:${port}/`];
+ const v4=await run("/usr/bin/curl",["-4",...args]);assert.match(v4.stdout,/200$/);t.diagnostic(`IPv4 connect/total/status: ${v4.stdout}`);
+ await assert.rejects(run("/usr/bin/curl",["-6",...args]),(e:any)=>{assert.equal(e.code,7);t.diagnostic(`IPv6 refused connect/total/status: ${e.stdout}`);return true;});
+ const dual=await run("/usr/bin/curl",args);assert.match(dual.stdout,/200$/);t.diagnostic(`dual resolution connect/total/status: ${dual.stdout}`);
+});

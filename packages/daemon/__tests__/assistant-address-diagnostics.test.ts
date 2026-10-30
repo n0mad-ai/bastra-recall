@@ -24,7 +24,7 @@ test("#1332 P2: pending recovery blocked by Firefox remains diagnosable",async t
 });
 test("#1332 P2: modified hosts during pending recovery has a concrete repair command",async t=>{
  const o=await fixture(t);let plan:any;await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{plan=p;throw Error("timeout");}}));await writeFile(o.hostsPath,patchAssistantHosts("","jarvis","501").replace("127.0.0.1 jarvis","10.0.0.1 jarvis"));await writeFile(o.helperPath,plan.helperAfter);
- const s=await assistantAddressStatus(o);assert.match(s.repair??"",/hosts.*sichern/i);assert.match(s.repair??"",/bastra address setup jarvis/);
+ const s=await assistantAddressStatus(o);assert.match(s.repair??"",/Admin-PID.*nicht gesichert/);assert.match(s.repair??"",/hosts.*sichern/i);assert.match(s.repair??"",/bastra address setup jarvis/);
 });
 test("#1332 P2: confirmed admin cancellation clears intent and reports no change",async t=>{
  const o=await fixture(t),before=await readFile(o.hostsPath,"utf8");
