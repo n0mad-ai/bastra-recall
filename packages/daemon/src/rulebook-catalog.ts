@@ -46,7 +46,7 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
   const pinned = new Set(floors.filter(f => opts.allProjects || opts.project || !f.scope).map(f => f.memory_id));
   const inScope = (m: Memory) => opts.allProjects || !m.fm.scope || (opts.project
     ? isScopeCompatible(m.fm.scope, opts.project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)));
-  let unconfirmed = 0, unavailableSources = 0;
+  let unconfirmed = 0;
   const entries: KernelEntry[] = [];
   for (const m of memories) {
     if (!servable(m)) continue;
@@ -59,24 +59,20 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
       continue;
     }
     const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();
-    const unavailable = declaration.rulebook === "always" && !body;
-    if (unavailable) unavailableSources++;
     entries.push({ id: m.fm.id, title: oneLine(m.fm.title), scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
       group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
         m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : "user-directed",
       revision: m.revision ?? null, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
-      body: declaration.rulebook === "always" ? body : "", ...(unavailable ? { source_unavailable: true } : {}),
+      body: declaration.rulebook === "always" ? body : "",
       binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator]), ...declaration });
   }
   entries.sort((a, b) => Number(b.rulebook === "always") - Number(a.rulebook === "always") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: unavailableSources, project: opts.project,
+  const c: KernelCandidates = { entries, omitted: 0, unconfirmed_legacy: unconfirmed, unavailable_sources: 0, project: opts.project,
     ...(opts.mode === "ids" ? { ids_only: true as const } : {}) };
   if (!c.ids_only) c.catalog_hash = catalogHash(c);
   return c;
 }
 export async function collectRulebookCatalog(vault: Pick<Vault, "get" | "list">, opts: RulebookCatalogOptions): Promise<KernelCandidates> {
-  const view = indexViews.get(vault);
-  if (view) { view.generation++; view.memories = undefined; }
   return cachedRulebookCatalog(vault, opts);
 }
 

@@ -1,5 +1,5 @@
-/** Read revision, validator and rulebook projection from the same current file.
- * The index locates the source; all public projections share this reader. */
+/** Hook projections use the Vault index; direct MCP reads retain byte-source
+ * validation. Both pair revision, validator and rulebook metadata coherently. */
 import { readFile } from "node:fs/promises";
 import { parseMemory, memoryRevision, resolveRulebook, type Memory, type Vault,
   type ConventionValidator, type Frontmatter, type RulebookDeclaration, type RulebookLegacyContext } from "@bastra-recall/core";
@@ -48,7 +48,7 @@ export async function readConventionSource(
   } catch { return { revision: null }; }
 }
 
-/** One context snapshot per response, shared by recall, hook, load and edits. */
+/** One active/floor context per response, shared by index and current-source paths. */
 export async function readRulebookContext(sessionId?: string | null): Promise<(id: string) => RulebookLegacyContext> {
   const [state, floors] = await Promise.all([
     sessionId ? loadSessionState(sessionId) : undefined,
@@ -59,7 +59,8 @@ export async function readRulebookContext(sessionId?: string | null): Promise<(i
   return id => ({ activeConvention: activeIds.has(id), floor: floorIds.has(id) });
 }
 
-export async function readRulebookSources(
+/** Direct MCP recall/load validate current bytes independently of hook projections. */
+export async function readCurrentRulebookSources(
   vault: Pick<Vault, "get">, ids: readonly string[], sessionId?: string | null,
 ): Promise<Map<string, ConventionSource>> {
   const contextOf = await readRulebookContext(sessionId);
@@ -68,6 +69,30 @@ export async function readRulebookSources(
   ] as const)));
 }
 
+/** The already indexed source, including its paired byte revision. No file IO. */
+export function indexedConventionSource(
+  memory: Pick<Memory, "fm"> & Partial<Pick<Memory, "revision">> | undefined,
+  includeRuleMetadata = false, context: RulebookLegacyContext = {},
+): ConventionSource {
+  if (!memory) return { revision: null };
+  return {
+    revision: memory.revision ?? null, matchesIndex: true,
+    hiddenFromPublic: memory.fm.sensitivity === "private",
+    rulebookMetadata: projectRulebookMetadata(memory.fm, context),
+    ...(memory.fm.validator ? { validator: memory.fm.validator } : {}),
+    ...(includeRuleMetadata ? { summary: memory.fm.summary, write_origin: memory.fm.write_origin } : {}),
+  };
+}
+
+/** Hook recall metadata uses only the in-memory index, including candidatePool.
+ * Missed cloud events follow the same watcher/reconcile boundary as the kernel. */
+export async function readRulebookSources(
+  vault: Pick<Vault, "get">, ids: readonly string[], sessionId?: string | null,
+): Promise<Map<string, ConventionSource>> {
+  const contextOf = await readRulebookContext(sessionId);
+  return new Map([...new Set(ids)].map(id => [id, indexedConventionSource(vault.get(id), true, contextOf(id))]));
+}
+
 export function vaultConventionOf(vault: Pick<Vault, "get">): (id: string) => Promise<ConventionSource> {
-  return (id) => readConventionSource(vault.get(id));
+  return async id => indexedConventionSource(vault.get(id));
 }

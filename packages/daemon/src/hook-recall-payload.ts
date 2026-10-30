@@ -34,7 +34,8 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     hits:rawHits, candidatePool:rawPool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
     hookProject, hybridActiveAtRecall, degradedReason,
   } = input;
-  // A current private source must not leak through a stale public index.
+  // Respect visibility of the served index/source metadata. Hook source updates
+  // follow Vault watcher/reconcile; direct MCP readers validate current bytes.
   const visible=(id:string)=>vault.get(id)?.fm.sensitivity!=="private" && input.conventionSources?.get(id)?.hiddenFromPublic!==true;
   const hits=rawHits.filter(h=>visible(h.id)),candidatePool=rawPool.filter(h=>visible(h.id));
   // Lean projection (#50): the hook CLI only consumes lean fields, so we

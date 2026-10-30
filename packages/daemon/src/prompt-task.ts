@@ -9,7 +9,7 @@
  * hint dedup, for every client (Claude Code, Codex, replay). Information
  * only: nothing here denies anything.
  *
- * Revisions are the byte revision of the memory file (`memoryRevision`), read
+ * Revisions are the indexed byte revision of the memory file, supplied
  * through the caller's `revisionOf`; a changed revision adds a reload line.
  */
 import type { Vault, ConventionValidator } from "@bastra-recall/core";
@@ -55,7 +55,7 @@ export function isTaskConvention(c: TaskCandidate): boolean {
   return GATED_HINT_TYPES.has(c.type) && (c.matched_recall_when === true || c.recall_mode === "reflex");
 }
 
-/** `revisionOf` over the daemon's vault index — one small file read per id. */
+/** `revisionOf` over the daemon's vault index — no per-rule file read. */
 export function vaultRevisionOf(vault: Pick<Vault, "get">): (id: string) => Promise<string | null> {
   const source = vaultConventionOf(vault);
   return async (id) => (await source(id)).revision;

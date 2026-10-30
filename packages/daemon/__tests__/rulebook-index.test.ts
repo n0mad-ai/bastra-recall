@@ -61,11 +61,11 @@ test("fix7: event storms never restart disk scans or hide indexed rules",async()
  const f=fixture(50);
  for(let n=0;n<20;n++){f.fire();const c=await cachedRulebookCatalog(f.vault,{...opts,mode:"ids",budgetMs:150});assert.equal(c.entries.length,50);}
 });
-test("fix7: missing body keeps its index row and a load_memory hint",async()=>{
+test("fix7: empty body keeps its valid index row without an unavailable warning",async()=>{
  const f=fixture();f.all()[0].body="";
  const c=await cachedRulebookCatalog(f.vault,opts),r=renderRuleKernel(c,{trigger:"fixture"});
  assert.equal(c.entries.length,1);assert.equal(rulebookPage(c).rules[0].id,"rule-0");
- assert.match(r.text,/load_memory/);assert.match(r.text,/rule-0/);
+ assert.equal(c.unavailable_sources,0);assert.doesNotMatch(r.text,/source check incomplete|Always overflow/);assert.match(r.text,/rule-0/);
 });
 test("fix7: a failed unknown-ID refresh returns the IDs answer rather than throwing",async()=>{
  let calls=0;

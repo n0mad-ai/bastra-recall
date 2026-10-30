@@ -94,12 +94,12 @@ describe("rulebook collector compatibility and authoritative sources", () => {
     assert.equal(c.entries[0].revision,m.revision);
     assert.match(renderRuleKernel(c,{trigger:"compact"}).text,/Indexed full body/);
   });
-  it("a missing indexed body keeps the ID and explicit load hint", async () => {
+  it("an empty indexed body is a valid complete rule", async () => {
     const m = memory("unavailable", { rulebook: "always" }, "", join(fileDir,"missing.md"));
     const c = await collectRuleKernel(indexOf([m]), { project: null, active: [], floors: async () => [] });
-    assert.equal(c.entries.length,1);assert.equal(c.unavailable_sources,1);
+    assert.equal(c.entries.length,1);assert.equal(c.unavailable_sources,0);
     const r=renderRuleKernel(c,{trigger:"compact"});
-    assert.match(r.text,/source check incomplete/);assert.match(r.text,/load_memory/);
+    assert.doesNotMatch(r.text,/source check incomplete|Always overflow/);assert.deepEqual(r.full,["unavailable"]);
   });
 });
 

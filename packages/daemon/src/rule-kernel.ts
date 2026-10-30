@@ -34,7 +34,7 @@ export function renderRuleKernel(candidates: KernelCandidates, opts: { trigger: 
   let aUsed = 0;
   for (const e of always) {
     const block = `Always ${e.id} revision=${e.revision ?? "unknown"} updated=${e.updated ?? "unknown"} stale_status=${e.stale_status ?? "unknown"}:\n` + e.body.split("\n").map(s => "  " + s).join("\n");
-    if (!e.body || aUsed + block.length + 1 > RULEBOOK_ALWAYS_CHAR_BUDGET) { overflow.push(e.id); continue; }
+    if (e.source_unavailable || aUsed + block.length + 1 > RULEBOOK_ALWAYS_CHAR_BUDGET) { overflow.push(e.id); continue; }
     bodies.push(block); full.push(e.id); aUsed += block.length + 1;
   }
   const overflowLine = () => {

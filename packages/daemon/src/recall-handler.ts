@@ -12,7 +12,7 @@ import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type Reca
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
-import { readRulebookSources } from "./convention-source.js";
+import { readCurrentRulebookSources } from "./convention-source.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
 import type { RecallStageBuckets } from "./telemetry-events.js";
 import { isWeakResult, isNoHome } from "@bastra-recall/core";
@@ -504,7 +504,7 @@ async function recallAgainstVault(
   });
   hits = scopeFilter.hits;
   // #421: die Pool-Reflexe, mit demselben Floor wie die gerankten Treffer.
-  const sources = await readRulebookSources(deps.vault,
+  const sources = await readCurrentRulebookSources(deps.vault,
     [...hits.map(h => h.id), ...candidatePool.map(h => h.id)], options.session_id ?? callerSessionStore.getStore());
   const visible = (id: string) => options.trustedPrivate || sources.get(id)?.hiddenFromPublic !== true;
   hits = hits.filter(h => visible(h.id));

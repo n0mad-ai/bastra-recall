@@ -14,7 +14,7 @@
 import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryRevision, type Memory } from "@bastra-recall/core";
@@ -182,17 +182,13 @@ describe("#1306 classification", () => {
     }
   });
 
-  it("reads the current byte revision through the vault index", async () => {
-    const path = join(stateDir, "revision-source.md");
-    const entries = new Map([["indexed-convention", { filePath: path }]]);
-    const revisionOf = vaultRevisionOf({ get: (id: string) => entries.get(id) } as never);
-    const first = "---\nid: indexed-convention\n---\nFirst rule.\n";
-    await writeFile(path, first);
-    assert.equal(await revisionOf("indexed-convention"), memoryRevision(first));
-    const changed = first.replace("First rule.", "Updated rule.");
-    await writeFile(path, changed);
-    assert.equal(await revisionOf("indexed-convention"), memoryRevision(changed));
-    assert.equal(await revisionOf("missing"), null);
+  it("reads the indexed byte revision without reopening a memory file", async () => {
+    const first = "First indexed rule", changed = "Updated indexed rule";
+    const m = { fm: { ...CONVENTION, id: "indexed-convention" }, revision: memoryRevision(first) };
+    const revisionOf = vaultRevisionOf({ get: (id: string) => id === m.fm.id ? m : undefined } as never);
+    assert.equal(await revisionOf(m.fm.id),memoryRevision(first));
+    m.revision=memoryRevision(changed);
+    assert.equal(await revisionOf(m.fm.id),memoryRevision(changed));assert.equal(await revisionOf("missing"),null);
   });
 
   it("pasted text without a verb and competing cues are unclear", () => {

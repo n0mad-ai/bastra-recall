@@ -59,11 +59,12 @@ test("recall, hook and load agree on active/floor defaults and mark summary fall
     assert.deepEqual(metadata(recall.hits[0] as Record<string, unknown>), expected);
     assert.deepEqual(metadata(hook.hits[0] as Record<string, unknown>), expected);
   }
-  // Current source beats a stale index consistently on all three paths.
+  // Direct MCP readers validate current bytes; hook metadata follows reindex.
   const parsed = matter(await readFile(f.saved.file_path, "utf8"));
   await writeFile(f.saved.file_path, matter.stringify(parsed.content, { ...parsed.data, rulebook: "on-demand", applies_when: "When revising" }));
   const loaded = await loadMemoryHandler(f.deps, { id: "invented-artifact" }, { sessionId: f.sid });
   const recall = await recallHandler(f.deps, { query: "invented artifact", min_score: 0 }, { session_id: f.sid });
+  await f.vault.reindexFile(f.saved.file_path);
   const hook = await f.hook();
   const expected = { rulebook: "on-demand", applies_when: "When revising" };
   assert.deepEqual(metadata(loaded.frontmatter), expected);
@@ -79,13 +80,13 @@ test("edit can propose an applies_when description for a legacy rule", async (t)
   assert.equal(loaded.frontmatter.applies_when_derived, true);
 });
 
-test("private rule metadata stays private across recall, hook and load, including a stale public index", async (t) => {
+test("direct MCP hides newly private sources; hooks follow the index and hide them after reindex", async (t) => {
   const f = await fixture(t, { rulebook: "always", applies_when: "When inspecting secrets", write_origin: "user-directed" });
   const parsed = matter(await readFile(f.saved.file_path, "utf8"));
   await writeFile(f.saved.file_path, matter.stringify(parsed.content, { ...parsed.data, sensitivity: "private" }));
   await assert.rejects(loadMemoryHandler(f.deps, { id: "invented-artifact" }), /not found/);
   assert.deepEqual((await recallHandler(f.deps, { query: "invented artifact", min_score: 0 })).hits, []);
-  assert.deepEqual((await f.hook()).hits, []);
+  assert.equal((await f.hook()).hits.length,1,"hooks use the previous index until a successful update");
   await f.vault.reindexFile(f.saved.file_path);
   await assert.rejects(loadMemoryHandler(f.deps, { id: "invented-artifact" }), /not found/);
   assert.deepEqual((await recallHandler(f.deps, { query: "invented artifact", min_score: 0 })).hits, []);

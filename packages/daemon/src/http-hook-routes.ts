@@ -601,6 +601,7 @@ export async function runHookRecall(
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
 
+      // Pair hint metadata/revisions from the index; never open candidate files here.
       const conventionSources = await readRulebookSources(vault, [...hits.map(h => h.id), ...candidatePool.map(h => h.id)], hookSessionId);
       const budgeted = assembleHookRecallPayload({
         hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,

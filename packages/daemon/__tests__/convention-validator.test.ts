@@ -38,7 +38,7 @@ async function fixture(t: { after: (fn: () => unknown) => void }) {
     if (saved === undefined) delete process.env.BASTRA_HOOK_STATE_DIR; else process.env.BASTRA_HOOK_STATE_DIR = saved;
     await rm(root, { recursive: true, force: true });
   });
-  // Keep the index stale deliberately: binding must read source bytes, not fm cache.
+  // Keep the index stale for direct MCP checks; hook/task cases reindex explicitly.
   async function replace(value: unknown) {
     const raw = await readFile(file.file_path, "utf8");
     const parsed = matter(raw);
@@ -49,7 +49,7 @@ async function fixture(t: { after: (fn: () => unknown) => void }) {
   return { vault, deps, file: file.file_path, replace };
 }
 
-test("task activation reads current declaration and revision together; replacement/removal never retains old metadata", async (t) => {
+test("task activation reads indexed declaration and revision together after reindex; replacement/removal drops old metadata", async (t) => {
   const f = await fixture(t);
   const sid = "validator-task";
   const candidate = { id: input.id, type: input.type, matched_recall_when: true, validator };
@@ -60,14 +60,17 @@ test("task activation reads current declaration and revision together; replaceme
   assert.deepEqual(state.activeConventions?.[0]?.validator, validator);
   assert.equal(state.activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
   await f.replace({ ...validator, channel: "another-channel", limit: 1000, unit: "utf16" });
+  await f.vault.reindexFile(f.file);
   await step("ok");
   state = await loadSessionState(sid);
   assert.equal(state.activeConventions?.[0]?.validator?.limit, 1000);
   assert.equal(state.activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
   await f.replace(undefined);
+  await f.vault.reindexFile(f.file);
   await step("zweiten Satz kürzer");
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
   await f.replace({ ...validator, tool: "invented-shell" });
+  await f.vault.reindexFile(f.file);
   await step("zweiten Satz kürzer");
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
 });

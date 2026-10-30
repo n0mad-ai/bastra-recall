@@ -43,7 +43,7 @@ import { randomUUID } from "node:crypto";
 import type { Memory, Vault } from "@bastra-recall/core";
 import { stripAutoRelatedSection } from "@bastra-recall/core";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { readConventionSource } from "./convention-source.js";
+import { indexedConventionSource } from "./convention-source.js";
 import { envFirst, envInt, envOff } from "./env.js";
 import { FAST_BUDGET_MS } from "./hook-budgets.js";
 import { hookAgent, hookGateAvailable, hookClientEvidence } from "./hook-surface.js";
@@ -219,7 +219,7 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const reflexCandidates = matched.length > 0 ? await servedReflex(matched) : [];
   // #1305: a delivered reflex rule is in force from here on, at this revision.
   const reflexRevisions = new Map(
-    await Promise.all(reflexCandidates.map(async (m) => [m.memory.fm.id, await readConventionSource(m.memory)] as const)),
+    reflexCandidates.map(m => [m.memory.fm.id, indexedConventionSource(m.memory)] as const),
   );
 
   let claimedMustLoad: PendingMustLoad[] = [];

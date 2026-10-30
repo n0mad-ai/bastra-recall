@@ -8,7 +8,7 @@ import { z } from "zod";
 import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
-import { readRulebookSources } from "./convention-source.js";
+import { readCurrentRulebookSources } from "./convention-source.js";
 import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
@@ -166,7 +166,7 @@ export async function loadMemoryHandler(
   }
 
   const sessionId = ctx?.sessionId ?? callerSessionStore.getStore();
-  const source = (await readRulebookSources({ get: () => m }, [m.fm.id], sessionId)).get(m.fm.id)!;
+  const source = (await readCurrentRulebookSources({ get: () => m }, [m.fm.id], sessionId)).get(m.fm.id)!;
   if (source.hiddenFromPublic && !ctx?.trustedPrivate) throw new Error(`memory not found: ${parsed.data.id}`);
 
   const bodyForTelemetry = stripAutoRelatedSection(m.body);
