@@ -393,7 +393,7 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
   const lines: string[] = [];
   for (const f of report.findings) {
     const who = f.surfaces.join(", ");
-    const rebuild = report.sourcesAvailable ? ` — rebuild it with \`${STUB_REBUILD_HINT}\`` : "";
+    const rebuild = report.sourcesAvailable && !f.foreign ? ` — rebuild it with \`${STUB_REBUILD_HINT}\`` : "";
     switch (f.state) {
       case "ok":
         lines.push(`✓ ok: ${f.binary} matches the stub sources in this checkout${builtFrom(f.stamp)}`);

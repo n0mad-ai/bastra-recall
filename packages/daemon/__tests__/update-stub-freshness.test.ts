@@ -37,3 +37,18 @@ test("source update refuses a missing registered hook instead of treating it as 
   } }));
   assert.equal(await verifySourceStubs(() => {}, { ...io, exists: () => false }), 1);
 });
+
+test("foreign stale registration recommends reinstall, not a build that leaves it untouched", async t => {
+  const io = fixture(t);
+  mkdirSync(join(io.home, ".claude"));
+  const foreign = join(io.home, "other", "bastra-hook");
+  writeFileSync(join(io.home, ".claude/settings.json"), JSON.stringify({ hooks: {
+    PreToolUse: [{ hooks: [{ command: `'${foreign}' gate` }] }],
+  } }));
+  const output: string[] = [];
+  assert.equal(await verifySourceStubs(s => output.push(s), {
+    ...io, stamp: binary => ({ source_digest: binary === foreign ? "old" : "fresh", statusline_digest: "bundle" }),
+  }), 1);
+  assert.match(output.join(""), /bastra install claude-code/);
+  assert.doesNotMatch(output.join(""), /build:deploy|build:stub/);
+});

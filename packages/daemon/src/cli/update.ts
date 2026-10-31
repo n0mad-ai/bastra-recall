@@ -247,8 +247,10 @@ export async function verifySourceStubs(write: (s: string) => void, io: StubFres
   const invalid = report.findings.some(f => f.state !== "ok" || f.statusline !== "ok");
   if (!invalid) return 0;
   for (const line of stubFreshnessLines(report)) write(`  ${line}\n`);
-  write("  Build the daemon and hook together: npm run build:deploy\n" +
-    "  Nothing was re-registered and the daemon was left alone.\n");
+  if (report.findings.some(f => !f.foreign && (f.state !== "ok" || f.statusline !== "ok"))) {
+    write("  Build the daemon and hook together: npm run build:deploy\n");
+  }
+  write("  Nothing was re-registered and the daemon was left alone.\n");
   return 1;
 }
 

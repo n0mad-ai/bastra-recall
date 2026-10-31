@@ -17,11 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   not claim semantic compliance or the unmeasured 99.9% reliability target
   (#1276, #1336, #1340).
 - Correspondence task states distinguish translation, review drafts and approved
-  copies. Declared convention validators activate exact-artifact `copy-blocks`
+  copies. Declared convention validators activate mechanical `copy-blocks`
   checks through `validate_artifact`, session/task-bound receipts and bounded
   approved-copy repair. Each correspondence rule needs an explicit decision per
-  round; model declarations cannot grant user approval or weaken validator
-  constraints (#1306, #1309, #1310, #1311, #1323, #1328, #1340, #1341).
+  round. Model declarations cannot record user approval; own-user approval
+  recognition uses bounded language cues and observed draft output for bare
+  acknowledgements. Receipts do not bind the subsequently delivered text;
+  byte-exact receipt binding remains open (#1325). Model draft declarations
+  still suppress unrelated prose checks to avoid the real review false alarm;
+  that measurement boundary remains open (#1351).
+  (#1306, #1309, #1310, #1311, #1323, #1328, #1340, #1341, #1349).
 - Codex gate/fork registration, a source-backed host/runtime capability matrix,
   generated AGENTS.md/CLAUDE.md startup instructions with separate consent,
   deterministic convention replay in CI and `bastra logs --conventions`
@@ -48,15 +53,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Mindspace pauses rendering in hidden tabs, reduces settled-cloud redraws,
+  reuses depth-sort storage and skips offscreen nodes/edges while preserving
+  bounds, stable depth ties and wake-up behavior (#324, #1260).
+- Foreign stale hooks recommend the matching client reinstall instead of a
+  checkout build that cannot update their registered path. Hook compilation
+  uses sibling temporary output and publishes by atomic rename only after
+  successful checks, preserving the old binary on failure (#1354, #1355).
 - Source-checkout updates now refuse stale compiled hooks or embedded statuslines;
   `npm run build:deploy` builds and verifies both, and release CI verifies the
   native hook before uploading artifacts (#1346).
 - Claude live panels no longer count PreToolUse hook denials as failed Recall
   calls; genuine MCP errors remain visible (#1345).
-- Translation/review prose no longer triggers copy-repair false alarms or a
-  missing-receipt repair. Explicit oversized fences/quotes remain checked;
-  approved copies still require a receipt and later model task reports cannot
-  erase an observed length violation (#1344).
+- Copy checks inspect all assistant text since the last actual user turn,
+  including text before later tool calls. Review drafts check fenced copy,
+  leaving quoted originals and explanatory prose alone. Validated copy tasks
+  end on ordinary follow-up questions. Missing-receipt repair stays scoped to
+  approved copies; the model-declared draft prose boundary remains documented
+  above (#1344, #1350–#1353).
+- Context loss rearms reflex denials, and action-rule non-applicability
+  exceptions expire at the next user round (#1347, #1348).
 - A fully loaded current rule revision remains usable for action-load checks
   within its context; compact/clear/fork invalidates that evidence. Invalid
   `rulebook_check.task` values reject only the task update while preserving

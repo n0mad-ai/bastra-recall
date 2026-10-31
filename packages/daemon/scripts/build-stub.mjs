@@ -18,8 +18,8 @@
  * (packages/statusline/dist) must be built first — the stub embeds it.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { STUB_BUILD_INFO, statuslineBundleDigest, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
 
@@ -44,6 +44,11 @@ const windows = target ? target.endsWith("-windows-msvc") : process.platform ===
 const suffix = windows ? ".exe" : "";
 const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}${suffix}` : `stub/bastra-hook${suffix}`);
 
+// A sibling temporary directory keeps rename on the same filesystem. Deno may
+// unlink its output before compilation; it must never see the published path.
+const finalOutput = resolve(packageRoot, output);
+const staging = mkdtempSync(join(dirname(finalOutput), ".bastra-hook-build-"));
+const stagedOutput = join(staging, windows ? "bastra-hook.exe" : "bastra-hook");
 const denoArgs = [
   "compile",
   ...(target ? ["--target", target] : []),
@@ -63,7 +68,7 @@ const denoArgs = [
   "--allow-write",
   "--allow-sys",
   windows ? "--allow-run=cmd,cmd.exe,mode,mode.com" : "--allow-run=sh,/bin/sh,ps",
-  "--output", output,
+  "--output", stagedOutput,
   "stub/bastra-hook.ts",
 ];
 
@@ -114,6 +119,7 @@ const stamped = placeholder.replace(
 );
 if (stamped === placeholder) {
   console.error("error: could not stamp stub/build-info.ts — its STUB_BUILD_INFO declaration moved");
+  rmSync(staging, { recursive: true, force: true });
   process.exit(1);
 }
 
@@ -138,9 +144,36 @@ try {
 // synchronous process.exit can turn a parent-only SIGTERM/SIGHUP into success.
 await new Promise((resolve) => setImmediate(resolve));
 const signal = interrupted ?? r.signal;
-if (signal) process.exit({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }[signal] ?? 1);
+if (signal) {
+  rmSync(staging, { recursive: true, force: true });
+  process.exit({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }[signal] ?? 1);
+}
 if (r.error) {
+  rmSync(staging, { recursive: true, force: true });
   console.error(`error: could not run deno (${r.error.message}) — install it from https://deno.com`);
   process.exit(1);
 }
-process.exit(r.status ?? 1);
+try {
+  if (r.status !== 0) process.exitCode = r.status ?? 1;
+  else {
+    if (!statSync(stagedOutput).isFile() || statSync(stagedOutput).size === 0) throw new Error("compiler produced no usable binary");
+    // Cross-target executables cannot run here. Release CI verifies its native
+    // target independently before upload; every native publication is stamped.
+    const hostTarget = `${process.arch === "arm64" ? "aarch64" : "x86_64"}-${process.platform === "darwin" ? "apple-darwin" : process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-gnu"}`;
+    if (!target || target === hostTarget) {
+      const check = spawnSync(stagedOutput, ["version"], { encoding: "utf8", timeout: 5000 });
+      let stamp;
+      try { stamp = JSON.parse(check.stdout); } catch { /* invalid binary */ }
+      if (check.error || check.status !== 0 || !stamp || stamp.source_digest !== info.source_digest ||
+          info.statusline_digest === null || stamp.statusline_digest !== info.statusline_digest) {
+        throw new Error("compiled hook does not contain the current hook and statusline");
+      }
+    }
+    renameSync(stagedOutput, finalOutput);
+  }
+} catch (error) {
+  console.error(`error: hook build not published: ${error.message}`);
+  process.exitCode = 1;
+} finally {
+  rmSync(staging, { recursive: true, force: true });
+}
