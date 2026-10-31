@@ -10,6 +10,8 @@ import type { ActiveConvention } from "./session-state.js";
 import { escapeAttr } from "./escape-attr.js";
 
 export interface RecallHit {
+  /** /hook/recall pairs this revision with the served in-memory source. */
+  revision?: string | null;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;
@@ -38,6 +40,8 @@ export const MUST_LOAD_MARK = " [must-load: the next tool call is interrupted on
 
 /** #217 Reflex-Lane: lean hit vom /hook/reflex-Endpoint. */
 export interface PromptReflexHit {
+  /** /hook/reflex sends the matched memory's indexed revision. */
+  revision?: string | null;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;

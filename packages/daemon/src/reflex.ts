@@ -50,6 +50,8 @@ const ALTERNATIVE_SPLIT_RE = new RegExp(
 );
 
 export interface ReflexHit {
+  /** Byte revision retained with this matched memory in the Vault index. */
+  revision?: string | null;
   validator?: import("@bastra-recall/core").ConventionValidator;
   id: string;
   title: string;
@@ -334,6 +336,7 @@ export async function reflexConfig(): Promise<{ enabled: boolean; maxPerTurn: nu
 }
 
 const toReflexHit = (m: ReflexMatch): ReflexHit => ({
+  revision: m.memory.revision ?? null,
   id: m.memory.fm.id,
   title: m.memory.fm.title,
   type: m.memory.fm.type,

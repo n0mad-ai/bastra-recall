@@ -759,7 +759,7 @@ async function runPromptLaneInner(
       }
       // #1303: beside the shown-state, the must-load the gate will claim —
       // again only for what reached the transcript.
-      bookPendingMustLoad(s, [...gatedReflex, ...(recallBlock ? gatedRecall : [])], gateBlockId);
+      bookPendingMustLoad(s, [...gatedReflex, ...(recallBlock ? gatedRecall : [])], gateBlockId, Date.now(), new Map([...recallHits, ...reflexKept].map(h => [h.id, h.revision ?? null])));
     });
   }
   // The assignment happens inside the mutation callback, which TypeScript's

@@ -814,7 +814,7 @@ export async function runSessionLane(
       await mutateSessionState(payload.session_id, (s) => {
         for (const h of deliveredTop) bumpShown(s, h.id);
         // #1303: beside the shown-state, the must-load the gate will claim.
-        bookPendingMustLoad(s, [...gated], `session:${startedAt.toString(36)}`);
+        bookPendingMustLoad(s, [...gated], `session:${startedAt.toString(36)}`, Date.now(), new Map(deliveredTop.map(h => [h.id, h.revision ?? null])));
       });
     } catch {
       // State is an optional dedup cache. Never discard the context that was

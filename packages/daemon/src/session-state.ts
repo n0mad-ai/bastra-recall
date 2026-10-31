@@ -539,12 +539,16 @@ const PENDING_MUST_LOAD_CAP = 20;
  * An id already waiting keeps its first entry, so one hint is never claimed
  * twice for being shown twice.
  */
-export function bookPendingMustLoad(state: SessionState, ids: readonly string[], block: string, now: number = Date.now()): void {
+export function bookPendingMustLoad(state: SessionState, ids: readonly string[], block: string, now: number = Date.now(), revisions?: ReadonlyMap<string, string | null>): void {
   if (ids.length === 0) return;
-  const pending = state.pendingMustLoad ?? [];
+  // Full loads survive ordinary turns, but clearShown removes them on context loss.
+  // Missing revisions cannot prove that the shown rule is the loaded source.
+  const loaded = new Map((state.loadedConventions ?? []).map(e => [e.id, e.revision]));
+  const satisfied = (id: string) => typeof revisions?.get(id) === "string" && loaded.get(id) === revisions.get(id);
+  const pending = (state.pendingMustLoad ?? []).filter(e => !satisfied(e.id));
   const waiting = new Set(pending.map((e) => e.id));
   for (const id of ids) {
-    if (waiting.has(id)) continue;
+    if (waiting.has(id) || satisfied(id)) continue;
     waiting.add(id);
     pending.push({ id, block, at: now });
   }

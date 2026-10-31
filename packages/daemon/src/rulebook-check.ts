@@ -71,16 +71,20 @@ export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1
 export async function recordRulebookCheck(sessionId: string | null | undefined, input: z.infer<typeof RulebookCheckArgs>, catalog: KernelCandidates) {
   if (input.not_applicable?.some(e => !ExceptionReason.safeParse(e.reason).success)) return {ok:false,reason:"Non-applicability requires at least 10 characters of substantive explanation."};
   if (!sessionId) return { ok: false, reason: "Session unknown; no receipt recorded. Supply the session_id from your hook, or continue within the bounded gate." };
-  if (input.task !== undefined && input.agent_id) return { ok: false, reason: "Worker task reports cannot change the main session task; omit task and report applicable IDs only." };
-  if (input.task !== undefined && input.task !== "draft-for-review") return {ok:false,reason:"A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path; they cannot be asserted by a tool report."};
+  let task = input.task;
+  let taskError: string | undefined;
+  if (task !== undefined && input.agent_id) taskError = "Worker task reports cannot change the main session task.";
+  else if (task !== undefined && task !== "draft-for-review") taskError = "A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path.";
+  if (taskError) task = undefined;
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
-  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false, invalidDismissal = false, taskConflict = false, actionException=false;
+  let context = "", round = 0, taskGeneration = 0, invalidDismissal = false, actionException=false;
   const persisted = await mutateSessionState(sessionId, s => {
-    if(input.task&&s.activeTask?.kind==="translate-only"){taskConflict=true;return;}
-    if (input.task !== undefined && input.task !== "none" && new Set([
+    if (task && s.activeTask?.kind === "translate-only") { taskError = "A model task report cannot replace the user's translate-only task."; task = undefined; }
+    if (task && s.activeTask?.kind === "approved-copy") { taskError = "A model task report cannot remove the user-approved copy task and its receipt obligation."; task = undefined; }
+    if (task !== undefined && new Set([
       ...(s.activeConventions ?? []).map(e => e.id), ...input.applicable,
-    ]).size > ACTIVE_CONVENTIONS_CAP) { capacityExceeded = true; return; }
+    ]).size > ACTIVE_CONVENTIONS_CAP) { taskError = `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity.`; task = undefined; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence=catalog.entries.filter(isCorrespondenceRule);
     const protectedIds=new Set([...a.roundApplied,...(hasCopyTask(s)?[...(s.activeConventions??[]),...(s.loadedConventions??[])]:[])].map(r=>r.id));
@@ -110,18 +114,18 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       a.roundDismissed=a.roundDismissed.filter(r=>r.id!==entry.id);
     }
     a.checked = true; a.ids = [...new Set(input.applicable)];
-    if (input.task !== undefined) {
+    if (task !== undefined) {
       const now = Date.now();
       const beforeConventions = s.activeConventions;
-      const startingTask = input.task !== (s.activeTask?.kind ?? "none");
+      const startingTask = task !== (s.activeTask?.kind ?? "none");
       if (startingTask) {
         if(s.activeTask&&s.activeTask.kind!=="none")delete s.userValidatorChannel;
-        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
+        s.activeTask = { id: taskIdFor(task, now), kind: task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
         expireReceipts(s);
       }
       // A model report only adds stricter review obligations.
       // The transitional user-turn path owns approval/end/translation changes.
-      if (input.task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
+      if (task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
         id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
       })), now);
       if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
@@ -133,11 +137,10 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     }
     context = state.context; round = state.round; put(s, state);
   });
-  if(taskConflict)return {ok:false,reason:"A model task report cannot replace the user's translate-only task. Omit task for a round check."};
   if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A current review/copy task rule or a rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
-  if (capacityExceeded) return { ok: false, reason: `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity. No check or task change recorded; report only applicable rules or omit task for a round-only check.` };
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
+  if (persisted && taskError) return { ok: false, reason: `${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
   return persisted ? { ok: true, context, round, applicable: input.applicable, ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
       conventions: catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };

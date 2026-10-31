@@ -28,6 +28,7 @@ import { formatBlock } from "../src/session-format.js";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runSessionLane } from "../src/session-lane.js";
 import { loadSessionState } from "../src/session-state.js";
+import { recordRulebookLoad } from "../src/rulebook-check.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "..", "src");
@@ -294,4 +295,24 @@ describe("#1303 the prompt and session lanes book pending ids beside the shown-s
       await d.close();
     }
   });
+});
+
+
+describe("release 1.1.8 full-load revision wiring", () => {
+  for (const lane of ["prompt", "session"] as const) {
+    it(`${lane}: a loaded current revision is not rebooked; a changed revision is`, async () => {
+      const hits = HITS.slice(0, 2).map((hit, i) => ({ ...hit, revision: i ? "r2" : "r1" }));
+      const daemon = await mockDaemon(hits);
+      try {
+        const sid = `loaded-revision-${lane}`;
+        for (const hit of hits) await recordRulebookLoad(sid, hit.id, null, { revision: "r1", rulebookMetadata: { rulebook: "on-demand" } });
+        const payload = { session_id: sid, cwd: stateDir, bastra_client: "claude-code" };
+        const out = lane === "prompt"
+          ? await runPromptLane({ ...payload, hook_event_name: "UserPromptSubmit", prompt: "Bitte kurz weiterarbeiten" } as never, null, daemon.base, undefined, () => [])
+          : await runSessionLane({ ...payload, hook_event_name: "SessionStart", source: "resume" } as never, daemon.base, undefined, async () => null);
+        for (const hit of hits) assert.ok(out.includes(hit.id), `${hit.id} must actually be delivered`);
+        assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["work-user"]);
+      } finally { await daemon.close(); }
+    });
+  }
 });
