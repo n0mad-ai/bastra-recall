@@ -18,8 +18,8 @@ async function seed(sid:string,channel='email'){
  await recordRulebookLoad(sid,'discord-rule',null,{revision:'r',validator:discord});
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  const id=channel==='email'?'email-rule':'discord-rule',validator=channel==='email'?email:discord;
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[{id,type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy, entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator}],surface:'claude-code'});
  await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:Date.now()}];});
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
@@ -43,7 +43,7 @@ test('P2.1 a model task cannot narrow loaded channels, even after user approval'
 });
 test('P2.1 user task records the triggering rule rather than choosing an unrelated session rule',async()=>{
  await seed('user-origin');await mutateSessionState('user-origin',s=>{delete s.activeTask;delete s.userValidatorChannel;});
- await runTaskStep({sessionId:'user-origin',snapshot:await loadSessionState('user-origin'),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'discord-rule',type:'workflow',matched_recall_when:true,validator:discord}],surface:'claude-code'});
+ await runTaskStep({sessionId:'user-origin',snapshot:await loadSessionState('user-origin'),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'discord-rule',type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator:discord}],surface:'claude-code'});
  assert.equal((await loadSessionState('user-origin')).activeTask?.kind,'draft-for-review');
  assert.equal((await loadSessionState('user-origin')).userValidatorChannel,'discord-dm');
 });

@@ -9,6 +9,8 @@ import { loadSessionState } from "./session-state.js";
 export type RulebookMetadata = Partial<RulebookDeclaration> & Pick<Frontmatter, "rulebook_proposed" | "rule_categories">;
 export interface ConventionSource {
   matchesIndex?: boolean;
+  /** Authored triggers from the same source; used for own-user channel evidence. */
+  recall_when?: string[];
   hiddenFromPublic?: boolean;
   summary?: string;
   write_origin?: "user-directed" | "agent-session" | "capture-review";
@@ -38,6 +40,7 @@ export async function readConventionSource(
       if (parsed.fm.id !== memory.fm.id) return { revision, hiddenFromPublic: true };
       return {
         revision,
+        recall_when: parsed.fm.recall_when,
         rulebookMetadata: projectRulebookMetadata(parsed.fm, context),
         matchesIndex: memory.body === parsed.body &&
           JSON.stringify({ ...memory.fm, validator: undefined }) === JSON.stringify({ ...parsed.fm, validator: undefined }),
@@ -78,6 +81,7 @@ export function indexedConventionSource(
   if (!memory) return { revision: null };
   return {
     revision: memory.revision ?? null, matchesIndex: true,
+    recall_when: memory.fm.recall_when,
     hiddenFromPublic: memory.fm.sensitivity === "private",
     rulebookMetadata: projectRulebookMetadata(memory.fm, context),
     ...(memory.fm.validator&&!memory.fm.obsolete&&!memory.fm.superseded_by ? { validator: memory.fm.validator } : {}),

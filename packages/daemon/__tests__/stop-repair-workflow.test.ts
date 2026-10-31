@@ -44,7 +44,7 @@ before(async () => {
   const vaultRoot = join(root, "vault");
   await mkdir(vaultRoot);
   await saveMemory(vaultRoot, { id: CONVENTION.id, title: CONVENTION.title, type: "workflow",
-    summary: CONVENTION.summary, body: "Translate, draft, validate approved copy.",
+    summary: CONVENTION.summary, body: "Translate, draft, validate approved copy.", write_origin: "user-directed",
     scope: "all-projects", topic_path: ["fixture"], tags: ["fixture"], recall_when: ["eingegangene Nachricht"],
     validator: CONVENTION.validator });
   vault = new Vault(vaultRoot);

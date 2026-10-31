@@ -12,7 +12,8 @@
  * Revisions are the indexed byte revision of the memory file, supplied
  * through the caller's `revisionOf`; a changed revision adds a reload line.
  */
-import type { Vault, ConventionValidator } from "@bastra-recall/core";
+import { tokenizeWithIdentifiers, foldTerm, type Vault, type ConventionValidator } from "@bastra-recall/core";
+import { phraseMatchesContext } from "./reflex.js";
 import { vaultConventionOf, type ConventionSource } from "./convention-source.js";
 import { GATED_HINT_TYPES } from "./hook-recall-response.js";
 import { decideTask, taskSignals, splitQuoted, type DetectedMode, type TaskKind } from "./prompt-classify.js";
@@ -31,6 +32,7 @@ export interface TaskCandidate {
   id: string;
   type: string;
   matched_recall_when?: boolean;
+  recall_when?: readonly string[];
   recall_mode?: string;
   validator?: ConventionValidator;
 }
@@ -106,11 +108,24 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const askAbout = decision.unclear ? surfaced : [];
   // User-turn candidates can select one unambiguous channel even before a
   // review task exists. Quoted-only text and bare approvals cannot retarget it.
-  const channels=[...new Set(input.candidates.filter(isTaskConvention).flatMap(c=>{
-    const v=c.validator??snapshot.loadedConventions?.find(r=>r.id===c.id)?.validator??snapshot.activeConventions?.find(r=>r.id===c.id)?.validator;
-    return v?.channel?[v.channel]:[];
-  }))];
-  const userChannel=splitQuoted(input.prompt).own&&channels.length===1&&(!signals.approval&&!signals.ack||channels[0]===snapshot.userValidatorChannel)?channels[0]:undefined;
+  const own = splitQuoted(input.prompt).own;
+  const ownTokens = tokenizeWithIdentifiers(own).map(foldTerm);
+  const ownTokenSet = new Set(ownTokens);
+  const ownSequence = ` ${ownTokens.join(" ")} `;
+  const channelSources = new Map<string, ConventionSource>();
+  const matchedChannels = await Promise.all(input.candidates.filter(isTaskConvention).map(async c => {
+    const source = input.conventionOf ? await input.conventionOf(c.id).catch(() => undefined) : undefined;
+    if (source) channelSources.set(c.id, source);
+    // A whole-prompt recall hit is not authority: its authored trigger must
+    // match the user's own text, using the existing multilingual matcher.
+    const triggers = input.conventionOf ? source?.recall_when : c.recall_when;
+    if (!triggers?.some(t => phraseMatchesContext(t, ownTokenSet, ownSequence))) return [];
+    const v = input.conventionOf ? (source?.hiddenFromPublic ? undefined : source?.validator) :
+      c.validator ?? snapshot.loadedConventions?.find(r=>r.id===c.id)?.validator ?? snapshot.activeConventions?.find(r=>r.id===c.id)?.validator;
+    return v?.channel ? [v.channel] : [];
+  }));
+  const channels = [...new Set(matchedChannels.flat())];
+  const userChannel=own&&channels.length===1&&(!signals.approval&&!signals.ack||channels[0]===snapshot.userValidatorChannel)?channels[0]:undefined;
   const channelChanges=userChannel!==snapshot.userValidatorChannel||userChannel!==snapshot.activeTask?.validatorChannel;
 
   // Nothing in force, nothing asked, nothing starting: the common prompt costs
@@ -126,7 +141,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
     const ids = [...new Set([...activeIds, ...activate, ...askAbout])];
     const read = await Promise.all(ids.map(async (id) => {
       const source = input.conventionOf
-        ? await input.conventionOf(id).catch(() => ({ revision: null }))
+        ? channelSources.get(id) ?? await input.conventionOf(id).catch(() => ({ revision: null }))
         : { revision: await input.revisionOf!(id).catch(() => null),
             validator: input.candidates.find((c) => c.id === id)?.validator };
       return [id, source] as const;

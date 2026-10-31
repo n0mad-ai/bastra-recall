@@ -11,7 +11,7 @@ import { saveMemory } from "../src/save.js";
 const validator = { tool: "validate_artifact", channel: "invented-channel", limit: 500, unit: "codepoints" } as const;
 const input = { id: "invented-convention", title: "Invented convention", type: "workflow" as const,
   summary: "An invented rule", body: "Check the approved copy.", topic_path: ["fixture"], tags: ["fixture"],
-  scope: "all-projects", recall_when: ["invented copy"] };
+  scope: "all-projects", write_origin: "user-directed" as const, recall_when: ["invented copy"] };
 const fm = { ...input, created: "2026-10-29", updated: "2026-10-29" };
 
 test("optional validator keeps old memories valid; lenient malformed metadata drops only that field", () => {

@@ -17,7 +17,7 @@ let root:string;const prev=process.env.BASTRA_HOOK_STATE_DIR;
 before(async()=>{root=await mkdtemp(join(tmpdir(),'p5-fix1-'));process.env.BASTRA_HOOK_STATE_DIR=root;});
 after(async()=>{if(prev===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=prev;await rm(root,{recursive:true,force:true});});
 const load=(sid:string,id:string,v:typeof discord|typeof email)=>recordRulebookLoad(sid,id,null,{revision:'r1',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Invented reply'}});
-const step=async(sid:string,prompt:string,mail=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:mail?[{id:'mail',type:'workflow',matched_recall_when:true,validator:email}]:[],surface:'claude-code'});
+const step=async(sid:string,prompt:string,mail=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:mail?[{id:'mail',type:'workflow',matched_recall_when:true,recall_when:['Mail geschrieben','per Mail antworten'],validator:email}]:[],surface:'claude-code'});
 const stop=async(sid:string,text:string)=>JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]},'http://127.0.0.1:1'));
 const repair=(out:unknown)=>JSON.stringify(out).includes('<copy-repair');
 const validate=(sid:string,text:string,v= email)=>callerSessionStore.run(sid,()=>validateArtifactHandler({text,channel:v.channel,limit:v.limit,unit:v.unit,normalize:'none'}));
@@ -26,7 +26,7 @@ test('P1: real user mail candidate → review draft → approval preserves email
  await step(sid,'Max hat mir per Mail geschrieben: Kannst du morgen kommen?',true);
  await stop(sid,'Deutscher Entwurf zur Freigabe:\n```\nJa, ich komme.\n```');
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
- await step(sid,'ok',true);assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
+ await step(sid,'approved copy, per Mail antworten',true);assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  const text='Hallo Max, '.repeat(300);assert.equal(text.length,3300);
  assert.equal((await validate(sid,text)).receipt_stored,true);
  assert.equal(repair(await stop(sid,text)),false);
@@ -62,7 +62,7 @@ test('quoted-only candidate text and bare approval cannot select another channel
  const sid='quoted-channel';await load(sid,'dc',discord);await load(sid,'mail',email);
  await step(sid,'> Max says: please answer this mail',true);
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- await step(sid,'ok',true);
+ await step(sid,'approved copy, per Mail antworten',true);
  assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
  await validate(sid,'x'.repeat(3200));assert.equal(repair(await stop(sid,'x'.repeat(3200))),true);
 });

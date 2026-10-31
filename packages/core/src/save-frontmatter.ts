@@ -233,8 +233,6 @@ export function buildFrontmatter(
       input.derived_claims,
       (value) => DerivedClaimSchema.array().safeParse(value).success,
     ),
-    ...(input.validator === null ? {} : optional("validator", input.validator,
-      (value) => ConventionValidatorSchema.safeParse(value).success)),
     ...rulebookFrontmatter(input, prev),
     ...optional("superseded_by", undefined, isStr),
     confidence: input.confidence ?? kept(prev.confidence, isNum) ?? 1,
@@ -299,7 +297,7 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   const out: Record<string, unknown> = {};
   const existing = RulebookSchema.safeParse(prev.rulebook);
   const previous = FrontmatterSchema.safeParse(prev);
-  const existingRule = existing.success || ConventionValidatorSchema.safeParse(prev.validator).success ||
+  const existingRule = existing.success ||
     (previous.success && !!resolveRulebook(previous.data));
   if (existing.success) out.rulebook = existing.data;
   if (typeof prev.applies_when === "string") out.applies_when = prev.applies_when;
@@ -311,7 +309,7 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
     const declaration = { rulebook: input.rulebook, applies_when: input.applies_when.trim() };
     if (existingRule || input.write_origin === "user-directed") {
       Object.assign(out, declaration);
-    } else out.rulebook_proposed = declaration;
+    } else out.rulebook_proposed = { ...(out.rulebook_proposed as object ?? {}), ...declaration };
   } else if (input.applies_when !== undefined) {
     out.applies_when = input.applies_when;
   }
@@ -323,6 +321,15 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
       out.rulebook_proposed = { rulebook: "on-demand",
         applies_when: input.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
     }
+  }
+  const previousValidator = ConventionValidatorSchema.safeParse(prev.validator);
+  if (input.validator !== null && previousValidator.success) out.validator = previousValidator.data;
+  if (input.validator != null) {
+    if (existingRule || input.write_origin === "user-directed") out.validator = input.validator;
+    else out.rulebook_proposed = {
+      rulebook: "on-demand", applies_when: input.applies_when ?? prev.applies_when ?? input.summary,
+      ...(out.rulebook_proposed as object ?? {}), validator: input.validator,
+    };
   }
   return out;
 }

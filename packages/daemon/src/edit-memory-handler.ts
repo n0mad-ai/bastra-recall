@@ -49,8 +49,6 @@
  * statt still zu tun, als wäre etwas passiert.
  */
 import { z } from "zod";
-import { readRulebookContext } from "./convention-source.js";
-import { callerSessionStore } from "./caller-session.js";
 import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
@@ -335,7 +333,6 @@ export async function editMemoryHandler(
   // Die Größen, die WIRKLICH geschrieben wurden. Sie aus der Vorschau zu
   // nehmen wäre falsch, sobald der Index nicht taufrisch ist — und dann stünde
   // im Beleg eine Zahl, die zu keiner Fassung dieser Datei gehört.
-  const rulebookContextOf = await readRulebookContext(callerSessionStore.getStore());
   let bodyBefore = 0;
   let bodyAfter = 0;
   // #661: gegen die Bytes unter dem Claim ermittelt, nicht gegen den Index.
@@ -377,19 +374,28 @@ export async function editMemoryHandler(
         // Existing rules may be edited directly (Owner decision #1336).
         // New agent declarations on ordinary memories remain proposals.
         const patch = args.frontmatter;
+        const previous = FrontmatterSchema.safeParse(fm);
+        const legacy = previous.success ? resolveRulebook(previous.data) : undefined;
+        const existingRule = RulebookSchema.safeParse(fm.rulebook).success || !!legacy;
         if (patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined) {
-          const rulebook = patch.rulebook ?? fm.rulebook ?? resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id))?.rulebook;
+          const rulebook = patch.rulebook ?? fm.rulebook ?? legacy?.rulebook ?? "on-demand";
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
-          const existingRule = fm.rulebook !== undefined || ConventionValidatorSchema.safeParse(fm.validator).success || resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id));
           if (existingRule) Object.assign(next, proposal.data);
           else {
             if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
             if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
             if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;
-            next.rulebook_proposed = proposal.data;
+            next.rulebook_proposed = { ...(fm.rulebook_proposed as object ?? {}), ...proposal.data };
           }
+        }
+        if (patch?.validator && !existingRule) {
+          if (fm.validator === undefined) delete next.validator; else next.validator = fm.validator;
+          next.rulebook_proposed = {
+            rulebook: "on-demand", applies_when: patch.applies_when ?? fm.applies_when ?? fm.summary,
+            ...(next.rulebook_proposed as object ?? {}), validator: patch.validator,
+          };
         }
         if (next.validator === null) delete next.validator;
         return next;

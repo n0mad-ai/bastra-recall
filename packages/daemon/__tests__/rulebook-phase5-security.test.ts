@@ -68,7 +68,7 @@ test('security: trusted user source revision is current through approval',async(
 });
 test('security: a real user-turn email task remains bound to email despite Discord loads/model reports',async()=>{
  const sid='user-email';await legacy(sid);await mutateSessionState(sid,s=>{delete s.activeTask;});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'lax',type:'workflow',matched_recall_when:true,validator:lax}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'lax',type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator:lax}],surface:'claude-code'});
  assert.equal((await loadSessionState(sid)).userValidatorChannel,'email');
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:strict});
  await recordRulebookCheck(sid,{applicable:['strict','lax'],task:'draft-for-review'},catalog);

@@ -21,7 +21,7 @@ before(async()=>{root=await mkdtemp(join(tmpdir(),'p5-fix2-'));process.env.BASTR
 after(async()=>{await live.close();await vault.stop();await rm(root,{recursive:true,force:true});});
 const catalog={entries:[],omitted:0};
 const load=(sid:string,id:string,v:typeof dc|typeof mail)=>recordRulebookLoad(sid,id,null,{revision:'r1',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
-const step=async(sid:string,prompt:string,email=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:email?[{id:'mail',type:'workflow',matched_recall_when:true,validator:mail}]:[],surface:'claude-code'});
+const step=async(sid:string,prompt:string,email=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:email?[{id:'mail',type:'workflow',matched_recall_when:true,recall_when:['Mail geschrieben','antworte per Mail'],validator:mail}]:[],surface:'claude-code'});
 const stop=async(sid:string)=>JSON.stringify(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]},live.url))).includes('<copy-repair');
 test('S1: unrelated user turn removes an earlier channel before a new task',async()=>{
  const sid='S1';await load(sid,'dc',dc);await load(sid,'mail',mail);
