@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:deploy": "npm run build && npm run build:stub --workspace=@bastra-recall/daemon && node packages/daemon/scripts/verify-stub-build.mjs",
     "skill:build": "node scripts/build-skill-projections.mjs",
     "check:types": "npm run check:types --workspaces --if-present",
     "pretest": "npm run build --workspace=@bastra-recall/core && npm run build --workspace=@bastra-recall/daemon",

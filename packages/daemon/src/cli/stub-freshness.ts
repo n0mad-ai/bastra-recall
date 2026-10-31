@@ -298,6 +298,8 @@ export function readStubStamp(binary: string, timeoutMs = 5_000): StubStamp | nu
 
 export interface StubFreshnessIo {
   home?: string;
+  /** Source deploy also checks the binary installation may register next. */
+  includeOwn?: boolean;
   /** This installation's own stub path — injectable so the guard can point at
    *  a temp tree instead of the developer's live binary. */
   ownBinary?: string;
@@ -330,7 +332,11 @@ export async function stubFreshness(io: StubFreshnessIo = {}): Promise<StubFresh
   };
 
   const findings: StubFinding[] = [];
-  for (const { binary, surfaces } of await collectRegisteredStubs(home)) {
+  const binaries = await collectRegisteredStubs(home);
+  if (io.includeOwn && exists(own) && !binaries.some(b => b.binary === own)) {
+    binaries.push({ binary: own, surfaces: ["source checkout"] });
+  }
+  for (const { binary, surfaces } of binaries) {
     const foreign = binary !== own;
     const base = { binary, surfaces, foreign, expectedDigest, expectedStatuslineDigest };
     if (!exists(binary)) {

@@ -1,3 +1,4 @@
+import { stubFreshness, stubFreshnessLines, type StubFreshnessIo } from "./stub-freshness.js";
 import { refreshAssistantAddressRuntime } from "../assistant-address.js";
 /** Installer update orchestration and cross-client restart guidance (#15). */
 import { spawnSync } from "node:child_process";
@@ -83,7 +84,7 @@ export function detectInstallMode(cliPathOverride?: string): InstallMode {
       mode: "source",
       cliPath,
       detail: "running from source checkout",
-      updateCommand: "git pull && npm ci && npm run build",
+      updateCommand: "git pull && npm ci && npm run build:deploy",
     };
   }
 
@@ -237,6 +238,18 @@ export function verifySourceCheckout(
   }
   write("\n");
   return { rc: 0, state };
+}
+
+/** Refuse activation of a fresh daemon paired with old compiled hook code.
+ * Node thin-client installations have no compiled binary to check. */
+export async function verifySourceStubs(write: (s: string) => void, io: StubFreshnessIo = {}): Promise<number> {
+  const report = await stubFreshness({ ...io, includeOwn: true });
+  const invalid = report.findings.some(f => f.state !== "ok" || f.statusline !== "ok");
+  if (!invalid) return 0;
+  for (const line of stubFreshnessLines(report)) write(`  ${line}\n`);
+  write("  Build the daemon and hook together: npm run build:deploy\n" +
+    "  Nothing was re-registered and the daemon was left alone.\n");
+  return 1;
 }
 
 export function installedVersion(root: string): string {
@@ -569,6 +582,7 @@ async function performUpdate(args: ParsedArgs, io: UpdateIo): Promise<number> {
     // stale tree ends here: no re-registration, no restart, exit 1.
     const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
     if (verdict.rc !== 0) return verdict.rc;
+    if (await verifySourceStubs((s) => process.stdout.write(s), { packageRoot, ownBinary: resolve(packageRoot, "stub", platform === "win32" ? "bastra-hook.exe" : "bastra-hook") }) !== 0) return 1;
     sourceState = verdict.state;
   } else {
     process.stdout.write("⚠ install mode unknown — install manually from:\n");

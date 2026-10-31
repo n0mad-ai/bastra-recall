@@ -57,6 +57,24 @@ npm run build
 The repo is an npm workspace — `npm install` at the root pulls every
 package's dependencies; `npm run build` compiles every workspace.
 
+For a source-checkout deployment, run `npm run build:deploy` before `bastra update`.
+This builds every workspace, compiles the host hook binary (Deno required), and
+verifies both its hook sources and embedded statusline. Ordinary `npm run build`
+remains a development build; it does not replace the hook binary. Source updates
+refuse activation when a compiled hook they would use is stale or unverifiable.
+The release workflow compiles every target and verifies the native executable
+against the current source and statusline digests before uploading artifacts.
+
+Für ein Deployment aus dem Checkout vor `bastra update` zuerst
+`npm run build:deploy` ausführen (Deno erforderlich). Der Befehl baut alle
+Workspaces und das Hook-Binary und prüft dessen Quellen sowie die eingebettete
+Statuszeile. `npm run build` bleibt ein Entwicklungsbuild ohne Austausch des
+Hook-Binarys. Ein Source-Update bricht vor Registrierung und Neustart ab, wenn
+es ein veraltetes oder nicht prüfbares Hook-Binary verwenden würde.
+Der Release-Workflow kompiliert alle Targets und prüft vor dem Hochladen der
+Artefakte das native Binary gegen die aktuellen Quellen- und Statusline-Digests.
+
+
 ### Type-check (no emit)
 
 ```bash

@@ -153,6 +153,8 @@ jobs:
         run: |
           out=$(printf '' | "./bastra-hook-${{ matrix.native }}" nope)
           test "$out" = "{}"
+      - name: Verify native hook and embedded statusline freshness
+        run: node packages/daemon/scripts/verify-stub-build.mjs packages/daemon/stub/bastra-hook-${{ matrix.native }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stub-checksums-${{ matrix.os }}

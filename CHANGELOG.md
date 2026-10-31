@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Source-checkout updates now refuse stale compiled hooks or embedded statuslines;
+  `npm run build:deploy` builds and verifies both, and release CI verifies the
+  native hook before uploading artifacts (#1346).
 - Claude live panels no longer count PreToolUse hook denials as failed Recall
   calls; genuine MCP errors remain visible (#1345).
 - Translation/review prose no longer triggers copy-repair false alarms or a
