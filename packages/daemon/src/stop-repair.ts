@@ -13,7 +13,7 @@ import {ownerPromptText} from "./system-turn.js";
  * task/generation, not the bytes of later edits (#1325). */
 export const REPAIR_MAX_ATTEMPTS=2;
 export type RepairDecision=
- | {action:"request";attempt:number}
+ | {action:"request";attempt:number;reason:"overlength"|"missing-receipt";ruleIds:string[]}
  | {action:"exhausted";taskId:string;generation:number;attempts:number;roundId?:string}
  | {action:"observed";roundId:string};
 
@@ -31,24 +31,32 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
  // tasks still require a stable repair watermark across Stops.
  const scope=snapshot.rulebookCheck?roundCorrespondence(snapshot,payload).key:`legacy:${task?.id??"none"}:${task?.generation??0}:${actor}`;
  const responsesFor=(state:ReadonlySessionState)=>currentAssistantTexts(turns,repairCutoff(state.repairWindows?.[actor],scope,turns));
- const oversized=(state:ReadonlySessionState)=>{
+ const oversizedRules=(state:ReadonlySessionState)=>{
   const responses=responsesFor(state),prose=!payload.agent_id&&state.activeTask?.kind==="approved-copy";
-  return validatorsFor(state,payload).some(v=>{
+  return validatorsFor(state,payload).filter(v=>{
    const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
    return responses.some((response,i)=>countCopyUnits(deliveredCopy(response,contract.unit_applied,prose&&i===responses.length-1),contract.unit_applied)>contract.limit);
   });
  };
+ const oversized=(state:ReadonlySessionState)=>oversizedRules(state).length>0;
+ const repairDetails=(state:ReadonlySessionState)=>{
+  const over=oversizedRules(state),rules=over.length?over:validatorsFor(state,payload);
+  const sources=[...roundCorrespondence(state,payload).rules,...(state.activeConventions??[]),...(state.loadedConventions??[])];
+  const ruleIds=[...new Set(sources.filter(r=>r.validator&&rules.some(v=>v.channel===r.validator!.channel&&v.unit===r.validator!.unit&&v.limit===r.validator!.limit)).map(r=>r.id))];
+  return {reason:over.length?'overlength' as const:'missing-receipt' as const,ruleIds};
+ };
  const needsRepair=(state:ReadonlySessionState)=>oversized(state)||(!payload.agent_id&&state.activeTask?.kind==="approved-copy"&&!taskReceiptSatisfied(state,payload));
  if(!validatorsFor(snapshot,payload).length||!(codex?oversized(snapshot):needsRepair(snapshot)))return null;
  const round=roundCorrespondence(snapshot,payload);
- if(codex||!taskBound){
+ if(codex||snapshot.rulebookCheck||!taskBound){
   if(round.repairs>REPAIR_MAX_ATTEMPTS)return null;
   let decision:RepairDecision|null=null;
   const persisted=await mutateSessionState(sessionId,s=>{
    if(!(codex?oversized(s):needsRepair(s)))return;
    const count=claimRoundRepair(s,payload,round.key,codex);if(count===null)return;
+   const details=repairDetails(s);
    (s.repairWindows??={})[actor]=repairWindow(scope,turns);
-   decision=codex?{action:"observed",roundId:round.key}:count<REPAIR_MAX_ATTEMPTS?{action:"request",attempt:count+1}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
+   decision=codex?{action:"observed",roundId:round.key}:count<REPAIR_MAX_ATTEMPTS?{action:"request",attempt:count+1,...details}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
   },{noQueue:true,deadline});
   if(!persisted)void spoolRulebookFailure(sessionId).catch(()=>{});
   return persisted?decision:null;
@@ -59,11 +67,11 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
   if(!t||t.kind==="none"||t.id!==task.id||t.generation!==task.generation||!validatorsFor(s,payload).length||!needsRepair(s))return;
   const old=s.repairAttempts;
   let count=old&&old.taskId===t.id&&old.generation===t.generation?old.count:0;
-  if(s.rulebookCheck){const claimed=claimRoundRepair(s,payload,round.key,false,count);if(claimed===null)return;count=claimed;}
   if(count>REPAIR_MAX_ATTEMPTS)return;
   s.repairAttempts={taskId:t.id,generation:t.generation,count:count+1};
-  (s.repairWindows??={})[actor]=repairWindow(scope,turns);
-  decision=count<REPAIR_MAX_ATTEMPTS?{action:"request",attempt:count+1}:{action:"exhausted",taskId:t.id,generation:t.generation,attempts:count};
+  const details=repairDetails(s);
+   (s.repairWindows??={})[actor]=repairWindow(scope,turns);
+  decision=count<REPAIR_MAX_ATTEMPTS?{action:"request",attempt:count+1,...details}:{action:"exhausted",taskId:t.id,generation:t.generation,attempts:count};
  },{noQueue:true,deadline});
  return persisted?decision:null;
 }

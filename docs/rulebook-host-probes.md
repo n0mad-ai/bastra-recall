@@ -130,7 +130,9 @@ No live-vault rule currently declares `rule_categories` (read-only source scan, 
 Exceptions now require an exact outstanding ID and at least ten characters of substantive explanation (not punctuation alone). Their IDs are retained for the next prompt as explicit exceptions, in addition to the existing audit and unchecked counter. This is a deliberately simple quality floor, not semantic verification of the explanation.
 
 
-## Phase 4 fix 3: task channel and copy candidates
+## Phase 4 fix 3: task channel and copy candidates (historical)
+
+Historical snapshot: channel/approval inference and task protection described below have been superseded by agent-reported stages. No user-text channel or approval matching remains in this workflow; reports select no channel, and all applicable validators remain conservative. See [current contract](rulebook.md).
 
 Stop repair selects only the validator of the rule that started the current task (`validatorRuleId`, preserved across review/approval and state reload). If no such usable binding exists, it selects the valid validator with the latest load/activation timestamp. One matching receipt for this channel suffices; unrelated loaded validators do not force extra receipts or their limits onto the copy. Prompt task candidates, explicitly applicable model task rules and the legacy draft question can establish the binding.
 
@@ -139,21 +141,27 @@ All prose outside fences/quotes is also a copy candidate. The largest candidate 
 Additional AST coverage: `gh issue delete`, `transfer`, `lock`, `gh pr ready`, and literal GraphQL mutation identifiers `addComment`, `reopenIssue`, `deleteIssue`. Existing query/string/comment/help exclusions remain. Alias, variable/dynamic executable, curl-REST and dynamic/file GraphQL payload gaps described above remain. No new natural-language cues, native host probe or Phase 5 work.
 
 
-## Phase 5 fix 3: direct edits to existing rules
+## Phase 5 fix 3: direct edits to existing rules (historical)
+
+Historical snapshot: channel/approval inference and task protection described below have been superseded by agent-reported stages. No user-text channel or approval matching remains in this workflow; reports select no channel, and all applicable validators remain conservative. See [current contract](rulebook.md).
 
 Owner decision (2026-10-31, #1336): agent edits, overwrites, supersession and archive of existing rules take effect directly, including validator limit/unit/channel/removal and sensitivity. They create no rulebook_proposed entry and require no confirmation UI. write_origin retains its provenance/lifecycle meaning. New agent rule declarations still use the Phase 1 proposal path. An agent can therefore weaken an existing rule; this is an accepted source-edit policy, and Bash/CLI/UI changes are equivalent.
 
 The next Stop uses the updated in-memory index after the writer's reindex (or watcher/reconciliation for external changes), without reopening rule files. Runtime protections remain: model rulebook_check cannot weaken checks, channels and approvals come only from the own-user-turn path, and the current dynamic validator set applies. Compact may discard loaded-only rules while the task continues. The replay fixture resolves the gate-hook subprocess entry point relative to its own file. These are HTTP/adapter regression checks, not new native-host or live-model certification.
 
 
-## Security follow-up: existing-rule status and own-user channel evidence
+## Security follow-up: existing-rule status and own-user channel evidence (historical)
+
+Historical snapshot: channel/approval inference and task protection described below have been superseded by agent-reported stages. No user-text channel or approval matching remains in this workflow; reports select no channel, and all applicable validators remain conservative. See [current contract](rulebook.md).
 
 Existing-rule edits stay direct, but a validator alone or session-derived active/floor membership cannot authorize a new declaration. Save/edit determine eligibility from the pre-write valid declaration or a user-directed legacy declaration without session context. A new agent validator on an ordinary memory is a rulebook_proposed entry; subsequent declaration edits stay proposed.
 
 Channel narrowing requires the candidate's authored recall_when trigger to match splitQuoted(prompt).own using the existing multilingual trigger matcher. Current trigger metadata comes from the in-memory index, without rule-file reads. Whole-prompt recall can still surface foreign-message candidates but cannot authorize their channel. The real HTTP Stop regression requests repair for a quoted foreign mail beside a loaded Discord validator; an own-user mail instruction still binds email without a false alarm. Model reports, approval provenance, dynamic validators and Stop index-only refresh are unchanged. These are adapter/HTTP regressions, not additional native-host or semantic-language certification.
 
 
-## #1340 / #1341: explicit round decisions and task-independent length checks
+## #1340 / #1341: explicit round decisions and task-independent length checks (historical)
+
+Historical snapshot: channel/approval inference and task protection described below have been superseded by agent-reported stages. No user-text channel or approval matching remains in this workflow; reports select no channel, and all applicable validators remain conservative. See [current contract](rulebook.md).
 
 This follow-up supersedes the earlier task-omission GAP. Every current correspondence ID (validator or explicit category, including legacy structural metadata without migration) requires its own applicable/load or reasoned not_applicable decision each round. An unrelated load or applicable:[] does not discharge the IDs. One check can enumerate the complete category or declare not_applicable with category:"correspondence" and a reason. Category dismissal excludes current review/copy-task and current-round rules; explicit attempts to dismiss them are ignored and counted as violations. There is no semantic checker: a model can explicitly lie, but omission leads to the one bounded Stop block or an audited unchecked passage. Normal reasoned non-applicability is not a violation. Action-required exceptions retain their independent audit/unchecked semantics.
 
@@ -162,7 +170,9 @@ Declared/loaded validators check oversized answer candidates even with no active
 Both former GAP cells now PASS for all five fixture languages and both host identifiers. Cost controls: 50 honest harmless rounds, 50 checks, zero Stop blocks/repairs; 40 deliberately unchecked harmless rounds, one first block each. Payload bytes are measured separately, not LLM tokens or real-model frequency. These are scripted production HTTP/adapter checks; native certification and universal semantic compliance are not claimed. Counters and audit delivery remain subject to existing storage/telemetry limits and fail-open behavior.
 
 
-## Review follow-up: provenance attestation and proposal merging
+## Review follow-up: provenance attestation and proposal merging (historical)
+
+Historical snapshot: channel/approval inference and task protection described below have been superseded by agent-reported stages. No user-text channel or approval matching remains in this workflow; reports select no channel, and all applicable validators remain conservative. See [current contract](rulebook.md).
 
 save_memory accepts the agent's own write_origin:user-directed claim; a new rule/validator can therefore bind immediately. This is an accepted attestation/trust boundary for dictated rules, not authenticated human-origin proof. It does not replace user-turn approval of a correspondence task. Category proposals now merge with a pending declaration and validator instead of replacing the requested always tier with on-demand.
 

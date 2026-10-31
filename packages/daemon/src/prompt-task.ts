@@ -21,7 +21,7 @@ export function vaultRevisionOf(vault:Pick<Vault,'get'>):(id:string)=>Promise<st
 }
 function view(state:ReadonlySessionState,changed:string[]=[]):ActiveConventionsView{
  return {task:state.activeTask?.kind??'none',approvalSource:state.activeTask?.approvalSource,
-  generation:state.activeTask?.generation??0,conventions:state.activeConventions??[],changed,unclear:false,receipt:currentReceipt(state)};
+  generation:state.activeTask?.generation??0,conventions:state.activeConventions??[],changed,receipt:currentReceipt(state)};
 }
 export async function runTaskStep(input:TaskStepInput):Promise<string|null>{
  try{return await step(input);}catch{return null;}

@@ -95,15 +95,18 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
   let context = "", round = 0, taskGeneration = 0, invalidDismissal = false, actionException=false;
+  let acceptedTask: {kind:string;generation:number}|undefined;
+  const skippedProtectedIds:string[]=[];
   const persisted = await mutateSessionState(sessionId, s => {
     if (task !== undefined && task !== "none" && new Set([
       ...(s.activeConventions ?? []).map(e => e.id), ...input.applicable,
     ]).size > ACTIVE_CONVENTIONS_CAP) { taskError = `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity.`; task = undefined; }
-    if (task !== undefined) { applyReportedTask(s, task, input.applicable, catalog); taskGeneration = s.activeTask?.generation ?? 0; }
+    if (task !== undefined) { applyReportedTask(s, task, input.applicable, catalog); taskGeneration = s.activeTask?.generation ?? 0; acceptedTask={kind:task,generation:taskGeneration}; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence=catalog.entries.filter(isCorrespondenceRule);
     const protectedIds=new Set(a.roundApplied.map(r=>r.id));
     const requiredIds=new Set(a.required.map(r=>r.id));
+    if(input.not_applicable?.some(e=>'category' in e))skippedProtectedIds.push(...correspondence.filter(r=>protectedIds.has(r.id)||requiredIds.has(r.id)).map(r=>r.id));
     const skips=(input.not_applicable??[]).flatMap(e=>'id' in e?[e]:correspondence.filter(r=>!protectedIds.has(r.id)&&!requiredIds.has(r.id)&&!input.applicable.includes(r.id)).map(r=>({id:r.id,reason:e.reason})));
     const accepted=skips.filter(e=>{
       if(protectedIds.has(e.id)||input.applicable.includes(e.id)){
@@ -131,11 +134,11 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     a.checked = true; a.ids = [...new Set(input.applicable)];
     context = state.context; round = state.round; put(s, state);
   });
-  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
+  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,...(acceptedTask?{task:acceptedTask}:{}),skipped_protected_ids:skippedProtectedIds,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   if (persisted && taskError) return { ok: false, reason: `${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
-  return persisted ? { ok: true, context, round, applicable: input.applicable, ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
+  return persisted ? { ok: true, context, round, applicable: input.applicable, ...(skippedProtectedIds.length?{skipped_protected_ids:skippedProtectedIds}:{}), ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
       conventions: catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };
 }

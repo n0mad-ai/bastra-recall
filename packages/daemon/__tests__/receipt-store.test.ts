@@ -177,6 +177,6 @@ test("the active-conventions block shows the receipt line while it is valid", as
   const gone = await step();
   assert.ok(gone !== null && !gone.includes("receipt:"), gone ?? "null");
   // Pure formatter: no receipt, no line.
-  const block = formatActiveConventionsBlock({ task: "approved-copy", generation: 0, conventions: [], changed: [], unclear: false });
+  const block = formatActiveConventionsBlock({ task: "approved-copy", generation: 0, conventions: [], changed: [] });
   assert.ok(block !== null && !block.includes("receipt:"));
 });

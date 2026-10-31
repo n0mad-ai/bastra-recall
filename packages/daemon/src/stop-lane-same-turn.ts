@@ -42,17 +42,23 @@ export function formatSameTurnBlock(suggestions: SaveSuggestion[]): string {
 export const REPAIR_INSTRUCTION =
   "Copy task without validated receipt: run validate_artifact on the final text before delivering; later edits need a new receipt";
 
-const REPAIR_NOTICE_BY_LANGUAGE: Readonly<Record<string, string>> = {
-  en: "bastra-recall: the copy text has no validation receipt yet — the agent is asked to validate it.",
-  de: "bastra-recall: Für den Kopiertext fehlt noch der Prüfbeleg — der Agent soll ihn prüfen.",
-  ru: "bastra-recall: для текста копии ещё нет подтверждения проверки — агента просят его проверить.",
+const OVERLENGTH_NOTICE: Readonly<Record<string,string>> = {
+ en:"bastra-recall: the copy text exceeds the rule limit — the agent is asked to shorten it.",
+ de:"bastra-recall: Der Kopiertext überschreitet die Regelgrenze — der Agent soll ihn kürzen.",
+ ru:"bastra-recall: текст превышает ограничение правила — агент должен сократить его.",
 };
-
-export function repairNotice(language: string | undefined): string {
-  return REPAIR_NOTICE_BY_LANGUAGE[language ?? "en"] ?? REPAIR_NOTICE_BY_LANGUAGE.en;
+const RECEIPT_NOTICE: Readonly<Record<string,string>> = {
+ en:"bastra-recall: the copy text has no validation receipt yet — the agent is asked to validate it.",
+ de:"bastra-recall: Für den Kopiertext fehlt noch der Prüfbeleg — der Agent soll ihn prüfen.",
+ ru:"bastra-recall: для текста копии ещё нет подтверждения проверки — агента просят его проверить.",
+};
+type RepairCause={reason:"overlength"|"missing-receipt";ruleIds:string[]};
+export function repairNotice(language:string|undefined,cause:RepairCause):string {
+ const messages=cause.reason==="overlength"?OVERLENGTH_NOTICE:RECEIPT_NOTICE;
+ return (messages[language??"en"]??messages.en)+` (${cause.ruleIds.join(", ")})`;
 }
-
-/** #1311: same shape as the save-eval block — one tag, one instruction. */
-export function formatRepairBlock(attempt: number, max: number): string {
-  return [`<copy-repair source="stop-hook" attempt="${attempt}/${max}">`, REPAIR_INSTRUCTION, `</copy-repair>`].join("\n");
+export function formatRepairBlock(attempt:number,max:number,cause:RepairCause):string {
+ const instruction=cause.reason==="overlength"?
+  "Copy text exceeds the rule limit: shorten the copy blocks to the applicable limit, then run validate_artifact on the final text":REPAIR_INSTRUCTION;
+ return [`<copy-repair source="stop-hook" attempt="${attempt}/${max}">`,`${instruction}. Rules: ${cause.ruleIds.join(", ")}`,`</copy-repair>`].join("\n");
 }

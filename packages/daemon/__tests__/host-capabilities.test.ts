@@ -107,7 +107,7 @@ test("both README capability tables match the evidence ledger", () => {
   const table = [
     "| Surface | Runtime | Bastra pre_tool_deny | Bastra must_load_gate |",
     "|---|---|---|---|",
-    ...HOST_CAPABILITIES.map(row => `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`),
+    ...[...HOST_CAPABILITIES.slice(0,2), hostCapabilities("codex", "0.166.0"), ...HOST_CAPABILITIES.slice(2)].map(row => `| ${row.surface} | ${row.runtime.verifiedVersion ?? "unverified / not version-pinned"} | ${row.capabilities.pre_tool_deny.bastra} | ${row.capabilities.must_load_gate.bastra} |`),
   ].join("\n");
   assert.equal(readme.split(table).length - 1, 2, "EN and DE summaries must agree with the canonical data");
   assert.equal(readme.split("[host-capabilities.ts](./packages/daemon/src/host-capabilities.ts)").length - 1, 2);
@@ -124,4 +124,12 @@ test("README hook registration counts match the Claude Code installer in both la
   const withoutStop = hookDefinitions({ includeStop: false }).length;
   assert.ok(readme.includes(`${withStop} hook registrations (${withoutStop} without Stop/SessionEnd)`));
   assert.ok(readme.includes(`${withStop} Hook-Registrierungen (${withoutStop} ohne Stop/SessionEnd)`));
+});
+
+test("Codex 0.166.0 certifies only the probed paths",()=>{
+ const row=hostCapabilities("codex","0.166.0");
+ assert.deepEqual(row.pre_tool_coverage.runtimeVerified,["exec_command (hook name Bash)","view_image"]);
+ assert.equal(row.capabilities.session_fork.status,"unverified");
+ assert.ok(row.pre_tool_coverage.documentedOnly.some(name=>name.includes("MCP")));
+ assert.match(row.capabilities.pre_tool_deny.note,/apply_patch.*unverified/);
 });

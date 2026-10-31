@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {checkStopRepair} from '../src/stop-repair.js';
 import {runStopLane} from '../src/stop-lane.js';
-import {recordRulebookCheck} from '../src/rulebook-check.js';
+import {recordRulebookCheck,beginRulebookRound} from '../src/rulebook-check.js';
 import {mutateSessionState} from '../src/session-state.js';
 import type {KernelCandidates} from '../src/rulebook-catalog.js';
 import type {TranscriptTurn} from '../src/stop-transcript.js';
@@ -101,4 +101,34 @@ for(const kind of [undefined,'translate-only','draft-for-review'] as const)for(c
  if(kind)await recordRulebookCheck(sid,{applicable:['copy-rule'],task:kind},catalog);
  const text=shape==='prose'?'x'.repeat(2500):shape==='fence'?fence(2500):'> '+'x'.repeat(2500);
  assert.equal((await checkStopRepair(payload(sid),[{role:'assistant',content:text}]))?.action??null,shape==='prose'?null:'request');
+}));
+
+for(const kind of [undefined,'draft-for-review'] as const)test('round budget renews for six rounds despite stale task attempts: '+kind,async()=>sandbox(async()=>{
+ const sid='six-rounds-'+kind;await seed(sid,kind);
+ await mutateSessionState(sid,s=>{s.repairAttempts={taskId:s.activeTask?.id??'old',generation:0,count:3};});
+ for(let round=0;round<6;round++){
+  await beginRulebookRound(payload(sid),catalog);
+  await recordRulebookCheck(sid,{applicable:['copy-rule'],...(kind?{task:kind}:{})},catalog);
+  const turns:TranscriptTurn[]=[{role:'user',content:'Round '+round},{role:'assistant',content:fence(2500)}];
+  for(let attempt=1;attempt<=3;attempt++){
+   const result=await checkStopRepair(payload(sid),turns);
+   assert.equal(result?.action,attempt<=2?'request':'exhausted');
+   if(result?.action==='request')assert.equal(result.attempt,attempt);
+   await recordRulebookCheck(sid,{applicable:['copy-rule'],...(kind?{task:kind}:{})},catalog);
+   turns.push({role:'assistant',content:fence(2500)});
+  }
+  assert.equal(await checkStopRepair(payload(sid),turns),null);
+ }
+}));
+
+test('repair messages distinguish overlength from missing receipt and identify the rule',async()=>sandbox(async()=>{
+ for(const overlength of [true,false]){
+  const sid='cause-'+overlength;await seed(sid,'approved-copy');
+  if(!overlength)await mutateSessionState(sid,s=>{delete s.receipts;});
+  const out=JSON.parse(await runStopLane({...payload(sid),transcript:[{role:'assistant',content:overlength?fence(2500):'Short copy'}]},'http://127.0.0.1:1'));
+  assert.match(out.hookSpecificOutput.additionalContext,overlength?/exceeds the rule limit/:/without validated receipt/);
+  assert.match(out.hookSpecificOutput.additionalContext,/Rules: copy-rule/);
+  assert.match(out.systemMessage,/copy-rule/);
+  assert.doesNotMatch(out.hookSpecificOutput.additionalContext,overlength?/without validated receipt/:/exceeds the rule limit/);
+ }
 }));

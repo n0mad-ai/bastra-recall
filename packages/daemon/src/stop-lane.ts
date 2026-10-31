@@ -116,7 +116,7 @@ export async function runStopLane(
   const deferredRulebookStop = await takeDeferredRulebookStop(payload).catch(() => false);
   // #1311: bounded repair for an approved-copy task without a valid receipt.
   // It sits before the loop guard on purpose — the follow-up Stop it causes is
-  // `stop_hook_active` — and bounds itself: two requests per task, then one
+  // `stop_hook_active` — and bounds itself: two requests per round, then one
   // non-conformance row. An ordinary Stop must still book harvest, park its
   // boundary and evaluate saves; only hook-active follow-ups skip that work.
   let turns: TranscriptTurn[] | null = null;
@@ -129,8 +129,8 @@ export async function runStopLane(
   let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
   if (repair?.action === "request") {
     repairOutput = {
-      systemMessage: repairNotice(await getPrimaryLanguage().catch(() => undefined)),
-      hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatRepairBlock(repair.attempt, REPAIR_MAX_ATTEMPTS) },
+      systemMessage: repairNotice(await getPrimaryLanguage().catch(() => undefined), repair),
+      hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatRepairBlock(repair.attempt, REPAIR_MAX_ATTEMPTS, repair) },
     };
   }
   if (repair?.action === "exhausted") {

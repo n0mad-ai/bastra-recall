@@ -155,9 +155,8 @@ test("same invented DM without validation gets repair 1, repair 2, exactly one e
   const events = await exhaustion(sid);
   assert.equal(events.length, 1);
   assert.equal(events[0]?.session_known, true);
-  const task = (await loadSessionState(sid)).activeTask;
-  assert.equal(events[0]?.task_id, task?.id);
-  assert.equal(events[0]?.generation, task?.generation);
+  assert.equal(typeof events[0]?.round_id, "string");
+  assert.equal(events[0]?.task_id, undefined);
   assert.equal(events[0]?.attempts, 2);
   assert.equal(await stop(sid), "{}");
   assert.equal((await exhaustion(sid)).length, 1);

@@ -120,7 +120,7 @@ export async function maybeSessionContextItem(): Promise<{ type: "text"; text: s
     if (!resp.ok) return null;
     const body = (await resp.json()) as { context?: string };
     sessionContextPending = false;
-    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex CLI 0.162.1 has bounded checks with installed hooks; other Codex versions are uncertified. Without host session attribution, use rulebook_check with the session_id from the prompt/hook. A missing statusline does not establish missing hook support." } : null;
+    return typeof body.context === "string" && body.context ? { type: "text", text: body.context + "\nRulebook: clients without supported hooks receive advisory rules. Codex CLI 0.162.1 and 0.166.0 have bounded checks with installed hooks; apply_patch deny, MCP and Fork remain unverified on 0.166.0; other Codex versions are uncertified. Without host session attribution, use rulebook_check with the session_id from the prompt/hook. A missing statusline does not establish missing hook support." } : null;
   } catch {
     return null;
   }

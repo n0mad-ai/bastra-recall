@@ -86,9 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   valid rule declarations from the same call (#1343).
 - Rulebook checks preserve user provenance, current exceptions and rule-source
   integrity. Agent-generated draft quotes do not become user instructions;
-  pasted own-user text retains its origin. Validator channels and deletion
-  approval come from the current user action, not quoted or model-provided
-  authority (#1336, #1338, #1341, #1342).
+  pasted own-user text retains its origin. Stage reports clear legacy channel selection and choose no new channel;
+  all applicable validators remain conservative. Deletion approval comes
+  from the current user action, not quoted or model-provided authority (#1336, #1338, #1341, #1342).
 - GitHub mutations load applicable saved issue/PR conventions at action time,
   with current revisions, bounded delivery and explicit exceptions (#1330).
 - Assistant address recovery preserves partial state, owns both loopback

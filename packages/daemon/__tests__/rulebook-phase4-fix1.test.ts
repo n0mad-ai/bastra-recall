@@ -31,7 +31,7 @@ test('A2/B2: empty round checks do not discharge concrete GitHub IDs, even in on
 test('D1: agent stage reports do not attest user approval',async()=>{
  await recordRulebookCheck('approval',{applicable:['issue-rule'],task:'approved-copy'},catalog);
  assert.equal((await loadSessionState('approval')).activeTask?.kind,'approved-copy');
- const text=formatActiveConventionsBlock({task:'approved-copy',generation:0,conventions:[],changed:[],unclear:false});
+ const text=formatActiveConventionsBlock({task:'approved-copy',generation:0,conventions:[],changed:[]});
  assert.doesNotMatch(text!,/the user approved/);
 });
 test('C1-C3/D2: explicit none report leaves current-round validators structurally enforced',async()=>{

@@ -22,7 +22,7 @@ test('all four agent reports may change stage, without claiming user approval',a
 test('legacy session task remains readable without draft presentation or inferred approval text',()=>{
  const task=decodeActiveTask({id:'legacy',kind:'approved-copy',since:1,generation:2,draftPresented:true,approvalSource:'user-turn',validatorChannel:'email'})!;
  assert.equal(task.kind,'approved-copy');assert.equal(task.generation,2);assert.equal('draftPresented' in task,false);
- const block=formatActiveConventionsBlock({task:task.kind,approvalSource:task.approvalSource,generation:2,conventions:[],changed:[],unclear:false})!;
+ const block=formatActiveConventionsBlock({task:task.kind,approvalSource:task.approvalSource,generation:2,conventions:[],changed:[]})!;
  assert.doesNotMatch(block,/the user approved/);assert.match(block,/agent reports|agent-reported/);
 });
 test('each new round needs its own rule decision; ending a task releases only older task binding',async()=>isolated(async()=>{
@@ -36,6 +36,9 @@ test('each new round needs its own rule decision; ending a task releases only ol
  await beginRulebookRound(p,catalog);await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'approved-copy'},catalog);
  const invalid=await recordRulebookCheck(sid,{applicable:[],task:'none',not_applicable:[{id:'copy-rule',reason:'Try to dismiss a current declaration'}]},catalog);
  assert.equal(invalid.ok,false,'current-round obligations remain protected independently of stage');
+ assert.deepEqual('task' in invalid?invalid.task:undefined,{kind:'none',generation:(await loadSessionState(sid)).activeTask?.generation});
+ const category=await recordRulebookCheck(sid,{applicable:[],not_applicable:[{category:'correspondence',reason:'Only unrelated technical work this round'}]},catalog);
+ assert.equal(category.ok,true);assert.deepEqual('skipped_protected_ids' in category?category.skipped_protected_ids:undefined,['copy-rule']);
 }));
 test('reports clear text-inferred legacy channel; workers cannot change the main stage',async()=>isolated(async()=>{
  const sid='legacy-channel';await mutateSessionState(sid,s=>{s.activeTask={id:'legacy',kind:'draft-for-review',since:1,generation:0,validatorChannel:'email'};s.userValidatorChannel='email';});
