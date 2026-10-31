@@ -137,3 +137,10 @@ Stop repair selects only the validator of the rule that started the current task
 All prose outside fences/quotes is also a copy candidate. The largest candidate wins, so a short fenced or quoted decoy cannot hide oversized prose. Without an established task the repair still does not run; a model can omit task creation where the user/legacy transition does not supply it. This is explicitly left for Phase 5 testing, not certified away here.
 
 Additional AST coverage: `gh issue delete`, `transfer`, `lock`, `gh pr ready`, and literal GraphQL mutation identifiers `addComment`, `reopenIssue`, `deleteIssue`. Existing query/string/comment/help exclusions remain. Alias, variable/dynamic executable, curl-REST and dynamic/file GraphQL payload gaps described above remain. No new natural-language cues, native host probe or Phase 5 work.
+
+
+## Phase 5 fix 3: direct edits to existing rules
+
+Owner decision (2026-10-31, #1336): agent edits, overwrites, supersession and archive of existing rules take effect directly, including validator limit/unit/channel/removal and sensitivity. They create no rulebook_proposed entry and require no confirmation UI. write_origin retains its provenance/lifecycle meaning. New agent rule declarations still use the Phase 1 proposal path. An agent can therefore weaken an existing rule; this is an accepted source-edit policy, and Bash/CLI/UI changes are equivalent.
+
+The next Stop uses the updated in-memory index after the writer's reindex (or watcher/reconciliation for external changes), without reopening rule files. Runtime protections remain: model rulebook_check cannot weaken checks, channels and approvals come only from the own-user-turn path, and the current dynamic validator set applies. Compact may discard loaded-only rules while the task continues. The replay fixture resolves the gate-hook subprocess entry point relative to its own file. These are HTTP/adapter regression checks, not new native-host or live-model certification.

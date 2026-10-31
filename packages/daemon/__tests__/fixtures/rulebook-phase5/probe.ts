@@ -3,6 +3,7 @@ import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {Vault, SearchIndex} from '@bastra-recall/core';
 import {startHttpServer} from '../../../src/http.js';
 import {Telemetry} from '../../../src/telemetry.js';
@@ -248,7 +249,7 @@ export async function runProbe(): Promise<ProbeResult> {
 
 function hookProcess(url:string,payload:object):Promise<{code:number|null;stdout:string}> {
   return new Promise((resolve,reject)=>{
-    const child=spawn(process.execPath,['--import','tsx','packages/daemon/src/gate-hook.ts'],{
+    const child=spawn(process.execPath,['--import','tsx',fileURLToPath(new URL('../../../src/gate-hook.ts',import.meta.url))],{
       cwd:process.cwd(),env:{...process.env,BASTRA_DAEMON_URL:url,BASTRA_HOOK_TIMEOUT_MS:'1500'},stdio:['pipe','pipe','pipe']});
     let stdout='',stderr='';child.stdout.on('data',d=>stdout+=d);child.stderr.on('data',d=>stderr+=d);
     const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('thin client hung: '+stderr));},5000);

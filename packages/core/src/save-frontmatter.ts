@@ -13,7 +13,8 @@
  * (`save-target.ts`), ob geschrieben werden darf (`save-commit.ts`) und wie
  * der Text serialisiert wird (der Aufrufer).
  */
-import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema } from "./schema.js";
+import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, FrontmatterSchema } from "./schema.js";
+import { resolveRulebook } from "./rulebook.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -292,11 +293,14 @@ export function buildFrontmatter(
   return { fm, summaryTruncated };
 }
 
-/** A new agent declaration is a proposal; changing existing binding metadata
- * also preserves the binding values. Confirmation belongs to a user surface. */
+/** New agent declarations remain proposals. Existing rules can be changed
+ * directly, including by an agent (Owner decision #1336). */
 function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const existing = RulebookSchema.safeParse(prev.rulebook);
+  const previous = FrontmatterSchema.safeParse(prev);
+  const existingRule = existing.success || ConventionValidatorSchema.safeParse(prev.validator).success ||
+    (previous.success && !!resolveRulebook(previous.data));
   if (existing.success) out.rulebook = existing.data;
   if (typeof prev.applies_when === "string") out.applies_when = prev.applies_when;
   const previousProposal = RulebookProposalSchema.safeParse(prev.rulebook_proposed);
@@ -305,21 +309,18 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   if (input.rulebook !== undefined) {
     if (!input.applies_when?.trim()) throw new Error("New rulebook declarations require applies_when");
     const declaration = { rulebook: input.rulebook, applies_when: input.applies_when.trim() };
-    if (!existing.success && input.write_origin === "user-directed") {
+    if (existingRule || input.write_origin === "user-directed") {
       Object.assign(out, declaration);
-    } else if (existing.success && existing.data === input.rulebook && prev.applies_when === input.applies_when) {
-      // An identical refresh never creates a redundant proposal.
     } else out.rulebook_proposed = declaration;
   } else if (input.applies_when !== undefined) {
-    if (existing.success) out.rulebook_proposed = { rulebook: existing.data, applies_when: input.applies_when };
-    else out.applies_when = input.applies_when;
+    out.applies_when = input.applies_when;
   }
   const categories = RuleCategoriesSchema.safeParse(prev.rule_categories);
   if (categories.success) out.rule_categories = categories.data;
   if (input.rule_categories !== undefined) {
-    if (input.write_origin === "user-directed" && !prev.id) out.rule_categories = input.rule_categories;
+    if (existingRule || (input.write_origin === "user-directed" && !prev.id)) out.rule_categories = input.rule_categories;
     else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
-      out.rulebook_proposed = { rulebook: existing.success ? existing.data : "on-demand",
+      out.rulebook_proposed = { rulebook: "on-demand",
         applies_when: input.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
     }
   }

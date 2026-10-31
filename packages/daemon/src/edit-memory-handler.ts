@@ -56,7 +56,6 @@ import {
   ConventionValidatorSchema,
   RuleCategoriesSchema, RulebookSchema,
   resolveRulebook,
-  proposeValidatorRuleChange,
   FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
@@ -375,21 +374,25 @@ export async function editMemoryHandler(
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
         dropped = droppedListEntries(fm, args.frontmatter);
         const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), updated: today };
-        // MCP edits cannot confirm a binding metadata change. Keep the
-        // effective declaration and stage the requested replacement separately.
+        // Existing rules may be edited directly (Owner decision #1336).
+        // New agent declarations on ordinary memories remain proposals.
         const patch = args.frontmatter;
         if (patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined) {
           const rulebook = patch.rulebook ?? fm.rulebook ?? resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id))?.rulebook;
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
-          if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
-          if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
-          if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;
-          next.rulebook_proposed = proposal.data;
+          const existingRule = fm.rulebook !== undefined || ConventionValidatorSchema.safeParse(fm.validator).success || resolveRulebook(FrontmatterSchema.parse(fm), rulebookContextOf(args.id));
+          if (existingRule) Object.assign(next, proposal.data);
+          else {
+            if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
+            if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
+            if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;
+            next.rulebook_proposed = proposal.data;
+          }
         }
         if (next.validator === null) delete next.validator;
-        return proposeValidatorRuleChange(fm,next);
+        return next;
       },
       body: (body) => {
         const next = applyBodyOps(body, args);

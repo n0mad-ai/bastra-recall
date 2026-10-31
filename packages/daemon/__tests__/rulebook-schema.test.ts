@@ -32,7 +32,7 @@ test("wire schema, edit whitelist and lean projection retain rulebook metadata",
   }
 });
 
-test("load derives legacy defaults without writing, including active convention state; edit stages metadata proposals", async (t) => {
+test("load derives legacy defaults without writing, including active convention state; new declarations stage proposals and existing rule edits apply directly", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "bastra-rulebook-handler-"));
   const stateDir = process.env.BASTRA_HOOK_STATE_DIR;
   process.env.BASTRA_HOOK_STATE_DIR = join(root, "state");
@@ -66,9 +66,10 @@ test("load derives legacy defaults without writing, including active convention 
   assert.equal(current.frontmatter.applies_when, "When inspecting fixtures");
   await editMemoryHandler(deps, { id: input.id, frontmatter: { rulebook: "on-demand", applies_when: "When revising fixtures" } });
   const afterEdit = await loadMemoryHandler(deps, { id: input.id });
-  assert.equal(afterEdit.frontmatter.rulebook, "always");
-  assert.equal(afterEdit.frontmatter.applies_when, "When inspecting fixtures");
-  assert.deepEqual(afterEdit.frontmatter.rulebook_proposed, { rulebook: "on-demand", applies_when: "When revising fixtures" });
+  assert.equal(afterEdit.frontmatter.rulebook, "on-demand");
+  assert.equal(afterEdit.frontmatter.applies_when, "When revising fixtures");
+  // The older explicit proposal is preserved, but the edit creates none.
+  assert.deepEqual(afterEdit.frontmatter.rulebook_proposed, { rulebook: "always", applies_when: "When writing" });
 });
 
 

@@ -66,15 +66,41 @@ test('an unavailable source lookup is bounded and retains the last valid constra
  const start=Date.now();const out=await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]},live.url,{conventionOf:()=>new Promise(()=>{})});
  assert.ok(out.includes('<copy-repair'));assert.ok(Date.now()-start<1000);
 });
-test('agent edit stages a validator proposal, preserving the effective rule and Stop protection',async()=>{
- const sid=await fixture('agent-edit');await editMemoryHandler(live.deps,{id:sid,frontmatter:{validator:{...dc,limit:10000}}});
- assert.equal(vault.get(sid)!.fm.validator!.limit,2000);assert.equal((vault.get(sid)!.fm.rulebook_proposed as any)?.validator?.limit,10000);assert.equal(await httpStop(sid),true);
+test('agent edit changes the effective limit at the next indexed Stop without a proposal',async()=>{
+ const sid=await fixture('agent-edit');
+ await editMemoryHandler(live.deps,{id:sid,frontmatter:{validator:{...dc,limit:10000}},str_replace:{old_str:'Validate the invented copy.',new_str:'Use the updated copy rule.'}});
+ assert.match(vault.get(sid)!.body,/Use the updated copy rule/);assert.equal(vault.get(sid)!.fm.validator!.limit,10000);assert.equal(vault.get(sid)!.fm.rulebook_proposed,undefined);
+ await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'discord-dm',limit:10000,normalize:'none'},sid);
+ assert.equal(await httpStop(sid),false);
 });
-test('agent save cannot spoof user-directed authority to remove the validator',async()=>{
- const sid=await fixture('agent-save');await saveMemoryHandler(live.deps,{...input(sid),validator:null,overwrite:true});
- assert.equal(vault.get(sid)!.fm.validator!.limit,2000);assert.equal((vault.get(sid)!.fm.rulebook_proposed as any)?.validator,null);assert.equal(await httpStop(sid),true);
+test('agent save removes the validator immediately and preserves write_origin provenance',async()=>{
+ const sid=await fixture('agent-save');const {write_origin,...agentInput}=input(sid);
+ await saveMemoryHandler(live.deps,{...agentInput,validator:null,overwrite:true});
+ assert.equal(vault.get(sid)!.fm.validator,undefined);assert.equal(vault.get(sid)!.fm.rulebook_proposed,undefined);
+ assert.equal(vault.get(sid)!.fm.write_origin,write_origin);assert.equal(await httpStop(sid),false);
 });
-test('agent archive stages a proposal and leaves a current validator rule present',async()=>{
- const sid=await fixture('agent-archive');await archiveMemoryHandler(live.deps,{id:sid});
- assert.ok(vault.get(sid));assert.equal((vault.get(sid)!.fm.rulebook_proposed as any)?.archive,true);assert.equal(await httpStop(sid),true);
+test('agent archive removes the rule and its next Stop obligation',async()=>{
+ const sid=await fixture('agent-archive');const result=await archiveMemoryHandler(live.deps,{id:sid});
+ assert.ok(result.archived_to);assert.equal(vault.get(sid),undefined);assert.equal(await httpStop(sid),false);
+});
+test('agent overwrite makes a rule private without a proposal',async()=>{
+ const sid=await fixture('agent-private');
+ await saveMemoryHandler(live.deps,{...input(sid),sensitivity:'private',overwrite:true});
+ assert.equal(vault.get(sid)!.fm.sensitivity,'private');
+ assert.equal(vault.get(sid)!.fm.rulebook_proposed,undefined);assert.equal(await httpStop(sid),false);
+});
+test('agent edit channel and unit apply at the next Stop',async()=>{
+ const sid=await fixture('agent-channel-unit');
+ await editMemoryHandler(live.deps,{id:sid,frontmatter:{validator:{...dc,channel:'email',unit:'codepoints',limit:4000}}});
+ assert.equal(vault.get(sid)!.fm.rulebook_proposed,undefined);
+ await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'email',unit:'codepoints',limit:4000,normalize:'none'},sid);
+ assert.equal(await httpStop(sid),false);
+ const state=await loadSessionState(sid);assert.deepEqual(state.loadedConventions?.find(c=>c.id===sid)?.validator,{...dc,channel:'email',unit:'codepoints',limit:4000});
+});
+test('agent supersession removes the predecessor Stop obligation without a proposal',async()=>{
+ const sid=await fixture('agent-superseded');
+ const result=await saveMemoryHandler(live.deps,{...input('replacement-rule'),recall_when:['replacement-only-scenario'],replaces:sid,validator:null});
+ assert.equal(result.created,true);
+ assert.equal(vault.get(sid)!.fm.superseded_by,'replacement-rule');
+ assert.equal(vault.get(sid)!.fm.rulebook_proposed,undefined);assert.equal(await httpStop(sid),false);
 });

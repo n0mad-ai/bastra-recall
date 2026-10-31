@@ -313,8 +313,6 @@ export interface SaveMemoryResult {
  * save API unchanged.
  */
 export interface SaveMemoryCommitOptions {
-  /** Set by MCP/REST handlers, never by user-supplied save arguments. */
-  proposeValidatorChanges?: boolean;
   expectedTarget?: string | null;
   /**
    * #530: wenn der Save exakt das schreiben würde, was schon dasteht, gar

@@ -72,12 +72,13 @@ test("recall, hook and load agree on active/floor defaults and mark summary fall
   assert.deepEqual(metadata(hook.hits[0] as Record<string, unknown>), expected);
 });
 
-test("edit can propose an applies_when description for a legacy rule", async (t) => {
+test("edit directly updates an applies_when description for a legacy rule", async (t) => {
   const f = await fixture(t, { type: "meta-working", write_origin: "user-directed" });
   await editMemoryHandler(f.deps, { id: "invented-artifact", frontmatter: { applies_when: "Beim Prüfen" } });
   const loaded = await loadMemoryHandler(f.deps, { id: "invented-artifact" });
-  assert.deepEqual(loaded.frontmatter.rulebook_proposed, { rulebook: "on-demand", applies_when: "Beim Prüfen" });
-  assert.equal(loaded.frontmatter.applies_when_derived, true);
+  assert.deepEqual(metadata(loaded.frontmatter), { rulebook: "on-demand", applies_when: "Beim Prüfen" });
+  assert.equal(loaded.frontmatter.rulebook_proposed, undefined);
+  assert.equal(loaded.frontmatter.applies_when_derived, undefined);
 });
 
 test("direct MCP hides newly private sources; hooks follow the index and hide them after reindex", async (t) => {

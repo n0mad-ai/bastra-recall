@@ -71,7 +71,7 @@ test('fixed category lookup is index-only, independent of query words, scope- an
  const vault={list:()=>items,get:(id:string)=>items.find(m=>m.fm.id===id)};
  assert.deepEqual((await indexedActionConventions(vault,null,'github-issues-prs')).hits.map(h=>h.id),['category-rule']);
 });
-test('new category saves roundtrip; overwrite/category-removal edits stay proposals',async t=>{
+test('new category saves roundtrip; existing category-removal edits apply directly',async t=>{
  const {saveMemory,Vault,SearchIndex}=await import('@bastra-recall/core');
  const {Telemetry}=await import('../src/telemetry.js');
  const {editMemoryHandler}=await import('../src/edit-memory-handler.js');
@@ -83,7 +83,7 @@ test('new category saves roundtrip; overwrite/category-removal edits stay propos
  await editMemoryHandler({vault,search,telemetry:new Telemetry(),vaultPath:dir} as import('../src/tool-deps.js').ToolDeps,{id:input.id,frontmatter:{rule_categories:[]}});
  const {readFile}=await import('node:fs/promises');const {parseMemory}=await import('@bastra-recall/core');
  const file=vault.get(input.id)!.filePath;const changed=parseMemory(await readFile(file,'utf8'),file,0);
- assert.deepEqual(changed.fm.rule_categories,['github-issues-prs']);assert.deepEqual(changed.fm.rulebook_proposed?.rule_categories,[]);
+ assert.deepEqual(changed.fm.rule_categories,[]);assert.equal(changed.fm.rulebook_proposed,undefined);
 });
 test('full load → foreign message → quoted approval → ok → oversized copy keeps repair and trustworthy provenance',async t=>{
  const {Vault,SearchIndex,saveMemory}=await import('@bastra-recall/core');const {Telemetry}=await import('../src/telemetry.js');

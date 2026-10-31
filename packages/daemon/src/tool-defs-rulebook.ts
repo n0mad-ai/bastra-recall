@@ -10,13 +10,13 @@ export const VALIDATOR_INPUT = {
     },
     required: ["tool", "channel", "limit", "unit"],
   }, { type: "null" }],
-  description: "Explicit mechanical validator for this convention. Omit to preserve on overwrite; null requests removal. Changes/removal on an existing validator rule are unconfirmed proposals until the user applies them via CLI/UI. No validator is inferred from prose or channel names.",
+  description: "Explicit mechanical validator for this convention. Omit to preserve on overwrite; null removes it. Agent changes/removal on existing rules apply immediately after reindex, by explicit Owner decision (#1336); no confirmation is required. No validator is inferred from prose or channel names.",
 };
 
-/** New declarations need a description; MCP edits stage proposals. */
-export const RULE_CATEGORIES_INPUT = {type:"array",maxItems:2,items:{type:"string",enum:["github-issues-prs","correspondence"]},description:"Fixed structural rule categories. GitHub issue/PR actions bind the first category through shell AST structure. Never infer a category from natural-language keywords. Missing categories retain legacy discovery; edits are proposals until user confirmation."};
+/** New agent declarations need a description and remain proposals; existing rules are directly editable. */
+export const RULE_CATEGORIES_INPUT = {type:"array",maxItems:2,items:{type:"string",enum:["github-issues-prs","correspondence"]},description:"Fixed structural rule categories. GitHub issue/PR actions bind the first category through shell AST structure. Never infer a category from natural-language keywords. Missing categories retain legacy discovery; agent edits to existing rules apply directly without confirmation."};
 export const RULEBOOK_INPUT = { type: "string", enum: ["always", "on-demand"],
-  description: "Rule delivery tier. New saves require applies_when. Only an explicitly user-directed new declaration binds; agent declarations and edits remain proposals." };
+  description: "Rule delivery tier. New saves require applies_when. Only an explicitly user-directed new declaration binds; new agent declarations remain proposals. Agent edits to existing rules apply directly without confirmation." };
 export const APPLIES_WHEN_INPUT = { type: "string", minLength: 1,
   description: "One sentence describing when this rule applies, in the user's language. No keyword list. Required for a new rulebook declaration." };
 export const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: false,

@@ -70,8 +70,9 @@ test("save/load keeps declarations and proposals across refreshes; only user-dir
     await saveMemory(root, SaveMemoryInput.parse({ ...input, overwrite: true }));
     assert.equal((await load()).rulebook, "always"); assert.equal((await load()).applies_when, "When writing");
     await saveMemory(root, SaveMemoryInput.parse({ ...input, overwrite: true, rulebook: "on-demand", applies_when: "When changing fixtures" }));
-    assert.equal((await load()).rulebook, "always");
-    assert.deepEqual((await load()).rulebook_proposed, { rulebook: "on-demand", applies_when: "When changing fixtures" });
+    assert.equal((await load()).rulebook, "on-demand");
+    assert.equal((await load()).applies_when, "When changing fixtures");
+    assert.equal((await load()).rulebook_proposed, undefined);
     const proposed = await saveMemory(root, SaveMemoryInput.parse({ ...input, id: "proposed-rule", rulebook: "always", applies_when: "When writing" }));
     const proposedFm = parseMemoryWith(matter, await readFile(proposed.file_path, "utf8"), proposed.file_path, 0).fm;
     assert.equal(proposedFm.rulebook, undefined);
