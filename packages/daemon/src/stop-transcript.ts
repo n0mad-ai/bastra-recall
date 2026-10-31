@@ -33,8 +33,8 @@ export interface ClaudeStopPayload {
 export interface TranscriptTurn {
   role: "user" | "assistant" | "system" | string;
   /** Explicit transport provenance, when supplied. Non-owner sources never capture. */
-  source?: string;
-  origin?: string;
+  source?: string | {kind?:string};
+  origin?: string | {kind?:string};
   stop_hook_active?: boolean;
   isMeta?: boolean;
   content: string;
@@ -164,7 +164,11 @@ function isToolResultContent(content: unknown): boolean {
  */
 function nonOwnerSource(row: {isMeta?:unknown;stop_hook_active?:unknown;source?:unknown;origin?:unknown}): boolean {
   return row.isMeta === true || row.stop_hook_active === true ||
-    [row.source,row.origin].some(source=>source!==undefined && source!=="user" && source!=="human" && source!=="typed");
+    [row.source,row.origin].some(source=>{
+      if(source===undefined)return false;
+      const kind=source&&typeof source==="object" ? (source as {kind?:unknown}).kind : source;
+      return kind!=="user" && kind!=="human" && kind!=="typed";
+    });
 }
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role !== "user") return role;

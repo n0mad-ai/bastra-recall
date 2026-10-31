@@ -433,7 +433,7 @@ function formatDriftBlock(clusters: DriftCluster[]): string {
     `the members (overwrite=true + the convention's folder). ` +
     `Put every key the convention covers into its tags — the detector reads ` +
     `tags, topic_path and title, never the body. ` +
-    `Suggestion only: weigh it, ask the user if unsure, never bulk-move silently.\n` +
+    `Suggestion only: apply changes covered by the current user request directly; otherwise leave the suggestion pending. Never bulk-move without authorization.\n` +
     `</taxonomy-drift>`
   );
 }

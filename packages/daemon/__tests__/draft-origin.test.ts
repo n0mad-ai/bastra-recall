@@ -31,12 +31,12 @@ test('cleanup rejects polluted drafts once and retains their evidence',async()=>
  for(const [i,quote] of injected.entries()){
   const fp=draftFingerprint(quote);await upsertDraft({id:draftId('old',i,fp),fp,kind:'typed',quote,evidence:[{session_id:'old',turn:i,ts:now}],created:now,last_touched:now,state:'open',surfaced:[],situation:{before:[],after:[],reads:[],lits:[]}},now);
  }
- assert.equal(await rejectInjectedDrafts(now),injected.length);
+ assert.equal(await rejectInjectedDrafts(now),injected.length-1);
  const rows=await storedDrafts(now);assert.equal(rows.length,injected.length+1);
- assert.equal(rows.filter(r=>r.state==='rejected').length,injected.length);
+ assert.equal(rows.filter(r=>r.state==='rejected').length,injected.length-1);
  assert.ok(rows.every(r=>r.evidence.length===1));
  assert.equal(await rejectInjectedDrafts(now+1),0);
- assert.equal((await listDrafts(now)).filter(r=>r.state==='open').length,1);
+ assert.equal((await listDrafts(now)).filter(r=>r.state==='open').length,2);
 });
 
 test('cleanup retains aged polluted and unrelated rows rather than expiring them',async()=>{

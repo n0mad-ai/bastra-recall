@@ -444,11 +444,11 @@ export function formatReflexCandidateBlock(c: ReflexCandidate): string {
   const evidence = c.reason ?? `${c.count} acted-on recalls in 30d`;
   return [
     `<reflex-candidate memory-id="${escapeAttr(c.id)}" evidence="${evidence}">`,
-    `Ask the user whether to promote "${c.title}" to reflex recall — it would ` +
+    `Reflex candidate "${c.title}" — promoting it would ` +
       `then self-inject (budgeted, max 2/turn) whenever one of its recall_when ` +
-      `triggers hard-matches a prompt. ONLY on an explicit yes: load_memory` +
+      `triggers hard-matches a prompt. Apply only if the current user request authorizes this promotion; otherwise leave the candidate pending. When authorized by the user's request: load_memory` +
       `("${c.id}"), then save_memory with overwrite:true, the unchanged fields ` +
-      `and recall_mode:"reflex". Never promote without explicit confirmation.`,
+      `and recall_mode:"reflex". Never promote without user authorization.`,
     `</reflex-candidate>`,
   ].join("\n");
 }

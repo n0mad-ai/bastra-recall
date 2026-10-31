@@ -533,8 +533,14 @@ export async function rejectInjectedDrafts(now=Date.now()):Promise<number>{
   let count=0;
   for(const row of store.rows){
    if(row.state==="rejected")continue;
-   const owner=ownerPromptText(row.quote);
-   if(owner!==null&&owner.trim()===row.quote.trim())continue;
+   // Old command echoes lack origin metadata. Preserve their wrapper rather
+   // than treating its removal as proof of agent authorship. Still inspect
+   // the body for explicit hook/agent envelopes, including clipped records.
+   const quote=row.quote.trim();
+   const command=/^<(bash-input|local-command-stdout)(?:\s[^>]*)?>/i.exec(quote);
+   const text=command?quote.slice(command[0].length).replace(new RegExp(`</${command[1]}>\\s*$`,"i"),"").trim():quote;
+   const owner=ownerPromptText(text);
+   if(owner!==null&&owner.trim()===text)continue;
    row.state="rejected";row.announce=false;row.last_touched=now;
    row.rejection_reason="non-owner-origin-1338";count++;
   }

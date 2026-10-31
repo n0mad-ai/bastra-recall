@@ -427,9 +427,9 @@ export async function runSessionLane(
         `The vault has ${openCare} open care flag(s) in vault-care.md (at the vault root) — ` +
         `notes the user flagged on the vault map for deletion, editing, writing, or with a remark. ` +
         `When the user asks to work off the vault care list (any phrasing), read that file and go ` +
-        `through the open "- [ ]" entries TOGETHER with the user: load and show each memory first, ` +
-        `propose the change, apply it via the memory tools only after their go — deletions always ` +
-        `need explicit confirmation. Tick finished lines to "- [x]" in the file. Never apply flags ` +
+        `through the open "- [ ]" entries: load each memory first, ` +
+        `apply the changes authorized by the user request directly via the memory tools. Deletions ` +
+        `need explicit authorization; an existing instruction to delete the named notes suffices. Tick finished lines to "- [x]" in the file. Never apply flags ` +
         `unprompted; if vault maintenance comes up, mention the open count.\n` +
         `</vault-care>`;
     }

@@ -57,10 +57,10 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const correspondence=catalog.entries.filter(isCorrespondenceRule).map(e=>e.id);
   const taskNote = correspondence.length ? (de ?
-    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. Aktive oder geladene Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Nur der Nutzer kann freigeben.` :
-    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Active or loaded rules remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. Only the user can approve.`) : "";
+    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. Regeln einer laufenden Entwurfs-/Kopieraufgabe oder dieser Runde bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Nur der Nutzer kann freigeben.` :
+    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules of a current review/copy task or loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. Only the user can approve.`) : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
-    taskNote, blockedDismissals.length ? `Rulebook dismissal ignored; these active/loaded rules remain binding: ${blockedDismissals.join(", ")}.` : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
+    taskNote, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 const ExceptionReason = z.string().trim().min(10).max(500).regex(/[\p{L}\p{N}]/u, "Explain non-applicability with substantive text.");
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
@@ -83,13 +83,17 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     ]).size > ACTIVE_CONVENTIONS_CAP) { capacityExceeded = true; return; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence=catalog.entries.filter(isCorrespondenceRule);
-    const protectedIds=new Set([...a.roundApplied,...a.loaded,...(s.activeConventions??[]),...(s.loadedConventions??[])].map(r=>r.id));
+    const protectedIds=new Set([...a.roundApplied,...(hasCopyTask(s)?[...(s.activeConventions??[]),...(s.loadedConventions??[])]:[])].map(r=>r.id));
     const skips=(input.not_applicable??[]).flatMap(e=>'id' in e?[e]:correspondence.filter(r=>!protectedIds.has(r.id)&&!input.applicable.includes(r.id)).map(r=>({id:r.id,reason:e.reason})));
-    if (skips.some(e=>protectedIds.has(e.id))) {
-      invalidDismissal=true;state.unchecked++;state.blockedDismissals=[...new Set([...state.blockedDismissals,...skips.filter(e=>protectedIds.has(e.id)).map(e=>e.id)])];put(s,state);return;
-    }
-    if (skips.some(e=>(!a.required.some(r=>r.id===e.id)&&!correspondence.some(r=>r.id===e.id))||input.applicable.includes(e.id)||a.roundApplied.some(r=>r.id===e.id))) {invalidDismissal=true;return;}
-    for (const skip of skips) {
+    const accepted=skips.filter(e=>{
+      if(protectedIds.has(e.id)||input.applicable.includes(e.id)){
+        invalidDismissal=true;state.unchecked++;
+        state.blockedDismissals=[...new Set([...state.blockedDismissals,e.id])];return false;
+      }
+      if(!a.required.some(r=>r.id===e.id)&&!correspondence.some(r=>r.id===e.id)){invalidDismissal=true;return false;}
+      return true;
+    });
+    for (const skip of accepted) {
       state.exceptions=[...new Set([...state.exceptions,skip.id])];
       const required=a.required.find(r=>r.id===skip.id);
       if(required){a.dismissed=[...a.dismissed.filter(r=>r.id!==skip.id),required].slice(-200);actionException=true;state.unchecked++;state.exceptions=[...new Set([...state.exceptions,skip.id])].slice(-200);}
@@ -129,7 +133,7 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     context = state.context; round = state.round; put(s, state);
   });
   if(taskConflict)return {ok:false,reason:"A model task report cannot replace the user's translate-only task. Omit task for a round check."};
-  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule already loaded/declared applicable in this session or active in a user task cannot be weakened by a model report."}; }
+  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A current review/copy task rule or a rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   if (capacityExceeded) return { ok: false, reason: `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity. No check or task change recorded; report only applicable rules or omit task for a round-only check.` };
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
@@ -271,10 +275,13 @@ export async function takeDeferredRulebookStop(p: RulebookPayload): Promise<bool
 export function isCorrespondenceRule(e:{validator?:unknown;rule_categories?:readonly string[]}):boolean{
  return !!e.validator||!!e.rule_categories?.includes("correspondence");
 }
-export function roundCorrespondence(state:Pick<import("./session-state.js").ReadonlySessionState,"rulebookCheck"|"loadedConventions"|"activeConventions">,p:RulebookPayload={bastra_client:"claude-code"}){
+function hasCopyTask(state:Pick<import("./session-state.js").ReadonlySessionState,"activeTask">):boolean{
+ return state.activeTask?.kind==="draft-for-review"||state.activeTask?.kind==="approved-copy";
+}
+export function roundCorrespondence(state:Pick<import("./session-state.js").ReadonlySessionState,"rulebookCheck"|"loadedConventions"|"activeConventions"|"activeTask">,p:RulebookPayload={bastra_client:"claude-code"}){
  const value=read(state),a=value.actors.find(a=>a.key===identity(p));
  const rules=[...(a?.roundApplied??[])];
- if(identity(p)==="main")for(const loaded of [...(state.loadedConventions??[]),...(state.activeConventions??[])]){
+ if(identity(p)==="main"&&hasCopyTask(state))for(const loaded of [...(state.loadedConventions??[]),...(state.activeConventions??[])]){
   const validator=ConventionValidatorSchema.safeParse(loaded.validator);
   if(validator.success&&!rules.some(r=>r.id===loaded.id))rules.push({id:loaded.id,revision:loaded.revision,validator:validator.data});
  }

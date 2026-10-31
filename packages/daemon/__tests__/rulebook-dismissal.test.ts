@@ -18,7 +18,7 @@ const catalog=()=>cachedRulebookCatalog(vault,{project:null,active:[]});
 const skip={id:'rule-0',reason:'This round explains an unrelated technical topic.'};
 for(const kind of ['draft-for-review','approved-copy','loaded'] as const)test(`model cannot dismiss ${kind} validator across rounds`,async()=>{
  const sid=kind,c=await catalog();await beginRulebookRound({session_id:sid},c);
- if(kind==='loaded')await recordRulebookLoad(sid,'rule-0',null,{revision:'r1',validator,rulebookMetadata:{rulebook:'on-demand'}});
+ if(kind==='loaded'){await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind:'draft-for-review',since:Date.now(),generation:0};});await recordRulebookLoad(sid,'rule-0',null,{revision:'r1',validator,rulebookMetadata:{rulebook:'on-demand'}});}
  else await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind,since:Date.now(),generation:0,...(kind==='approved-copy'?{approvalSource:'user-turn' as const}:{})};recordActiveConventions(s,[{id:'rule-0',revision:'r1',scope:'task',validator}]);});
  await beginRulebookRound({session_id:sid},c);
  assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,false);

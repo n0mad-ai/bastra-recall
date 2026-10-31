@@ -301,9 +301,10 @@ test("reflex promotion (#1308): all frustration criteria are required, without t
       id: "frustration", title: "Stop repeating this", count: 0, reason: "user-directed-frustration",
     }]);
     const block = formatReflexCandidateBlock(candidates[0]);
+    assert.doesNotMatch(block,/Ask the user/);
     assert.ok(block.includes('<reflex-candidate memory-id="frustration" evidence="user-directed-frustration">'));
-    assert.ok(block.includes("ONLY on an explicit yes: load_memory"));
-    assert.ok(block.includes("Never promote without explicit confirmation."));
+    assert.ok(block.includes("When authorized by the user's request: load_memory"));
+    assert.ok(block.includes("Never promote without user authorization."));
     assert.equal(vault.get("frustration")?.fm.recall_mode, undefined);
   }
   const exclusions: Array<Record<string, unknown>> = [
@@ -349,7 +350,7 @@ test("reflex promotion (#1308): proposals persist across curator passes without 
       const blocks = rows.map((row: { blocks: string }) => row.blocks).join("\n");
       assert.equal((blocks.match(/<reflex-candidate /g) ?? []).length, 1);
       assert.ok(blocks.includes('evidence="user-directed-frustration"'));
-      assert.ok(blocks.includes("Never promote without explicit confirmation."));
+      assert.ok(blocks.includes("Never promote without user authorization."));
       assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, new Date(T_ACT).toISOString());
       await rm(pendingPath);
       const again = await runCuratorPass(deps, { force: true, nowMs: T_ACT + 90 * 86_400_000 });

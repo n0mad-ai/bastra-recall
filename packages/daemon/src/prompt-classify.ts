@@ -298,7 +298,7 @@ export interface TaskContext {
   correspondenceHint?: boolean;
 }
 
-/** `next` null keeps the state; `unclear` asks the user with the choice line. */
+/** `next` null keeps the state; `unclear` renders neutral provenance guidance. */
 export interface TaskDecision {
   next: TaskKind | null;
   unclear: boolean;

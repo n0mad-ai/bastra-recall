@@ -29,7 +29,7 @@ The normal test suite runs the same replay via `rulebook-phase5.test.ts`.
 The replay now checks explicit per-round correspondence decisions (#1340) and
 validator enforcement without a task report (#1341). Every effective validator
 or correspondence-category rule needs its own applicable/load/not_applicable
-decision. A single category declaration can cover all unprotected correspondence IDs; active task and session-loaded IDs remain binding. Explicit attempts to dismiss them are ignored and counted as violations. An empty check cannot silently discharge it. One rulebook Stop block
+decision. A single category declaration can cover all unprotected correspondence IDs; current review/copy-task and current-round IDs remain binding. Old loads and reflexes without a task can be dismissed in later rounds. Explicit attempts to dismiss them are ignored and counted as violations. An empty check cannot silently discharge it. One rulebook Stop block
 is allowed, then unchecked passage is reported. Claude Code gets at most two
 copy repairs; Codex records violations without same-turn length repair (#1311).
 The model can still lie in its explicit decision; there is no semantic checker.
