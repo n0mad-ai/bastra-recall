@@ -47,7 +47,7 @@ import {
   type HintKind,
   type Undo,
 } from "./bash-pre-patterns.js";
-import { hintFor, matchPattern, shimOffLine } from "./bash-pre-analysis.js";
+import { hintFor, matchPattern, shimOffLine, unmarkedClientLine } from "./bash-pre-analysis.js";
 // #680: the command analysis lives in bash-pre-analysis.ts; shimOffLine stays
 // part of this lane's public surface.
 export { shimOffLine } from "./bash-pre-analysis.js";
@@ -297,6 +297,14 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
       // The same call's dimensions as its bash_hook_call row (#507/#652).
+      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+    });
+  }
+  if (match.unmarked) {
+    offLine = unmarkedClientLine();
+    await writeShadow("archive_unmarked_shadow", {
+      session_id: payload.session_id ?? null,
+      matched_pattern: match.label,
       dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
     });
   }
