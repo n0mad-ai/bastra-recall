@@ -110,6 +110,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   reads use guarded file descriptors, and session paths are bounded (#1279,
   #1337). Runtime and development dependencies were refreshed; the remaining
   development MCPB audit exposure is documented rather than claimed fixed.
+- Session-context framing no longer uses a backtracking regular expression, and
+  caller-supplied dismissal and session IDs in rulebook audit rows are capped
+  at 200 characters.
 
 ## [1.1.1] — 2026-10-17
 

@@ -2860,10 +2860,12 @@ Generation keinen `validate_artifact`-Beleg (#1310), gibt der Stop
 `approved-copy without validated receipt: run validate_artifact on the final
 text before delivering; later edits need a new receipt` als
 `additionalContext` zurück, auch bei einem Stop mit `stop_hook_active`. Das
-passiert höchstens zweimal pro Aufgabe und Generation (ein geänderter Text
-setzt den Zähler nicht zurück); der nächste Stop schreibt ein
-`non_conformance`-Ereignis mit `reason: "repair_exhausted"` und gibt `{}`
-zurück. Der Zähler endet mit der Aufgabe und bei compact, clear und fork. Es
+passiert höchstens zweimal pro Akteur, Kontext und Runde (ein geänderter Text
+oder eine wiederholte Stufenmeldung setzt den Zähler nicht zurück); der nächste
+Stop schreibt ein `non_conformance`-Ereignis mit `reason: "repair_exhausted"`
+und gibt `{}` zurück. Eine neue Runde oder ein neuer Kontext startet ein neues
+Budget; die Aufgabe kann über Runden bestehen bleiben. Alte Sitzungen ohne
+Regelbuch-Kontext behalten die Zählung pro Aufgabe und Generation. Es
 ist nie ein `decision: "block"`; Codex, Payloads ohne Session-ID und
 `BASTRA_STOP_SAME_TURN=0` bekommen keine Reparatur. Ein Beleg beweist das
 mechanische Format, nicht dass der gesendete Text der geprüfte ist.
