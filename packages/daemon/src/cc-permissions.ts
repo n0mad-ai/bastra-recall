@@ -16,7 +16,7 @@
  * judged per part (`&&`, `||`, `;`, `|`, newline): any part denied → deny,
  * any part asked → ask, every part allowed → allow.
  */
-import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -53,6 +53,8 @@ export function settingsFiles(cwd: string | undefined, env: NodeJS.ProcessEnv = 
 }
 
 const cache = new Map<string, { mtimeMs: number; rules: Rule[] }>();
+/** A repository supplies its own settings file: larger than any real one is not read. */
+const MAX_SETTINGS_BYTES = 1024 * 1024;
 
 function rulesOf(file: string): Rule[] {
   // One open file for the mtime and the text (CodeQL js/file-system-race):
@@ -60,7 +62,8 @@ function rulesOf(file: string): Rule[] {
   // old mtime.
   let fd: number;
   try {
-    fd = openSync(file, "r");
+    // O_NONBLOCK: a FIFO planted at this path must not hang the lane (undefined on Windows).
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch {
     cache.delete(file);
     return [];
@@ -75,7 +78,12 @@ function rulesOf(file: string): Rule[] {
 function rulesOfOpen(file: string, fd: number): Rule[] {
   let mtimeMs: number;
   try {
-    mtimeMs = fstatSync(fd).mtimeMs;
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > MAX_SETTINGS_BYTES) {
+      cache.delete(file);
+      return [];
+    }
+    mtimeMs = stat.mtimeMs;
   } catch {
     cache.delete(file);
     return [];
@@ -98,6 +106,23 @@ function rulesOfOpen(file: string, fd: number): Rule[] {
   return rules;
 }
 
+/** A `*` glob without a regex: a rule from a repository cannot make it backtrack. */
+function globMatches(glob: string, text: string): boolean {
+  const pieces = glob.split("*");
+  const first = pieces[0];
+  const last = pieces[pieces.length - 1];
+  if (!text.startsWith(first)) return false;
+  const end = text.length - last.length;
+  if (end < first.length || !text.endsWith(last)) return false;
+  let at = first.length;
+  for (const piece of pieces.slice(1, -1)) {
+    const found = text.indexOf(piece, at);
+    if (found === -1 || found + piece.length > end) return false;
+    at = found + piece.length;
+  }
+  return true;
+}
+
 /** Does one rule (`Bash(rm:*)`) cover one simple part of a command? */
 export function ruleMatches(rule: string, part: string): boolean {
   const m = /^Bash(?:\((.*)\))?$/s.exec(rule);
@@ -109,8 +134,7 @@ export function ruleMatches(rule: string, part: string): boolean {
     return part === prefix || part.startsWith(prefix + " ");
   }
   if (inner.includes("*")) {
-    const re = new RegExp("^" + inner.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "s");
-    return re.test(part);
+    return globMatches(inner, part);
   }
   return part === inner;
 }

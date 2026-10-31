@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - With the archive opt-in on, a destructive command from a hook registration
   without a client marker now says why it stops and how to add the marker. A
   `deny` rule gets no such line (#657, #1362).
+- Reading permission rules from a repository settings file can no longer hang
+  the Bash hook: no regex for globs, no FIFOs, no files over 1 MB.
 
 ## [1.1.8] — 2026-10-31
 

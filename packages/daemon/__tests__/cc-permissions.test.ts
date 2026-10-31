@@ -5,6 +5,7 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -77,5 +78,29 @@ describe("#650 — Claude Code permission rules, read the way Claude Code reads 
     assert.match(files[0], /managed-settings\.json$/);
     assert.equal(files[1], "/cfg/settings.json");
     assert.deepEqual(files.slice(2), [join(dir, ".claude", "settings.json"), join(dir, ".claude", "settings.local.json")]);
+  });
+});
+
+describe("a repository's settings file is untrusted input", () => {
+  it("a rule with many stars does not backtrack, and globs still match in order", () => {
+    // Revert-check: compile the glob to a regex again → this takes far longer than the bound.
+    const started = Date.now();
+    assert.equal(ruleMatches(`Bash(${"a*".repeat(40)}b)`, "a".repeat(5000)), false);
+    assert.ok(Date.now() - started < 1000);
+    assert.ok(ruleMatches("Bash(a*b*c)", "a-b-c"));
+    assert.equal(ruleMatches("Bash(a*b*c)", "a-c-b"), false);
+    assert.equal(ruleMatches("Bash(ab*ba)", "aba"), false);
+    assert.ok(ruleMatches("Bash(a**b)", "ab"));
+  });
+
+  it("a FIFO or an oversized file at the settings path gives no verdict instead of hanging", { skip: process.platform === "win32" }, () => {
+    // Revert-check: drop O_NONBLOCK → the FIFO blocks this test forever; drop the stat check → the big rule applies.
+    const dir = mkdtempSync(join(tmpdir(), "cc-perms-"));
+    const fifo = join(dir, "fifo.json");
+    execFileSync("mkfifo", [fifo]);
+    assert.equal(bashVerdict("ls", [fifo]).verdict, "none");
+    const big = join(dir, "big.json");
+    writeFileSync(big, JSON.stringify({ permissions: { deny: ["Bash"] }, pad: "x".repeat(1024 * 1024) }));
+    assert.equal(bashVerdict("ls", [big]).verdict, "none");
   });
 });
