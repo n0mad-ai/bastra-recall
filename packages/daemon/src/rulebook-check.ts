@@ -34,8 +34,8 @@ function identity(p: RulebookPayload): string {
   if (p.agent_id) return `agent:${p.agent_id}`;
   return hookAgent(p) === "main" ? "main" : "unattributed";
 }
-// Pending ordinary Stop work survives a context/round reset; checking evidence does not.
-const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
+// Pending work and actual loads survive a round reset; non-applicability is round-only.
+const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length).map(a => ({ ...a, dismissed:[], checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
     const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });

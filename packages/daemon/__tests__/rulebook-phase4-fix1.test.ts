@@ -60,7 +60,9 @@ test('exact justified exceptions are audited as visible violations; empty checks
  assert.equal(out.ok,true);
  const note=await beginRulebookRound(payload(sid),catalog);assert.match(note,/ungeprüft|unchecked/);
  await recordRulebookCheck(sid,{applicable:[]},catalog);
- assert.equal(denied(await runBashPreLane(payload(sid),base)),false,'only the exact explicit exception discharges this revision');
+ assert.equal(denied(await runBashPreLane(payload(sid),base)),true,'the prior round exception cannot discharge this round action');
+ assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[{id:'issue-rule',reason:'This new round still uses a different repository policy.'}]},catalog)).ok,true);
+ assert.equal(denied(await runBashPreLane(payload(sid),base)),false,'a renewed exact exception discharges this round action');
  assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[{id:'unrelated',reason:'Not applicable'}]},catalog)).ok,false);
 });
 test('fixed category lookup is index-only, independent of query words, scope- and privacy-filtered',async()=>{

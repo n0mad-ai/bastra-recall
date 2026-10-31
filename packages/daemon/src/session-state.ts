@@ -988,11 +988,12 @@ export async function clearShown(sessionId: string): Promise<void> {
   // Cheap early-out kept from #354: nothing shown, nothing to write (and no
   // state file conjured for a session that never had one).
   const current = await loadSessionState(sessionId);
-  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length && !current.rulebookCheck && !current.userValidatorChannel && !current.activeTask?.validatorChannel) return;
+  if (Object.keys(current.shown).length === 0 && current.constants === undefined && !current.loadedConventions?.length && !current.deniedReflex?.length && !current.rulebookCheck && !current.userValidatorChannel && !current.activeTask?.validatorChannel) return;
   await mutateSessionState(sessionId, (state) => {
     state.shown = {};
     delete state.constants;
     delete state.loadedConventions;
+    delete state.deniedReflex;
     delete state.userValidatorChannel;
     if(state.activeTask)delete state.activeTask.validatorChannel;
   });
