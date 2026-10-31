@@ -155,6 +155,8 @@ interface RecallResponse {
  */
 export interface PromptLaneOptions {
   kernel?: CatalogProvider;
+  /** Internal shared output budget; includes the rulebook round notice. */
+  roundNotice?: string;
   onTelemetry?: (row: PromptHookTelemetry) => void;
   /** #1306: the file revision (`memoryRevision`) of a memory id, read from the
    *  daemon's vault index. Absent = the active-conventions block says
@@ -231,11 +233,12 @@ export async function runPromptLane(
       notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }).catch(() => "");
     }
   }
-  const out = await runPromptLaneInner(payload, clientPpid, selfBaseUrl, prewarm, reflexPool, opts);
-  if (!notice) return out;
+  const budgetNotice = notice.length <= 9000 ? notice : notice.slice(0, 8800) + "\n[Rulebook notice overflow; remaining exception IDs are in the rulebook event log.]";
+  const out = await runPromptLaneInner(payload, clientPpid, selfBaseUrl, prewarm, reflexPool, {...opts,roundNotice:budgetNotice});
+  if (!budgetNotice) return out;
   const parsed = JSON.parse(out);
   parsed.hookSpecificOutput = { ...parsed.hookSpecificOutput, hookEventName: "UserPromptSubmit", additionalContext:
-    [notice, parsed.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n") };
+    [budgetNotice, parsed.hookSpecificOutput?.additionalContext].filter(Boolean).join("\n") };
   return JSON.stringify(parsed);
 }
 
@@ -256,6 +259,11 @@ async function runPromptLaneInner(
   opts: PromptLaneOptions = {},
 ): Promise<string> {
   const startedAt = Date.now();
+  let remainingContext = 10000 - (opts.roundNotice?.length ?? 0) - 1;
+  const fitBlock = (block: string | null): string | null => {
+    if (!block || block.length + 1 > remainingContext) return null;
+    remainingContext -= block.length + 1; return block;
+  };
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
@@ -268,6 +276,7 @@ async function runPromptLaneInner(
   // What the user sees in the report is what the hook would have injected.
   const replay = clientEvidence === "replay";
   const emitTelemetry = async (row: PromptHookTelemetry): Promise<void> => {
+    row.hint_tokens_est = (row.hint_tokens_est ?? 0) + Math.ceil((opts.roundNotice?.length ?? 0) / 4);
     await writeTelemetry(row);
     opts.onTelemetry?.(row);
   };
@@ -355,7 +364,8 @@ async function runPromptLaneInner(
     // #607: behind the prompt lane's opt-in, like every other delivery of this
     // lane. The gate is asked only once a block is actually parked, so a
     // trivial prompt still costs the one state read it always did.
-    const parkedForTrivial = await takeParkedBoundary(
+    const trivialSnapshot = await loadSessionState(payload.session_id ?? "");
+    const parkedForTrivial = trivialSnapshot.boundary && trivialSnapshot.boundary.note.length + 1 > remainingContext ? null : await takeParkedBoundary(
       payload.session_id ?? "",
       getPromptImpactEnabled,
     );
@@ -374,7 +384,7 @@ async function runPromptLaneInner(
       conventionOf: opts.conventionOf,
       surface: client,
     });
-    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].filter((b): b is string => b !== null);
+    const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].map(fitBlock).filter((b): b is string => b !== null);
     if (trivialBlocks.length > 0) {
       if (taskBlock !== null && !replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(taskBlock.length / 4));
       return JSON.stringify({
@@ -693,8 +703,13 @@ async function runPromptLaneInner(
     }
   }
 
-  const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null;
-  const impact = await impactPromise;
+  const reflexBlock = fitBlock(reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client, gatedReflex) : null);
+  if (!reflexBlock) { reflexKept.length = 0; gatedReflex.clear(); }
+  const unbudgetedRecallBlock = recallBlock;
+  recallBlock = fitBlock(recallBlock);
+  if (unbudgetedRecallBlock && !recallBlock) { recallHits = []; gatedRecall.clear(); }
+  const rawImpact = await impactPromise;
+  const impact = {...rawImpact,block:fitBlock(rawImpact.block)};
 
   // #572: the task-boundary block the last Stop parked for THIS session.
   // #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
@@ -709,7 +724,7 @@ async function runPromptLaneInner(
   // them can neither duplicate nor lose the block. A Stop that parks between
   // the snapshot and the lock keeps its block for the next prompt, which is
   // where it was headed anyway.
-  const takeBoundaryNow = state.boundary !== undefined && (await getPromptImpactEnabled());
+  const takeBoundaryNow = state.boundary !== undefined && state.boundary.note.length + 1 <= remainingContext && (await getPromptImpactEnabled());
   let boundary: TakenBoundary | null = null;
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
@@ -751,7 +766,7 @@ async function runPromptLaneInner(
   // control flow does not follow — without the cast it narrows `boundary` to
   // the `null` it was declared with.
   const takenBoundary = boundary as TakenBoundary | null;
-  if (takenBoundary !== null) logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
+  if (takenBoundary !== null) { fitBlock(takenBoundary.note); logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary); }
 
   // Refresh and render explicitly reported active conventions. Recall hits
   // are hints; they no longer decide task membership.
@@ -774,7 +789,7 @@ async function runPromptLaneInner(
   // #572: the boundary block rides ahead of it for the same reason: it is about
   // what the agent just did, and it is worth reading before the next thing is
   // done on top of it.
-  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock, taskBlock].filter(
+  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock, fitBlock(taskBlock)].filter(
     (b): b is string => b !== null,
   );
   const stdout =
@@ -798,7 +813,7 @@ async function runPromptLaneInner(
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
   // Governor-Entscheid loggen — nichts wird gekürzt.
-  if (!replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4));
+  if (!replay) recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", Math.ceil(((opts.roundNotice?.length ?? 0) + blocks.join("\n").length) / 4));
   await emitTelemetry({
     session_id: payload.session_id ?? null,
     client: clientEvidence,

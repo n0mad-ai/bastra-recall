@@ -79,7 +79,8 @@ export async function runProbe(): Promise<ProbeResult> {
   const correspondenceIds=catalog.entries.filter(e=>e.validator||e.rule_categories?.includes("correspondence")).map(e=>e.id);
   assert.equal(catalog.entries.filter(e=>e.rulebook==='always').length,10);
   const gate = async (sid:string, client:string, name='Write', input={}) => parse(await runGateLane({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel}));
-  const prompt = async (sid:string, client:string, text:string) => parse(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
+  const prompt = async (sid:string, client:string, text:string) => checkedPrompt(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
+  const checkedPrompt=(raw:string)=>{const out=parse(raw);assert.ok(context(out).length<=10000,`prompt context size ${context(out).length}`);return out;};
   const stop = async (sid:string,client:string,text:string,active=false) => parse(await runStopLane({...common(sid,client),hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]},server.url,{kernel,conventionOf:vaultConventionOf(f.vault)}));
   const load = (sid:string,id:string) => server.post('/api/v1/load_memory',{id,session_id:sid},sid);
   const check = (sid:string,input:object) => server.post('/api/v1/rulebook_check',{...input,session_id:sid},sid);

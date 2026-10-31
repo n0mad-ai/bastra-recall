@@ -19,13 +19,13 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
   if (snapshot.activeTask && snapshot.activeTask.kind !== "none") return;
   const hasConvention = (snapshot.activeConventions ?? []).some(c => c.validator) ||
     (snapshot.loadedConventions ?? []).some(c => c.validator) ||
-    (snapshot.taskQuestion?.generation === (snapshot.activeTask?.generation ?? 0) &&
-      (snapshot.taskQuestion.conventions?.length ?? 0) > 0);
+    (snapshot.correspondenceContext?.generation === (snapshot.activeTask?.generation ?? 0) &&
+      (snapshot.correspondenceContext.conventions?.length ?? 0) > 0);
   if (!hasConvention) return;
   const now = Date.now();
   await mutateSessionState(sessionId, s => {
     if (s.activeTask && s.activeTask.kind !== "none") return;
-    const question = s.taskQuestion?.generation === (s.activeTask?.generation ?? 0) ? s.taskQuestion : undefined;
+    const question = s.correspondenceContext?.generation === (s.activeTask?.generation ?? 0) ? s.correspondenceContext : undefined;
     if (!(s.activeConventions ?? []).some(c => c.validator) &&
         !(s.loadedConventions ?? []).some(c => c.validator) && !question?.conventions?.length) return;
     s.activeTask = { id: taskIdFor("draft-for-review", now), kind: "draft-for-review", since: now,
@@ -35,6 +35,6 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
     if (asked.length) recordActiveConventions(s, asked.map(c => ({
       ...s.activeConventions?.find(active => active.id === c.id), ...c, scope: "task" as const,
     })), now);
-    delete s.taskQuestion;
+    delete s.correspondenceContext;
   }, { noQueue: true, deadline: now + 100 });
 }

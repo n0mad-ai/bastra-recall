@@ -1664,24 +1664,50 @@
                     "maxItems": 10000,
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string",
-                          "minLength": 1
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 10,
+                              "maxLength": 500,
+                              "pattern": "[\\p{L}\\p{N}]"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "reason"
+                          ],
+                          "additionalProperties": false
                         },
-                        "reason": {
-                          "type": "string",
-                          "minLength": 10,
-                          "maxLength": 500,
-                          "pattern": "[\\p{L}\\p{N}]"
+                        {
+                          "type": "object",
+                          "properties": {
+                            "category": {
+                              "type": "string",
+                              "enum": [
+                                "correspondence"
+                              ]
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 10,
+                              "maxLength": 500,
+                              "pattern": "[\\p{L}\\p{N}]"
+                            }
+                          },
+                          "required": [
+                            "category",
+                            "reason"
+                          ],
+                          "additionalProperties": false
                         }
-                      },
-                      "required": [
-                        "id",
-                        "reason"
-                      ],
-                      "additionalProperties": false
+                      ]
                     }
                   },
                   "task": {

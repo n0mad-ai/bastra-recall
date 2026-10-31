@@ -32,7 +32,7 @@ import { INJECTED_BLOCK_TAGS, scrubInjectedBlocks } from "@bastra-recall/core/sc
  */
 const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
 // Observed in local Codex rollouts: repository instructions are harness rows.
-const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions for (?:\/|\\|~|\.|[A-Za-z]:)[^\r\n]*\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
+const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions(?: for (?:\/|\\|~|\.|[A-Za-z]:)[^\r\n]*)?\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
 const TURN_ABORTED = /^<turn_aborted>\r?\n[^\r\n]+\r?\n<\/turn_aborted>\s*$/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
@@ -71,6 +71,8 @@ export function isSystemInjectedTurn(text: string): boolean {
   const head = text.trimStart().replace(/^[\u200b\u200d\u2060]+/,"");
   return (
     /^<draft-hints\b/i.test(head) ||
+    /^<hook_prompt(?:[\s>]|$)/i.test(head) ||
+    /^\[cmux agent message\](?:\s|$)/i.test(head) ||
     TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
@@ -170,7 +172,7 @@ function maskBacktickQuotes(text: string): string {
 // An attribute or the end of the text (cut delivery) makes the tag a band on
 // its own. A bare tag followed by a space and more words, never closed, is a
 // sentence about the tag.
-const AGENT_BAND = /(^|\r?\n)([ \t\u200b\u200d\u2060]*)<(?:agent|teammate|cross-session)-message(?:(?=(\s+[\w-]+=|\s*$))|(?=[\s>]))/gi;
+const AGENT_BAND = /(^|\r?\n)([ \t\u200b\u200d\u2060]*)(?:\[cmux agent message\](?=\s|$)|<hook_prompt(?=[\s>]|$)|<(?:agent|teammate|cross-session)-message(?:(?=(\s+[\w-]+=|\s*$))|(?=[\s>])))/gi;
 const AGENT_BAND_PROSE = />[ \t]+\S/y;
 const AGENT_BAND_CLOSE = /<\/(?:agent|teammate|cross-session)-message\s*>/gi;
 
@@ -194,7 +196,7 @@ export function textBeforeAgentBand(text: string): string | null {
   for (const match of text.matchAll(AGENT_BAND)) {
     const tag = match.index + match[1].length + match[2].length;
     unquoted ??= maskBacktickQuotes(text);
-    if (unquoted[tag] !== "<") continue;
+    if (unquoted[tag] !== "<" && unquoted[tag] !== "[") continue;
     AGENT_BAND_PROSE.lastIndex = match.index + match[0].length;
     const indented = match[1] !== "" && isIndentedCode(text, match.index, match[2]);
     if (indented || (match[3] === undefined && AGENT_BAND_PROSE.test(text))) {

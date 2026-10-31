@@ -29,7 +29,7 @@ The normal test suite runs the same replay via `rulebook-phase5.test.ts`.
 The replay now checks explicit per-round correspondence decisions (#1340) and
 validator enforcement without a task report (#1341). Every effective validator
 or correspondence-category rule needs its own applicable/load/not_applicable
-decision. An empty check cannot silently discharge it. One rulebook Stop block
+decision. A single category declaration can cover all unprotected correspondence IDs; active task and session-loaded IDs remain binding. Explicit attempts to dismiss them are ignored and counted as violations. An empty check cannot silently discharge it. One rulebook Stop block
 is allowed, then unchecked passage is reported. Claude Code gets at most two
 copy repairs; Codex records violations without same-turn length repair (#1311).
 The model can still lie in its explicit decision; there is no semantic checker.
@@ -37,7 +37,7 @@ The model can still lie in its explicit decision; there is no semantic checker.
 Cost controls measure 50 harmless scripted rounds (question, calculation, ack,
 code, translation): one check each and no additional Stop blocks/repairs. The
 40 deliberately unchecked harmless rounds each get the bounded first block.
-Payload bytes are measured, not LLM tokens or real-model frequency. Both former
+Both SessionStart and UserPromptSubmit output are measured against 10,000 characters, including the round notice. Payload bytes are measured, not LLM tokens or real-model frequency. Both former
 GAP cases are now PASS for all five languages and both host identifiers.
 
 All assertions have finite loops and HTTP deadlines; the daemon-outage probe

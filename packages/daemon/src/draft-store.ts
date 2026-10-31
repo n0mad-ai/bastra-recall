@@ -1,3 +1,4 @@
+import { ownerPromptText } from "./system-turn.js";
 import { bastraDataDir } from "./platform-paths.js";
 /** Local, bounded draft storage (#1084, phase A); never reads or writes a vault. */
 import { createHash, randomBytes } from "node:crypto";
@@ -519,4 +520,25 @@ export function startDraftSearchCache(): () => void {
 /** Serialize publication/undo/purge without blocking capture or hint feedback. */
 export function withDraftPublication<T>(publish: () => Promise<T>): Promise<T> {
   return withPathLock(`${draftsPath()}.publish`, publish, { crossProcess: true });
+}
+
+/** Explicit one-off #1338 migration; no expiry, eviction or automatic startup.
+ * Retains every valid stored row, including aged evidence, as a tombstone.
+ */
+export async function rejectInjectedDrafts(now=Date.now()):Promise<number>{
+ const path=draftsPath();
+ return withPathLock(path,async()=>{
+  const store=await load(path,now);assertWritable(store);
+  if(store.diagnostics.skippedRows)throw new Error("Draft cleanup requires a valid store; original file preserved");
+  let count=0;
+  for(const row of store.rows){
+   if(row.state==="rejected")continue;
+   const owner=ownerPromptText(row.quote);
+   if(owner!==null&&owner.trim()===row.quote.trim())continue;
+   row.state="rejected";row.announce=false;row.last_touched=now;
+   row.rejection_reason="non-owner-origin-1338";count++;
+  }
+  if(count)await write(path,store.rows,store.metadata,now);
+  return count;
+ },{crossProcess:true});
 }

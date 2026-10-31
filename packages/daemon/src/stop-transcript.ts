@@ -32,6 +32,11 @@ export interface ClaudeStopPayload {
 
 export interface TranscriptTurn {
   role: "user" | "assistant" | "system" | string;
+  /** Explicit transport provenance, when supplied. Non-owner sources never capture. */
+  source?: string;
+  origin?: string;
+  stop_hook_active?: boolean;
+  isMeta?: boolean;
   content: string;
   /** Shell commands the agent ran from this turn (tool_use input.command /
    *  Codex function_call arguments). Kept apart from `content` so prose that
@@ -157,6 +162,10 @@ function isToolResultContent(content: unknown): boolean {
  * only check: the after-session harvest quoted hook feedback as the user's own
  * words.
  */
+function nonOwnerSource(row: {isMeta?:unknown;stop_hook_active?:unknown;source?:unknown;origin?:unknown}): boolean {
+  return row.isMeta === true || row.stop_hook_active === true ||
+    [row.source,row.origin].some(source=>source!==undefined && source!=="user" && source!=="human" && source!=="typed");
+}
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role !== "user") return role;
   if (isToolResultContent(content)) return "tool";
@@ -183,7 +192,7 @@ function turnContent(role: string, content: unknown): string {
  * Preserve commands, timestamps and turn indices; never upgrade a non-user role. */
 export function normalizeOwnerTurn(turn: TranscriptTurn): TranscriptTurn {
   if (turn.role !== "user") return turn;
-  const role = effectiveRole(turn.role, turn.content);
+  const role = effectiveRole(turn.role, turn.content, nonOwnerSource(turn));
   return { ...turn, role, content: turnContent(role, turn.content) };
 }
 
@@ -200,7 +209,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (obj.type === "response_item" && payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
       if (p.type === "message" && typeof p.role === "string") {
-        const role = effectiveRole(p.role, p.content);
+        const role = effectiveRole(p.role, p.content, nonOwnerSource(obj)||nonOwnerSource(p));
         out.push({ role, content: turnContent(role, p.content) });
         continue;
       }
@@ -225,7 +234,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     const directRole = obj.role;
     const directContent = obj.content;
     if (typeof directRole === "string") {
-      const role = effectiveRole(directRole, directContent);
+      const role = effectiveRole(directRole, directContent, nonOwnerSource(obj));
       out.push({ role, content: turnContent(role, directContent) });
       continue;
     }
@@ -233,7 +242,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (msg && typeof msg === "object") {
       const m = msg as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role : "unknown";
-      const eff = effectiveRole(role, m.content, obj.isMeta === true);
+      const eff = effectiveRole(role, m.content, nonOwnerSource(obj)||nonOwnerSource(m));
       const turn: TranscriptTurn = { role: eff, content: turnContent(eff, m.content) };
       if (typeof obj.cwd === "string" && obj.cwd.trim()) turn.cwd = obj.cwd;
       if (typeof obj.gitBranch === "string") turn.branch = obj.gitBranch;

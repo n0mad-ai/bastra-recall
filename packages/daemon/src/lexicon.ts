@@ -432,8 +432,8 @@ export function previousConventionCues(): string[] {
  *
  * The neutral path for a language without a list: no cue fires, so the state
  * stays as it is. Pasted or quoted text is recognised structurally in every
- * language and, without a recognised verb, produces the "task unclear" choice
- * line — never a silent approval. Approval needs a listed word, so an unlisted
+ * language and, without a recognised verb, produces neutral provenance guidance
+ * — never a silent approval. Approval needs a listed word, so an unlisted
  * language can never approve copy by accident.
  */
 export const DEFAULT_CORRESPONDENCE_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {

@@ -29,7 +29,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   if (!sessionId) return null;
   const codex=hookClientEvidence(payload)==="codex";
   if (envOff("BASTRA_STOP_SAME_TURN")&&!codex) return null;
-  const snapshot = withoutDismissed(await loadSessionState(sessionId),payload);
+  const snapshot = await loadSessionState(sessionId);
   const task = snapshot.activeTask;
   const legacyTask=!(payload as RulebookPayload).agent_id&&task&&["draft-for-review","approved-copy"].includes(task.kind)&&taskValidators(snapshot).length>0;
   if(codex||!legacyTask){
@@ -57,7 +57,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const latest = turns.at(-1);
   const response = latest?.role === "assistant" ? latest.content : "";
   const hasReceipt = (state: ReadonlySessionState) => {
-    const validators = taskValidators(withoutDismissed(state,payload));
+    const validators = taskValidators(state);
     if (!validators.length) return false;
     return validators.every(({validator:v})=>{
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
@@ -79,12 +79,12 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     // the snapshot wins.
     const t = s.activeTask;
     if (!t || !["draft-for-review", "approved-copy"].includes(t.kind) || t.id !== task.id || t.generation !== task.generation) return;
-    if (!taskValidators(withoutDismissed(s,payload)).length) return;
+    if (!taskValidators(s).length) return;
     if (hasReceipt(s)) return;
     const r = s.repairAttempts;
     let count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
     const round=roundCorrespondence(s,payload);
-    if(round.rules.some(r=>r.validator)){
+    if(s.rulebookCheck&&round.rules.some(r=>r.validator)){
       const claimed=claimRoundRepair(s,payload,round.key,false,count);if(claimed===null)return;count=claimed;
     }
     if (count > REPAIR_MAX_ATTEMPTS) return;
@@ -128,10 +128,6 @@ function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1])
   return largest;
 }
 
-function withoutDismissed(state:ReadonlySessionState,p:RulebookPayload):ReadonlySessionState{
- const excluded=new Set(roundCorrespondence(state,p).dismissed);if(!excluded.size)return state;
- return {...state,loadedConventions:state.loadedConventions?.filter(c=>!excluded.has(c.id)),activeConventions:state.activeConventions?.filter(c=>!excluded.has(c.id))};
-}
 function roundValidators(state:ReadonlySessionState,p:RulebookPayload){
  const all=roundCorrespondence(state,p).rules.flatMap(r=>r.validator?[r.validator]:[]);
  const channel=state.activeTask?.validatorChannel??state.userValidatorChannel;

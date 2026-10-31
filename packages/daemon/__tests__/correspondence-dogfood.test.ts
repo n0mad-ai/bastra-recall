@@ -46,7 +46,7 @@ test("#1328: exact three-prompt dogfood sequence reaches approved-copy and store
   const sid = "1328-exact";
   const first = await prompt(sid, '<pasted_content>Alex: Hello, can you send the question?</pasted_content>\ndm verlauf mit X den du noch nicht kennst');
   assert.equal(first.activeTask?.kind ?? "none", "none");
-  assert.ok(first.taskQuestion);
+  assert.ok(first.correspondenceContext);
   assert.equal((await prompt(sid, "… und dass wir die Frage dann mal an X schicken")).activeTask?.kind, "draft-for-review");
   const state = await prompt(sid, "ok, mach die englische Fassung");
   assert.equal(state.activeTask?.kind, "approved-copy");

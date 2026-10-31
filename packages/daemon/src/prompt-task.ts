@@ -81,14 +81,14 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const now = input.now ?? Date.now();
   const generation = snapshot.activeTask?.generation ?? 0;
   const current: TaskKind = snapshot.activeTask?.kind ?? "none";
-  const questionOpen = snapshot.taskQuestion !== undefined && snapshot.taskQuestion.generation === generation;
+  const questionOpen = snapshot.correspondenceContext !== undefined && snapshot.correspondenceContext.generation === generation;
   const activeIds = new Set((snapshot.activeConventions ?? []).map((e) => e.id));
   const signals=taskSignals(input.prompt);
   const decision = decideTask(signals, {
     current,
     questionOpen,
     correspondenceActive: current !== "none" ||
-      (questionOpen && (snapshot.taskQuestion?.conventions?.length ?? 0) > 0),
+      (questionOpen && (snapshot.correspondenceContext?.conventions?.length ?? 0) > 0),
     correspondenceHint: (snapshot.activeConventions ?? []).some(c => c.validator) ||
       input.candidates.some(c => isTaskConvention(c) && c.validator),
     mode: input.mode,
@@ -97,12 +97,12 @@ async function step(input: TaskStepInput): Promise<string | null> {
     // commonly mention neither the original message nor its convention.
     hitOther: input.candidates.some((c) => !activeIds.has(c.id)),
   });
-  // A task that starts — or the explicit answer to the choice line — puts the
+  // A task that starts — including an explicit own follow-up — puts the
   // conventions in force; "none" never does.
   const entering = decision.next !== null && decision.next !== "none";
   const surfaced = [...new Set(input.candidates.filter(isTaskConvention).map((c) => c.id))];
-  // An answer to the choice line binds the conventions the question was asked about.
-  const asked = questionOpen ? (snapshot.taskQuestion?.conventions ?? []) : [];
+  // A later own instruction can bind the pending correspondence references.
+  const asked = questionOpen ? (snapshot.correspondenceContext?.conventions ?? []) : [];
   const askedRevision = new Map(asked.map((e) => [e.id, e.revision]));
   const activate = entering ? [...new Set([...surfaced, ...asked.map((e) => e.id)])] : [];
   const askAbout = decision.unclear ? surfaced : [];
@@ -130,7 +130,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
 
   // Nothing in force, nothing asked, nothing starting: the common prompt costs
   // the snapshot the lane already read.
-  if (activeIds.size === 0 && current === "none" && !snapshot.taskQuestion && activate.length === 0 && !decision.unclear && !channelChanges) {
+  if (activeIds.size === 0 && current === "none" && !snapshot.correspondenceContext && activate.length === 0 && !decision.unclear && !channelChanges) {
     return null;
   }
 
@@ -156,7 +156,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
       (input.conventionOf !== undefined && JSON.stringify(sources.get(e.id)?.validator) !== JSON.stringify(e.validator)));
   });
   const needsWrite =
-    kindChanges || activate.length > 0 || decision.unclear || snapshot.taskQuestion !== undefined || revisionDrift || channelChanges;
+    kindChanges || activate.length > 0 || decision.unclear || snapshot.correspondenceContext !== undefined || revisionDrift || channelChanges;
 
   if (!needsWrite) {
     return formatActiveConventionsBlock(
@@ -168,7 +168,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   let view: ActiveConventionsView | null = null;
   const persisted = await mutateSessionState(sessionId, (s) => {
     const gen = s.activeTask?.generation ?? 0;
-    delete s.taskQuestion;
+    delete s.correspondenceContext;
     delete s.userValidatorChannel;
     if(s.activeTask)delete s.activeTask.validatorChannel;
     // A revision that moved since the convention was set: say so once, then
@@ -199,7 +199,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
         else delete s.activeConventions;
       }
     }
-    // The question was asked at one revision; an answer under another reloads.
+    // Pending context carried a revision; a later instruction under another reloads.
     for (const id of activate) {
       const then = askedRevision.get(id);
       const nowRev = revisions.get(id);
@@ -215,7 +215,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
     if(userChannel&&decision.next!=="none"){s.userValidatorChannel=userChannel;if(s.activeTask)s.activeTask.validatorChannel=userChannel;}
 
     if (decision.unclear) {
-      s.taskQuestion = {
+      s.correspondenceContext = {
         at: now,
         generation: gen,
         ...(askAbout.length > 0 ? { conventions: askAbout.map((id) => ({ id, revision: revisions.get(id) ?? null })) } : {}),
@@ -235,7 +235,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const written = view as ActiveConventionsView | null;
   if (!persisted || written === null) {
     // State not on disk: still tell this turn what the snapshot knew, and ask
-    // when unclear — but never claim a transition that did not persist.
+    // with neutral provenance guidance — never claim an unpersisted transition.
     return formatActiveConventionsBlock(
       { task: current, approvalSource:snapshot.activeTask?.approvalSource, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: decision.unclear, receipt: currentReceipt(snapshot) },
       input.surface,

@@ -50,12 +50,15 @@ test('full load also declares applicability; empty checks cannot erase it or dis
  assert.equal((await check(sid,{applicable:[],not_applicable:[skip('copy-rule')]})).ok,false);
  assert.match(JSON.stringify(await stop(sid,'x'.repeat(30))),/copy-repair/);
 });
-test('short valid output needs no additional round repair; a fresh unrelated round does not inherit applicability',async()=>{
+test('round-only applicability expires, while an active task remains protected',async()=>{
  const sid='new-round';await begin(sid);await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
  assert.doesNotMatch(JSON.stringify(await stop(sid,'valid')),/copy-repair/);
- await check(sid,{applicable:['copy-rule'],task:'draft-for-review'});
  await begin(sid);assert.equal((await check(sid,{applicable:[],not_applicable:[skip('copy-rule'),skip('correspondence-rule')]})).ok,true);
  assert.doesNotMatch(JSON.stringify(await stop(sid,'An unrelated translation or explanation'.repeat(10))),/copy-repair/);
+ const active='active-across-rounds';await begin(active);await check(active,{applicable:['copy-rule'],task:'draft-for-review',not_applicable:[skip('correspondence-rule')]});
+ await begin(active);assert.equal((await check(active,{applicable:[],not_applicable:[skip('copy-rule')]})).ok,false);
+ await check(active,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
+ assert.match(JSON.stringify(await stop(active,'x'.repeat(30))),/copy-repair/);
 });
 test('Codex observes oversized declared copy once without same-turn repair and reports the violation on the next prompt',async()=>{
  const sid='codex-observe';await begin(sid,'codex');await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});

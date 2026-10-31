@@ -175,9 +175,9 @@ export interface SessionState {
   userValidatorChannel?: string;
   /** #1306: the correspondence task the session is in (prompt-classify.ts). */
   activeTask?: ActiveTask;
-  /** #1306: the "task unclear" choice line went out; only the next prompt of
-   *  the same generation may answer it. Every prompt clears it. */
-  taskQuestion?: TaskQuestion;
+  /** #1306: pending correspondence context; only the next prompt of
+   *  the same generation may use it. Every prompt clears it. */
+  correspondenceContext?: CorrespondenceContext;
   /** #1310: successful `validate_artifact` receipts of the running task
    *  (receipt-store.ts). Only hashes and parameters, never artifact text. */
   receipts?: ArtifactReceipt[];
@@ -208,12 +208,12 @@ export interface ArtifactReceipt {
   at: number;
 }
 
-/** #1306: an open "task unclear" question, bound to the generation it was asked in. */
-export interface TaskQuestion {
+/** #1306: pending correspondence references, bound to their context generation. */
+export interface CorrespondenceContext {
   at: number;
   generation: number;
-  /** The conventions the unclear prompt surfaced, at their revision then. An
-   *  answer puts exactly these in force; a moved revision gets a reload line. */
+  /** The conventions the pasted prompt surfaced. A later own instruction
+   * can activate them; a moved revision gets a reload line. */
   conventions?: Array<{ id: string; revision: string | null }>;
 }
 
@@ -287,7 +287,7 @@ export interface ReadonlySessionState {
   readonly loadedConventions?: readonly Readonly<{id:string;revision:string|null;loadedAt:number;validator?:ConventionValidator}>[];
   readonly userValidatorChannel?: string;
   readonly activeTask?: Readonly<ActiveTask>;
-  readonly taskQuestion?: Readonly<TaskQuestion>;
+  readonly correspondenceContext?: Readonly<CorrespondenceContext>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
   readonly repairAttempts?: Readonly<RepairAttempts>;
 }
@@ -432,7 +432,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     if (repair && typeof repair.taskId === "string" && typeof repair.generation === "number" && typeof repair.count === "number") {
       state.repairAttempts = { taskId: repair.taskId, generation: repair.generation, count: repair.count };
     }
-    const question = parsed.taskQuestion;
+    const question = parsed.correspondenceContext;
     if (question && typeof question.at === "number" && typeof question.generation === "number") {
       const conventions = Array.isArray(question.conventions)
         ? question.conventions.filter(
@@ -440,7 +440,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
               !!e && typeof e.id === "string" && (typeof e.revision === "string" || e.revision === null),
           )
         : [];
-      state.taskQuestion = {
+      state.correspondenceContext = {
         at: question.at,
         generation: question.generation,
         ...(conventions.length > 0 ? { conventions } : {}),
@@ -588,7 +588,7 @@ export function recordActiveConventions(
 /**
  * #1306: compact, clear and fork start a new generation of the task state. The
  * task and its conventions survive (the rule kernel restores the bodies); an
- * open "task unclear" question does not — it was asked of a context that is
+ * pending correspondence context does not — it belongs to a context that is
  * gone. #1310: neither do receipts — they were validated in the old
  * generation. #1311: nor does the repair counter bound to them. Never throws.
  */
@@ -598,7 +598,7 @@ export async function bumpTaskGeneration(sessionId: string, now: number = Date.n
     await mutateSessionState(sessionId, (state) => {
       const task = state.activeTask ?? { id: taskIdFor("none", now), kind: "none" as const, since: now, generation: 0 };
       state.activeTask = { ...task, generation: task.generation + 1 };
-      delete state.taskQuestion;
+      delete state.correspondenceContext;
       delete state.receipts;
       delete state.repairAttempts;
       delete state.userValidatorChannel;

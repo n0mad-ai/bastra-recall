@@ -37,7 +37,7 @@ for(const withValidator of [true,false])test(`session-derived active status cann
  if(withValidator){await mutateMemoryFile(first.file_path,id,{frontmatter:fm=>({...fm,validator})},{vaultRoot:vault.root});await vault.reindexFile(first.file_path);}
  await mutateSessionState(id,s=>recordActiveConventions(s,[{id,revision:null}]));
  await callerSessionStore.run(id,()=>editMemoryHandler(live.deps,{id,frontmatter:{rulebook:'always',applies_when:'When changing fixtures'}}));
- assert.equal(vault.get(id)!.fm.rulebook,undefined);assert.equal(vault.get(id)!.fm.rulebook_proposed?.rulebook,'always');
+ assert.equal(vault.get(id)!.fm.rulebook,withValidator?'always':undefined);assert.equal(vault.get(id)!.fm.rulebook_proposed?.rulebook,withValidator?undefined:'always');
 });
 test('preexisting explicit and user-directed legacy rules retain direct validator edits',async()=>{
  for(const legacy of [false,true]){
@@ -68,4 +68,16 @@ test('user-directed is an agent attestation accepted for immediately binding a d
  const id='agent-attested-user-directed';
  const result=await saveMemoryHandler(live.deps,{...base(id),recall_when:['unique attested provenance fixture'],write_origin:'user-directed',rulebook:'always',applies_when:'When checking attested fixtures',validator});
  assert.equal(result.created,true);assert.equal(vault.get(id)!.fm.write_origin,'user-directed');assert.equal(vault.get(id)!.fm.rulebook,'always');assert.deepEqual(vault.get(id)!.fm.validator,validator);assert.equal(vault.get(id)!.fm.rulebook_proposed,undefined);
+});
+
+for(const directed of [true,false])test(`validator-only legacy provenance controls direct edits (user-directed=${directed})`,async()=>{
+ for(const method of ['save','edit'] as const){
+  const id=`validator-only-${directed}-${method}`;const first=await saveMemory(vault.root,{...base(id),...(directed?{write_origin:'user-directed' as const}:{})});
+  await mutateMemoryFile(first.file_path,id,{frontmatter:fm=>({...fm,validator})},{vaultRoot:vault.root});await vault.reindexFile(first.file_path);
+  if(method==='edit')await editMemoryHandler(live.deps,{id,frontmatter:{validator:{...validator,limit:4000},rule_categories:['correspondence']}});
+  else await saveMemory(vault.root,{...base(id),overwrite:true,validator:{...validator,limit:4000},rule_categories:['correspondence']});
+  await vault.reindexFile(first.file_path);const fm=vault.get(id)!.fm;
+  assert.equal(fm.validator?.limit,directed?4000:2000);assert.equal(fm.rulebook_proposed?.validator?.limit,directed?undefined:4000);
+  assert.deepEqual(fm.rule_categories,directed?['correspondence']:undefined);
+ }
 });

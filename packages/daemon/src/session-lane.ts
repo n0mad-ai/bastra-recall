@@ -236,7 +236,7 @@ export async function runSessionLane(
       /* no state, no active conventions — floors, reflex and user rules still come */
     }
     // #1306: a new generation of the task state — the task and its conventions
-    // carry over, an open "task unclear" question does not.
+    // carry over, pending correspondence context does not.
     if (payload.source === "compact" || payload.source === "clear" || payload.source === "fork") { await resetRulebookContext(payload.session_id); await bumpTaskGeneration(payload.session_id); }
   }
   resetBudgetOnSource(payload.session_id, payload.source);
