@@ -718,6 +718,20 @@ export function unmarkedClientLine(): string {
 }
 
 /**
+ * The user's own Claude Code rule denies an rm the archive would have taken.
+ * Their deny wins over the lane's allow (tested with `claude -p`), so the
+ * receipt would be false; and without a word, the person who set the rule out
+ * of fear of deletion never learns that here it blocks a move with an address.
+ * Addressed to the user, with no route around the rule.
+ */
+export function denyLine(rule: string, undo: Undo): string {
+  return (
+    `The user's own Claude Code rule \`${rule}\` denies this command, and it wins: nothing runs, nothing is archived. ` +
+    `With that rule relaxed: ${undo.text} Whether to relax it is the user's call: tell them, and do not route around the rule.`
+  );
+}
+
+/**
  * One line when the shim is off and would have taken this command: what it
  * would have done, how to turn it on, and — read from the user's own Claude
  * Code rules — whether the stop comes from those rules. A user `deny` stays a

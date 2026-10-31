@@ -718,6 +718,57 @@ describe("#657 — opted in, but the hook registration names no client", () => {
   });
 });
 
+describe("#650 — the user's own deny rule over an archiving rm", () => {
+  const project = (perms?: Record<string, string[]>) => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "cc-proj-")));
+    mkdirSync(join(dir, ".claude"));
+    if (perms) writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ permissions: perms }));
+    return dir;
+  };
+  const withCfg = async (fn: () => Promise<void>, env: Record<string, string | undefined> = {}) => {
+    const keys = ["CLAUDE_CONFIG_DIR", "BASTRA_RM_SHIM", ...Object.keys(env)];
+    const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    process.env.CLAUDE_CONFIG_DIR = project();
+    delete process.env.BASTRA_RM_SHIM;
+    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    try {
+      await fn();
+    } finally {
+      for (const [k, v] of Object.entries(prev)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  };
+
+  it("bastra's shim: no allow, no rewrite, no 'no confirmation needed', one line naming the rule", async () => {
+    // Revert-check: use `match` instead of `effective` in the lane → allow + rewrite + the receipt under deny;
+    // drop the lane's deniedRule branch → no line naming the rule.
+    await withCfg(async () => {
+      const out = await preHook(`${RM} -rf victim-d`, "claude-code", project({ deny: [`Bash(${RM}:*)`] }));
+      assert.equal(out.permissionDecision, undefined);
+      assert.equal(out.updatedInput, undefined);
+      assert.match(out.additionalContext, /STOP — destructive/);
+      assert.doesNotMatch(out.additionalContext, /No confirmation needed/);
+      assert.match(out.additionalContext, /rule `Bash\(rm:\*\)` denies this command, and it wins/);
+      assert.match(out.additionalContext, /bastra archive restore <path>/);
+      assert.match(out.additionalContext, /do not route around the rule/);
+      const free = await preHook(`${RM} -rf victim-d`, "claude-code", project());
+      assert.equal(free.permissionDecision, "allow", "no deny: the shim runs as before");
+      assert.doesNotMatch(free.additionalContext, /denies this command/);
+      const ask = await preHook(`${RM} -rf victim-d`, "claude-code", project({ ask: [`Bash(${RM}:*)`] }));
+      assert.doesNotMatch(ask.additionalContext, /denies this command/, "ask is not deny");
+    });
+  });
+
+  it("host mode: the host's receipt is not claimed under deny either", async () => {
+    // Revert-check: same as above — the host receipt ("No confirmation needed") comes back under deny.
+    await withCfg(async () => {
+      const out = await preHook(`${RM} -rf victim-h`, "claude-code", project({ deny: [`Bash(${RM}:*)`] }));
+      assert.doesNotMatch(out.additionalContext, /No confirmation needed/);
+      assert.match(out.additionalContext, /denies this command/);
+      assert.match(out.additionalContext, /agent-archive restore <path>/);
+    }, { BASTRA_RM_ARCHIVES: "host" });
+  });
+});
+
 describe("#650 — the shim switched off says it exists, and the off switch is counted", () => {
   /** A cwd with its own .claude/settings.json, and a user settings dir with none. */
   const project = (perms?: Record<string, string[]>) => {

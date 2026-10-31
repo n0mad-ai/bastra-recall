@@ -208,6 +208,7 @@ The archiving `rm` depends on knowing when a command changes what `rm` resolves 
 - With the opt-in on, `BASTRA_RM_SHIM=0` leaves out the `rm` part and `BASTRA_GIT_SHIM=0` the git part. A command the switched-off shim would have taken keeps the STOP and gets one extra line saying what it would have saved; the wording follows the user's own Claude Code permission rules (with an `ask` rule it says the command would still be asked about; with a `deny` rule there is no line). Each such command is a telemetry event `rm_shim_shadow` / `git_shim_shadow`. Nothing is written to the vault.
 - Each shim runs only where it is on: with one of the two switched off, a command that needs both (`rm -rf build && git stash drop`) is not rewritten. `shims/git` also reads `BASTRA_GIT_SHIM=0` from its own environment and then hands every call to the real git.
 - A host with its own archiving `rm` sets `BASTRA_RM_ARCHIVES=host`: receipt text, no rewrite.
+- Under the user's own `deny` rule for the command the lane claims nothing: no allow, no rewrite, no receipt, the plain STOP and one line for the user naming the rule and what `rm` would have been with it relaxed, with no route around it. Each such command is a telemetry event `archive_deny_shadow`.
 
 ### How it was tested (at the time of the PRs)
 
@@ -430,6 +431,7 @@ Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 
 - Mit Opt-in lässt `BASTRA_RM_SHIM=0` den `rm`-Teil weg, `BASTRA_GIT_SHIM=0` den Git-Teil. Ein Befehl, den der abgeschaltete Shim übernommen hätte, behält das STOP und bekommt eine Zusatzzeile, was er gesichert hätte; die Formulierung folgt den eigenen Claude-Code-Berechtigungsregeln des Nutzers (bei einer `ask`-Regel: würde weiter nachgefragt; bei einer `deny`-Regel keine Zeile). Jeder solche Befehl ist ein Telemetrie-Ereignis `rm_shim_shadow` / `git_shim_shadow`. In den Vault wird nichts geschrieben.
 - Jeder Shim läuft nur, wo er an ist: Ist einer der beiden aus, wird ein Befehl, der beide braucht (`rm -rf build && git stash drop`), nicht umgeschrieben. `shims/git` liest `BASTRA_GIT_SHIM=0` auch aus der eigenen Umgebung und reicht dann jeden Aufruf an das echte git weiter.
 - Ein Host mit eigenem archivierenden `rm` setzt `BASTRA_RM_ARCHIVES=host`: Quittungstext, kein Umschreiben.
+- Unter einer eigenen `deny`-Regel des Nutzers für den Befehl beansprucht die Lane nichts: kein Allow, kein Umschreiben, keine Quittung, das einfache STOP und eine Zeile für den Nutzer, die die Regel nennt und was `rm` ohne sie gewesen wäre, ohne Weg um die Regel herum. Jeder solche Befehl ist ein Telemetrie-Ereignis `archive_deny_shadow`.
 
 ### Wie getestet wurde (Stand der PRs)
 

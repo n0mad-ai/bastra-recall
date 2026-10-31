@@ -47,7 +47,7 @@ import {
   type HintKind,
   type Undo,
 } from "./bash-pre-patterns.js";
-import { hintFor, matchPattern, shimOffLine, unmarkedClientLine } from "./bash-pre-analysis.js";
+import { denyLine, hintFor, matchPattern, shimOffLine, unmarkedClientLine } from "./bash-pre-analysis.js";
 // #680: the command analysis lives in bash-pre-analysis.ts; shimOffLine stays
 // part of this lane's public surface.
 export { shimOffLine } from "./bash-pre-analysis.js";
@@ -261,11 +261,17 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded, match.pathVar);
+  // An archiving-rm receipt under the user's own deny rule: the deny wins over
+  // our allow, so no allow, no rewrite, no "no confirmation needed" (#650).
+  const receiptRm = match.undo?.kind === "receipt" && match.undo.needsArchivingRm ? match.undo : null;
+  const verdictNow = receiptRm ? bashVerdict(command, settingsFiles(payload.cwd)) : null;
+  const deniedRule = verdictNow?.verdict === "deny" ? verdictNow.rule ?? "deny" : null;
+  const effective = deniedRule ? { ...match, undo: null, viaShim: false } : match;
+  const block = formatHintBlock(effective.label, effective.severity, emitted, unfused, client, effective.undo, resp?.degraded, effective.pathVar);
   // bastra's archiving rm carries the receipt: run the command through it and
   // let it run — a move with an address needs no confirmation. The call id
   // ties the manifest lines to this call for the PostToolUse receipt.
-  const viaShim = match.viaShim
+  const viaShim = effective.viaShim
     ? {
         permissionDecision: "allow",
         permissionDecisionReason: "bastra: rm archives here (bastra archive restore <path>)",
@@ -310,6 +316,15 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
       settings_verdict: settings.verdict,
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
+      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
+    });
+  }
+  if (deniedRule && receiptRm) {
+    offLine = denyLine(deniedRule, receiptRm);
+    await writeShadow("archive_deny_shadow", {
+      session_id: payload.session_id ?? null,
+      matched_pattern: match.label,
+      settings_rule: deniedRule,
       dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
     });
   }
