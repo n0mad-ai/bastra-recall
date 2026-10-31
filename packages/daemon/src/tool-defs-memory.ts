@@ -38,7 +38,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Workers omit task. Hookless clients remain advisory; self-reports do not attest user approval or authorize sending.",
     inputSchema: { type: "object", additionalProperties: false, required: ["applicable"], properties: {
       applicable: { type: "array", maxItems: 10000, items: { type: "string", minLength: 1 } },
-      not_applicable: {type:"array",maxItems:10000,items:{anyOf:[{type:"object",additionalProperties:false,properties:{id:{type:"string",minLength:1},reason:{type:"string",minLength:10,maxLength:500}},required:["id","reason"]},{type:"object",additionalProperties:false,properties:{category:{type:"string",enum:["correspondence"]},reason:{type:"string",minLength:10,maxLength:500}},required:["category","reason"]}]}},
+      not_applicable: {type:"array",maxItems:10000,items:{anyOf:[{type:"object",additionalProperties:false,properties:{id:{type:"string",minLength:1,maxLength:200},reason:{type:"string",minLength:10,maxLength:500}},required:["id","reason"]},{type:"object",additionalProperties:false,properties:{category:{type:"string",enum:["correspondence"]},reason:{type:"string",minLength:10,maxLength:500}},required:["category","reason"]}]}},
       task: { type: "string", enum: ["translate-only", "draft-for-review", "approved-copy", "none"] },
       agent_id: { type: "string", minLength: 1, maxLength: 200 }, session_id: { type: "string", minLength: 1, maxLength: 200 }
     } },

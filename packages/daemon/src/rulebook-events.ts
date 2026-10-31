@@ -9,6 +9,6 @@ export async function recordRulebookEvent(sessionId: string | null, fields: Reco
     const dir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(dir, { recursive: true }); const ts = new Date().toISOString();
     await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ kind: "rulebook_check", ts,
-      session_id: sessionId, session_known: !!sessionId, ...fields }) + "\n", "utf8");
+      session_id: sessionId?.slice(0, 200) ?? null, session_known: !!sessionId, ...fields }) + "\n", "utf8");
   } catch { /* never change the decision */ }
 }

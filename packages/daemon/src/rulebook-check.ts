@@ -64,7 +64,7 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
 }
 const ExceptionReason = z.string().trim().min(10).max(500).regex(/[\p{L}\p{N}]/u, "Explain non-applicability with substantive text.");
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
-  not_applicable: z.array(z.union([z.object({id:z.string().min(1),reason:ExceptionReason}).strict(), z.object({category:z.literal("correspondence"),reason:ExceptionReason}).strict()])).max(10000).optional(),
+  not_applicable: z.array(z.union([z.object({id:z.string().min(1).max(200),reason:ExceptionReason}).strict(), z.object({category:z.literal("correspondence"),reason:ExceptionReason}).strict()])).max(10000).optional(),
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
