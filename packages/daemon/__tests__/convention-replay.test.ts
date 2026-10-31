@@ -373,9 +373,16 @@ test("8 declared frontmatter validator activates through real prompt → approve
   const f = await fixture();
   try {
     f.set("BASTRA_STOP_SAME_TURN", "1");
-    await f.prompt(ANNOUNCEMENT);
-    await f.prompt("ok");
     const sid = "replay-fixture-conventions";
+    await f.prompt(ANNOUNCEMENT);
+    assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
+    // The owner can acknowledge only an actually delivered draft. Exercise the
+    // real Stop lane rather than inserting a model-set draft evidence flag.
+    await runStopLane({ hook_event_name: "Stop", session_id: sid, cwd: f.cwd,
+      stop_hook_active: true, transcript: [{ role: "user", content: ANNOUNCEMENT },
+        { role: "assistant", content: "```\nHallo Alex, bitte bestätige den erfundenen Besuch morgen.\n```" }] }, "http://127.0.0.1:1");
+    assert.equal((await loadSessionState(sid)).activeTask?.draftPresented, true);
+    await f.prompt("ok");
     const state = await loadSessionState(sid);
     assert.equal(state.activeTask?.kind, "approved-copy");
     const rule = state.activeConventions?.find((c) => c.id === "fixture-message");

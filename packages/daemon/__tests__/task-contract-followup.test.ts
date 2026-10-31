@@ -1,3 +1,4 @@
+import {checkStopRepair} from '../src/stop-repair.js';
 /** #1306 R2: real lane follow-ups, recall cost, and the trivial budget path. */
 import { after, before, it } from "node:test";
 import { strict as assert } from "node:assert";
@@ -67,6 +68,7 @@ async function prompt(sid: string, text: string): Promise<string> {
 it("keeps the DM contract through translation, approval, copy and an unanchored edit", async () => {
   const sid = "r2-dm-followup";
   await prompt(sid, "ich arbeite jetzt eine eingegangene Nachricht ab\nBonjour, peux-tu venir demain ?");
+  await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
   // The assistant's translation/review and copy are output turns, not new user tasks.
   assert.match(await prompt(sid, "ok"), /task="approved-copy"/);
   const before = recalls;
@@ -85,6 +87,7 @@ it("keeps the DM contract through translation, approval, copy and an unanchored 
 it("bare ok with a task skips searches and charges the exact emitted block", async () => {
   const sid = "r2-ok-budget";
   await prompt(sid, "ich arbeite jetzt eine eingegangene Nachricht ab");
+  await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
   const searches = [recalls, reflexes];
   const before = sessionBudget.spent(sid);
   const out = await prompt(sid, "ok");

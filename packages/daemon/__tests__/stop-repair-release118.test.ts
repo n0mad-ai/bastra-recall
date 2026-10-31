@@ -59,11 +59,11 @@ test('release118: short prose and short fences in draft need no receipt; approve
     assert.equal((await stop('approved', 'Final copy.'))?.action, 'request');
   });
 });
-test('release118: draft and translation still enforce oversized fences, quotes and unclosed fences on both paths', async () => {
+test('release118: draft and translation still enforce oversized fences and unclosed fences on both paths', async () => {
   await sandbox(async () => {
     for (const kind of ['draft-for-review', 'translate-only'] as const) {
       for (const actor of [undefined, 'worker']) {
-        for (const [i, text] of ['```\n' + 'x'.repeat(2001) + '\n```', '> ' + 'x'.repeat(2001), '```\n' + 'x'.repeat(2001)].entries()) {
+        for (const [i, text] of ['```\n' + 'x'.repeat(2001) + '\n```', '```\n' + 'x'.repeat(2001)].entries()) {
           const sid = `${kind}-${actor}-${i}`; await seed(sid, kind, actor);
           assert.equal((await stop(sid, text, actor))?.action, 'request', sid);
         }

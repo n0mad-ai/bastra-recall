@@ -9,12 +9,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
   const latest = turns.at(-1);
   // A prior assistant turn or quoted user text is not evidence of this answer.
   if (latest?.role !== "assistant") return;
-  if (!cueRegex(assistantReviewCues()).test(latest.content)) return;
-  const fenced = /```[^\n]*\n[\s\S]*?\S[\s\S]*?\n```/u.test(latest.content);
-  const lines = latest.content.split("\n");
-  const heading = lines.findIndex(line => cueRegex(assistantReviewCues(), true).test(line.replace(/^[#*\s]+/u, "")) && /[:：][*\s]*$/u.test(line));
-  const labelledBody = heading >= 0 && /\p{L}/u.test(lines.slice(heading + 1).join("\n"));
-  if (!fenced && !labelledBody) return;
+  if (!hasReviewDraft(latest.content, true)) return;
   const snapshot = await loadSessionState(sessionId);
   if (snapshot.activeTask && snapshot.activeTask.kind !== "none") return;
   const hasConvention = (snapshot.activeConventions ?? []).some(c => c.validator) ||
@@ -28,7 +23,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
     const question = s.correspondenceContext?.generation === (s.activeTask?.generation ?? 0) ? s.correspondenceContext : undefined;
     if (!(s.activeConventions ?? []).some(c => c.validator) &&
         !(s.loadedConventions ?? []).some(c => c.validator) && !question?.conventions?.length) return;
-    s.activeTask = { id: taskIdFor("draft-for-review", now), kind: "draft-for-review", since: now,
+    s.activeTask = { id: taskIdFor("draft-for-review", now), kind: "draft-for-review", since: now, draftPresented: true,
       generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
     expireReceipts(s);
     const asked = question?.conventions ?? [];
@@ -37,4 +32,25 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
     })), now);
     delete s.correspondenceContext;
   }, { noQueue: true, deadline: now + 100 });
+}
+
+/** Explicit fences or a lexicon-authored review heading prove a draft-shaped
+ * output. Merely having emitted progress prose does not. */
+export function hasReviewDraft(text: string, requireLabel = false): boolean {
+  if (requireLabel && !cueRegex(assistantReviewCues()).test(text)) return false;
+  const fenced = /^\s*(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?\S/mu.test(text);
+  const lines = text.split("\n");
+  const reviewLabel = new RegExp(`^(?:${assistantReviewCues().join("|")})$`, "iu");
+  const heading = lines.findIndex(line => {
+    const trimmed = line.trim();
+    // Markdown already marks the heading boundary; it needs no colon.
+    // Plain text still needs one. Match the complete lexicon caption so a
+    // progress sentence mentioning a draft cannot attest its delivery.
+    const markdown = /^#{1,6}\s+(.+?)(?:\s+#+)?$/u.exec(trimmed)?.[1] ??
+      /^(\*\*|__)(.+?)\1$/u.exec(trimmed)?.[2];
+    const caption = markdown ?? /^(.*?)[：:]$/u.exec(trimmed)?.[1];
+    return caption !== undefined && reviewLabel.test(caption.replace(/[：:]\s*$/u, "").trim());
+  });
+  const labelledBody = heading >= 0 && /\p{L}/u.test(lines.slice(heading + 1).join("\n"));
+  return fenced || labelledBody;
 }

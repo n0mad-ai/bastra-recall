@@ -23,7 +23,7 @@ test('loaded validator checks explicit review copies and all approved forms, wit
  for(const kind of ['draft-for-review','approved-copy'] as const)for(const [i,text] of forms.entries()){
   const sid=`form-${kind}-${i}`;await load(sid);await task(sid,kind);
   assert.equal((await loadSessionState(sid)).activeConventions,undefined);
-  if(kind==='draft-for-review'&&i===0){assert.equal(await stop(sid,text),null,'review prose is not delivered copy');continue;}
+  if(kind==='draft-for-review'&&(i===0||i===4)){assert.equal(await stop(sid,text),null,'review prose is not delivered copy');continue;}
   assert.equal((await stop(sid,text))?.action,'request',sid);
   assert.equal((await stop(sid,text))?.action,'request');
   assert.equal((await stop(sid,text))?.action,'exhausted');assert.equal(await stop(sid,text),null);

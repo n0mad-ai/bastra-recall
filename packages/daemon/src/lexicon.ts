@@ -458,10 +458,13 @@ export const DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE: Readonly<Record<string, rea
   en: ["ok", "okay", "yes", "go", "approved", "lgtm"],
 };
 
-/** An explicit approval phrase, anywhere in the prompt — also the answer to the choice line. */
+/** Complete positive approval phrases, including approved channel clauses.
+ * Also usable as an explicit answer to the choice line; never substring consent. */
 export const DEFAULT_APPROVED_COPY_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  de: ["freigegeben", "kopierfertig", "freigabe\\s+erteilt"],
-  en: ["approved\\s+copy", "copy\\s+approved", "ready\\s+to\\s+copy"],
+  de: ["freigegeben", "kopierfertig", "freigabe\\s+erteilt",
+    "(?:freigegeben|approved\\s+copy|copy\\s+approved)[,;:]?\\s+per\\s+(?:e-?mail|mail)\\s+antworten"],
+  en: ["approved\\s+copy", "copy\\s+approved", "ready\\s+to\\s+copy",
+    "(?:approved\\s+copy|copy\\s+approved)[,;:]?\\s+reply\\s+by\\s+(?:e-?mail|mail)"],
 };
 
 /** An explicit request for a reply draft — also the answer to the choice line. */
@@ -526,12 +529,29 @@ const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
   de: ["englisch\\p{L}*", "(?:ü|ue)bersetz\\p{L}*"],
   en: ["english", "translate\\p{L}*"],
 };
+/** Positive copy requests are whole clauses, never keyword substrings. Unknown
+ * forms stay neutral; users extend target-copy-request.txt like the other cues. */
+const TARGET_COPY_REQUEST_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "(?:auf\\s+)?englisch(?:e\\s+(?:fassung|version))?(?:\\s+bitte)?",
+    "(?:mach(?:\\s+mal)?(?:\\s+die)?\\s+)(?:englisch|englische\\s+(?:fassung|version))",
+    "(?:dann|und\\s+jetzt)\\s+englisch",
+    "(?:ü|ue)bersetz(?:e)?(?:\\s+mal)?(?:\\s+ins\\s+englische)?",
+  ],
+  en: [
+    "(?:give\\s+me\\s+the\\s+)?english(?:\\s+version)?(?:\\s+please)?",
+    "translate(?:\\s+it)?(?:\\s+to\\s+english)?",
+  ],
+};
+export function targetCopyRequestCues(): string[] {
+  return loadCues("target-copy-request", Object.values(TARGET_COPY_REQUEST_CUES_BY_LANGUAGE).flat());
+}
 const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
   de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],
   en: ["but", "shorter", "wrong", "correct", "revise", "change"],
 };
 const ASSISTANT_REVIEW_CUES: Readonly<Record<string, readonly string[]>> = {
-  de: ["deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
+  de: ["antwortvorschlag", "deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
   en: ["german\\s+draft(?:\\s+for\\s+review)?"],
 };
 export function sendPersonCues(): string[] { return loadCues("send-person", Object.values(DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE).flat()); }

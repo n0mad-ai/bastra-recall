@@ -126,7 +126,7 @@ export async function runStopLane(
   } catch {
     turns = null;
   }
-  await recordReviewDraft(payload.session_id,turns??[]).catch(()=>{});
+  if (!payload.agent_id) await recordReviewDraft(payload.session_id,turns??[]).catch(()=>{});
   const repair = await checkStopRepair(payload, turns ?? []).catch(() => null);
   let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
   if (repair?.action === "request") {

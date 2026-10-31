@@ -19,7 +19,7 @@ async function seed(sid:string,channel='email'){
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  const id=channel==='email'?'email-rule':'discord-rule',validator=channel==='email'?email:discord;
  await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort fixture-channel',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['fixture-channel'],validator}],surface:'claude-code'});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy fixture-channel',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['fixture-channel'],validator}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['approved copy'],validator}],surface:'claude-code'});
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy','decoy tests require genuine user approval');
  await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:Date.now()}];});
 }
@@ -36,7 +36,7 @@ test('P2.1 a model task cannot narrow loaded channels, even after user approval'
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  assert.equal((await recordRulebookCheck(sid,{applicable:['discord-rule'],task:'draft-for-review'},catalog)).ok,true);
  assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'freigegeben',mode:'trivial',candidates:[],surface:'claude-code'});
  const task=(await loadSessionState(sid)).activeTask!;assert.equal(task.kind,'approved-copy');
  await mutateSessionState(sid,s=>{s.receipts=['discord-dm','email'].map(channel=>({taskId:task.id,generation:task.generation,hash:'a',receipt:'sha256:a',channel,limit:channel==='email'?10000:2000,unit:'max(codepoints,utf16)' as const,at:Date.now()}));});
  assert.equal(await stop(sid,'Small copy'),null);

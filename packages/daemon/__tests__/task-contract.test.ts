@@ -1,3 +1,4 @@
+import {checkStopRepair} from '../src/stop-repair.js';
 /**
  * #1306 — the task contract: translate-only / draft-for-review / approved-copy
  * in session state, the per-turn `<active-conventions>` block and the
@@ -117,7 +118,7 @@ const taskOf = async (sid: string): Promise<TaskKind> => (await loadSessionState
 
 describe("#1306 classification", () => {
   const ctx = (over: Partial<TaskContext> = {}): TaskContext => ({
-    current: "none", questionOpen: false, mode: "generic", hitActive: false, ...over,
+    current: "none", draftPresented: true, questionOpen: false, mode: "generic", hitActive: false, ...over,
   });
   const decide = (text: string, over: Partial<TaskContext> = {}) => decideTask(taskSignals(text), ctx(over));
 
@@ -229,6 +230,7 @@ describe("#1306 prompt lane", () => {
     const state = await loadSessionState(sid);
     assert.deepEqual(state.activeConventions?.map((e) => [e.id, e.revision, e.scope]), [["msg-convention", "sha256:conv-1", "task"]]);
 
+    await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
     // Three follow-ups: the hints are deduped away, the block is not.
     const turns = [await prompt(sid, "mach den zweiten Satz freundlicher, Antwort bleibt kurz"), await prompt(sid, "ok"), await prompt(sid, "danke")];
     for (const [i, ctx] of turns.entries()) {
@@ -342,6 +344,7 @@ describe("#1306 prompt lane", () => {
     const sid = "task-codex";
     const ctx = await prompt(sid, ANNOUNCE, { bastra_client: "codex" });
     assert.match(block(ctx), /<active-conventions surface="codex" task="draft-for-review"/);
+    await checkStopRepair({session_id:sid,bastra_client:"codex",transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
     assert.match(block(await prompt(sid, "ok", { bastra_client: "codex" })), /task="approved-copy"/);
   });
 });
@@ -385,6 +388,7 @@ describe("#1306 generations", () => {
     revision = "sha256:conv-1";
     const sid = "task-compact";
     await prompt(sid, ANNOUNCE);
+    await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
     await prompt(sid, "> Hallo, kannst du morgen?"); // leaves an open question
     assert.ok((await loadSessionState(sid)).correspondenceContext);
     const start = await sessionStart("compact", sid);
@@ -412,6 +416,7 @@ describe("#1306 generations", () => {
     const sid = "task-clear";
     await prompt(sid, ANNOUNCE);
     await prompt(sid, "> Hallo, kannst du morgen?");
+    await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
     await sessionStart("clear", sid);
     const state = await loadSessionState(sid);
     assert.equal(state.activeTask?.generation, 1);

@@ -85,6 +85,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const activeIds = new Set((snapshot.activeConventions ?? []).map((e) => e.id));
   const signals=taskSignals(input.prompt);
   const decision = decideTask(signals, {
+    draftPresented: snapshot.activeTask?.draftPresented === true,
     current,
     questionOpen,
     correspondenceActive: current !== "none" ||
@@ -97,6 +98,13 @@ async function step(input: TaskStepInput): Promise<string | null> {
     // commonly mention neither the original message nor its convention.
     hitOther: input.candidates.some((c) => !activeIds.has(c.id)),
   });
+  // A validated copy contract does not make the next ordinary explanation a
+  // new outgoing message. Retain it for explicit copy/revision instructions.
+  if (current === "approved-copy" && currentReceipt(snapshot) && decision.next === null &&
+      !signals.revision && !signals.reply && !signals.sendPerson && !signals.recipientFollowup &&
+      !signals.targetCopy && !signals.approval && !signals.approvedCopy && !signals.announce && !signals.draftReply && !signals.quoted) {
+    decision.next = "none";
+  }
   // A task that starts — including an explicit own follow-up — puts the
   // conventions in force; "none" never does.
   const entering = decision.next !== null && decision.next !== "none";

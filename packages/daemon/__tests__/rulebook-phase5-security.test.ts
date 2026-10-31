@@ -64,6 +64,7 @@ test('security: trusted same-ID reload replaces the prior session limit',async()
 test('security: trusted user source revision is current through approval',async()=>{
  const sid='user-snapshot';await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'strict',type:'workflow',matched_recall_when:true,validator:strict}],surface:'claude-code'});
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
+ await stop(sid,'Kurzer Entwurf.');
  await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);

@@ -1,3 +1,4 @@
+import {checkStopRepair} from '../src/stop-repair.js';
 /** #1311 R3: invented DM through real prompt, validation, receipt and Stop lanes.
  * Only retrieval responses are fixtures; metadata comes from a real vault file.
  * P2: a later edited artifact still accepts the prior task/generation receipt;
@@ -86,6 +87,7 @@ async function approved(sid: string): Promise<void> {
   assert.match(await prompt(sid, ANNOUNCE), /draft-for-review/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.find((c) => c.id === CONVENTION.id)?.validator, CONVENTION.validator);
+  await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
   assert.match(await prompt(sid, "ok"), /approved-copy/);
   assert.equal((await loadSessionState(sid)).activeTask?.kind, "approved-copy");
 }

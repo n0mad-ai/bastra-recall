@@ -9,6 +9,7 @@ import {
   sendPersonCues,
   recipientFollowupCues,
   targetCopyCues,
+  targetCopyRequestCues,
   copyRevisionCues,
   technicalTaskObjectCues,
   technicalTaskDestinationCues,
@@ -232,6 +233,8 @@ export interface TaskSignals {
   quoted: boolean;
   /** The whole short prompt is an approval ("ok", "passt", "go", "ja"). */
   approval: boolean;
+  /** A mention can create ambiguity, never user approval. */
+  approvalMention?: boolean;
   /** The prompt opens with one ("ok, aber kürzer") — a follow-up, not a new topic. */
   ack: boolean;
   /** An explicit approval phrase ("freigegeben", "approved copy"). */
@@ -247,7 +250,16 @@ export interface TaskSignals {
 export function taskSignals(prompt: string): TaskSignals {
   const { own, quoted } = splitQuoted(prompt);
   const has = (cues: readonly string[]): boolean => own.length > 0 && cueRegex(cues).test(own);
-  const bare = own.toLowerCase().replace(/[\s!.?…]+$/u, "").trim();
+  // A question is never approval. Full approval phrases and a leading ack
+  // avoid interpreting an embedded word in refusals as permission. Vocabulary
+  // remains in the existing extensible multilingual lexicon.
+  const question = /[?？;؟]/u.test(own);
+  const bare = own.toLowerCase().replace(/[\s!.…]+$/u, "").trim();
+  const approval = !question && bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare);
+  const ackMatch = !question ? new RegExp(`^(?:${[...taskApprovalCues(), ...approvedCopyCues()].sort((a,b)=>b.length-a.length).join("|")})(?:[\\s,;:!]+|$)`, "iu").exec(bare) : null;
+  const leadingAck = ackMatch !== null;
+  const targetClause = ackMatch ? bare.slice(ackMatch[0].length).trim() : bare;
+  const targetRequest = new RegExp(`^(?:${[...targetCopyCues(), ...targetCopyRequestCues()].join("|")})$`, "iu").test(targetClause);
   const sendPerson = has(sendPersonCues());
   const recipientFollowup = has(recipientFollowupCues());
   const recipients = personRecipientCues().flatMap(cue =>
@@ -270,12 +282,13 @@ export function taskSignals(prompt: string): TaskSignals {
     reply: has(composeVerbCues()),
     draftReply: has(draftReplyCues()),
     quoted,
-    approval: bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare),
-    ack: own.length > 0 && cueRegex(taskApprovalCues(), true).test(own),
-    approvedCopy: has(approvedCopyCues()),
+    approval,
+    ack: leadingAck,
+    approvalMention: has(approvedCopyCues()),
+    approvedCopy: !question && new RegExp(`^(?:${approvedCopyCues().join("|")})$`, "iu").test(bare),
     sendPerson,
     recipientFollowup,
-    targetCopy: has(targetCopyCues()),
+    targetCopy: !question && targetRequest,
     technicalObject,
     personTarget,
     revision: has(copyRevisionCues()),
@@ -284,6 +297,8 @@ export function taskSignals(prompt: string): TaskSignals {
 
 export interface TaskContext {
   current: TaskKind;
+  /** False when no output was observed for a model-declared draft. */
+  draftPresented?: boolean;
   /** The choice line went out on the previous prompt of the same generation. */
   questionOpen: boolean;
   /** Detected mode of this prompt; "trivial" for the gated short prompts. */
@@ -314,12 +329,12 @@ export interface TaskDecision {
  */
 export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
   const keep: TaskDecision = { next: null, unclear: false };
-  const explicit = [sig.translate, sig.approvedCopy, sig.draftReply].filter(Boolean).length;
+  const explicit = [sig.translate, sig.approvedCopy || sig.approvalMention, sig.draftReply].filter(Boolean).length;
   if (explicit > 1) return { next: null, unclear: true };
   if (sig.translate) return { next: "translate-only", unclear: false };
   if (sig.technicalObject) return keep;
   if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
-  if (sig.approval && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
+  if (sig.approval && ctx.draftPresented === true && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
   if (sig.targetCopy && !sig.revision && !sig.quoted &&
       (ctx.current === "draft-for-review" || (sig.ack && (ctx.correspondenceActive || ctx.correspondenceHint)))) {
     return { next: "approved-copy", unclear: false };

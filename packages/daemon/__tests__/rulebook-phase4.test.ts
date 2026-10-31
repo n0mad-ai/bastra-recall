@@ -1,3 +1,4 @@
+import {checkStopRepair} from '../src/stop-repair.js';
 /** Phase 4 parity: deterministic delivery/boundaries, explicit model judgement.
  * These fixtures simulate semantic reports; they do not prove LLM judgement. */
 import {test, before, after} from 'node:test';
@@ -22,7 +23,7 @@ const p=(sid:string)=>({session_id:sid,bastra_client:'claude-code',hook_event_na
 // Model reports may tighten only. Approval/end below use the real user-turn path.
 const report=async(sid:string,task:string,ids=['messages'])=>{
  if(task==='draft-for-review')return recordRulebookCheck(sid,RulebookCheckArgs.parse({applicable:ids,task}),catalog);
- if(task==='approved-copy'&&!(await loadSessionState(sid)).activeTask)await recordRulebookCheck(sid,{applicable:ids,task:'draft-for-review'},catalog);
+ if(task==='approved-copy'&&!(await loadSessionState(sid)).activeTask){await recordRulebookCheck(sid,{applicable:ids,task:'draft-for-review'},catalog);await checkStopRepair({session_id:sid,transcript:[{role:'assistant',content:'```\nReview draft.\n```'}]});}
  const {runTaskStep}=await import('../src/prompt-task.js');
  return runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:task==='none'?'A separate new subject':'ok',mode:task==='none'?'generic':'trivial',
  candidates:task==='none'?[{id:'other-subject',type:'project-fact'}]:[],surface:'claude-code'});
@@ -32,7 +33,7 @@ for(const [lang,incoming] of Object.entries({de:'Kannst du morgen kommen?',en:'C
  const sid=`p4-${lang}`,common=p(sid);
  const prompt=JSON.parse(await runPromptLane({...common,hook_event_name:'UserPromptSubmit',prompt:incoming},null,'http://127.0.0.1:1',undefined,()=>[],{kernel:deps.kernel}));
  assert.match(prompt.hookSpecificOutput.additionalContext,/rulebook_check/);
- const stop={...common,hook_event_name:'Stop',transcript:[{role:'user',content:incoming},{role:'assistant',content:'Review text'}]};
+ const stop={...common,hook_event_name:'Stop',transcript:[{role:'user',content:incoming},{role:'assistant',content:'```\nReview text\n```'}]};
  assert.equal(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel})).decision,'block');
  await report(sid,'draft-for-review');
  assert.notEqual(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel})).decision,'block');
