@@ -46,13 +46,12 @@ Translated fixtures and the shared replay implementation live in
 the daemon tests. These tests deliberately reproduce the gaps; a green suite
 does not turn a `GAP` report cell into a passing acceptance case.
 
-The security/fix1 suites (`rulebook-phase5-security.test.ts` and
-`rulebook-phase5-fix1.test.ts`) exercise the real Stop lane: dynamic session
-constraints, late loads after task reports, order-independent model reports,
-monotonic tightening and real user-selected channels through review/approval.
-There are no task snapshots or timestamp filters. Without a user-selected
-channel all loaded/active channels apply, with at most two repair requests.
-These fixes do not close the no-task/applicability gaps. The correspondence
-positive control resets the round before loading and uses a first Stop with
-`stop_hook_active=false`; omitting that load must fail it. Length-validation
-positive controls go through the real Stop lane, including task-before-load.
+The security/fix1/fix2 suites exercise the actual Stop lane and source writes.
+Fix2 removes session minima: current user rule revisions apply on the next
+Stop, while MCP edits/saves/archives of existing validator rules are proposals.
+Channel selection is task/context scoped, cleared on new turns without a
+matching candidate, and narrows only to a channel with a loaded/active rule.
+Compact may drop loaded-only rules while the task continues; active rules
+are the retained delivery set. This is a documented supported boundary.
+The Codex task-before-load case asserts the loaded ID and selected validator;
+omitting the load must fail it even though Codex length repair is unsupported.

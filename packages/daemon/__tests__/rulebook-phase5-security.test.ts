@@ -38,10 +38,10 @@ test('security: model order cannot choose the lax rule or set a user channel',as
   assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
  }
 });
-test('security: later reload of the same ID cannot raise a session limit',async()=>{
+test('security: trusted current same-ID source can raise the effective limit',async()=>{
  const sid='same-id';await recordRulebookCheck(sid,{applicable:['strict'],task:'draft-for-review'},catalog);
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
- await receipt(sid,'discord-dm');assert.equal((await stop(sid))?.action,'request');
+ await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);
 });
 test('security: repeated model reports and source changes can only tighten',async()=>{
  const sid='monotonic';await recordRulebookCheck(sid,{applicable:['strict'],task:'draft-for-review'},catalog);
@@ -59,12 +59,12 @@ test('security: same-ID reload retains the smaller session limit',async()=>{
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
  await receipt(sid,'discord-dm');assert.equal((await stop(sid))?.action,'request');
 });
-test('security: user-selected channel retains strict limits through reload and approval',async()=>{
+test('security: trusted user source revision is current through approval',async()=>{
  const sid='user-snapshot';await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'strict',type:'workflow',matched_recall_when:true,validator:strict}],surface:'claude-code'});
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
  await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
- await receipt(sid,'discord-dm');assert.equal((await stop(sid))?.action,'request');
+ await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);
 });
 test('security: a real user-turn email task remains bound to email despite Discord loads/model reports',async()=>{
  const sid='user-email';await legacy(sid);await mutateSessionState(sid,s=>{delete s.activeTask;});

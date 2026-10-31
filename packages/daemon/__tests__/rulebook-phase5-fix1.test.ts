@@ -26,7 +26,7 @@ test('P1: real user mail candidate → review draft → approval preserves email
  await step(sid,'Max hat mir per Mail geschrieben: Kannst du morgen kommen?',true);
  await stop(sid,'Deutscher Entwurf zur Freigabe:\n```\nJa, ich komme.\n```');
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
- await step(sid,'ok');assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
+ await step(sid,'ok',true);assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  const text='Hallo Max, '.repeat(300);assert.equal(text.length,3300);
  assert.equal((await validate(sid,text)).receipt_stored,true);
  assert.equal(repair(await stop(sid,text)),false);
@@ -41,12 +41,12 @@ test('model naming only a lax rule cannot narrow a previously loaded strict rule
  const text='x'.repeat(3200);await validate(sid,text);
  assert.equal(repair(await stop(sid,text)),true);
 });
-test('same-ID later lax load cannot relax an earlier loaded limit',async()=>{
+test('trusted current same-ID revision replaces an old limit; MCP mutations are tested in fix2',async()=>{
  const sid='reload-lax';await load(sid,'dc',discord);
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  await load(sid,'dc',{...discord,limit:10000} as typeof email);
  assert.equal((await callerSessionStore.run(sid,()=>validateArtifactHandler({text:'x'.repeat(3200),channel:'discord-dm',limit:10000,normalize:'none'}))).receipt_stored,true);
- assert.equal(repair(await stop(sid,'x'.repeat(3200))),true);
+ assert.equal(repair(await stop(sid,'x'.repeat(3200))),false);
 });
 test('without a user channel the conservative multichannel alarm exhausts after two requests',async()=>{
  const sid='unbound-mail';await load(sid,'dc',discord);await load(sid,'mail',email);

@@ -8,6 +8,7 @@ import { loadSessionState } from "./session-state.js";
 
 export type RulebookMetadata = Partial<RulebookDeclaration> & Pick<Frontmatter, "rulebook_proposed" | "rule_categories">;
 export interface ConventionSource {
+  unavailable?: boolean;
   matchesIndex?: boolean;
   hiddenFromPublic?: boolean;
   summary?: string;
@@ -42,11 +43,11 @@ export async function readConventionSource(
         matchesIndex: memory.body === parsed.body &&
           JSON.stringify({ ...memory.fm, validator: undefined }) === JSON.stringify({ ...parsed.fm, validator: undefined }),
         hiddenFromPublic: parsed.fm.sensitivity === "private",
-        ...(parsed.fm.validator ? { validator: parsed.fm.validator } : {}),
+        ...(parsed.fm.validator&&!parsed.fm.obsolete&&!parsed.fm.superseded_by ? { validator: parsed.fm.validator } : {}),
         ...(includeRuleMetadata ? { summary: parsed.fm.summary, write_origin: parsed.fm.write_origin } : {}),
       };
     } catch { return { revision }; }
-  } catch { return { revision: null }; }
+  } catch(error) { return { revision: null, ...((error as NodeJS.ErrnoException).code==='ENOENT'?{}:{unavailable:true}) }; }
 }
 
 /** One active/floor context per response, shared by index and current-source paths. */
@@ -80,7 +81,7 @@ export function indexedConventionSource(
     revision: memory.revision ?? null, matchesIndex: true,
     hiddenFromPublic: memory.fm.sensitivity === "private",
     rulebookMetadata: projectRulebookMetadata(memory.fm, context),
-    ...(memory.fm.validator ? { validator: memory.fm.validator } : {}),
+    ...(memory.fm.validator&&!memory.fm.obsolete&&!memory.fm.superseded_by ? { validator: memory.fm.validator } : {}),
     ...(includeRuleMetadata ? { summary: memory.fm.summary, write_origin: memory.fm.write_origin } : {}),
   };
 }

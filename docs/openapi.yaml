@@ -169,6 +169,60 @@
                           "applies_when": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "validator": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "tool": {
+                                "type": "string",
+                                "enum": [
+                                  "validate_artifact"
+                                ]
+                              },
+                              "channel": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "limit": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "exclusiveMinimum": true,
+                                "maximum": 9007199254740991
+                              },
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "codepoints",
+                                  "utf16"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "tool",
+                              "channel",
+                              "limit",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "archive": {
+                            "type": "boolean"
+                          },
+                          "obsolete": {
+                            "type": "boolean"
+                          },
+                          "superseded_by": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "sensitivity": {
+                            "type": "string",
+                            "enum": [
+                              "public",
+                              "team",
+                              "private"
+                            ]
                           }
                         },
                         "required": [
@@ -1868,6 +1922,60 @@
                       "applies_when": {
                         "type": "string",
                         "minLength": 1
+                      },
+                      "validator": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "tool": {
+                            "type": "string",
+                            "enum": [
+                              "validate_artifact"
+                            ]
+                          },
+                          "channel": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "limit": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991
+                          },
+                          "unit": {
+                            "type": "string",
+                            "enum": [
+                              "codepoints",
+                              "utf16"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "tool",
+                          "channel",
+                          "limit",
+                          "unit"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "archive": {
+                        "type": "boolean"
+                      },
+                      "obsolete": {
+                        "type": "boolean"
+                      },
+                      "superseded_by": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "sensitivity": {
+                        "type": "string",
+                        "enum": [
+                          "public",
+                          "team",
+                          "private"
+                        ]
                       }
                     },
                     "required": [

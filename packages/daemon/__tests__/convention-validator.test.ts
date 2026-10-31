@@ -91,7 +91,7 @@ test("action reflex gate binds explicit source metadata; load refreshes/removes 
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
 });
 
-test("public edit validates/adds/replaces/removes validator; normal load exports it and activates a must-load", async (t) => {
+test("MCP edit stages changes to an existing validator; trusted source changes and initial addition remain effective", async (t) => {
   const f = await fixture(t);
   const sid = "validator-load";
   await mutateSessionState(sid, (state) => bookPendingMustLoad(state, [input.id], "fixture"));
@@ -100,9 +100,12 @@ test("public edit validates/adds/replaces/removes validator; normal load exports
   assert.deepEqual((await loadSessionState(sid)).activeConventions?.[0]?.validator, validator);
   await assert.rejects(editMemoryHandler(f.deps, { id: input.id, frontmatter: { validator: { ...validator, limit: 0 } } }));
   await editMemoryHandler(f.deps, { id: input.id, frontmatter: { validator: { ...validator, channel: "edited-channel", unit: "utf16" } } });
-  assert.equal(matter(await readFile(f.file, "utf8")).data.validator.channel, "edited-channel");
+  assert.equal(matter(await readFile(f.file, "utf8")).data.validator.channel, validator.channel);
+  assert.equal(matter(await readFile(f.file, "utf8")).data.rulebook_proposed.validator.channel, "edited-channel");
   await editMemoryHandler(f.deps, { id: input.id, frontmatter: { validator: null } });
-  assert.equal(Object.hasOwn(matter(await readFile(f.file, "utf8")).data, "validator"), false);
+  assert.deepEqual(matter(await readFile(f.file, "utf8")).data.validator, validator);
+  assert.equal(matter(await readFile(f.file, "utf8")).data.rulebook_proposed.validator,null);
+  await f.replace(undefined);await f.vault.reindexFile(f.file);
 });
 
 test("hook recall and deeper reflex projections carry explicit frontmatter metadata", async (t) => {

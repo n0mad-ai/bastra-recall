@@ -5,6 +5,8 @@ export interface ActiveTask {
   id: string;
   kind: TaskKind;
   approvalSource?: "user-turn";
+  /** Channel selected by the current user turn for this task/generation only. */
+  validatorChannel?: string;
   since: number;
   generation: number;
 }
@@ -21,6 +23,7 @@ export function decodeActiveTask(value: unknown): ActiveTask | undefined {
   return {
     id: typeof task.id === "string" ? task.id : taskIdFor(task.kind as TaskKind, task.since),
     kind: task.kind as TaskKind, since: task.since, generation: task.generation,
+    ...(typeof task.validatorChannel==='string'&&task.validatorChannel?{validatorChannel:task.validatorChannel}:{}),
     ...(task.approvalSource === "user-turn" ? {approvalSource: "user-turn" as const} : {}),
   };
 }

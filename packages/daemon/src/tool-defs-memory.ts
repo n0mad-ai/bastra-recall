@@ -23,31 +23,7 @@ interface ToolDef {
 /** Read tools: no vault mutation, safe to run unsupervised. */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false } as const;
 
-/** Shared save/edit wire declaration; null deliberately removes the validator. */
-const VALIDATOR_INPUT = {
-  anyOf: [{
-    type: "object", additionalProperties: false,
-    properties: {
-      tool: { type: "string", enum: ["validate_artifact"] },
-      channel: { type: "string", minLength: 1 },
-      limit: { type: "integer", minimum: 1 },
-      unit: { type: "string", enum: ["codepoints", "utf16"] },
-    },
-    required: ["tool", "channel", "limit", "unit"],
-  }, { type: "null" }],
-  description: "Explicit mechanical validator for this convention. Omit to preserve on overwrite; null removes it. No validator is inferred from prose or channel names.",
-};
-
-/** New declarations need a description; MCP edits stage proposals. */
-const RULE_CATEGORIES_INPUT = {type:"array",maxItems:2,items:{type:"string",enum:["github-issues-prs","correspondence"]},description:"Fixed structural rule categories. GitHub issue/PR actions bind the first category through shell AST structure. Never infer a category from natural-language keywords. Missing categories retain legacy discovery; edits are proposals until user confirmation."};
-const RULEBOOK_INPUT = { type: "string", enum: ["always", "on-demand"],
-  description: "Rule delivery tier. New saves require applies_when. Only an explicitly user-directed new declaration binds; agent declarations and edits remain proposals." };
-const APPLIES_WHEN_INPUT = { type: "string", minLength: 1,
-  description: "One sentence describing when this rule applies, in the user's language. No keyword list. Required for a new rulebook declaration." };
-const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: false,
-  properties: { rulebook: RULEBOOK_INPUT, applies_when: APPLIES_WHEN_INPUT, rule_categories:RULE_CATEGORIES_INPUT },
-  required: ["rulebook", "applies_when"],
-  description: "Unconfirmed proposal. Excluded from the binding catalog and catalog hash until user confirmation in CLI/UI." };
+import {VALIDATOR_INPUT,RULE_CATEGORIES_INPUT,RULEBOOK_INPUT,APPLIES_WHEN_INPUT,RULEBOOK_PROPOSED_INPUT} from './tool-defs-rulebook.js';
 
 export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
@@ -694,7 +670,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "- append: add text at the end of the body (it lands before the " +
       "auto-related block, never inside it).\n" +
       "- frontmatter: patch summary, recall_when, tags, issues, related, " +
-      "confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator (null removes it). Nothing else — id, scope, type, sensitivity " +
+      "confidence, valid_until, rulebook, applies_when, rulebook_proposed or validator (changes to existing validator rules are proposals). Nothing else — id, scope, type, sensitivity " +
       "and write_origin are rejected here and belong to save_memory or a " +
       "dedicated tool. A list field (recall_when, tags, issues, related) " +
       "REPLACES the whole list: to add a trigger, send the existing entries " +
@@ -784,7 +760,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Pass superseded_by with the new memory's id — it is stamped into " +
       "the archived copy so the adoption stays auditable from both sides. " +
       "Do NOT use this as a general delete: only archive intake originals " +
-      "you just adopted, or a memory the user explicitly asked to retire.",
+      "you just adopted, or a memory the user explicitly asked to retire. Existing validator rules are preserved: MCP stages rulebook_proposed.archive until the user confirms through a user surface.",
     inputSchema: {
       type: "object",
       properties: {

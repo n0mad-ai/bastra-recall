@@ -167,6 +167,11 @@ export const RulebookProposalSchema = z.object({
   rulebook: RulebookSchema,
   rule_categories: RuleCategoriesSchema.optional(),
   applies_when: z.string().trim().min(1),
+  validator: ConventionValidatorSchema.nullable().optional(),
+  archive: z.boolean().optional(),
+  obsolete: z.boolean().optional(),
+  superseded_by: z.string().nullable().optional(),
+  sensitivity: z.enum(['public','team','private']).optional(),
 }).strict();
 
 export const FrontmatterSchema = z.object({

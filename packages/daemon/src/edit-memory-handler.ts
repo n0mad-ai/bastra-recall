@@ -56,6 +56,7 @@ import {
   ConventionValidatorSchema,
   RuleCategoriesSchema, RulebookSchema,
   resolveRulebook,
+  proposeValidatorRuleChange,
   FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
@@ -388,7 +389,7 @@ export async function editMemoryHandler(
           next.rulebook_proposed = proposal.data;
         }
         if (next.validator === null) delete next.validator;
-        return next;
+        return proposeValidatorRuleChange(fm,next);
       },
       body: (body) => {
         const next = applyBodyOps(body, args);

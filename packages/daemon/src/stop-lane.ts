@@ -1,3 +1,4 @@
+import {refreshStopValidators} from './stop-validator-source.js';
 import {recordReviewDraft} from "./stop-task.js";
 import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
@@ -87,7 +88,7 @@ const HOOK_VERSION = "0.1.0";
 export async function runStopLane(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
-  deps: { kernel?: CatalogProvider } = {},
+  deps: { kernel?: CatalogProvider; conventionOf?: (id:string)=>Promise<import('./convention-source.js').ConventionSource> } = {},
 ): Promise<string> {
   const startedAt = Date.now();
 
@@ -106,6 +107,7 @@ export async function runStopLane(
     return "{}";
   }
   if (payload.hook_event_name !== "Stop") return "{}";
+  if(deps.conventionOf&&payload.session_id)await refreshStopValidators(payload.session_id,deps.conventionOf,startedAt+150);
   if (deps.kernel) {
     try {
       const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");

@@ -4,7 +4,7 @@ import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, recordValidatorLimits, taskIdFor } from "./session-state.js";
+import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, taskIdFor } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
 import { hookAgent, hookClientEvidence, hookGateAvailable } from "./hook-surface.js";
 import { collectRulebookCatalog, cachedRulebookCatalog, withRulebookDeadline, RULEBOOK_TOOL_BUDGET_MS, type RulebookCatalogMode, type KernelCandidates } from "./rulebook-catalog.js";
@@ -89,7 +89,8 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       const beforeConventions = s.activeConventions;
       const startingTask = input.task !== (s.activeTask?.kind ?? "none");
       if (startingTask) {
-        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0 };
+        if(s.activeTask&&s.activeTask.kind!=="none")delete s.userValidatorChannel;
+        s.activeTask = { id: taskIdFor(input.task, now), kind: input.task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
         expireReceipts(s);
       }
       // A model report only adds stricter review obligations.
@@ -143,7 +144,6 @@ export async function recordRulebookLoad(sessionId: string, id: string, agentId?
     a.loaded=[...a.loaded.filter(r=>r.id!==id),{id,revision:source?.revision??null}].slice(-200);
     a.required=a.required.filter(r=>r.id!==id);
     if(!agentId && source){
-      recordValidatorLimits(s,[source.validator]);
       s.loadedConventions=[...(s.loadedConventions??[]).filter(r=>r.id!==id),{id,revision:source.revision,loadedAt:Date.now(),...(source.validator?{validator:source.validator}:{})}].slice(-200);
     }
     put(s,state);

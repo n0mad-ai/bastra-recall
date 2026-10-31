@@ -16,6 +16,8 @@ import {
   withIdClaim,
   moveToTrashUnderClaim,
   SaveMemoryInput,
+  parseMemory,
+  ConventionValidatorSchema,
 } from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
 
@@ -85,7 +87,7 @@ export async function archiveMemoryHandler(
   args: Record<string, unknown>,
   /** #464: transportgebunden — siehe private-access.ts. */
   access?: PrivateAccess,
-): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
+): Promise<{ id: string; archived_to: string; superseded_by: string | null; proposal_staged?: true; note?:string }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
     throw new Error(`invalid archive_memory args: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
@@ -109,7 +111,8 @@ export async function archiveMemoryHandler(
   // behauptete, es sei dieses Memory gewesen. Archivieren ist eine
   // besitzverändernde Operation und gehört unter denselben Claim wie ein
   // Schreiben, mit derselben autoritativen Auskunft.
-  const { archivedTo, originalPath, diffBefore } = await withIdClaim(
+  let archived;
+  try { archived = await withIdClaim(
     { vaultRoot: deps.vaultPath, id, filePath: mem.filePath, op: "archive" },
     async (claim) => {
       const located = await claim.locate();
@@ -135,6 +138,9 @@ export async function archiveMemoryHandler(
         throw new Error(
           `unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`,
         );
+      }
+      if(ConventionValidatorSchema.safeParse(parseMemory(preimage,located.filePath,0).fm.validator).success){
+        throw Object.assign(new Error('Validator archive requires user confirmation'),{validatorArchivePath:located.filePath});
       }
       // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
       // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
@@ -162,6 +168,17 @@ export async function archiveMemoryHandler(
       return { archivedTo: to, originalPath: located.filePath, diffBefore: onDisk };
     },
   );
+  } catch(error){
+    const proposalPath=(error as {validatorArchivePath?:string}).validatorArchivePath;
+    if(!proposalPath)throw error;
+    await mutateMemoryFile(proposalPath,id,{
+      precondition:raw=>{if(hiddenOnDisk(access,raw))throw new Error(`unknown memory: ${id}`);},
+      frontmatter:fm=>({...fm,rulebook_proposed:{rulebook:fm.rulebook??'on-demand',applies_when:fm.applies_when??fm.summary??'When this rule applies',...(fm.rulebook_proposed as object??{}),archive:true}}),
+    },{vaultRoot:deps.vaultPath,op:'archive_proposal'});
+    await deps.vault.reindexFile(proposalPath);
+    return {id,archived_to:'',superseded_by:null,proposal_staged:true,note:'Archive proposed, not applied. The original validator rule remains effective until user confirmation in CLI/UI.'};
+  }
+  const {archivedTo,originalPath,diffBefore}=archived;
   // #206: archiving is the one operation that takes a memory out of the active
   // index, so it is the one that most needs a record. `diff_before` keeps the
   // frontmatter as it was — the trash file is recoverable, but the log is what

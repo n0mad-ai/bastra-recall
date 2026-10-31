@@ -29,7 +29,7 @@ export async function recordReviewDraft(sessionId: string | undefined, turns: re
     if (!(s.activeConventions ?? []).some(c => c.validator) &&
         !(s.loadedConventions ?? []).some(c => c.validator) && !question?.conventions?.length) return;
     s.activeTask = { id: taskIdFor("draft-for-review", now), kind: "draft-for-review", since: now,
-      generation: s.activeTask?.generation ?? 0 };
+      generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
     expireReceipts(s);
     const asked = question?.conventions ?? [];
     if (asked.length) recordActiveConventions(s, asked.map(c => ({

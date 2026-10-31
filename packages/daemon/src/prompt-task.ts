@@ -21,7 +21,6 @@ import { currentReceipt, expireReceipts } from "./receipt-store.js";
 import {
   mutateSessionState,
   recordActiveConventions,
-  recordValidatorLimits,
   taskIdFor,
   type ActiveConvention,
   type ReadonlySessionState,
@@ -111,8 +110,8 @@ async function step(input: TaskStepInput): Promise<string | null> {
     const v=c.validator??snapshot.loadedConventions?.find(r=>r.id===c.id)?.validator??snapshot.activeConventions?.find(r=>r.id===c.id)?.validator;
     return v?.channel?[v.channel]:[];
   }))];
-  const userChannel=splitQuoted(input.prompt).own&&!signals.approval&&!signals.ack&&channels.length===1?channels[0]:undefined;
-  const channelChanges=userChannel!==undefined&&userChannel!==snapshot.userValidatorChannel;
+  const userChannel=splitQuoted(input.prompt).own&&channels.length===1&&(!signals.approval&&!signals.ack||channels[0]===snapshot.userValidatorChannel)?channels[0]:undefined;
+  const channelChanges=userChannel!==snapshot.userValidatorChannel||userChannel!==snapshot.activeTask?.validatorChannel;
 
   // Nothing in force, nothing asked, nothing starting: the common prompt costs
   // the snapshot the lane already read.
@@ -155,10 +154,12 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const persisted = await mutateSessionState(sessionId, (s) => {
     const gen = s.activeTask?.generation ?? 0;
     delete s.taskQuestion;
+    delete s.userValidatorChannel;
+    if(s.activeTask)delete s.activeTask.validatorChannel;
     // A revision that moved since the convention was set: say so once, then
     // carry the new one. Unknown before is not a change.
     const changed: string[] = [];
-    recordValidatorLimits(s);
+
     for (const e of s.activeConventions ?? []) {
       const rev = revisions.get(e.id);
       if (!revisions.has(e.id)) continue;
@@ -196,8 +197,8 @@ async function step(input: TaskStepInput): Promise<string | null> {
           : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
       })), now);
     }
-    if(userChannel&&decision.next!=="none")s.userValidatorChannel=userChannel;
-    recordValidatorLimits(s);
+    if(userChannel&&decision.next!=="none"){s.userValidatorChannel=userChannel;if(s.activeTask)s.activeTask.validatorChannel=userChannel;}
+
     if (decision.unclear) {
       s.taskQuestion = {
         at: now,

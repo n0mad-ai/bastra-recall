@@ -20,6 +20,7 @@ import type {
 } from "./save-schema.js";
 import { MemoryWriteConflictError, assertBodyTail } from "./save-schema.js";
 import { buildFrontmatter } from "./save-frontmatter.js";
+import {proposeValidatorRuleChange} from './rulebook.js';
 import { fileExists, readTarget, writeConflict } from "./save-commit.js";
 import { withIdClaim, type IdClaim } from "./id-transaction.js";
 import { sameFile } from "./file-identity.js";
@@ -380,7 +381,9 @@ async function commitMemory(
   // Aus Eingabe und Bestand wird das Frontmatter — welches Feld die Eingabe
   // gewinnt, welches der Bestand und welches wegfällt, steht in
   // `save-frontmatter.ts` jeweils am Feld.
-  const { fm, summaryTruncated } = buildFrontmatter(input, prev, id, scope);
+  const built = buildFrontmatter(input, prev, id, scope);
+  const summaryTruncated=built.summaryTruncated;
+  const fm=commit.proposeValidatorChanges?proposeValidatorRuleChange(prev,built.fm):built.fm;
 
   const body = input.body.startsWith("\n") ? input.body : `\n${input.body}`;
   const content = matter.stringify(body, fm);

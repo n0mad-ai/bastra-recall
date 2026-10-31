@@ -70,13 +70,14 @@ export function dispatchLaneRoutes(
   gateReflexPool?: () => readonly Memory[],
   /** #1305: the rule kernel's candidates for the gate's re-delivery. */
   gateKernel?: GateDeps["kernel"],
+  conventionOf?: (id:string)=>Promise<import('./convention-source.js').ConventionSource>,
 ): boolean {
   if (method !== "POST") return false;
 
   // Stop (#35/#48/#67): the highest-frequency lane — one call at the end of
   // every answer. Always answers `{}`; the suggestions go to the pending file.
   if (url === "/hook/stop") {
-    runLane<ClaudeStopPayload>(req, res, (payload, self) => runStopLane(payload, self, { kernel: gateKernel }),notice);
+    runLane<ClaudeStopPayload>(req, res, (payload, self) => runStopLane(payload, self, { kernel: gateKernel, conventionOf }),notice);
     return true;
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.

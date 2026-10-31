@@ -12,6 +12,7 @@ import {runSessionLane} from '../../../src/session-lane.js';
 import {runPromptLane} from '../../../src/prompt-lane.js';
 import {runGateLane} from '../../../src/gate-lane.js';
 import {runStopLane} from '../../../src/stop-lane.js';
+import {taskValidators} from '../../../src/task-validators.js';
 import {loadSessionState} from '../../../src/session-state.js';
 import {githubConventionGate} from '../../../src/github-conventions-lane.js';
 import {setPrimaryLanguage} from '../../../src/settings.js';
@@ -189,9 +190,11 @@ export async function runProbe(): Promise<ProbeResult> {
           const sid=`task-first-${client}-${lang}`;await prompt(sid,client,t.incoming);
           assert.equal((await check(sid,{applicable:[],task:'draft-for-review'})).ok,true);
           await load(sid,`p5-${lang}-correspondence`);
+          assert.ok((await loadSessionState(sid)).loadedConventions?.some(c=>c.id===`p5-${lang}-correspondence`&&c.validator?.limit===2000));
+          assert.ok(taskValidators(await loadSessionState(sid)).some(c=>c.validator.limit===2000&&c.validator.channel==='discord-dm'));
           const out=await stop(sid,client,t.draft.repeat(150));
           assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
-          return client==='claude-code'?'Late load activates repair on real Stop lane':'Codex repair unsupported; dynamic constraint retained';
+          return client==='claude-code'?'Late load activates repair on real Stop lane':'Codex repair unsupported; actual loaded ID and selected constraint verified';
         });
         await attempt(lang,client,'harmless-prompts',async()=>{
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){

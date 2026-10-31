@@ -10,6 +10,7 @@ import {
   SaveMemoryInput,
   assertBodyTail,
   BodySentinelError,
+  proposeValidatorRuleChange,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import type { SaveHoldEvent } from "./telemetry-events.js";
@@ -304,6 +305,7 @@ async function saveMemoryInner(
   // PLATTE nennt. Aus demselben Grund entfällt auch die Aliases-Injektion —
   // die Patch-Basis ist seither die Quelldatei, nicht der Index.
   const result = await saveMemory(deps.vaultPath, parsed.data, {
+    proposeValidatorChanges:true,
     locator: vaultLocator(deps.vault),
     // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX — und zwischen
     // Index und Schreibvorgang liegt ein Fenster, in dem die Datei auf der
@@ -357,7 +359,7 @@ async function saveMemoryInner(
                 throw new Error(`'${supersedes}' is no longer the memory the index described`);
               }
             },
-            frontmatter: (fm) => ({ ...fm, superseded_by: result.id }),
+            frontmatter: (fm) => proposeValidatorRuleChange(fm,{ ...fm, superseded_by: result.id }),
           },
           { vaultRoot: deps.vaultPath },
         );

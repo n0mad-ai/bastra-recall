@@ -273,5 +273,5 @@ export type {
   CopyBlocksNormalize,
 } from "./copy-blocks.js";
 
-export { resolveRulebook } from "./rulebook.js";
+export { resolveRulebook, proposeValidatorRuleChange } from "./rulebook.js";
 export type { RulebookDeclaration, RulebookLegacyContext } from "./rulebook.js";

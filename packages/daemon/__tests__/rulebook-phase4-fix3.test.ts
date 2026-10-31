@@ -19,7 +19,7 @@ async function seed(sid:string,channel='email'){
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  const id=channel==='email'?'email-rule':'discord-rule',validator=channel==='email'?email:discord;
  await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[{id,type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
  await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:Date.now()}];});
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
@@ -65,6 +65,6 @@ test('P2.4 docs disclose that omitting task creation bypasses repair and Phase 5
 
 test('P2.2 the largest candidate uses the selected counting unit, including Unicode',async()=>{
  const sid='unicode-decoy';await seed(sid);
- await mutateSessionState(sid,s=>{delete s.userValidatorChannel;s.validatorLimits=[];s.loadedConventions=[{id:'codepoints-rule',revision:'r',loadedAt:1,validator:{...email,channel:'fixture',limit:100,unit:'codepoints'}}];s.receipts![0]={...s.receipts![0],channel:'fixture',limit:100,unit:'codepoints'};});
+ await mutateSessionState(sid,s=>{delete s.userValidatorChannel;s.loadedConventions=[{id:'codepoints-rule',revision:'r',loadedAt:1,validator:{...email,channel:'fixture',limit:100,unit:'codepoints'}}];s.receipts![0]={...s.receipts![0],channel:'fixture',limit:100,unit:'codepoints'};});
  assert.equal((await stop(sid,'x'.repeat(101)+'\n```\n'+'😀'.repeat(60)+'\n```'))?.action,'request');
 });
