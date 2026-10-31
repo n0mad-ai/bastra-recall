@@ -18,7 +18,7 @@
  * (packages/statusline/dist) must be built first — the stub embeds it.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { STUB_BUILD_INFO, statuslineBundleDigest, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
@@ -47,6 +47,7 @@ const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}${suffix}`
 // A sibling temporary directory keeps rename on the same filesystem. Deno may
 // unlink its output before compilation; it must never see the published path.
 const finalOutput = resolve(packageRoot, output);
+mkdirSync(dirname(finalOutput), { recursive: true });
 const staging = mkdtempSync(join(dirname(finalOutput), ".bastra-hook-build-"));
 const stagedOutput = join(staging, windows ? "bastra-hook.exe" : "bastra-hook");
 const denoArgs = [

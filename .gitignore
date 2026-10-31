@@ -100,6 +100,7 @@ packages/daemon/stub/bastra-hook
 # checksums and the release manifest — written by the release workflow or the
 # installer, never by hand.
 packages/daemon/stub/bastra-hook-*
+packages/daemon/stub/.bastra-hook-build-*/
 packages/daemon/stub/bastra-hook.partial
 packages/daemon/stub/checksums/
 packages/daemon/stub/manifest.json
