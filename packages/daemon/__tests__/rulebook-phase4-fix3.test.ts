@@ -57,9 +57,9 @@ test('P2.3 additional GitHub lifecycle commands and literal mutation identifiers
  for(const cmd of ['gh issue delete 1','gh issue transfer 1 owner/repo','gh issue lock 1','gh pr ready 1',...['addComment','reopenIssue','deleteIssue'].map(name=>`gh api graphql -f 'query=mutation { ${name}(input:{}) { id } }'`)])assert.ok((await githubWriteActions(cmd)).length,cmd);
  for(const cmd of ['gh issue delete --help','gh pr ready --help',`echo 'gh issue lock 1'`,`gh api graphql -f 'query=query { viewer { login } }'`])assert.deepEqual(await githubWriteActions(cmd),[],cmd);
 });
-test('P2.4 docs disclose that omitting task creation bypasses repair and Phase 5 will probe it',async()=>{
+test('P2.4 docs disclose task-independent checks and the remaining semantic/native-host limits',async()=>{
  const doc=await readFile(new URL('../../../docs/rulebook.md',import.meta.url),'utf8');
- assert.match(doc,/omitting[^.]*task|omit[^.]*task/i);assert.match(doc,/Phase 5[^.]*test|Phase 5[^.]*probe/i);
+ assert.match(doc,/independent of activeTask/i);assert.match(doc,/model decides applicability and can lie/i);assert.match(doc,/Codex only records oversized-copy violations/i);
 });
 
 

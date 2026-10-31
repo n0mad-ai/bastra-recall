@@ -27,7 +27,7 @@ export const cleanRuleText = (s: string): string => stripFenceMarkers(s.replace(
   .replace(/\t/g, "    ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, ""));
 export const oneLine = (s: string): string => cleanRuleText(s).replace(/\s+/g, " ").trim();
 const servable = (m: Memory): boolean => !m.fm.obsolete && m.fm.sensitivity !== "private" && !m.fm.superseded_by;
-const possibleLegacy = (m: Memory): boolean => m.fm.write_origin !== "user-directed" && !m.fm.rulebook &&
+const possibleLegacy = (m: Memory): boolean => !m.fm.validator && !m.fm.rule_categories?.includes("correspondence") && m.fm.write_origin !== "user-directed" && !m.fm.rulebook &&
   (m.fm.type === "user-preference" || m.fm.type === "meta-working" || m.fm.recall_mode === "reflex");
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
 export function catalogHash(c: KernelCandidates): string {
@@ -53,7 +53,8 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     if (!servable(m)) continue;
     if (possibleLegacy(m)) unconfirmed++;
     if (!inScope(m)) continue;
-    const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
+    const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) }) ??
+      (m.fm.validator || m.fm.rule_categories?.includes("correspondence") ? {rulebook:"on-demand" as const,applies_when:m.fm.applies_when??m.fm.summary,...(m.fm.applies_when===undefined?{applies_when_derived:true as const}:{})} : undefined);
     if (!declaration) continue;
     if (opts.mode === "ids") {
       entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
@@ -62,7 +63,7 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();
     entries.push({ id: m.fm.id, title: oneLine(m.fm.title), rule_categories:m.fm.rule_categories, write_origin:m.fm.write_origin, type:m.fm.type, summary:m.fm.summary, scope: m.fm.scope, ...(m.fm.validator ? { validator: m.fm.validator } : {}),
       group: active.has(m.fm.id) ? "active-convention" : pinned.has(m.fm.id) ? "floor" :
-        m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : "user-directed",
+        m.fm.rulebook ? "explicit" : m.fm.recall_mode === "reflex" ? "reflex" : m.fm.write_origin === "user-directed" ? "user-directed" : "explicit",
       revision: m.revision ?? null, updated: m.fm.updated ?? null, stale_status: computeStaleness(m.fm),
       body: declaration.rulebook === "always" ? body : "",
       binding_hash: hash([m.fm.id, m.fm.title, m.fm.scope, declaration, body, m.fm.validator, m.fm.rule_categories]), ...declaration });

@@ -1,4 +1,5 @@
 /** Round self-report, not a proof of semantic compliance. No prompt classification. */
+import { ConventionValidatorSchema } from "@bastra-recall/core";
 import { expireReceipts } from "./receipt-store.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
@@ -13,19 +14,20 @@ import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
 
 const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
-const Actor = z.object({required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
+const RoundRule = RuleRef.extend({validator:ConventionValidatorSchema.optional()});
+const Actor = z.object({roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
-const State = z.object({ context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
+const State = z.object({ copyViolations:z.number().default(0), context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
 type CheckState = z.infer<typeof State>;
 export interface RulebookPayload { session_id?: string; agent_id?: string; bastra_client?: string; bastra_codex_version?: string; cwd?: string; stop_hook_active?: boolean }
 function read(state: { readonly rulebookCheck?: string }): CheckState {
   try { return State.parse(JSON.parse(state.rulebookCheck ?? "")); }
-  catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0, exceptions: [] }; }
+  catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0, copyViolations:0, exceptions: [] }; }
 }
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
   let found = state.actors.find(a => a.key === key);
-  if (!found) { found = { key, checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
+  if (!found) { found = { key, roundApplied:[],roundDismissed:[],repairs:0,checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
   return found;
 }
 function identity(p: RulebookPayload): string {
@@ -33,32 +35,36 @@ function identity(p: RulebookPayload): string {
   return hookAgent(p) === "main" ? "main" : "unattributed";
 }
 // Pending ordinary Stop work survives a context/round reset; checking evidence does not.
-const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0 }));
+const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0 }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
-    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, exceptions: old.exceptions });
+    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, exceptions: old.exceptions });
   });
 }
 export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCandidates): Promise<string> {
   if (!p.session_id || hookClientEvidence(p) === "replay") return "";
   let unchecked = await drainRulebookFailures(p.session_id);
   let exceptions: string[] = [];
+  let copyViolations=0;
   const persisted = await mutateSessionState(p.session_id, s => {
     const old = read(s); unchecked += old.unchecked;
-    exceptions = old.exceptions;
-    put(s, { context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0, exceptions: [] });
+    exceptions = old.exceptions;copyViolations=old.copyViolations;
+    put(s, { context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0, copyViolations:0, exceptions: [] });
   });
   if (!persisted && unchecked) await spoolRulebookFailure(p.session_id, unchecked);
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
   const count = catalog.entries.length;
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
-  const taskNote = catalog.entries.some(e=>e.validator || e.rule_categories?.includes("correspondence")) ? (de ? "Korrespondenz bei Bedarf mit rulebook_check(task:draft-for-review) verschärfen; Freigabe kommt nur vom Nutzer." : "Tighten correspondence with rulebook_check(task:draft-for-review) when relevant; only the user can approve.") : "";
+  const correspondence=catalog.entries.filter(isCorrespondenceRule).map(e=>e.id);
+  const taskNote = correspondence.length ? (de ?
+    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Nur der Nutzer kann freigeben.` :
+    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. Only the user can approve.`) : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
-    taskNote, exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
+    taskNote, copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 const ExceptionReason = z.string().trim().min(10).max(500).regex(/[\p{L}\p{N}]/u, "Explain non-applicability with substantive text.");
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
-  not_applicable: z.array(z.object({id:z.string().min(1),reason:ExceptionReason}).strict()).max(20).optional(),
+  not_applicable: z.array(z.object({id:z.string().min(1),reason:ExceptionReason}).strict()).max(10000).optional(),
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
@@ -69,19 +75,28 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
   if (input.task !== undefined && input.task !== "draft-for-review") return {ok:false,reason:"A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path; they cannot be asserted by a tool report."};
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
-  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false, invalidDismissal = false, taskConflict = false;
+  let context = "", round = 0, taskGeneration = 0, capacityExceeded = false, invalidDismissal = false, taskConflict = false, actionException=false;
   const persisted = await mutateSessionState(sessionId, s => {
     if(input.task&&s.activeTask?.kind==="translate-only"){taskConflict=true;return;}
     if (input.task !== undefined && input.task !== "none" && new Set([
       ...(s.activeConventions ?? []).map(e => e.id), ...input.applicable,
     ]).size > ACTIVE_CONVENTIONS_CAP) { capacityExceeded = true; return; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
-    if ((input.not_applicable ?? []).some(e=>!a.required.some(r=>r.id===e.id)||input.applicable.includes(e.id))) {invalidDismissal=true;return;}
+    const correspondence=catalog.entries.filter(isCorrespondenceRule);
+    if ((input.not_applicable ?? []).some(e=>(!a.required.some(r=>r.id===e.id)&&!correspondence.some(r=>r.id===e.id))||input.applicable.includes(e.id)||a.roundApplied.some(r=>r.id===e.id))) {invalidDismissal=true;return;}
     for (const skip of input.not_applicable ?? []) {
-      const required=a.required.find(r=>r.id===skip.id)!;
-      a.dismissed=[...a.dismissed.filter(r=>r.id!==skip.id),required].slice(-200);
-      a.required=a.required.filter(r=>r.id!==skip.id);state.unchecked++;
-      state.exceptions = [...new Set([...state.exceptions, skip.id])].slice(-200);
+      const required=a.required.find(r=>r.id===skip.id);
+      if(required){a.dismissed=[...a.dismissed.filter(r=>r.id!==skip.id),required].slice(-200);actionException=true;state.unchecked++;state.exceptions=[...new Set([...state.exceptions,skip.id])].slice(-200);}
+      const entry=correspondence.find(r=>r.id===skip.id);
+      if(entry)a.roundDismissed=[...a.roundDismissed.filter(r=>r.id!==skip.id),{id:entry.id,revision:entry.revision}];
+      a.required=a.required.filter(r=>r.id!==skip.id);
+    }
+    for(const entry of correspondence.filter(e=>input.applicable.includes(e.id))){
+      const prior=a.roundApplied.find(r=>r.id===entry.id)?.validator;
+      const v=entry.validator;
+      const validator=prior&&(!v||prior.channel!==v.channel||prior.unit!==v.unit||prior.limit<v.limit)?prior:v;
+      a.roundApplied=[...a.roundApplied.filter(r=>r.id!==entry.id),{id:entry.id,revision:entry.revision,validator}];
+      a.roundDismissed=a.roundDismissed.filter(r=>r.id!==entry.id);
     }
     a.checked = true; a.ids = [...new Set(input.applicable)];
     if (input.task !== undefined) {
@@ -108,8 +123,8 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     context = state.context; round = state.round; put(s, state);
   });
   if(taskConflict)return {ok:false,reason:"A model task report cannot replace the user's translate-only task. Omit task for a round check."};
-  if (invalidDismissal) return {ok:false,reason:"Only a concrete outstanding required ID can be dismissed with its reason."};
-  if (input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true});
+  if (invalidDismissal) return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule already loaded/declared applicable this round cannot be weakened by a model report."};
+  if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   if (capacityExceeded) return { ok: false, reason: `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity. No check or task change recorded; report only applicable rules or omit task for a round-only check.` };
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   return persisted ? { ok: true, context, round, applicable: input.applicable, ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
@@ -138,9 +153,13 @@ export async function recordRulebookLoad(sessionId: string, id: string, agentId?
   await mutateSessionState(sessionId, s => {
     const state=read(s),a=actor(state,agentId?`agent:${agentId}`:"main");
     const obligated=a.required.some(r=>r.id===id);
-    if(source&&!source.rulebookMetadata?.rulebook&&!source.validator&&!obligated)return;
-    if (source?.rulebookMetadata?.rulebook || obligated || !source) a.checked=true;
+    if(source&&!source.rulebookMetadata?.rulebook&&!source.validator&&!source.rulebookMetadata?.rule_categories?.includes("correspondence")&&!obligated)return;
+    if (source?.rulebookMetadata?.rulebook || source?.validator || source?.rulebookMetadata?.rule_categories?.includes("correspondence") || obligated || !source) a.checked=true;
     if(!a.ids.includes(id))a.ids.push(id);
+    if(source&&(source.validator||source.rulebookMetadata?.rule_categories?.includes("correspondence"))&&!source.hiddenFromPublic){
+      a.roundApplied=[...a.roundApplied.filter(r=>r.id!==id),{id,revision:source.revision,validator:source.validator}];
+      a.roundDismissed=a.roundDismissed.filter(r=>r.id!==id);
+    }
     a.loaded=[...a.loaded.filter(r=>r.id!==id),{id,revision:source?.revision??null}].slice(-200);
     a.required=a.required.filter(r=>r.id!==id);
     if(!agentId && source){
@@ -185,14 +204,14 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   requiredOnly?: boolean; deadline?: number; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
 } = {}): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
-  if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand")) return undefined;
+  if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand" || isCorrespondenceRule(e))) return undefined;
   if (boundary === "stop" && !["claude-code", "codex"].includes(hookClientEvidence(p))) return undefined;
   if (!p.session_id) { await spoolRulebookFailure(null); return "{}"; }
   let deny = false, unchecked = false, context = "", round = 0, requiredIds:string[]=[];
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
     context = state.context; round = state.round;
-    requiredIds=boundary==="action"?a.required.map(r=>r.id):[];
+    requiredIds=boundary==="action"?a.required.map(r=>r.id):catalog.entries.filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
     if ((!options.requiredOnly&&!a.checked) || requiredIds.length) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }
@@ -224,7 +243,7 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const attribution = identity(p) === "unattributed" ? (de ? " Zuordnung fehlt; eigener Rundenbeleg nötig, maximal zwei Ablehnungen." : " Agent attribution missing; a main-thread receipt cannot be inherited. At most two denials.") : "";
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const loadExample=JSON.stringify({id:requiredIds[0]??"rule-id",session_id:p.session_id,...(p.agent_id?{agent_id:p.agent_id}:{})});
-  const reason = requiredIds.length ? `MUST-LOAD — concrete action rules: ${requiredIds.slice(0,20).join(", ")}${requiredIds.length>20?` (+${requiredIds.length-20}; read the complete category catalog with list_rules)`:""}. Load each with load_memory(${loadExample}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.` : (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
+  const reason = boundary==="stop"&&requiredIds.length ? `Correspondence declarations missing for this round: ${requiredIds.slice(0,40).join(", ")}${requiredIds.length>40?` (+${requiredIds.length-40}; list_rules contains all IDs)`:""}. In one rulebook_check, explicitly list every applicable ID and every remaining ID in not_applicable:[{id,reason}] (at least 10 substantive characters). Loading a rule declares it applicable. applicable:[] alone cannot discharge these IDs. Do not infer approval or permission to send.` : requiredIds.length ? `MUST-LOAD — concrete action rules: ${requiredIds.slice(0,20).join(", ")}${requiredIds.length>20?` (+${requiredIds.length-20}; read the complete category catalog with list_rules)`:""}. Load each with load_memory(${loadExample}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.` : (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
   return boundary === "stop" ? JSON.stringify({ decision: "block", reason }) : JSON.stringify({ hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 }
@@ -240,4 +259,31 @@ export async function takeDeferredRulebookStop(p: RulebookPayload): Promise<bool
     const state = read(s), a = actor(state, identity(p)); pending = a.deferredStop; a.deferredStop = false; put(s, state);
   });
   return persisted && pending;
+}
+
+/** Validators imply correspondence structurally, including legacy rules. */
+export function isCorrespondenceRule(e:{validator?:unknown;rule_categories?:readonly string[]}):boolean{
+ return !!e.validator||!!e.rule_categories?.includes("correspondence");
+}
+export function roundCorrespondence(state:{readonly rulebookCheck?:string},p:RulebookPayload={bastra_client:"claude-code"}){
+ const value=read(state),a=value.actors.find(a=>a.key===identity(p));
+ return {key:`${value.context}:${value.round}:${identity(p)}`,round:value.round,rules:a?.roundApplied??[],dismissed:(a?.roundDismissed??[]).map(r=>r.id),repairs:a?.repairs??0};
+}
+/** Called only under the existing bounded Stop state claim. */
+export function claimRoundRepair(state:SessionState,p:RulebookPayload,key:string,observeOnly=false,minimum=0):number|null{
+ const current=roundCorrespondence(state,p);if(current.key!==key||current.repairs>2)return null;
+ const value=read(state),a=actor(value,identity(p)),count=Math.max(a.repairs,minimum);if(count>2)return null;
+ a.repairs=observeOnly?3:count+1;
+ if(observeOnly||count===2){value.copyViolations++;value.unchecked++;}
+ put(state,value);return count;
+}
+export function refreshRoundValidators(state:SessionState,before:{readonly rulebookCheck?:string},sources:ReadonlyMap<string,import("./convention-source.js").ConventionSource>):void{
+ const value=read(state),old=read(before);if(value.context!==old.context||value.round!==old.round)return;
+ for(const a of value.actors)for(const rule of a.roundApplied){
+  if(!old.actors.find(prior=>prior.key===a.key)?.roundApplied.some(r=>r.id===rule.id&&r.revision===rule.revision))continue;
+  const source=sources.get(rule.id);if(!source)continue;
+  rule.revision=source.revision;
+  if(source.validator&&!source.hiddenFromPublic)rule.validator=source.validator;else delete rule.validator;
+ }
+ put(state,value);
 }

@@ -1,10 +1,12 @@
 import {countCopyUnits,validateCopyBlocks} from "@bastra-recall/core";
+import {roundCorrespondence,claimRoundRepair,type RulebookPayload} from './rulebook-check.js';
 import {taskValidators} from './task-validators.js';
-/** Bounded Stop repair for review/approved tasks with loaded or active validators.
+/** Bounded Stop repair for declared round validators and legacy review/copy tasks.
  * Answer formatting never creates a task or user approval.
  * Receipts retain the known task/generation (not later byte-exact) limitation.
- * At most two requests per task/generation, then one exhaustion observation.
+ * At most two requests per repair scope; a model task report cannot reset it.
  */
+import {spoolRulebookFailure} from "./rulebook-spool.js";
 import { envOff } from "./env.js";
 import { hookClientEvidence } from "./hook-surface.js";
 import { loadTranscript, type TranscriptTurn } from "./stop-transcript.js";
@@ -16,7 +18,8 @@ export const REPAIR_MAX_ATTEMPTS = 2;
 
 export type RepairDecision =
   | { action: "request"; attempt: number }
-  | { action: "exhausted"; taskId: string; generation: number; attempts: number };
+  | { action: "exhausted"; taskId: string; generation: number; attempts: number; roundId?:string }
+  | { action: "observed"; roundId: string };
 
 /** Count a needed repair only after its bounded state mutation persisted. */
 export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?: readonly TranscriptTurn[]): Promise<RepairDecision | null> {
@@ -24,17 +27,37 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const deadline = Date.now() + 900;
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   if (!sessionId) return null;
-  if (hookClientEvidence(payload) === "codex") return null;
-  if (envOff("BASTRA_STOP_SAME_TURN")) return null;
-  const snapshot = await loadSessionState(sessionId);
+  const codex=hookClientEvidence(payload)==="codex";
+  if (envOff("BASTRA_STOP_SAME_TURN")&&!codex) return null;
+  const snapshot = withoutDismissed(await loadSessionState(sessionId),payload);
   const task = snapshot.activeTask;
-  if (!task || !["draft-for-review", "approved-copy"].includes(task.kind)) return null;
+  const legacyTask=!(payload as RulebookPayload).agent_id&&task&&["draft-for-review","approved-copy"].includes(task.kind)&&taskValidators(snapshot).length>0;
+  if(codex||!legacyTask){
+    const round=roundCorrespondence(snapshot,payload);
+    if(!round.rules.some(r=>r.validator))return null;
+    const turns=suppliedTurns??await loadTranscript(payload).catch(()=>[]);
+    const latest=turns.at(-1),response=latest?.role==="assistant"?latest.content:"";
+    const oversized=(state:ReadonlySessionState)=>roundValidators(state,payload).some(v=>{
+      const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
+      return countCopyUnits(deliveredCopy(response,contract.unit_applied),contract.unit_applied)>contract.limit;
+    });
+    if(!oversized(snapshot)||round.repairs>2)return null;
+    let decision:RepairDecision|null=null;
+    const persisted=await mutateSessionState(sessionId,s=>{
+      if(!oversized(s))return;
+      const count=claimRoundRepair(s,payload,round.key,codex);if(count===null)return;
+      decision=codex?{action:"observed",roundId:round.key}:count<2?{action:"request",attempt:count+1}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
+    },{noQueue:true,deadline});
+    if(!persisted)void spoolRulebookFailure(sessionId).catch(()=>{});
+    return persisted?decision:null;
+  }
+  if (!task) return null;
   if (!taskValidators(snapshot).length) return null;
   const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
   const latest = turns.at(-1);
   const response = latest?.role === "assistant" ? latest.content : "";
   const hasReceipt = (state: ReadonlySessionState) => {
-    const validators = taskValidators(state);
+    const validators = taskValidators(withoutDismissed(state,payload));
     if (!validators.length) return false;
     return validators.every(({validator:v})=>{
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
@@ -56,10 +79,14 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     // the snapshot wins.
     const t = s.activeTask;
     if (!t || !["draft-for-review", "approved-copy"].includes(t.kind) || t.id !== task.id || t.generation !== task.generation) return;
-    if (!taskValidators(s).length) return;
+    if (!taskValidators(withoutDismissed(s,payload)).length) return;
     if (hasReceipt(s)) return;
     const r = s.repairAttempts;
-    const count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
+    let count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
+    const round=roundCorrespondence(s,payload);
+    if(round.rules.some(r=>r.validator)){
+      const claimed=claimRoundRepair(s,payload,round.key,false,count);if(claimed===null)return;count=claimed;
+    }
     if (count > REPAIR_MAX_ATTEMPTS) return;
     s.repairAttempts = { taskId: t.id, generation: t.generation, count: count + 1 };
     decision = count < REPAIR_MAX_ATTEMPTS
@@ -99,4 +126,14 @@ function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1])
     if (count > size) { largest = block; size = count; }
   }
   return largest;
+}
+
+function withoutDismissed(state:ReadonlySessionState,p:RulebookPayload):ReadonlySessionState{
+ const excluded=new Set(roundCorrespondence(state,p).dismissed);if(!excluded.size)return state;
+ return {...state,loadedConventions:state.loadedConventions?.filter(c=>!excluded.has(c.id)),activeConventions:state.activeConventions?.filter(c=>!excluded.has(c.id))};
+}
+function roundValidators(state:ReadonlySessionState,p:RulebookPayload){
+ const all=roundCorrespondence(state,p).rules.flatMap(r=>r.validator?[r.validator]:[]);
+ const channel=state.activeTask?.validatorChannel??state.userValidatorChannel;
+ return channel&&all.some(v=>v.channel===channel)?all.filter(v=>v.channel===channel):all;
 }

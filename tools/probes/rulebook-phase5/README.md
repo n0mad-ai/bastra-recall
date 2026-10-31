@@ -26,12 +26,19 @@ IDs or user vault paths are exported in that JSON. Native hook startup and
 embedding/model latency are outside the measurement.
 
 The normal test suite runs the same replay via `rulebook-phase5.test.ts`.
-The report distinguishes unexpected failures from **expected reproduced
-gaps**: a green test run is not proof that every rule is obeyed. In particular,
-an empty applicability report can bypass correspondence loading; omitting a
-task bypasses length repair. Codex same-turn length repair is disabled even
-with a task. These are measured, not fixed by this package. Task repair has
-its own bounded requests, separate from the single rulebook Stop block.
+The replay now checks explicit per-round correspondence decisions (#1340) and
+validator enforcement without a task report (#1341). Every effective validator
+or correspondence-category rule needs its own applicable/load/not_applicable
+decision. An empty check cannot silently discharge it. One rulebook Stop block
+is allowed, then unchecked passage is reported. Claude Code gets at most two
+copy repairs; Codex records violations without same-turn length repair (#1311).
+The model can still lie in its explicit decision; there is no semantic checker.
+
+Cost controls measure 50 harmless scripted rounds (question, calculation, ack,
+code, translation): one check each and no additional Stop blocks/repairs. The
+40 deliberately unchecked harmless rounds each get the bounded first block.
+Payload bytes are measured, not LLM tokens or real-model frequency. Both former
+GAP cases are now PASS for all five languages and both host identifiers.
 
 All assertions have finite loops and HTTP deadlines; the daemon-outage probe
 launches only the repository's thin gate client, with isolated environment
@@ -39,19 +46,16 @@ and a five-second process deadline. It shuts down/restarts only disposable
 servers. The tests cannot certify installed Claude/Codex hook enforcement,
 agent semantic judgement, arbitrary language coverage or arbitrary wording.
 
-Tracked gaps: [correspondence load bypass #1340](https://github.com/n0mad-ai/bastra-recall/issues/1340)
-and [task omission #1341](https://github.com/n0mad-ai/bastra-recall/issues/1341).
-Translated fixtures and the shared replay implementation live in
-`packages/daemon/__tests__/fixtures/rulebook-phase5/` and are typechecked with
-the daemon tests. These tests deliberately reproduce the gaps; a green suite
-does not turn a `GAP` report cell into a passing acceptance case.
+Tracking: [#1340](https://github.com/n0mad-ai/bastra-recall/issues/1340) and
+[#1341](https://github.com/n0mad-ai/bastra-recall/issues/1341). Issue closure waits
+for counter-review. Translated data and shared replay live in
+`packages/daemon/__tests__/fixtures/rulebook-phase5/` and are typechecked.
 
-The security/fix1/fix2 suites exercise the actual Stop lane and source writes.
-Fix2 removes session minima: current indexed user revisions apply on the next Stop (watcher/reindex or
-the documented ~60-second reconciliation), while MCP edits/saves/archives of existing validator rules are proposals.
-Channel selection is task/context scoped, cleared on new turns without a
-matching candidate, and narrows only to a channel with a loaded/active rule.
-Compact may drop loaded-only rules while the task continues; active rules
-are the retained delivery set. This is a documented supported boundary.
-The Codex task-before-load case asserts the loaded ID and selected validator;
-omitting the load must fail it even though Codex length repair is unsupported.
+Source updates use the in-memory index only, following watcher/reindex or the
+background reconciliation. Existing rules may be edited directly by agents;
+new agent validators/declarations remain proposals. Validator-only and session
+activation/floor status cannot authorize promotion of an ordinary note. Channel
+selection needs an authored trigger in the user's own text and a matching
+current validator. Compact can drop loaded-only delivery evidence; each new
+round still requires current correspondence decisions. The Codex task-before-
+load control checks the actual loaded ID even though native length repair is off.

@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import fs from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
 import {Vault,saveMemory,mutateMemoryFile} from '@bastra-recall/core';
-import {serve} from './fixtures/rulebook-phase5/probe.js';
+import {serve,declareUnrelatedCorrespondence} from './fixtures/rulebook-phase5/probe.js';
 import {recordRulebookLoad,recordRulebookCheck} from '../src/rulebook-check.js';
 import {runTaskStep} from '../src/prompt-task.js';
 import {runStopLane} from '../src/stop-lane.js';
@@ -42,7 +42,12 @@ test('S2: an unloaded selected channel cannot filter out a loaded validator',asy
 const input=(id:string)=>({id,title:'Invented validation rule',summary:'When drafting invented messages',type:'workflow' as const,scope:'all-projects',tags:['fixture'],topic_path:['fixture'],recall_when:['fixture'],write_origin:'user-directed' as const,rulebook:'on-demand' as const,applies_when:'When drafting invented messages',validator:dc,body:'Validate the invented copy.'});
 async function fixture(id:string){const saved=await saveMemory(vault.root,input(id));await vault.reindexFile(saved.file_path);const sid=id;
  await live.post('/api/v1/load_memory',{id,session_id:sid},sid);assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[id],task:'draft-for-review',session_id:sid},sid)).ok,true);return sid;}
-const httpStop=async(sid:string)=>JSON.stringify(await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}})).includes('<copy-repair');
+const httpStop=async(sid:string)=>{
+ await declareUnrelatedCorrespondence(live,sid);
+ const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}});
+ assert.notEqual(out.decision,'block','source regression has explicitly resolved correspondence IDs');
+ return JSON.stringify(out).includes('<copy-repair');
+};
 test('current indexed user limit applies at HTTP Stop without reading a blocked vault file',async t=>{
  const sid=await fixture('user-raise'),m=vault.get(sid)!;
  await mutateMemoryFile(m.filePath,sid,{frontmatter:fm=>({...fm,validator:{...dc,limit:4000}})},{vaultRoot:vault.root});

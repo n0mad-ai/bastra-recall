@@ -19,6 +19,9 @@ import {
 } from "./stop-lane-command-input.js";
 
 export interface ClaudeStopPayload {
+  bastra_client?: string;
+  bastra_codex_version?: string;
+  agent_id?: string;
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;

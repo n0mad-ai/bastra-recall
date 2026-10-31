@@ -107,7 +107,7 @@ export async function runStopLane(
     return "{}";
   }
   if (payload.hook_event_name !== "Stop") return "{}";
-  if(deps.conventionOf&&payload.session_id)await refreshStopValidators(payload.session_id,deps.conventionOf,startedAt+150);
+  if(deps.conventionOf&&payload.session_id)await refreshStopValidators(payload.session_id,deps.conventionOf,startedAt+150,payload);
   if (deps.kernel) {
     try {
       const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");
@@ -140,12 +140,14 @@ export async function runStopLane(
       session_id: payload.session_id ?? null,
       session_known: typeof payload.session_id === "string" && payload.session_id.length > 0,
       reason: "repair_exhausted",
-      task_id: repair.taskId,
-      generation: repair.generation,
+      ...(repair.roundId?{round_id:repair.roundId}:{task_id:repair.taskId,generation:repair.generation}),
       attempts: repair.attempts,
       latency_ms_total: Date.now() - startedAt,
     });
   }
+  if(repair?.action==="observed")await appendStopEvent("non_conformance",{
+    session_id:payload.session_id??null,session_known:!!payload.session_id,reason:"copy_oversize_codex",round_id:repair.roundId,latency_ms_total:Date.now()-startedAt,
+  });
   if (payload.stop_hook_active === true && !deferredRulebookStop) return repairOutput ? JSON.stringify(repairOutput) : "{}";
 
   // Code awareness (#581): the end of a turn is a good moment to refresh the
@@ -508,15 +510,10 @@ interface StopHookTelemetry {
 }
 
 /** #1311: the approved-copy repair gave up — two requests, still no receipt. */
-interface StopNonConformance {
-  session_id?: string | null;
-  session_known: boolean;
-  reason: "repair_exhausted";
-  task_id: string;
-  generation: number;
-  attempts: number;
-  latency_ms_total: number;
-}
+type StopNonConformance = {session_id?:string|null;session_known:boolean;latency_ms_total:number} & (
+ {reason:"repair_exhausted";task_id?:string;generation?:number;round_id?:string;attempts:number} |
+ {reason:"copy_oversize_codex";round_id:string}
+);
 
 function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
   return appendStopEvent("save_eval_call", payload);

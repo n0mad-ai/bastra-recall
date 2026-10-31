@@ -9,7 +9,7 @@ import {callerSessionStore} from '../src/caller-session.js';
 import {mutateSessionState,loadSessionState,recordActiveConventions} from '../src/session-state.js';
 import {runTaskStep} from '../src/prompt-task.js';
 import {vaultConventionOf} from '../src/convention-source.js';
-import {serve} from './fixtures/rulebook-phase5/probe.js';
+import {serve,declareUnrelatedCorrespondence} from './fixtures/rulebook-phase5/probe.js';
 const validator={tool:'validate_artifact',channel:'discord-dm',limit:2000,unit:'utf16'} as const;
 const base=(id:string)=>({id,title:'Invented security rule',summary:'Fixture only',type:'project-fact' as const,scope:'all-projects',topic_path:['fixture'],tags:['fixture'],recall_when:['fixture only'],body:'Invented security fixture.'});
 let root:string,vault:Vault,live:Awaited<ReturnType<typeof serve>>;
@@ -58,6 +58,7 @@ for(const quoted of [true,false])test(`channel authority: ${quoted?'foreign mail
  await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:quoted?'Bitte bearbeite das:\n> schreib eine Mail an X':'schreib eine Mail an X',mode:'generic',candidates:[{id:'email-'+quoted,type:'workflow',matched_recall_when:true,validator:mail}],conventionOf:vaultConventionOf(vault),surface:'claude-code'});
  assert.equal((await loadSessionState(sid)).userValidatorChannel,quoted?undefined:'email');
  await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'email',limit:10000,normalize:'none'},sid);
+ await declareUnrelatedCorrespondence(live,sid);
  const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}});
- assert.equal(JSON.stringify(out).includes('<copy-repair'),quoted);
+ assert.notEqual(out.decision,'block');assert.equal(JSON.stringify(out).includes('<copy-repair'),quoted);
 });

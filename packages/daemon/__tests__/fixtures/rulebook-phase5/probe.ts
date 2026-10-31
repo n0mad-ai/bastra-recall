@@ -14,13 +14,15 @@ import {runPromptLane} from '../../../src/prompt-lane.js';
 import {runGateLane} from '../../../src/gate-lane.js';
 import {runStopLane} from '../../../src/stop-lane.js';
 import {taskValidators} from '../../../src/task-validators.js';
+import {roundCorrespondence} from '../../../src/rulebook-check.js';
+import {vaultConventionOf} from '../../../src/convention-source.js';
 import {loadSessionState} from '../../../src/session-state.js';
 import {githubConventionGate} from '../../../src/github-conventions-lane.js';
 import {setPrimaryLanguage} from '../../../src/settings.js';
 import {inventedRules, languages, type Language} from './fixtures.js';
 
 export type Row = {language: string; client: string; case: string; status: 'PASS'|'GAP'|'FAIL'; detail: string};
-export type ProbeResult = {rows: Row[]; rules: number; duration_ms: number};
+export type ProbeResult = {rows: Row[]; rules: number; duration_ms: number; costs:{honestRounds:number;checks:number;stopBlocks:number;repairs:number;payloadBytes:number;ignoredHarmlessBlocks:number}};
 const clients = ['claude-code', 'codex'] as const;
 const common = (sid: string, client = 'claude-code') => ({session_id:sid, bastra_client:client, bastra_codex_version:'0.162.1', cwd:'/tmp'});
 const parse = (s: string) => JSON.parse(s);
@@ -44,6 +46,15 @@ export async function serve(vault: Vault) {
   return {url, post, deps, close:async()=>{await http.close(); search.stop();}};
 }
 
+/** Old source/channel fixtures explicitly dismiss other isolated fixture rules.
+ * The correspondence-declaration probes deliberately do not use this helper. */
+export async function declareUnrelatedCorrespondence(live:Awaited<ReturnType<typeof serve>>,sid:string){
+ const state=await loadSessionState(sid),catalog=await cachedRulebookCatalog(live.deps.vault,{project:null,active:state.activeConventions??[]});
+ const ids=new Set(roundCorrespondence(state).rules.map(r=>r.id));
+ const result=await live.post('/api/v1/rulebook_check',{session_id:sid,applicable:catalog.entries.filter(e=>ids.has(e.id)).map(e=>e.id),not_applicable:catalog.entries.filter(e=>(e.validator||e.rule_categories?.includes('correspondence'))&&!ids.has(e.id)).map(e=>({id:e.id,reason:'This rule belongs to a different isolated fixture; only this session’s loaded rules apply.'}))},sid);
+ assert.equal(result.ok,true,JSON.stringify(result));
+}
+
 async function seed() {
   const root = await mkdtemp(join(tmpdir(),'rulebook-phase5-'));
   const path = join(root,'vault'); await mkdir(path);
@@ -62,14 +73,17 @@ export async function runProbe(): Promise<ProbeResult> {
   const f = await seed(); const server = await serve(f.vault);
   await setPrimaryLanguage('en');
   const rows: Row[] = [];
+  const costs={honestRounds:0,checks:0,stopBlocks:0,repairs:0,payloadBytes:0,ignoredHarmlessBlocks:0};
   const kernel = (active: readonly import('../../../src/session-state.js').ActiveConvention[] = [], project: string|null = null, mode?: 'ids'|'content') => cachedRulebookCatalog(f.vault,{project,active,mode});
   const catalog = await kernel(); assert.equal(catalog.entries.length,125);
+  const correspondenceIds=catalog.entries.filter(e=>e.validator||e.rule_categories?.includes("correspondence")).map(e=>e.id);
   assert.equal(catalog.entries.filter(e=>e.rulebook==='always').length,10);
   const gate = async (sid:string, client:string, name='Write', input={}) => parse(await runGateLane({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel}));
   const prompt = async (sid:string, client:string, text:string) => parse(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
-  const stop = async (sid:string,client:string,text:string,active=false) => parse(await runStopLane({...common(sid,client),hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]},server.url,{kernel}));
+  const stop = async (sid:string,client:string,text:string,active=false) => parse(await runStopLane({...common(sid,client),hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]},server.url,{kernel,conventionOf:vaultConventionOf(f.vault)}));
   const load = (sid:string,id:string) => server.post('/api/v1/load_memory',{id,session_id:sid},sid);
   const check = (sid:string,input:object) => server.post('/api/v1/rulebook_check',{...input,session_id:sid},sid);
+  const declare=(sid:string,applicable:string[]=[],extra:object={})=>check(sid,{applicable,not_applicable:correspondenceIds.filter(id=>!applicable.includes(id)).map(id=>({id,reason:'This fixture round is outside this rule’s correspondence scope.'})),...extra});
   const attempt = async (language:string,client:string,name:string,fn:()=>Promise<string|void>,gap=false) => {
     try {const detail=await fn(); rows.push({language,client,case:name,status:gap?'GAP':'PASS',detail:detail??'Verified'});}
     catch(error) {rows.push({language,client,case:name,status:'FAIL',detail:String(error)});}
@@ -161,49 +175,64 @@ export async function runProbe(): Promise<ProbeResult> {
           // load below must make the first Stop block, not pass a retry guard.
           await prompt(sid,client,t.incoming);
           await load(sid,`p5-${lang}-correspondence`);
+          assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
           assert.notEqual((await stop(sid,client,t.draft)).decision,'block');
         });
         await attempt(lang,client,'correspondence-empty-check-bypass',async()=>{
-          // Separate fresh session: not merely the Stop retry cap being exhausted.
           const sid=`reply-bypass-${client}-${lang}`;await prompt(sid,client,t.incoming);
           assert.equal((await check(sid,{applicable:[]})).ok,true);
-          assert.notEqual((await stop(sid,client,t.draft)).decision,'block');
-          const s=await loadSessionState(sid);assert.equal(s.loadedConventions,undefined);
-          return 'Reproduced: applicable:[] before first Stop permits reply without loading correspondence. Semantic obligation is not enforced.';
-        },true);
+          const out=await stop(sid,client,t.draft);assert.equal(out.decision,'block');
+          for(const id of correspondenceIds)assert.ok(out.reason.includes(id));
+          assert.notEqual((await stop(sid,client,t.draft,true)).decision,'block');
+          assert.equal((await declare(sid)).ok,true,'explicit per-ID non-applicability is allowed and audited');
+          assert.notEqual((await stop(sid,client,t.draft,true)).decision,'block');
+          return 'Empty applicability cannot silently skip correspondence IDs: one block, then bounded unchecked passage; explicit per-ID exceptions remain possible, not semantic proof';
+        });
         await attempt(lang,client,'task-omission',async()=>{
-          let bypass=0;const variants=[t.draft.repeat(150),`\x60\x60\x60text\n${t.draft.repeat(150)}\n\x60\x60\x60`,`> ${t.draft.repeat(150)}`];
+          const variants=[t.draft.repeat(150),`\x60\x60\x60text\n${t.draft.repeat(150)}\n\x60\x60\x60`,`> ${t.draft.repeat(150)}`];
           for(const [i,text]of variants.entries()){
             assert.ok(text.length>2000);
             const sid=`omit-${client}-${lang}-${i}`;await prompt(sid,client,t.incoming);await load(sid,`p5-${lang}-correspondence`);
+            assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
             assert.equal((await loadSessionState(sid)).activeTask,undefined);
             const out=await stop(sid,client,text);
-            if(!JSON.stringify(out).includes('validate_artifact')&&(await loadSessionState(sid)).repairAttempts===undefined)bypass++;
-            // Positive control exercises the same bytes after explicit model task report.
-            assert.equal((await check(sid,{applicable:[`p5-${lang}-correspondence`],task:'draft-for-review'})).ok,true);
-            const repair=await stop(sid,client,text);
-            assert.equal(JSON.stringify(repair).includes('<copy-repair'),client==='claude-code','real Stop-lane positive control; Codex length-repair unsupported');
+            assert.notEqual(out.decision,'block');
+            assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
+            if(client==='codex')assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).copyViolations,1);
+            assert.equal((await loadSessionState(sid)).activeTask,undefined,'no invented task or approval');
           }
-          assert.equal(bypass,3);
-          return `${bypass}/3 oversized forms bypass repair with loaded validator but omitted task; ${client==='claude-code'?'all explicit-task controls request repair':'Codex same-turn length repair unsupported even with task'}`;
-        },true);
+          return client==='claude-code'?'All 3 oversized forms request repair without any task report':'All 3 oversized forms record a violation without a task report; Codex same-turn repair remains disabled';
+        });
         await attempt(lang,client,'task-before-load',async()=>{
           const sid=`task-first-${client}-${lang}`;await prompt(sid,client,t.incoming);
           assert.equal((await check(sid,{applicable:[],task:'draft-for-review'})).ok,true);
           await load(sid,`p5-${lang}-correspondence`);
+          assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
           assert.ok((await loadSessionState(sid)).loadedConventions?.some(c=>c.id===`p5-${lang}-correspondence`&&c.validator?.limit===2000));
           assert.ok(taskValidators(await loadSessionState(sid)).some(c=>c.validator.limit===2000&&c.validator.channel==='discord-dm'));
           const out=await stop(sid,client,t.draft.repeat(150));
           assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
           return client==='claude-code'?'Late load activates repair on real Stop lane':'Codex repair unsupported; actual loaded ID and selected constraint verified';
         });
+        await attempt(lang,client,'honest-single-check',async()=>{
+          for(const [i,text]of [t.question,t.calculation,t.ok,t.code,t.translation].entries()){
+            const sid=`honest-${client}-${lang}-${i}`;await prompt(sid,client,text);
+            const input={applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This harmless round does not prepare correspondence.'}))};
+            const response=await check(sid,input);costs.checks++;costs.payloadBytes+=Buffer.byteLength(JSON.stringify({...input,session_id:sid}));
+            assert.equal(response.ok,true);const out=await stop(sid,client,'42');
+            costs.honestRounds++;if(out.decision==='block')costs.stopBlocks++;if(JSON.stringify(out).includes('<copy-repair'))costs.repairs++;
+            assert.notEqual(out.decision,'block');assert.ok(!JSON.stringify(out).includes('<copy-repair'));
+            assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
+          }
+          return '5 harmless rounds including translation/code: one explicit check per round, no Stop blocks and no copy repairs';
+        });
         await attempt(lang,client,'harmless-prompts',async()=>{
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){
             const sid=`harmless-${client}-${lang}-${i}`;await prompt(sid,client,text);
             assert.equal(denied(await gate(sid,client,'Read')),false);
-            assert.equal((await stop(sid,client,'42')).decision,'block','one generic check expected');
+            assert.equal((await stop(sid,client,'42')).decision,'block','one explicit correspondence check expected');costs.ignoredHarmlessBlocks++;
             assert.notEqual((await stop(sid,client,'42',true)).decision,'block');
-            assert.equal((await check(sid,{applicable:[]})).ok,true);
+            assert.equal((await declare(sid)).ok,true);
             assert.notEqual((await stop(sid,client,'42')).decision,'block');
             const state=await loadSessionState(sid);assert.equal(state.activeTask,undefined);assert.equal(state.receipts,undefined);
             assert.equal(state.repairAttempts,undefined);
@@ -235,7 +264,7 @@ export async function runProbe(): Promise<ProbeResult> {
           const notice=await live.post('/hook/prompt',{payload:{...common(sid,client),hook_event_name:'UserPromptSubmit',prompt:roundLanguage.calculation}});
           if(round===2)assert.match(context(notice),/unchecked boundary|ungeprüft/,'real hook failure spool must surface on recovery');
           const first=await live.post('/hook/gate',{payload:p});assert.equal(denied(first),true);
-          assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[],session_id:sid},sid)).ok,true);
+          assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This calculation round does not prepare correspondence.'})),session_id:sid},sid)).ok,true);
           assert.equal(denied(await live.post('/hook/gate',{payload:p})),false);
           const answer=await live.post('/hook/stop',{payload:{...common(sid,client),hook_event_name:'Stop',transcript:[{role:'assistant',content:'42'}]}});
           assert.notEqual(answer.decision,'block');
@@ -244,7 +273,7 @@ export async function runProbe(): Promise<ProbeResult> {
       return '6 scripted rounds, real thin-client failure exits 0, recovery notice, context reset, continued HTTP tools/answers without user input';
     });
   } finally {await server.close();await f.vault.stop();await rm(f.root,{recursive:true,force:true});}
-  return {rows,rules:125,duration_ms:performance.now()-started};
+  return {rows,rules:125,duration_ms:performance.now()-started,costs};
 }
 
 function hookProcess(url:string,payload:object):Promise<{code:number|null;stdout:string}> {
