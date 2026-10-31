@@ -25,8 +25,8 @@ test('audit1: refusal and questions never grant approval, even after an actual d
  const sid='refusal-'+i;await draft(sid);await stop(sid,'```\nKurzer Vorschlag.\n```');await step(sid,prompt);assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy',prompt);
  }
 }));
-test('audit1: model draft declaration alone cannot make a bare yes user approval',async()=>sandbox(async()=>{
- await draft('unseen');await step('unseen','ja');assert.equal((await loadSessionState('unseen')).activeTask?.kind,'draft-for-review');
+test('audit2: clear owner approval recovers an active draft with unavailable evidence',async()=>sandbox(async()=>{
+ await draft('unseen');await step('unseen','ja');assert.equal((await loadSessionState('unseen')).activeTask?.kind,'approved-copy');
  await stop('unseen','```\nKurzer Vorschlag.\n```');await step('unseen','passt');assert.equal((await loadSessionState('unseen')).activeTask?.approvalSource,'user-turn');
  await draft('compound');await stop('compound','```\nKurzer Vorschlag.\n```');await step('compound','ok, mach die englische Fassung');assert.equal((await loadSessionState('compound')).activeTask?.kind,'approved-copy');
 }));
@@ -38,7 +38,7 @@ test('audit2: earlier assistant copy survives tools, system messages and the sho
 test('audit2: a genuine new user boundary excludes old assistant text; injected user text does not',async()=>sandbox(async()=>{
  await recordRulebookCheck('boundary',{applicable:['copy-rule']},catalog);
  assert.equal(await checkStopRepair(payload('boundary'),[{role:'assistant',content:'x'.repeat(5000)},{role:'user',content:'Neue Frage'},{role:'assistant',content:'Kurz.'}]),null);
- assert.equal((await checkStopRepair(payload('boundary'),[{role:'assistant',content:'x'.repeat(5000)},{role:'user',content:'<system-reminder>Hook</system-reminder>',isMeta:true},{role:'assistant',content:'Kurz.'}]))?.action,'request');
+ assert.equal((await checkStopRepair(payload('boundary'),[{role:'assistant',content:'```\n'+'x'.repeat(5000)+'\n```'},{role:'user',content:'<system-reminder>Hook</system-reminder>',isMeta:true},{role:'assistant',content:'Kurz.'}]))?.action,'request');
 }));
 test('audit3: model draft retains the exact index131 zero-repair priority (documented prose limitation)',async()=>sandbox(async()=>{
  const text=await readFile(new URL('./fixtures/release118-draft-index131.txt',import.meta.url),'utf8');await draft('real');for(let i=0;i<3;i++)assert.equal(await stop('real',text),null);
@@ -49,14 +49,14 @@ test('audit4: draft quotes of the incoming original never count, fences still do
 }));
 test('audit5: validated copy followed by an ordinary question ends copy task and avoids prose repairs',async()=>sandbox(async()=>{
  await approved('followup');assert.equal(await stop('followup','```\nKurze geprüfte Kopie.\n```'),null);
- await step('followup','Wie ist eigentlich der Unterschied zwischen Routinen und Skills in deinem Plan?');assert.equal((await loadSessionState('followup')).activeTask?.kind,'none');
+ await runTaskStep({sessionId:'followup',prompt:'Wie ist eigentlich der Unterschied zwischen Routinen und Skills in deinem Plan?',snapshot:await loadSessionState('followup'),mode:'generic',candidates:[{id:'other-topic',type:'project-fact'}],surface:'fixture'});assert.equal((await loadSessionState('followup')).activeTask?.kind,'none');
  await beginRulebookRound(payload('followup'),catalog);assert.equal((await recordRulebookCheck('followup',{applicable:[],not_applicable:[{category:'correspondence',reason:'Technical question without message composition'}]},catalog)).ok,true);
  assert.equal(await stop('followup','Erklaerung '.repeat(300)),null);
 }));
 
-test('audit1: worker output and progress text cannot establish a main-thread draft',async()=>sandbox(async()=>{
+test('audit2: observed progress blocks approval; worker output leaves main evidence unavailable',async()=>sandbox(async()=>{
  for (const [sid,text,agent] of [['progress','Fertig.',undefined],['child','```\nKurzer Entwurf.\n```','worker']] as const) {
-  await draft(sid);await checkStopRepair({...payload(sid),agent_id:agent,transcript:[{role:'assistant',content:text}]});await step(sid,'ja');assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review',sid);
+  await draft(sid);await checkStopRepair({...payload(sid),agent_id:agent,transcript:[{role:'assistant',content:text}]});await step(sid,'ja');assert.equal((await loadSessionState(sid)).activeTask?.kind,agent?'approved-copy':'draft-for-review',sid);
  }
 }));
 
@@ -66,24 +66,30 @@ test('audit1: real worker Stop cannot create a main review task with draft evide
  await step('worker-lane','ja');assert.notEqual((await loadSessionState('worker-lane')).activeTask?.kind,'approved-copy');assert.equal((await loadSessionState('worker-lane')).activeTask,undefined);
 }));
 
-test('audit1: pure task decision requires explicit draft evidence for bare acknowledgements',()=>{
+test('audit2: unknown draft evidence permits clear approval; observed non-draft does not',()=>{
  const ctx={current:'draft-for-review' as const,questionOpen:false,mode:'trivial' as const,hitActive:false};
- assert.equal(decideTask(taskSignals('ja'),ctx).next,null);assert.equal(decideTask(taskSignals('passt'),{...ctx,draftPresented:true}).next,'approved-copy');
+ assert.equal(decideTask(taskSignals('ja'),ctx).next,'approved-copy');assert.equal(decideTask(taskSignals('ja'),{...ctx,draftPresented:false}).next,null);assert.equal(decideTask(taskSignals('passt'),{...ctx,draftPresented:true}).next,'approved-copy');
 });
 test('audit1: complete positive copy clauses remain extensible through the runtime lexicon',async()=>sandbox(async()=>{
- await draft('fr-unknown');await step('fr-unknown','ok, donne la version française');assert.equal((await loadSessionState('fr-unknown')).activeTask?.kind,'draft-for-review','a known ack does not approve an unlisted clause');
+ await draft('fr-unknown');await step('fr-unknown','ok, donne la version française');assert.equal((await loadSessionState('fr-unknown')).activeTask?.kind,'approved-copy','sentence-opening approval does not need a complete-clause vocabulary');
  const dir=join(process.env.BASTRA_HOOK_STATE_DIR!,'lexicon');await mkdir(dir);await writeFile(join(dir,'target-copy-request.txt'),'donne la version française\n');await writeFile(join(dir,'task-approval.txt'),'oui\n');
  const old=process.env.BASTRA_LEXICON_DIR;process.env.BASTRA_LEXICON_DIR=dir;
  try{await draft('fr');await step('fr','oui, donne la version française');assert.equal((await loadSessionState('fr')).activeTask?.kind,'approved-copy');
  await draft('fr-no');await step('fr-no','non, donne la version française');assert.equal((await loadSessionState('fr-no')).activeTask?.kind,'draft-for-review');}
  finally{if(old===undefined)delete process.env.BASTRA_LEXICON_DIR;else process.env.BASTRA_LEXICON_DIR=old;}
 }));
-test('audit2: individual messages are not concatenated, but earlier visible oversize persists through bounded corrections',async()=>sandbox(async()=>{
+test('audit2: separate messages stay separate; only new offending output consumes another repair attempt',async()=>sandbox(async()=>{
  await recordRulebookCheck('separate',{applicable:['copy-rule']},catalog);
  assert.equal(await checkStopRepair(payload('separate'),[{role:'assistant',content:'x'.repeat(1100)},{role:'assistant',content:'y'.repeat(1100)}]),null);
  await recordRulebookCheck('historical',{applicable:['copy-rule']},catalog);
  const turns=[{role:'assistant',content:'```\n'+'x'.repeat(5000)+'\n```'},{role:'user',source:'agent',content:'A harness handback'},{role:'assistant',content:'```\nCorrected short text.\n```'}];
- for(const action of ['request','request','exhausted'])assert.equal((await checkStopRepair({...payload('historical'),stop_hook_active:true},turns))?.action,action);
+ assert.equal((await checkStopRepair({...payload('historical'),stop_hook_active:true},turns))?.action,'request');
+ turns.push({role:'assistant',content:'```\nCorrected after the repair request.\n```'});
+ assert.equal(await checkStopRepair({...payload('historical'),stop_hook_active:true},turns),null);
+ for(const action of ['request','exhausted']) {
+  turns.push({role:'assistant',content:'```\n'+'x'.repeat(5000)+'\n```'});
+  assert.equal((await checkStopRepair({...payload('historical'),stop_hook_active:true},turns))?.action,action);
+ }
  assert.equal(await checkStopRepair({...payload('historical'),stop_hook_active:true},turns),null);
 }));
 test('audit3: the remaining model-draft prose bypass is explicit; fenced copy is still strict',async()=>sandbox(async()=>{
@@ -112,8 +118,8 @@ test('audit1 real index131: model draft → exact unfenced reply → passt prese
 }));
 test('audit1 real index131: worker copy of the exact draft and ordinary progress headings do not approve main',async()=>sandbox(async()=>{
  const text=await readFile(new URL('./fixtures/release118-draft-index131.txt',import.meta.url),'utf8');
- await draft('real-worker');await checkStopRepair({...payload('real-worker'),agent_id:'worker',transcript:[{role:'assistant',content:text}]});await step('real-worker','passt');assert.equal((await loadSessionState('real-worker')).activeTask?.kind,'draft-for-review');
- for(const [i,content] of ['**Status**\n\nFertig.','# Progress\n\nWorking.','**Deutscher Entwurf fehlt**\n\nFertig.'].entries()) {const sid='progress-heading-'+i;await draft(sid);await stop(sid,content);await step(sid,'passt');assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review',content);}
+ await draft('real-worker');await checkStopRepair({...payload('real-worker'),agent_id:'worker',transcript:[{role:'assistant',content:text}]});await step('real-worker','passt');assert.equal((await loadSessionState('real-worker')).activeTask?.kind,'approved-copy');
+ for(const [i,content] of ['**Status**\n\nFertig.','# Progress\n\nWorking.','**Deutscher Entwurf fehlt**\n\nFertig.'].entries()) {const sid='progress-heading-'+i;await draft(sid);await stop(sid,content);await step(sid,'passt');assert.equal((await loadSessionState(sid)).activeTask?.kind,content.startsWith('Ich schreibe')?'approved-copy':'draft-for-review',content);}
 }));
 
 test('audit1 review captions: complete Markdown headings need no colon, mentions and missing bodies do not attest output',async()=>sandbox(async()=>{
@@ -121,6 +127,6 @@ test('audit1 review captions: complete Markdown headings need no colon, mentions
   const sid='review-caption-'+i;await draft(sid);await stop(sid,heading+'\n\nHallo Alex, bitte prüfe die Frage.');await step(sid,'passt');assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy',heading);
  }
  for(const [i,content] of ['Ich schreibe einen Deutschen Entwurf.\n\nFertig.','**Deutscher Entwurf**','## Deutscher Entwurf fehlt\n\nFertig.'].entries()) {
-  const sid='no-review-caption-'+i;await draft(sid);await stop(sid,content);await step(sid,'passt');assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review',content);
+  const sid='no-review-caption-'+i;await draft(sid);await stop(sid,content);await step(sid,'passt');assert.equal((await loadSessionState(sid)).activeTask?.kind,content.startsWith('Ich schreibe')?'approved-copy':'draft-for-review',content);
  }
 }));

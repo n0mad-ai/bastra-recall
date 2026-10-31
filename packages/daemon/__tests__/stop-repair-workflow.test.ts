@@ -111,7 +111,7 @@ async function exhaustion(sid: string): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
-test("DM announcement → draft → ok → validation receipt → Stop without repair; edit preserves receipt (P2 hash limit)", async () => {
+test("DM announcement → draft → ok → validation receipt → Stop; owner revision requires validation again", async () => {
   const sid = "workflow-validated-dm";
   await approved(sid);
   const validation = await callerSessionStore.run(sid, () => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
@@ -128,11 +128,13 @@ test("DM announcement → draft → ok → validation receipt → Stop without r
   assert.match(await prompt(sid, "zweiten Satz kürzer"), /approved-copy/);
   const edited = await loadSessionState(sid);
   assert.deepEqual(edited.activeTask, before.activeTask);
-  assert.deepEqual(edited.receipts, before.receipts);
+  assert.equal(edited.receipts, undefined);
+  assert.match(await stop(sid), /copy-repair/);
+  await callerSessionStore.run(sid, () => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
   assert.equal(await stop(sid), "{}");
-  // Known P2: modified output without revalidation still matches task+generation.
+  // Known P2: model-only edits without a new owner revision are not byte-bound.
   assert.equal(await stop(sid, "Hallo Sam, morgen kommt das Paket. Adresse bitte."), "{}");
-  assert.equal((await loadSessionState(sid)).repairAttempts, undefined);
+  assert.equal((await loadSessionState(sid)).repairAttempts?.count, 1);
   assert.deepEqual(await exhaustion(sid), []);
 });
 

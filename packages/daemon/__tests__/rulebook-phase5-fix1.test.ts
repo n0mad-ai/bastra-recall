@@ -52,10 +52,15 @@ test('trusted current same-ID revision replaces an old limit; MCP mutations are 
 test('without a user channel the conservative multichannel alarm exhausts after two requests',async()=>{
  const sid='unbound-mail';await load(sid,'dc',discord);await load(sid,'mail',email);
  await step(sid,'Max hat mir geschrieben: Kannst du morgen kommen?');
- await stop(sid,'Deutscher Entwurf zur Freigabe:\n```\nJa.\n```');await step(sid,'ok');
+ await stop(sid,'Deutscher Entwurf zur Freigabe:\n```\nJa, ich komme.\n```');await step(sid,'ok');
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
  const text='Hallo Max, '.repeat(300);await validate(sid,text);
- const results=[];for(let i=0;i<4;i++)results.push(repair(await stop(sid,text)));
+ const transcript:{role:string;content:string}[]=[];
+ const results=[];for(let i=0;i<4;i++){
+  transcript.push({role:'assistant',content:'```\n'+text+'\n```'});
+  results.push(repair(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript},'http://127.0.0.1:1'))));
+ }
  assert.deepEqual(results,[true,true,false,false]);
  assert.equal((await loadSessionState(sid)).repairAttempts?.count,3);
 });

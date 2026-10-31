@@ -452,11 +452,19 @@ export const DEFAULT_TRANSLATE_ONLY_CUES_BY_LANGUAGE: Readonly<Record<string, re
   en: ["translate\\s+only", "only\\s+translate", "just\\s+translate", "translation\\s+only"],
 };
 
-/** A whole short prompt that approves the draft under review — never a substring. */
+/** Sentence-opening acknowledgements; the classifier checks the remaining clause. */
 export const DEFAULT_TASK_APPROVAL_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  de: ["ok", "okay", "passt", "passt\\s+so", "ja", "go", "los", "freigegeben"],
-  en: ["ok", "okay", "yes", "go", "approved", "lgtm"],
+  de: ["ok", "okay", "pass+t?", "past+t?", "passt", "ja+", "jo", "jep", "jup", "jawohl", "klar", "gut\\s+so", "sieht\\s+gut\\s+aus", "klingt\\s+gut", "perfekt", "super", "top", "mach\\s+so", "so\\s+machen", "kannst\\s+du\\s+so\\s+schicken", "schick\\s+raus", "go", "los", "freigegeben", "(?:das\\s+)?(?:ist\\s+)?(?:ok|okay|freigegeben|passt)", "hiermit\\s+freigegeben", "so\\s+freigegeben", "geht\\s+so\\s+ok", "oke+y?", "okk", "ojk?"],
+  en: ["ok", "okay", "yes", "yep", "yup", "sure", "go", "approved", "lgtm", "looks\\s+good", "sounds\\s+good", "good\\s+to\\s+go", "ship\\s+it", "fine"],
+  symbols: ["👍"],
 };
+
+/** Negative, conditional, interrogative or revision tails cannot grant approval. */
+export function approvalBlockCues(): string[] {
+  return loadCues("approval-block", ["nicht", "noch\\s+nicht", "kein\\p{L}*", "nein", "nee", "nö", "ned", "no", "not", "never", "don['’]?t", "do\\s+not", "warte", "moment", "stop", "wait", "hold\\s+on", "aber", "but", "wenn", "if", "fragezeichen", "ist", "wäre", "waere", "is", "would", "kürzer", "kuerzer", "shorter"]);
+}
+export function approvalClosingCues(): string[] { return loadCues("approval-closing", ["aber", "but"]); }
+export function approvalQuestionTailCues(): string[] { return loadCues("approval-question-tail", ["das(?:\\s|$)(?!passt)"]); }
 
 /** Complete positive approval phrases, including approved channel clauses.
  * Also usable as an explicit answer to the choice line; never substring consent. */
@@ -534,7 +542,7 @@ const TARGET_COPY_CUES: Readonly<Record<string, readonly string[]>> = {
 const TARGET_COPY_REQUEST_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: [
     "(?:auf\\s+)?englisch(?:e\\s+(?:fassung|version))?(?:\\s+bitte)?",
-    "(?:mach(?:\\s+mal)?(?:\\s+die)?\\s+)(?:englisch|englische\\s+(?:fassung|version))",
+    "(?:dann\\s+)?(?:mach(?:\\s+mal)?(?:\\s+die)?\\s+)(?:englisch|englische\\s+(?:fassung|version))",
     "(?:dann|und\\s+jetzt)\\s+englisch",
     "(?:ü|ue)bersetz(?:e)?(?:\\s+mal)?(?:\\s+ins\\s+englische)?",
   ],
@@ -547,16 +555,18 @@ export function targetCopyRequestCues(): string[] {
   return loadCues("target-copy-request", Object.values(TARGET_COPY_REQUEST_CUES_BY_LANGUAGE).flat());
 }
 const COPY_REVISION_CUES: Readonly<Record<string, readonly string[]>> = {
-  de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern"],
-  en: ["but", "shorter", "wrong", "correct", "revise", "change"],
+  de: ["aber", "kürzer", "kuerzer", "falsch", "korrigier\\p{L}*", "ändern", "aendern", "raus", "noch\\s*mal", "noch\\s+einmal", "neu\\s+schreiben", "schreib\\p{L}*\\s+es\\s+neu", "persönlicher", "persoenlicher"],
+  en: ["but", "shorter", "wrong", "correct", "revise", "change", "drop", "friendlier", "again"],
 };
 const ASSISTANT_REVIEW_CUES: Readonly<Record<string, readonly string[]>> = {
-  de: ["antwortvorschlag", "deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
-  en: ["german\\s+draft(?:\\s+for\\s+review)?"],
+  de: ["antwortvorschlag", "entwurf", "antwortentwurf", "vorschlag", "deutsch\\p{L}*\\s+(?:entwurf|fassung)(?:\\s+zur\\s+(?:freigabe|prüfung|pruefung))?"],
+  en: ["draft", "german\\s+draft(?:\\s+for\\s+review)?"],
 };
 export function sendPersonCues(): string[] { return loadCues("send-person", Object.values(DEFAULT_SEND_PERSON_CUES_BY_LANGUAGE).flat()); }
 export function targetCopyCues(): string[] { return loadCues("target-copy", Object.values(TARGET_COPY_CUES).flat()); }
 export function copyRevisionCues(): string[] { return loadCues("copy-revision", Object.values(COPY_REVISION_CUES).flat()); }
+/** Referring to copy keeps context; it is not an instruction to rewrite it. */
+export function copyReferenceCues(): string[] { return loadCues("copy-reference", ["absatz", "absätze", "absaetze", "paragraph", "anrede", "salutation"]); }
 export function assistantReviewCues(): string[] { return loadCues("assistant-review", Object.values(ASSISTANT_REVIEW_CUES).flat()); }
 
 /** Short recipient follow-ups need a correspondence context to avoid file-writing cues. */

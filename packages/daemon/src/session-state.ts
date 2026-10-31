@@ -38,6 +38,7 @@ import { envInt } from "./env.js";
 import { resolveStatePath } from "./state-path.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { decodeActiveTask, taskIdFor, type ActiveTask } from "./task-state.js";
+import { parseRepairWindows, type RepairWindows } from "./stop-repair-window.js";
 export { taskIdFor, type ActiveTask } from "./task-state.js";
 
 export interface ShownEntry {
@@ -185,6 +186,9 @@ export interface SessionState {
    *  Counted per task and generation, not per artifact hash, so an edit does
    *  not reset the cap; it expires with the task like `receipts`. */
   repairAttempts?: RepairAttempts;
+  /** Last transcript position observed when requesting repair, per actor/scope.
+   * Only digests are retained; old offending text must not defeat a correction. */
+  repairWindows?: RepairWindows;
 }
 
 /** #1311: how often the Stop lane asked task `taskId` in `generation` for a receipt. */
@@ -290,6 +294,7 @@ export interface ReadonlySessionState {
   readonly correspondenceContext?: Readonly<CorrespondenceContext>;
   readonly receipts?: readonly Readonly<ArtifactReceipt>[];
   readonly repairAttempts?: Readonly<RepairAttempts>;
+  readonly repairWindows?: Readonly<RepairWindows>;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -432,6 +437,7 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
     if (repair && typeof repair.taskId === "string" && typeof repair.generation === "number" && typeof repair.count === "number") {
       state.repairAttempts = { taskId: repair.taskId, generation: repair.generation, count: repair.count };
     }
+    if (parsed.repairWindows !== undefined) state.repairWindows = parseRepairWindows(parsed.repairWindows);
     const question = parsed.correspondenceContext;
     if (question && typeof question.at === "number" && typeof question.generation === "number") {
       const conventions = Array.isArray(question.conventions)

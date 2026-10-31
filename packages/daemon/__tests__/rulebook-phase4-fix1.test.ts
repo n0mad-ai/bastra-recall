@@ -132,8 +132,10 @@ test('model tightening cannot remove validators or reset a running repair budget
  const p={session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'}]};
  assert.equal((await checkStopRepair(p))?.action,'request');
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
+ p.transcript.push({role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'});
  assert.equal((await checkStopRepair(p))?.action,'request');
  await recordRulebookCheck(sid,{applicable:['issue-rule'],task:'draft-for-review'},catalog);
+ p.transcript.push({role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'});
  assert.equal((await checkStopRepair(p))?.action,'exhausted');
  assert.equal(await checkStopRepair(p),null);
  assert.deepEqual((await loadSessionState(sid)).loadedConventions?.find(c=>c.id==='message-rule')?.validator,validator);

@@ -85,7 +85,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
   const activeIds = new Set((snapshot.activeConventions ?? []).map((e) => e.id));
   const signals=taskSignals(input.prompt);
   const decision = decideTask(signals, {
-    draftPresented: snapshot.activeTask?.draftPresented === true,
+    draftPresented: snapshot.activeTask?.draftPresented,
     current,
     questionOpen,
     correspondenceActive: current !== "none" ||
@@ -100,11 +100,6 @@ async function step(input: TaskStepInput): Promise<string | null> {
   });
   // A validated copy contract does not make the next ordinary explanation a
   // new outgoing message. Retain it for explicit copy/revision instructions.
-  if (current === "approved-copy" && currentReceipt(snapshot) && decision.next === null &&
-      !signals.revision && !signals.reply && !signals.sendPerson && !signals.recipientFollowup &&
-      !signals.targetCopy && !signals.approval && !signals.approvedCopy && !signals.announce && !signals.draftReply && !signals.quoted) {
-    decision.next = "none";
-  }
   // A task that starts — including an explicit own follow-up — puts the
   // conventions in force; "none" never does.
   const entering = decision.next !== null && decision.next !== "none";
@@ -138,7 +133,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
 
   // Nothing in force, nothing asked, nothing starting: the common prompt costs
   // the snapshot the lane already read.
-  if (activeIds.size === 0 && current === "none" && !snapshot.correspondenceContext && activate.length === 0 && !decision.unclear && !channelChanges) {
+  if (activeIds.size === 0 && current === "none" && !entering && !snapshot.correspondenceContext && activate.length === 0 && !decision.unclear && !channelChanges) {
     return null;
   }
 
@@ -164,7 +159,7 @@ async function step(input: TaskStepInput): Promise<string | null> {
       (input.conventionOf !== undefined && JSON.stringify(sources.get(e.id)?.validator) !== JSON.stringify(e.validator)));
   });
   const needsWrite =
-    kindChanges || activate.length > 0 || decision.unclear || snapshot.correspondenceContext !== undefined || revisionDrift || channelChanges;
+    kindChanges || (current !== "none" && signals.revision) || activate.length > 0 || decision.unclear || snapshot.correspondenceContext !== undefined || revisionDrift || channelChanges;
 
   if (!needsWrite) {
     return formatActiveConventionsBlock(
@@ -176,6 +171,11 @@ async function step(input: TaskStepInput): Promise<string | null> {
   let view: ActiveConventionsView | null = null;
   const persisted = await mutateSessionState(sessionId, (s) => {
     const gen = s.activeTask?.generation ?? 0;
+    if (signals.revision) {
+      if (s.repairWindows?.main) delete s.repairWindows.main.delivered;
+      if (current === "approved-copy") delete s.receipts;
+    }
+    if (s.activeTask?.kind === "draft-for-review" && signals.revision) s.activeTask.draftPresented = false;
     delete s.correspondenceContext;
     delete s.userValidatorChannel;
     if(s.activeTask)delete s.activeTask.validatorChannel;

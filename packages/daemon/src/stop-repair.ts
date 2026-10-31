@@ -11,7 +11,8 @@ import { envOff } from "./env.js";
 import { hookClientEvidence } from "./hook-surface.js";
 import { loadTranscript, type TranscriptTurn } from "./stop-transcript.js";
 import { loadSessionState, mutateSessionState, type ReadonlySessionState } from "./session-state.js";
-import { hasReviewDraft } from "./stop-task.js";
+import { recordDraftPresentation } from "./stop-task.js";
+import { repairCutoff, repairWindow } from "./stop-repair-window.js";
 import { ownerPromptText } from "./system-turn.js";
 import type { ClaudeStopPayload } from "./stop-transcript.js";
 
@@ -30,31 +31,45 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   if (!sessionId) return null;
   const codex=hookClientEvidence(payload)==="codex";
+  const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
+  if (!payload.agent_id) await recordDraftPresentation(sessionId, turns);
   if (envOff("BASTRA_STOP_SAME_TURN")&&!codex) return null;
   const snapshot = await loadSessionState(sessionId);
   const task = snapshot.activeTask;
-  const turns = suppliedTurns ?? await loadTranscript(payload).catch(() => []);
-  const responses = currentAssistantTexts(turns);
-  // Only actual output, never a model task declaration, establishes that the
-  // owner had something to review. Bound it to the same task/generation.
-  if (!payload.agent_id && task?.kind === "draft-for-review" && !task.draftPresented && currentAssistantTexts(turns, task.since).some(text => hasReviewDraft(text))) {
-    await mutateSessionState(sessionId, s => {
-      if (s.activeTask?.kind === "draft-for-review" && s.activeTask.id === task.id && s.activeTask.generation === task.generation) s.activeTask.draftPresented = true;
-    }, { noQueue: true, deadline });
-  }
   const legacyTask=!(payload as RulebookPayload).agent_id&&task&&["draft-for-review","approved-copy"].includes(task.kind)&&taskValidators(snapshot).length>0;
+  const actor=payload.agent_id||"main";
+  // Without stored rulebook state its default context is freshly generated on
+  // every read. Legacy tasks still need a stable watermark across Stops.
+  const scope=snapshot.rulebookCheck?roundCorrespondence(snapshot,payload).key:`legacy:${task?.id??"none"}:${task?.generation??0}:${actor}`;
+  const responsesFor=(state:ReadonlySessionState)=>currentAssistantTexts(turns,repairCutoff(state.repairWindows?.[actor],scope,turns));
+  const saveWindow=(state:import('./session-state.js').SessionState)=>{
+    (state.repairWindows??={})[actor]=repairWindow(scope,turns,state.repairWindows?.[actor]?.delivered);
+  };
+  const markDelivered=async(eligible:(state:ReadonlySessionState)=>boolean)=>{
+    if(task?.kind!=="approved-copy"||!responsesFor(snapshot).length)return;
+    await mutateSessionState(sessionId,s=>{
+      if(s.activeTask?.id!==task.id||s.activeTask.generation!==task.generation||!eligible(s))return;
+      saveWindow(s);s.repairWindows![actor]!.delivered=`${task.id}:${task.generation}`;
+    },{noQueue:true,deadline});
+  };
   if(codex||!legacyTask){
     const round=roundCorrespondence(snapshot,payload);
     if(!round.rules.some(r=>r.validator))return null;
     const oversized=(state:ReadonlySessionState)=>roundValidators(state,payload).some(v=>{
       const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
-      return responses.some(response=>countCopyUnits(deliveredCopy(response,contract.unit_applied,includeProse(state,payload)),contract.unit_applied)>contract.limit);
+      const responses=responsesFor(state);
+      return responses.some((response,i)=>countCopyUnits(deliveredCopy(response,contract.unit_applied,includeProse(state,payload)&&i===responses.length-1,includeQuotes(state,payload)),contract.unit_applied)>contract.limit);
     });
-    if(!oversized(snapshot)||round.repairs>2)return null;
+    if(!oversized(snapshot)){
+      await markDelivered(s=>!oversized(s)&&taskReceiptSatisfied(s,payload));
+      return null;
+    }
+    if(round.repairs>2)return null;
     let decision:RepairDecision|null=null;
     const persisted=await mutateSessionState(sessionId,s=>{
       if(!oversized(s))return;
       const count=claimRoundRepair(s,payload,round.key,codex,0,includeProse(s,payload));if(count===null)return;
+      saveWindow(s);
       decision=codex?{action:"observed",roundId:round.key}:count<2?{action:"request",attempt:count+1}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
     },{noQueue:true,deadline});
     if(!persisted)void spoolRulebookFailure(sessionId).catch(()=>{});
@@ -68,14 +83,18 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     if (!validators.length) return false;
     return validators.every(v=>{
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
-    const withinLimit = responses.every(response => countCopyUnits(deliveredCopy(response, contract.unit_applied, includeProse(state, payload)), contract.unit_applied) <= contract.limit);
-    return withinLimit && (state.activeTask?.kind !== "approved-copy" || (state.receipts ?? []).some(r =>
-      r.taskId === task.id && r.generation === task.generation && r.channel === contract.channel && r.limit <= contract.limit &&
-      (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)")));
+    const responses=responsesFor(state);
+    const withinLimit = responses.every((response,i) => countCopyUnits(deliveredCopy(response, contract.unit_applied, includeProse(state, payload)&&i===responses.length-1,includeQuotes(state,payload)), contract.unit_applied) <= contract.limit);
+    return withinLimit && (state.activeTask?.kind !== "approved-copy" || taskReceiptSatisfied(state,payload));
     });
   };
   // Receipts are task/generation evidence, not byte-exact proof for later edits.
-  if (hasReceipt(snapshot)) return null;
+  if (hasReceipt(snapshot)) {
+    // A receipt is not proof that its first copy was delivered. Measure that
+    // first output above, then keep later explanatory prose out of copy checks.
+    await markDelivered(hasReceipt);
+    return null;
+  }
   const seen = snapshot.repairAttempts;
   if (seen && seen.taskId === task.id && seen.generation === task.generation && seen.count > REPAIR_MAX_ATTEMPTS) {
     return null;
@@ -96,6 +115,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     }
     if (count > REPAIR_MAX_ATTEMPTS) return;
     s.repairAttempts = { taskId: t.id, generation: t.generation, count: count + 1 };
+    saveWindow(s);
     decision = count < REPAIR_MAX_ATTEMPTS
       ? { action: "request", attempt: count + 1 }
       : { action: "exhausted", taskId: t.id, generation: t.generation, attempts: count };
@@ -103,26 +123,28 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   return persisted ? decision : null;
 }
 
-/** Review/translation prose is not delivered copy. An already observed overlong
- * copy stays subject to repair if a later model report starts a review task.
- * Neither the new task nor its receipt policy may erase a round violation.
- * Known #1351: a model draft declared before the first measurement excludes
- * unmarked prose too. Without an authoritative user-origin task discriminator,
- * enforcing that prose would also reject the real index131 review/translation.
+/** Review/translation prose is not delivered copy, regardless of task origin.
+ * Approved first output is measured; later explanation does not become copy.
+ * A later model report cannot weaken an already observed prose contract.
  */
 function includeProse(state: ReadonlySessionState, payload: RulebookPayload): boolean {
   const kind = state.activeTask?.kind;
+  const delivered=state.repairWindows?.[payload.agent_id||"main"]?.delivered;
+  if(kind==="approved-copy"&&delivered===`${state.activeTask!.id}:${state.activeTask!.generation}`)return false;
   return (kind !== "draft-for-review" && kind !== "translate-only") || roundCorrespondence(state, payload).repairProse;
+}
+function includeQuotes(state:ReadonlySessionState,payload:RulebookPayload):boolean {
+  return !["draft-for-review","translate-only"].includes(state.activeTask?.kind??"")||roundCorrespondence(state,payload).repairProse;
 }
 
 /** Pick explicit copy regions structurally, independent of language/channel names.
  * Approved/no-task responses also consider all remaining prose, preventing decoys.
  * In review/translation, an unclosed fence still contributes its body as copy.
  */
-function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1], proseIsCopy = true): string {
+function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1], proseIsCopy = true, quotesAreCopy = proseIsCopy): string {
   const blocks: string[] = [], prose: string[] = [];
   let fence = "", body: string[] = [], quote: string[] = [];
-  const flushQuote = () => { if (proseIsCopy && quote.length) blocks.push(quote.join("\n")); quote = []; };
+  const flushQuote = () => { if (quotesAreCopy && quote.length) blocks.push(quote.join("\n")); quote = []; };
   for (const line of text.split("\n")) {
     if (fence) {
       if (new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`, "u").test(line)) {
@@ -157,8 +179,19 @@ function roundValidators(state:ReadonlySessionState,p:RulebookPayload){
  return channel&&all.some(v=>v.channel===channel)?all.filter(v=>v.channel===channel):all;
 }
 
+function taskReceiptSatisfied(state:ReadonlySessionState,payload:RulebookPayload):boolean {
+  const task=state.activeTask;
+  if(task?.kind!=="approved-copy")return false;
+  const validators=[...taskValidators(state).map(({validator})=>validator),...roundValidators(state,payload)];
+  return validators.length>0&&validators.every(v=>{
+    const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
+    return (state.receipts??[]).some(r=>r.taskId===task.id&&r.generation===task.generation&&r.channel===contract.channel&&r.limit<=contract.limit&&
+      (r.unit===contract.unit_applied||r.unit==="max(codepoints,utf16)"));
+  });
+}
+
 /** Tool results and harness-written user rows do not end the owner's round. */
-function currentAssistantTexts(turns: readonly TranscriptTurn[], since?: number): string[] {
+function currentAssistantTexts(turns: readonly TranscriptTurn[], after = 0): string[] {
   let boundary = -1;
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i]!;
@@ -168,7 +201,7 @@ function currentAssistantTexts(turns: readonly TranscriptTurn[], since?: number)
       const kind = typeof source === "object" ? source?.kind : source;
       return kind === "user" || kind === "human" || kind === "typed";
     });
-    if (turn.role === "user" && owner && ownerPromptText(turn.content) !== null) { boundary = i; break; }
+    if (turn.ownerBoundary || (turn.role === "user" && owner && (ownerPromptText(turn.content) !== null || !turn.content.trim()))) { boundary = i; break; }
   }
-  return turns.slice(boundary + 1).filter(turn => turn.role === "assistant" && (since === undefined || turn.at === undefined || turn.at >= since)).map(turn => turn.content);
+  return turns.slice(Math.max(boundary + 1,after)).filter(turn => turn.role === "assistant" && turn.content.trim()).map(turn => turn.content);
 }

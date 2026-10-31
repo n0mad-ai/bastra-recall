@@ -25,6 +25,10 @@ const begin=async(sid:string,client='claude-code')=>beginRulebookRound({session_
 const check=(sid:string,input:object)=>live.post('/api/v1/rulebook_check',{session_id:sid,...input},sid);
 const skip=(id:string)=>({id,reason:'This round only explains an unrelated technical topic.'});
 const stop=(sid:string,text='short',client='claude-code',active=false)=>live.post('/hook/stop',{payload:{session_id:sid,bastra_client:client,bastra_codex_version:'0.162.1',hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]}});
+const repeatedOutput=(sid:string)=>{
+ const transcript:Array<{role:string;content:string}>=[];
+ return (text:string,active=false)=>{transcript.push({role:'assistant',content:text});return live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',stop_hook_active:active,transcript:[...transcript]}});};
+};
 async function events(sid:string){const out:any[]=[];for(const name of await readdir(join(root,'logs')).catch(()=>[]))if(name.startsWith('events-'))for(const line of (await readFile(join(root,'logs',name),'utf8')).trim().split('\n').filter(Boolean)){const row=JSON.parse(line);if(row.session_id===sid)out.push(row);}return out;}
 test('every structural correspondence ID needs a current-round declaration; empty check and unrelated load cannot discharge it',async()=>{
  const sid='missing';assert.match(await begin(sid),/copy-rule/);
@@ -39,10 +43,11 @@ test('one honest check resolves all correspondence IDs without a Stop block on h
 test('applicable declaration without task enforces oversized copy, bounds repairs, and never infers approval',async()=>{
  const sid='no-task';await begin(sid);assert.equal((await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]})).ok,true);
  assert.equal((await loadSessionState(sid)).activeTask,undefined);
- for(const attempt of [1,2]){const out=await stop(sid,'x'.repeat(30),'claude-code',attempt===2);assert.match(JSON.stringify(out),new RegExp(`copy-repair.*${attempt}/2`));}
- assert.doesNotMatch(JSON.stringify(await stop(sid,'x'.repeat(30),'claude-code',true)),/copy-repair/);
+ const emit=repeatedOutput(sid);
+ for(const attempt of [1,2]){const out=await emit('x'.repeat(30),attempt===2);assert.match(JSON.stringify(out),new RegExp(`copy-repair.*${attempt}/2`));}
+ assert.doesNotMatch(JSON.stringify(await emit('x'.repeat(30),true)),/copy-repair/);
  assert.equal((await events(sid)).filter(e=>e.kind==='non_conformance'&&e.reason==='repair_exhausted').length,1);
- assert.doesNotMatch(JSON.stringify(await stop(sid,'x'.repeat(30),'claude-code',true)),/copy-repair/);assert.equal((await loadSessionState(sid)).activeTask,undefined);
+ assert.doesNotMatch(JSON.stringify(await emit('x'.repeat(30),true)),/copy-repair/);assert.equal((await loadSessionState(sid)).activeTask,undefined);
 });
 test('full load also declares applicability; empty checks cannot erase it or dismiss it later in the round',async()=>{
  const sid='load-declares';await begin(sid);await live.post('/api/v1/load_memory',{id:'copy-rule',session_id:sid},sid);
@@ -79,10 +84,10 @@ test('legacy validator/category metadata is catalogued and full loads declare it
 });
 test('adding a task report cannot reset a current-round repair budget',async()=>{
  const sid='budget-transition';await begin(sid);await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
- assert.match(JSON.stringify(await stop(sid,'x'.repeat(30))),/1\/2/);
+ const emit=repeatedOutput(sid);assert.match(JSON.stringify(await emit('x'.repeat(30))),/1\/2/);
  await check(sid,{applicable:['copy-rule'],task:'draft-for-review'});
- assert.match(JSON.stringify(await stop(sid,'x'.repeat(30),'claude-code',true)),/2\/2/);
- assert.doesNotMatch(JSON.stringify(await stop(sid,'x'.repeat(30),'claude-code',true)),/copy-repair/);
+ assert.match(JSON.stringify(await emit('```\n'+'x'.repeat(30)+'\n```',true)),/2\/2/);
+ assert.doesNotMatch(JSON.stringify(await emit('```\n'+'x'.repeat(30)+'\n```',true)),/copy-repair/);
  assert.equal((await events(sid)).filter(e=>e.reason==='repair_exhausted').length,1);
 });
 test('a later model check cannot replace a strict declared validator with a lax same-ID one',async()=>{

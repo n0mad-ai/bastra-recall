@@ -52,6 +52,9 @@ export interface TranscriptTurn {
   branch?: string;
   /** Claude row timestamp in milliseconds; absent when not parseable. */
   at?: number;
+  /** A real user image/slash turn is a round boundary even without owner prose.
+   * Separate from role so harvest keeps command echoes out of user assertions. */
+  ownerBoundary?: boolean;
 }
 
 export async function loadTranscript(payload: ClaudeStopPayload): Promise<TranscriptTurn[]> {
@@ -179,6 +182,12 @@ function effectiveRole(role: string, content: unknown, meta = false): string {
   return role;
 }
 
+function nonTextOwnerBoundary(role: string, content: unknown, meta: boolean): boolean {
+  if (role !== "user" || meta || isToolResultContent(content)) return false;
+  if (Array.isArray(content) && content.some(block => block && typeof block === "object" && ["image", "input_image"].includes((block as {type?:string}).type ?? ""))) return true;
+  return /^\s*<command-name>\/[^<]+<\/command-name>/u.test(stringifyContent(content));
+}
+
 /** A leading `<system-reminder>` block is harness text, but what the owner
  *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
 function typedText(content: unknown): string {
@@ -214,7 +223,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const p = payload as Record<string, unknown>;
       if (p.type === "message" && typeof p.role === "string") {
         const role = effectiveRole(p.role, p.content, nonOwnerSource(obj)||nonOwnerSource(p));
-        out.push({ role, content: turnContent(role, p.content) });
+        out.push({ role, content: turnContent(role, p.content), ...(nonTextOwnerBoundary(p.role,p.content,nonOwnerSource(obj)||nonOwnerSource(p))?{ownerBoundary:true}:{}) });
         continue;
       }
       // Codex: `{type:"function_call", name:"shell", arguments:"{\"command\":[…]}"}`.
@@ -239,7 +248,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     const directContent = obj.content;
     if (typeof directRole === "string") {
       const role = effectiveRole(directRole, directContent, nonOwnerSource(obj));
-      out.push({ role, content: turnContent(role, directContent) });
+      out.push({ role, content: turnContent(role, directContent), ...(nonTextOwnerBoundary(directRole, directContent, nonOwnerSource(obj)) ? {ownerBoundary:true} : {}) });
       continue;
     }
     const msg = obj.message;
@@ -248,6 +257,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const role = typeof m.role === "string" ? m.role : "unknown";
       const eff = effectiveRole(role, m.content, nonOwnerSource(obj)||nonOwnerSource(m));
       const turn: TranscriptTurn = { role: eff, content: turnContent(eff, m.content) };
+      if (nonTextOwnerBoundary(role, m.content, nonOwnerSource(obj)||nonOwnerSource(m))) turn.ownerBoundary = true;
       if (typeof obj.cwd === "string" && obj.cwd.trim()) turn.cwd = obj.cwd;
       if (typeof obj.gitBranch === "string") turn.branch = obj.gitBranch;
       const at = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;

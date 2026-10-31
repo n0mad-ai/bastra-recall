@@ -29,7 +29,7 @@ test('P2.1 only the user-bound channel needs a receipt, not every loaded validat
  await seed('latest-email');assert.equal(await stop('latest-email','x'.repeat(3200)),null);
  await seed('latest-active','discord-dm');await mutateSessionState('latest-active',s=>{s.activeConventions=[{id:'discord-rule',revision:'r',setAt:30,validator:discord}];});
  assert.equal(await stop('latest-active','Short Discord copy'),null);
- assert.equal((await stop('latest-active','x'.repeat(3200)))?.action,'request');
+ assert.equal((await stop('latest-active','```\n'+'x'.repeat(3200)+'\n```'))?.action,'request','new explicit copy still uses the user-bound Discord limit after delivery');
 });
 test('P2.1 a model task cannot narrow loaded channels, even after user approval',async()=>{
  const sid='model-origin';await recordRulebookLoad(sid,'discord-rule',null,{revision:'r',validator:discord});
@@ -40,7 +40,7 @@ test('P2.1 a model task cannot narrow loaded channels, even after user approval'
  const task=(await loadSessionState(sid)).activeTask!;assert.equal(task.kind,'approved-copy');
  await mutateSessionState(sid,s=>{s.receipts=['discord-dm','email'].map(channel=>({taskId:task.id,generation:task.generation,hash:'a',receipt:'sha256:a',channel,limit:channel==='email'?10000:2000,unit:'max(codepoints,utf16)' as const,at:Date.now()}));});
  assert.equal(await stop(sid,'Small copy'),null);
- assert.equal((await stop(sid,'x'.repeat(3200)))?.action,'request');
+ assert.equal((await stop(sid,'```\n'+'x'.repeat(3200)+'\n```'))?.action,'request','new explicit copy must satisfy all model-task channels after delivery');
 });
 test('P2.1 user task records the triggering rule rather than choosing an unrelated session rule',async()=>{
  await seed('user-origin');await mutateSessionState('user-origin',s=>{delete s.activeTask;delete s.userValidatorChannel;});

@@ -6,11 +6,15 @@
  */
 import {
   approvedCopyCues,
+  approvalBlockCues,
+  approvalClosingCues,
+  approvalQuestionTailCues,
   sendPersonCues,
   recipientFollowupCues,
   targetCopyCues,
   targetCopyRequestCues,
   copyRevisionCues,
+  copyReferenceCues,
   technicalTaskObjectCues,
   technicalTaskDestinationCues,
   personRecipientCues,
@@ -243,6 +247,7 @@ export interface TaskSignals {
   recipientFollowup?: boolean;
   targetCopy?: boolean;
   revision?: boolean;
+  copyReference?: boolean;
   technicalObject?: boolean;
   personTarget?: boolean;
 }
@@ -255,10 +260,13 @@ export function taskSignals(prompt: string): TaskSignals {
   // remains in the existing extensible multilingual lexicon.
   const question = /[?？;؟]/u.test(own);
   const bare = own.toLowerCase().replace(/[\s!.…]+$/u, "").trim();
-  const approval = !question && bare.length > 0 && new RegExp(`^(?:${taskApprovalCues().join("|")})$`, "iu").test(bare);
-  const ackMatch = !question ? new RegExp(`^(?:${[...taskApprovalCues(), ...approvedCopyCues()].sort((a,b)=>b.length-a.length).join("|")})(?:[\\s,;:!]+|$)`, "iu").exec(bare) : null;
+  const ackPattern = new RegExp(`^(?:${[...taskApprovalCues(), ...approvedCopyCues()].sort((a,b)=>b.length-a.length).join("|")})(?![\\p{L}\\p{N}])`, "iu");
+  const ackMatch = ackPattern.exec(bare);
   const leadingAck = ackMatch !== null;
-  const targetClause = ackMatch ? bare.slice(ackMatch[0].length).trim() : bare;
+  const targetClause = ackMatch ? bare.slice(ackMatch[0].length).replace(/^[\s,;:!]+/u, "") : bare;
+  const closing = new RegExp(`(?:^|[,;\\s])(?:${approvalClosingCues().join("|")})\\s+(.+)$`, "iu").exec(bare)?.[1];
+  const closingApproval = closing !== undefined && ackPattern.test(closing) && !cueRegex(approvalBlockCues()).test(closing);
+  const approval = !question && (closingApproval || (leadingAck && !new RegExp(`^(?:${approvalQuestionTailCues().join("|")})`, "iu").test(targetClause) && !cueRegex(approvalBlockCues()).test(targetClause) && !cueRegex(copyRevisionCues()).test(targetClause)));
   const targetRequest = new RegExp(`^(?:${[...targetCopyCues(), ...targetCopyRequestCues()].join("|")})$`, "iu").test(targetClause);
   const sendPerson = has(sendPersonCues());
   const recipientFollowup = has(recipientFollowupCues());
@@ -285,13 +293,14 @@ export function taskSignals(prompt: string): TaskSignals {
     approval,
     ack: leadingAck,
     approvalMention: has(approvedCopyCues()),
-    approvedCopy: !question && new RegExp(`^(?:${approvedCopyCues().join("|")})$`, "iu").test(bare),
+    approvedCopy: approval && new RegExp(`^(?:${approvedCopyCues().join("|")})(?![\\p{L}\\p{N}])`, "iu").test(bare),
     sendPerson,
     recipientFollowup,
     targetCopy: !question && targetRequest,
     technicalObject,
     personTarget,
     revision: has(copyRevisionCues()),
+    copyReference: has(copyReferenceCues()),
   };
 }
 
@@ -334,17 +343,18 @@ export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
   if (sig.translate) return { next: "translate-only", unclear: false };
   if (sig.technicalObject) return keep;
   if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
-  if (sig.approval && ctx.draftPresented === true && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
+  if (sig.approval && ctx.draftPresented !== false && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
   if (sig.targetCopy && !sig.revision && !sig.quoted &&
       (ctx.current === "draft-for-review" || (sig.ack && (ctx.correspondenceActive || ctx.correspondenceHint)))) {
     return { next: "approved-copy", unclear: false };
   }
+  if (ctx.current === "approved-copy" && (sig.revision || sig.reply || sig.sendPerson || sig.recipientFollowup || sig.targetCopy || sig.ack)) return keep;
   if ((sig.sendPerson || sig.recipientFollowup) && (ctx.current !== "none" || sig.personTarget)) return { next: "draft-for-review", unclear: false };
   if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
   if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
   if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };
   if (ctx.mode === "trivial" || ctx.current === "none") return keep;
   const anyCue = sig.reply || sig.ack || sig.approvedCopy;
-  if (!anyCue && !ctx.hitActive && ctx.hitOther === true && (ctx.mode === "none" || ctx.mode === "generic")) return { next: "none", unclear: false };
+  if (!anyCue && !sig.revision && !sig.copyReference && !ctx.hitActive && ctx.hitOther === true && (ctx.mode === "none" || ctx.mode === "generic")) return { next: "none", unclear: false };
   return keep;
 }

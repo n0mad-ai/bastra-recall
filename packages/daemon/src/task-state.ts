@@ -26,7 +26,7 @@ export function decodeActiveTask(value: unknown): ActiveTask | undefined {
     id: typeof task.id === "string" ? task.id : taskIdFor(task.kind as TaskKind, task.since),
     kind: task.kind as TaskKind, since: task.since, generation: task.generation,
     ...(typeof task.validatorChannel==='string'&&task.validatorChannel?{validatorChannel:task.validatorChannel}:{}),
-    ...(task.draftPresented === true ? {draftPresented: true} : {}),
+    ...(typeof task.draftPresented === 'boolean' ? {draftPresented: task.draftPresented} : {}),
     ...(task.approvalSource === "user-turn" ? {approvalSource: "user-turn" as const} : {}),
   };
 }
