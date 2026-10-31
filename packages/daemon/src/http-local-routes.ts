@@ -29,7 +29,7 @@ import { truncateSummaryTo } from "@bastra-recall/core";
 import { type Telemetry } from "./telemetry.js";
 import { handleHookReflex, reflexPoolIds } from "./reflex.js";
 import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
-import { vaultConventionOf, readConventionSource } from "./convention-source.js";
+import { vaultConventionOf } from "./convention-source.js";
 import type { PromptHookTelemetry } from "./prompt-lane-telemetry.js";
 import { REPLAY_CLIENT } from "./hook-surface.js";
 import { runWriteLane, type WriteHookPayload } from "./write-lane.js";
@@ -281,7 +281,7 @@ export function dispatchLocalRoutes(
     res.once("finish", due.record); return JSON.stringify(parsed);
   }, async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"),
   () => cachedActionReflexPool(vault),
-  (active, project, mode) => collectRuleKernel(vault, { project, active, mode }),id=>readConventionSource(vault.get(id)))) return true;
+  (active, project, mode) => collectRuleKernel(vault, { project, active, mode }),vaultConventionOf(vault))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

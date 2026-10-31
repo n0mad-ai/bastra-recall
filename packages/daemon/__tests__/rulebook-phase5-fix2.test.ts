@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import fs from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
 import {Vault,saveMemory,mutateMemoryFile} from '@bastra-recall/core';
 import {serve} from './fixtures/rulebook-phase5/probe.js';
 import {recordRulebookLoad,recordRulebookCheck} from '../src/rulebook-check.js';
@@ -41,18 +43,23 @@ const input=(id:string)=>({id,title:'Invented validation rule',summary:'When dra
 async function fixture(id:string){const saved=await saveMemory(vault.root,input(id));await vault.reindexFile(saved.file_path);const sid=id;
  await live.post('/api/v1/load_memory',{id,session_id:sid},sid);assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[id],task:'draft-for-review',session_id:sid},sid)).ok,true);return sid;}
 const httpStop=async(sid:string)=>JSON.stringify(await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}})).includes('<copy-repair');
-test('current user-authored limit increase is effective at the next actual HTTP Stop',async()=>{
+test('current indexed user limit applies at HTTP Stop without reading a blocked vault file',async t=>{
  const sid=await fixture('user-raise'),m=vault.get(sid)!;
  await mutateMemoryFile(m.filePath,sid,{frontmatter:fm=>({...fm,validator:{...dc,limit:4000}})},{vaultRoot:vault.root});
- await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'discord-dm',limit:4000,normalize:'none'},sid);assert.equal(await httpStop(sid),false);
+ await vault.reindexFile(m.filePath);
+ await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'discord-dm',limit:4000,normalize:'none'},sid);
+ let reads=0;const original=fs.readFile;
+ t.mock.method(fs,'readFile',(...args:any[])=>{if(args[0]===m.filePath){reads++;return new Promise(()=>{});}return (original as any)(...args);});
+ syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+ assert.equal(await httpStop(sid),false);assert.equal(reads,0);
 });
-test('current user removal of the validator is effective at the next Stop without reindex',async()=>{
+test('indexed user removal of the validator is effective at the next Stop',async()=>{
  const sid=await fixture('user-remove'),m=vault.get(sid)!;
- await mutateMemoryFile(m.filePath,sid,{frontmatter:fm=>{const next={...fm};delete next.validator;return next;}},{vaultRoot:vault.root});
+ await mutateMemoryFile(m.filePath,sid,{frontmatter:fm=>{const next={...fm};delete next.validator;return next;}},{vaultRoot:vault.root});await vault.reindexFile(m.filePath);
  assert.equal(await httpStop(sid),false);
 });
-test('current user deletion of the rule is effective without a stale index keeping it alive',async()=>{
- const sid=await fixture('user-delete');await rm(vault.get(sid)!.filePath);assert.equal(await httpStop(sid),false);
+test('indexed user deletion of the rule removes its Stop obligation',async()=>{
+ const sid=await fixture('user-delete'),path=vault.get(sid)!.filePath;await rm(path);vault.forgetFile(path);assert.equal(await httpStop(sid),false);
 });
 test('an unavailable source lookup is bounded and retains the last valid constraint',async()=>{
  const sid='slow-source';await load(sid,'dc',dc);await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);

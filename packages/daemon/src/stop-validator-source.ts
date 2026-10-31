@@ -1,5 +1,5 @@
-/** Refresh only the rules already loaded/active in this task, from current
- * source bytes. A deadline/outage retains prior evidence; late work cannot write. */
+/** Refresh only the rules already loaded/active in this task, from the current
+ * in-memory index; never reopen Vault files. A deadline/outage retains prior evidence; late work cannot write. */
 import {withRulebookDeadline} from './rulebook-catalog.js';
 import {loadSessionState,mutateSessionState} from './session-state.js';
 import type {ConventionSource} from './convention-source.js';
@@ -14,7 +14,7 @@ export async function refreshStopValidators(sessionId:string,sourceOf:(id:string
       for(const c of [...(s.loadedConventions??[]),...(s.activeConventions??[])]){
         const prior=[...(state.loadedConventions??[]),...(state.activeConventions??[])].find(p=>p.id===c.id&&p.revision===c.revision);
         if(!prior)continue;
-        const source=sources.get(c.id);if(!source||source.unavailable)continue;
+        const source=sources.get(c.id);if(!source)continue;
         c.revision=source.revision;if(source.validator&&!source.hiddenFromPublic)c.validator=source.validator;else delete c.validator;
       }
     },{noQueue:true,deadline});

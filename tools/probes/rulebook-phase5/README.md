@@ -47,8 +47,8 @@ the daemon tests. These tests deliberately reproduce the gaps; a green suite
 does not turn a `GAP` report cell into a passing acceptance case.
 
 The security/fix1/fix2 suites exercise the actual Stop lane and source writes.
-Fix2 removes session minima: current user rule revisions apply on the next
-Stop, while MCP edits/saves/archives of existing validator rules are proposals.
+Fix2 removes session minima: current indexed user revisions apply on the next Stop (watcher/reindex or
+the documented ~60-second reconciliation), while MCP edits/saves/archives of existing validator rules are proposals.
 Channel selection is task/context scoped, cleared on new turns without a
 matching candidate, and narrows only to a channel with a loaded/active rule.
 Compact may drop loaded-only rules while the task continues; active rules

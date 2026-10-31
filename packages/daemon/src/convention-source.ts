@@ -8,7 +8,6 @@ import { loadSessionState } from "./session-state.js";
 
 export type RulebookMetadata = Partial<RulebookDeclaration> & Pick<Frontmatter, "rulebook_proposed" | "rule_categories">;
 export interface ConventionSource {
-  unavailable?: boolean;
   matchesIndex?: boolean;
   hiddenFromPublic?: boolean;
   summary?: string;
@@ -47,7 +46,7 @@ export async function readConventionSource(
         ...(includeRuleMetadata ? { summary: parsed.fm.summary, write_origin: parsed.fm.write_origin } : {}),
       };
     } catch { return { revision }; }
-  } catch(error) { return { revision: null, ...((error as NodeJS.ErrnoException).code==='ENOENT'?{}:{unavailable:true}) }; }
+  } catch { return { revision: null }; }
 }
 
 /** One active/floor context per response, shared by index and current-source paths. */
