@@ -7,7 +7,7 @@ const report=option('--report')??'/private/tmp/phase5-report.md';
 const result=await runProbe();
 const vault=option('--real-vault');
 const latency=vault?await measureLatency(vault):null;
-const escape=(s:string)=>s.replace(/\|/g,'\\|').replace(/\n/g,' ');
+const escape=(s:string)=>s.replace(/\\/g,'\\\\').replace(/\|/g,'\\|').replace(/\n/g,' ');
 const lines=[
   '# Regelbuch Phase 5 — Prüfbericht',
   '',`Zeit: ${new Date().toISOString()}. 125 ausschließlich erfundene Regeln; DE/EN/JA/RU/ES im selben Katalog.`,
