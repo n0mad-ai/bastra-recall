@@ -84,7 +84,8 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence=catalog.entries.filter(isCorrespondenceRule);
     const protectedIds=new Set([...a.roundApplied,...(hasCopyTask(s)?[...(s.activeConventions??[]),...(s.loadedConventions??[])]:[])].map(r=>r.id));
-    const skips=(input.not_applicable??[]).flatMap(e=>'id' in e?[e]:correspondence.filter(r=>!protectedIds.has(r.id)&&!input.applicable.includes(r.id)).map(r=>({id:r.id,reason:e.reason})));
+    const requiredIds=new Set(a.required.map(r=>r.id));
+    const skips=(input.not_applicable??[]).flatMap(e=>'id' in e?[e]:correspondence.filter(r=>!protectedIds.has(r.id)&&!requiredIds.has(r.id)&&!input.applicable.includes(r.id)).map(r=>({id:r.id,reason:e.reason})));
     const accepted=skips.filter(e=>{
       if(protectedIds.has(e.id)||input.applicable.includes(e.id)){
         invalidDismissal=true;state.unchecked++;
