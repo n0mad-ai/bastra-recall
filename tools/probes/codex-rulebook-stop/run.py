@@ -3,7 +3,7 @@
 No model/API key/network provider, no copied credentials or modified user config.
 Only event metadata and synthetic output are retained in the result.
 """
-import http.server, json, os, pathlib, shlex, shutil, subprocess, tempfile, threading, tomllib
+import argparse, http.server, json, os, pathlib, shlex, shutil, subprocess, tempfile, threading, tomllib
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_): pass
@@ -24,16 +24,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body=''.join('event: '+kind+'\ndata: '+json.dumps({'type':kind,**data})+'\n\n' for kind,data in events).encode()
         self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
 
+parser=argparse.ArgumentParser()
+parser.add_argument('--expected-version',default='0.162.1')
+expected=parser.parse_args().expected_version
 version=subprocess.check_output(['codex','--version'],text=True).strip()
-if version != 'codex-cli 0.162.1': raise SystemExit('This evidence probe is pinned to codex-cli 0.162.1; found '+version)
+if version != 'codex-cli '+expected: raise SystemExit('Expected codex-cli '+expected+'; found '+version)
 root=pathlib.Path(tempfile.mkdtemp(prefix='bastra-codex-stop-probe-'))
 (root/'.codex').mkdir()
 (root/'.codex'/'config.toml').write_text('')
 subprocess.run(['git','init','--quiet',str(root)],check=True)
 hook=root/'hook.py'
-hook.write_text('''import json,pathlib,sys
+hook.write_text('''import json,pathlib,sys,os
 root=pathlib.Path(__file__).parent
 p=json.load(sys.stdin)
+with (root/'payloads.jsonl').open('a') as f: f.write(json.dumps({'case':os.environ.get('PROBE_CASE'),'payload':p})+'\\n')
 with (root/'events.jsonl').open('a') as f: f.write(json.dumps({k:p.get(k) for k in ['hook_event_name','session_id','turn_id','agent_id','stop_hook_active']})+'\\n')
 if p.get('hook_event_name')!='Stop': print('{}')
 elif (root/'halt').exists(): print(json.dumps({'continue':False,'decision':'block','reason':'DO_NOT_CONTINUE'}))
@@ -53,7 +57,8 @@ process.env.BASTRA_LOG_PATH = root + '/logs';
 process.env.BASTRA_TELEMETRY = 'on';
 process.env.BASTRA_PENDING_SUGGESTIONS_PATH = root + '/pending.json';
 let raw = ''; for await (const chunk of process.stdin) raw += chunk;
-const p = { ...JSON.parse(raw), bastra_client:'codex', bastra_codex_version:'0.162.1', transcript_path:undefined,
+await appendFile(root + '/payloads.jsonl', JSON.stringify({case:process.env.PROBE_CASE,payload:JSON.parse(raw)})+'\n');
+const p = { ...JSON.parse(raw), bastra_client:'codex', bastra_codex_version:__VERSION__, transcript_path:undefined,
  transcript:[{role:'user',content:'¿Puedes enviar el contrato?'}] };
 await appendFile(root + '/events.jsonl', JSON.stringify(Object.fromEntries(['hook_event_name','session_id','turn_id','agent_id','stop_hook_active'].map(k=>[k,p[k]??null])))+'\n');
 const c = {entries:[{id:'invented-correspondence',title:'Invented correspondence',group:'explicit',revision:null,updated:null,
@@ -68,7 +73,7 @@ if(p.hook_event_name === 'UserPromptSubmit') {
  out=await runStopLane(p,'http://127.0.0.1:1',{kernel:async()=>c});
 }
 process.stdout.write(out);
-""".replace('__REPO__',json.dumps(str(repo))))
+""".replace('__REPO__',json.dumps(str(repo))).replace('__VERSION__',json.dumps(expected)))
 source_command=shlex.join([shutil.which('node'),'--import',str(repo/'node_modules/tsx/dist/loader.mjs'),'--import',str(repo/'scripts/test-env.mjs'),str(source_hook),str(root)])
 command=f'/usr/bin/python3 {hook}'
 (root/'.codex'/'hooks.json').write_text(json.dumps({'hooks':{name:[{'hooks':[{'type':'command','command':command,'timeout':5}]}] for name in ['Stop','UserPromptSubmit']}}))
@@ -108,7 +113,7 @@ try:
         if halt:(root/'halt').touch()
         invocation=[a.replace(command,source_command) for a in args] if case=='bastra_rulebook' else args
         prompt='¿Puedes enviar el contrato?' if case=='bastra_rulebook' else 'Reply with PROBE_FIRST, without using any tools.'
-        out=subprocess.run([*invocation,prompt],env={**os.environ,'BASTRA_DAEMON_URL':'http://127.0.0.1:1','BASTRA_HTTP_URL':'http://127.0.0.1:1','BASTRA_LOG_PATH':str(root/'transport-logs'),'BASTRA_HOOK_STATE_DIR':str(root/'transport-state')},stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=90)
+        out=subprocess.run([*invocation,prompt],env={**os.environ,'PROBE_CASE':case,'BASTRA_DAEMON_URL':'http://127.0.0.1:1','BASTRA_HTTP_URL':'http://127.0.0.1:1','BASTRA_LOG_PATH':str(root/'transport-logs'),'BASTRA_HOOK_STATE_DIR':str(root/'transport-state')},stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=90)
         events=[json.loads(s) for s in (root/'events.jsonl').read_text().splitlines()] if (root/'events.jsonl').exists() else []
         results.append({'case':case,'exit':out.returncode,'responses':server.responses,'events':events,'continued': 'PROBE_CONTINUED' in out.stdout,'installed_startup_hooks_ran':'hook: SessionStart' in out.stderr,
           'diagnostic':[line for line in out.stderr.splitlines() if any(key in line.lower() for key in ['hook:', 'untrusted', 'project config', 'error:', 'warning:', 'disabled'])][-15:] if not events or out.returncode else []})

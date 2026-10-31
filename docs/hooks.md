@@ -23,7 +23,7 @@ is on disk. They share three discipline rules:
 For per-surface/runtime evidence, tool coverage and the distinction between
 host support and Bastra registration, see [host-capabilities.ts](../packages/daemon/src/host-capabilities.ts).
 
-**Codex gate (#1304):** only the runtime-verified 0.162.1 receives the gate.
+**Codex gate (#1304):** only the separately runtime-verified 0.162.1 and 0.166.0 receive the gate.
 Other or unknown versions retain preparation-only hints without must-load
 promises. Version evidence is recorded during installation, not probed on each
 tool call. After a Codex version change, old markers can remain active until
@@ -1924,7 +1924,7 @@ teilen drei Disziplinregeln:
 Belege je Oberfläche/Laufzeitversion, Tool-Grenzen und die Trennung zwischen
 Host-Unterstützung und Bastra-Registrierung stehen in [host-capabilities.ts](../packages/daemon/src/host-capabilities.ts).
 
-**Codex-Gate (#1304):** Nur das zur Laufzeit geprüfte 0.162.1 erhält das Gate.
+**Codex-Gate (#1304):** Nur die separat zur Laufzeit geprüften Versionen 0.162.1 und 0.166.0 erhalten das Gate.
 Andere oder unbekannte Versionen behalten vorbereitende Hinweise ohne
 Must-load-Versprechen. Der Versionsbeleg entsteht bei der Installation, nicht
 bei jedem Toolaufruf. Nach einem Codex-Versionswechsel können alte Marker bis

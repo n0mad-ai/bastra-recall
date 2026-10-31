@@ -59,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Codex CLI 0.166.0 joins the exact-version Gate/Stop allowlist after isolated
+  native deny/control/retry and Stop-continuation probes. Other unlisted versions
+  remain preparation-only; fork on 0.166.0 and patch/MCP write denial remain
+  uncertified. Existing live hook registrations are not changed automatically.
+
 - Mindspace pauses rendering in hidden tabs, reduces settled-cloud redraws,
   reuses depth-sort storage and skips offscreen nodes/edges while preserving
   bounds, stable depth ties and wake-up behavior (#324, #1260).

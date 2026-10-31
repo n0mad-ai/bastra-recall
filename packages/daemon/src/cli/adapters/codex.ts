@@ -1,5 +1,5 @@
 import { ensureBootstrap, describeBootstrap } from "../bootstrap.js";
-import { codexGateSupported, CODEX_GATE_MIN_VERSION } from "../../codex-gate-capability.js";
+import { codexGateSupported, CODEX_GATE_MIN_VERSION, CODEX_GATE_VERIFIED_VERSIONS } from "../../codex-gate-capability.js";
 import { windowsHookToken } from "./command-paths.js";
 /**
  * Codex + ChatGPT desktop adapter (#15).
@@ -88,7 +88,7 @@ function codexHookDefinitions(includeStop: boolean, codexVersion?: string | null
     { event: "PostToolUse", matcher: "^Bash$", bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "learning from shell result", stubSubcommand: "bash-fail" },
     { event: "PostToolUse", matcher: CODEX_SAVE_NOTICE_MATCHER, bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "announcing saved memory", stubSubcommand: "bash-fail" },
   ];
-  // #1300 runtime evidence is exactly 0.162.1. Other/unknown versions keep
+  // Runtime evidence is an exact allowlist. Other/unknown versions keep
   // legacy context-only lanes, with neither a deny gate nor must-load claims.
   // Official catch-all matcher: https://learn.chatgpt.com/docs/hooks#matcher-patterns
   if (codexGateSupported(codexVersion)) defs.push({ event: "PreToolUse", matcher: "*", bin: GATE_HOOK_BIN, timeout: 2, label: "checking must-load and reflex rules", stubSubcommand: "gate" });
@@ -264,7 +264,7 @@ export async function patchCodexHooks(
   const note = leftAloneNote(plan.leftAlone);
   const gateDetail = codexGateSupported(opts.codexVersion)
     ? `gate: verified Codex ${opts.codexVersion}; review new/changed definitions in /hooks`
-    : `gate: preparation only (Codex ${opts.codexVersion ?? "unknown"}); deny verified only on ${CODEX_GATE_MIN_VERSION}; legacy additionalContext hints, no must-load promise`;
+    : `gate: preparation only (Codex ${opts.codexVersion ?? "unknown"}); deny verified only on ${CODEX_GATE_VERIFIED_VERSIONS.join(", ")}; legacy additionalContext hints, no must-load promise`;
   const unchanged = HOOK_EVENTS.every(
     (event) => JSON.stringify(plan.before[event]) === JSON.stringify(plan.after[event]),
   );
@@ -652,8 +652,8 @@ async function codexDoctor(): Promise<DoctorResult> {
     if (gateState.broken) hooksBroken = true;
     const staleGate = gateState.stale;
     details["must-load-gate"] = gateEligible
-      ? gateRegistered ? "registered for supported local tool paths (runtime evidence: 0.162.1)" : "MISSING or stale — re-run bastra install codex, then re-trust in /hooks"
-      : `preparation only — Codex ${codexVersion ?? "unknown"}; deny verified only on ${CODEX_GATE_MIN_VERSION}; ${staleGate
+      ? gateRegistered ? `registered for supported local tool paths (runtime evidence: ${codexVersion})` : "MISSING or stale — re-run bastra install codex, then re-trust in /hooks"
+      : `preparation only — Codex ${codexVersion ?? "unknown"}; deny verified only on ${CODEX_GATE_VERIFIED_VERSIONS.join(", ")}; ${staleGate
         ? "STALE gate from another runtime — re-run bastra install codex to remove it and update markers, then re-trust changed hooks in /hooks"
         : "legacy additionalContext hints, no must-load promise"}`;
     stopHookRegistered = found.has("stop-hook.js");

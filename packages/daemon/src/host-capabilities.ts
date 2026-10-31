@@ -31,6 +31,7 @@ export interface HostCapabilities {
 const issue = (n: number) => `https://github.com/n0mad-ai/bastra-recall/issues/${n}`;
 const claude = "https://code.claude.com/docs/en/hooks";
 const codex = "https://learn.chatgpt.com/docs/hooks";
+const gate166Evidence = "https://github.com/n0mad-ai/bastra-recall/blob/main/tools/probes/codex-native-gate/result-0.166.0.json";
 const spike = `${issue(1300)}#issuecomment-6497445090`;
 const source = (file: string) => `https://github.com/n0mad-ai/bastra-recall/blob/main/${file}`;
 const cap = (status: CapabilityStatus, sources: string[], note: string, bastra = status): Capability => ({ status, bastra, sources, note });
@@ -56,16 +57,17 @@ const claudeCode: HostCapabilities = {
   prerequisites: ["Installed and enabled Bastra hooks; optional Stop registration for Stop delivery.", ...toolPrerequisites],
 };
 
-function codexRow(verified: boolean, eligible: boolean): HostCapabilities {
+function codexRow(verified: boolean, eligible: boolean, version = CODEX_GATE_MIN_VERSION): HostCapabilities {
+  const forkVerified = verified && version === "0.162.1";
   return {
     surface: "codex", installable: true,
-    runtime: { scope: verified ? "CLI 0.162.1 runtime probe; IDE/Desktop not runtime-certified." : "Untested, older, unknown or malformed runtime; no deny certification.", ...(verified ? { verifiedVersion: CODEX_GATE_MIN_VERSION } : {}), minimumVersion: CODEX_GATE_MIN_VERSION },
+    runtime: { scope: verified ? `CLI ${version} runtime probe; IDE/Desktop not runtime-certified.` : "Untested, older, unknown or malformed runtime; no deny certification.", ...(verified ? { verifiedVersion: version } : {}), minimumVersion: CODEX_GATE_MIN_VERSION },
     capabilities: {
       prompt_hook: cap(verified ? "supported" : "unverified", [codex], "Current docs describe UserPromptSubmit, not a version-pinned contract for unknown/other runtimes. Bastra registers the command hook; trust is required. Not an LLM prompt handler.", "supported"),
-      pre_tool_deny: cap(verified ? "supported" : "unverified", [spike, `${codex}#tool-coverage`], "Only CLI 0.162.1 was runtime-probed. apply_patch boundary was observed separately, its deny and MCP support remain unverified; no universal enforcement claim.", verified ? "supported" : "preparation-only"),
+      pre_tool_deny: cap(verified ? "supported" : "unverified", [spike, gate166Evidence, `${codex}#tool-coverage`], "CLI 0.162.1 and 0.166.0 were separately runtime-probed for exec_command and view_image denial. apply_patch boundary was observed separately, its deny and MCP support remain unverified; no universal enforcement claim.", verified ? "supported" : "preparation-only"),
       stop_additional_context: cap("unverified", [codex, source("packages/daemon/src/stop-lane.ts"), issue(1311)], "Current docs do not establish Stop additionalContext delivery; absence is not proof of host rejection. Bastra explicitly skips Codex same-turn save-eval delivery and queues pending context; the approved-copy Stop repair is not offered on Codex.", "unsupported"),
-      stop_block: cap(verified ? "supported" : "unverified", [`${codex}#stop`, source("docs/rulebook-host-probes.md")], "CLI 0.162.1 Stop block/continuation and continue:false precedence were verified with a local scripted provider. Bastra enables one rulebook block per round on that exact version; no approved-copy Stop repair on Codex (#1311). No before-display guarantee.", eligible ? "supported" : "unsupported"),
-      session_fork: cap(verified ? "supported" : "unverified", [spike, issue(1304)], "Runtime-confirmed source=fork only on CLI 0.162.1; adapter registers the benign fork matcher on every version, without certifying that the host emits it.", "supported"),
+      stop_block: cap(verified ? "supported" : "unverified", [`${codex}#stop`, source("docs/rulebook-host-probes.md"), source("tools/probes/codex-rulebook-stop/result-0.166.0.json")], "CLI 0.162.1 and 0.166.0 Stop block/continuation and continue:false precedence were separately verified with a local scripted provider. Bastra enables one rulebook block per round on those exact versions; no approved-copy Stop repair on Codex (#1311). No before-display guarantee.", eligible ? "supported" : "unsupported"),
+      session_fork: cap(forkVerified ? "supported" : "unverified", [spike, issue(1304)], "Runtime-confirmed source=fork only on CLI 0.162.1; adapter registers the benign fork matcher on every version, without certifying that the host emits it.", "supported"),
       must_load_gate: cap(verified ? "supported" : "preparation-only", [issue(1304), spike], eligible ? "Verified runtime matched; registration enabled. Later versions require a new probe." : "No gate registered for other, unknown, malformed or prerelease versions; preparation hints only."),
       rule_kernel: cap(verified ? "supported" : "unverified", [issue(1305), issue(1304)], "Shared session lane renders startup/resume/clear/compact/fork rulebook delivery; this does not certify host delivery on other/unknown runtimes. The fork matcher is registered on all versions; interval re-delivery requires the eligible gate.", eligible ? "supported" : "preparation-only"),
       rulebook_gate: cap(verified ? "preparation-only" : "unverified", [spike, issue(1336), source("docs/rulebook-host-probes.md")], "Bounded rulebook code is shipped, not universally runtime-certified. Action deny is proven only for the listed tools; apply_patch deny and MCP write deny remain unverified, and write_stdin has no fresh boundary. Codex no-agent hooks use their own session main receipt. Exact-version Stop continuation was runtime-probed.", eligible ? "supported" : "preparation-only"),
@@ -75,9 +77,9 @@ function codexRow(verified: boolean, eligible: boolean): HostCapabilities {
       runtimeVerified: verified ? ["exec_command (hook name Bash)", "view_image"] : [],
       documentedOnly: ["apply_patch (aliases Edit/Write)", "MCP tools", "other local function tools"],
       exceptions: ["write_stdin has no fresh PreToolUse boundary for an existing process; completion can emit the original Bash PostToolUse.", "Hosted WebSearch is documented unsupported and was not runtime-tested.", "Bastra read/check tools and Bastra ToolSearch are exempt; Bastra writing tools now require round checking when the rulebook is present."],
-      sources: [spike, `${codex}#tool-coverage`, issue(1303)],
+      sources: [spike, gate166Evidence, `${codex}#tool-coverage`, issue(1303)],
     },
-    prerequisites: ["Project layer trusted; review/re-trust the exact changed hook definition via /hooks; installed and enabled hooks required.", "Only CLI 0.162.1 is eligible for gate registration. The minimum records the smallest verified version, not a supported range or IDE/Desktop certification.", ...toolPrerequisites],
+    prerequisites: ["Project layer trusted; review/re-trust the exact changed hook definition via /hooks; installed and enabled hooks required.", "Only CLI 0.162.1 and 0.166.0 are eligible for gate registration. The minimum records the smallest verified version, not a supported range or IDE/Desktop certification.", ...toolPrerequisites],
   };
 }
 function hookless(surface: "cursor" | "claude-desktop" | "remote-mcp"): HostCapabilities {
@@ -98,6 +100,6 @@ const replay: HostCapabilities = {
 /** Representative evidence rows; select with hostCapabilities for a runtime. */
 export const HOST_CAPABILITIES: readonly HostCapabilities[] = [claudeCode, codexRow(true, true), codexRow(false, false), hookless("cursor"), hookless("claude-desktop"), replay, hookless("remote-mcp")];
 export function hostCapabilities(surface: HostCapabilities["surface"], version?: string | null): HostCapabilities {
-  if (surface === "codex") return codexRow(version === CODEX_GATE_MIN_VERSION, codexGateSupported(version));
+  if (surface === "codex") return codexRow(codexGateSupported(version), codexGateSupported(version), version ?? undefined);
   return HOST_CAPABILITIES.find(row => row.surface === surface)!;
 }
