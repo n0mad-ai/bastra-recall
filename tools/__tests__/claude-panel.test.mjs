@@ -40,6 +40,35 @@ test('Claude counts results once, isolates session/sidechain, resets on a new re
   c.accept(row('user', 'Next', { promptId: 'new', timestamp: '2026-10-04T18:01:00Z' }));
   c.accept(result('old')); assert.equal(c.loads, 0); assert.equal(c.ms, 0);
 });
+test('Claude excludes PreToolUse hook denials from Recall results, while a successful retry counts once', () => {
+  // Sanitized transport shape of cf2f5137 transcript index 251: the hook prevented the MCP call.
+  const denial = 'PreToolUse:mcp__bastra-recall__edit_memory hook error: Rulebook declaration required.';
+  for (const content of [denial, [{ type: 'text', text: denial }]]) {
+    const c = new ClaudeCalls('s');
+    c.accept(call('blocked', 'edit_memory'));
+    const blocked = row('user', [{ type: 'tool_result', tool_use_id: 'blocked', is_error: true, content }]);
+    c.accept(blocked); c.accept(blocked);
+    assert.equal(c.errors, 0); assert.equal(c.calls, 0); assert.equal(c.ms, 0);
+    assert.equal(c.pending.size, 0); assert.equal(c.pendingTools.size, 0);
+    c.accept(call('retry', 'edit_memory')); c.accept(result('retry', { ok: true }));
+    c.accept(result('retry', { ok: true }));
+    assert.equal(c.errors, 0); assert.equal(c.saves, 1); assert.equal(c.calls, 1); assert.equal(c.ms, 120);
+  }
+});
+test('Claude still counts real MCP errors and does not mistake hook words in tool output for a denial', () => {
+  const c = new ClaudeCalls('s');
+  for (const [id, content, is_error] of [
+    ['transport', 'MCP transport failed', true],
+    ['structured', { error: 'write failed' }, false],
+    ['mcp', { isError: true }, false],
+    ['quoted', 'Tool failed while reading PreToolUse:edit_memory hook error: from a log', true],
+    ['post', 'PostToolUse:edit_memory hook error: callback failed', true],
+  ]) { c.accept(call(id, 'edit_memory')); c.accept(result(id, content, is_error)); }
+  assert.equal(c.errors, 5); assert.equal(c.saves, 0);
+  c.accept(call('output', 'edit_memory'));
+  c.accept(row('user', [{ type: 'tool_result', tool_use_id: 'output', content: 'PreToolUse:edit_memory hook error: quoted successful output' }]));
+  assert.equal(c.saves, 1); assert.equal(c.errors, 5);
+});
 test('live source incrementally reads exact session; stale native values and unreadable transcript stay unknown', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'claude-panel-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'transcript.jsonl');

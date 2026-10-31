@@ -106,15 +106,17 @@ export class ClaudeCalls {
       const call = this.pending.get(block.tool_use_id);
       if (!call || this.seen.has(block.tool_use_id)) continue;
       this.pending.delete(block.tool_use_id); this.seen.add(block.tool_use_id);
+      if (this.seen.size > 4096) this.seen.delete(this.seen.values().next().value!);
+      const text = typeof block.content === 'string' ? block.content :
+        (Array.isArray(block.content) ? block.content.find((b: any) => b.type === 'text')?.text : null);
+      // Claude emits a failed tool_result for a PreToolUse veto, before MCP runs.
+      if (block.is_error && typeof text === 'string' && /^PreToolUse:[^\r\n]+ hook error:/.test(text)) continue;
       this.calls++;
       this.lastTool = call.name;
       if (Number.isFinite(time)) this.lastAt = time;
       if (Number.isFinite(time) && Number.isFinite(call.at) && time >= call.at) this.ms += time - call.at;
-      if (this.seen.size > 4096) this.seen.delete(this.seen.values().next().value!);
       if (block.is_error) { this.errors++; continue; }
       let result: any = {};
-      const text = typeof block.content === 'string' ? block.content :
-        (Array.isArray(block.content) ? block.content.find((b: any) => b.type === 'text')?.text : null);
       try { result = JSON.parse(text); } catch { /* loads need no body */ }
       if (result?.error || result?.isError === true) { this.errors++; continue; }
       if (call.name === 'recall' || call.name === 'find_document') { this.searches++; this.hits += Array.isArray(result.hits) ? result.hits.length : 0; }

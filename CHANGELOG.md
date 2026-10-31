@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Claude live panels no longer count PreToolUse hook denials as failed Recall
+  calls; genuine MCP errors remain visible (#1345).
 - Translation/review prose no longer triggers copy-repair false alarms or a
   missing-receipt repair. Explicit oversized fences/quotes remain checked;
   approved copies still require a receipt and later model task reports cannot
