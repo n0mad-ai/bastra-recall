@@ -106,7 +106,9 @@ These checks concern daemon/adapter behavior. They do not certify installed host
 
 This extends the cloud/index freshness boundary above to hook hint provenance and prompt/reflex metadata: a missed external revision, validator or privacy update becomes visible after a successful index refresh, rather than through an independent per-hook disk probe. Hook-side source projection cannot occupy libuv file workers on an unreadable rule file. Empty bodies are valid indexed rules, not unavailable sources or Always overflow. Read-only direct catalog queries share the current index generation; only actual Vault events invalidate hook projections.
 
-## Phase 4 fix 1: parity requires concrete obligations
+## Phase 4 fix 1: parity requires concrete obligations (historical)
+
+Historical snapshot: the inferred stage/approval path and task/generation repair budget below have been superseded by agent-reported stages and the actor/context/round budget. See [current contract](rulebook.md).
 
 The first Phase 4 replacement was insufficient: an empty round check bypassed GitHub rule loading, model-reported tasks could attest user approval, and validator repair depended on that report. Its weakened GitHub/repair assertions have been restored. Passing that earlier full suite was not evidence of preserved protection.
 

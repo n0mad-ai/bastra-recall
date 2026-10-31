@@ -961,10 +961,11 @@ validator, but the session holds no `validate_artifact` receipt for the
 running task and generation (#1310), the Stop hands back
 `approved-copy without validated receipt: run validate_artifact on the final
 text before delivering; later edits need a new receipt` as `additionalContext`,
-also on a `stop_hook_active` Stop. This happens at most twice per task and
-generation (an edited text does not reset the count); the next Stop writes one
+also on a `stop_hook_active` Stop. This happens at most twice per actor, context and round
+(an edited text or repeated stage report does not reset the count); the next Stop writes one
 `non_conformance` event with `reason: "repair_exhausted"` and returns `{}`.
-The count ends with the task and on compact, clear and fork. It is never a
+A new round or context starts a new budget; the task may persist across rounds.
+Legacy sessions without a rulebook context retain the task/generation fallback. It is never a
 `decision: "block"`, and Codex, payloads without a session id and
 `BASTRA_STOP_SAME_TURN=0` get no repair. A receipt proves mechanical format,
 not that the sent text is the validated one.

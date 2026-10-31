@@ -41,7 +41,7 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
  const oversized=(state:ReadonlySessionState)=>oversizedRules(state).length>0;
  const repairDetails=(state:ReadonlySessionState)=>{
   const over=oversizedRules(state),rules=over.length?over:validatorsFor(state,payload);
-  const sources=[...roundCorrespondence(state,payload).rules,...(state.activeConventions??[]),...(state.loadedConventions??[])];
+  const {sources}=validatorSources(state,payload);
   const ruleIds=[...new Set(sources.filter(r=>r.validator&&rules.some(v=>v.channel===r.validator!.channel&&v.unit===r.validator!.unit&&v.limit===r.validator!.limit)).map(r=>r.id))];
   return {reason:over.length?'overlength' as const:'missing-receipt' as const,ruleIds};
  };
@@ -100,11 +100,15 @@ function deliveredCopy(text:string,unit:Parameters<typeof countCopyUnits>[1],pro
  for(const block of blocks){const count=countCopyUnits(block,unit);if(count>size){largest=block;size=count;}}
  return largest;
 }
-function validatorsFor(state:ReadonlySessionState,p:RulebookPayload){
+function validatorSources(state:ReadonlySessionState,p:RulebookPayload){
  const round=roundCorrespondence(state,p),dismissed=new Set(round.dismissed);
  const inherited={...state,activeConventions:state.activeConventions?.filter(c=>!dismissed.has(c.id)),loadedConventions:state.loadedConventions?.filter(c=>!dismissed.has(c.id))};
- const task=!p.agent_id&&state.activeTask&&state.activeTask.kind!=="none"?taskValidators(inherited).map(v=>v.validator):[];
- const all=[...task,...round.rules.flatMap(r=>r.validator?[r.validator]:[])];
+ const task=!p.agent_id&&state.activeTask&&state.activeTask.kind!=="none"?inherited:undefined;
+ return {round,task,sources:[...round.rules,...(task?.activeConventions??[]),...(task?.loadedConventions??[])]};
+}
+function validatorsFor(state:ReadonlySessionState,p:RulebookPayload){
+ const {round,task}=validatorSources(state,p);
+ const all=[...(task?taskValidators(task).map(v=>v.validator):[]),...round.rules.flatMap(r=>r.validator?[r.validator]:[])];
  const channel=state.activeTask?.validatorChannel;
  return channel&&all.some(v=>v.channel===channel)?all.filter(v=>v.channel===channel):all;
 }

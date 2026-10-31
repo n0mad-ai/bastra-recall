@@ -1,6 +1,7 @@
 import test from 'node:test';
+import {syncBuiltinESMExports} from 'node:module';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import fs,{mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {recordRulebookCheck,beginRulebookRound,rulebookBoundary} from '../src/rulebook-check.js';
@@ -54,4 +55,20 @@ test('a worker reports its own validators but never inherits the main copy stage
  const p={session_id:sid,bastra_client:'claude-code',agent_id:'worker'};
  assert.equal(await checkStopRepair(p,[{role:'assistant',content:'x'.repeat(5000)}]),null);
  assert.equal((await checkStopRepair(p,[{role:'assistant',content:'```\n'+'x'.repeat(2001)+'\n```'}]))?.action,'request');
+}));
+
+for(const invalidDismissal of [false,true])test('failed persistence never reports an accepted stage, invalid dismissal='+invalidDismissal,async t=>isolated(async()=>{
+ const sid='failed-persist-'+invalidDismissal;
+ await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'draft-for-review'},catalog);
+ let writes=0;
+ const rename=t.mock.method(fs,'rename',async()=>{writes++;throw Error('fixture rename failure');});
+ syncBuiltinESMExports();
+ let out;
+ try{out=await recordRulebookCheck(sid,{applicable:[],task:'none',...(invalidDismissal?{not_applicable:[{id:'copy-rule',reason:'Try dismissing the protected current rule'}]}:{})},catalog);}
+ finally{rename.mock.restore();syncBuiltinESMExports();}
+ assert.ok(writes>0,'mutation ran but atomic persistence failed');
+ assert.equal(out.ok,false);
+ assert.equal('task' in out?out.task:undefined,undefined);
+ assert.match('reason' in out?out.reason??'':'',/State unavailable/);
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
 }));

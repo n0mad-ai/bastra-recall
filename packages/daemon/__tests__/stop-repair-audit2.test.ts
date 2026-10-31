@@ -132,3 +132,17 @@ test('repair messages distinguish overlength from missing receipt and identify t
   assert.doesNotMatch(out.hookSpecificOutput.additionalContext,overlength?/without validated receipt/:/exceeds the rule limit/);
  }
 }));
+
+for(const worker of [false,true])test('repair IDs exclude '+(worker?'main-session rules from workers':'dismissed rules'),async()=>sandbox(async()=>{
+ const sid='source-ids-'+worker;await seed(sid,'draft-for-review');
+ await mutateSessionState(sid,s=>{
+  s.activeConventions!.push({id:'other-rule',revision:'r1',setAt:1,validator});
+  s.loadedConventions=[{id:'other-rule',revision:'r1',loadedAt:1,validator}];
+ });
+ const sources={...catalog,entries:[...catalog.entries,{...catalog.entries[0]!,id:'other-rule'}]};
+ await beginRulebookRound(payload(sid),sources);
+ await recordRulebookCheck(sid,{applicable:['copy-rule'],...(worker?{agent_id:'worker'}:{not_applicable:[{id:'other-rule',reason:'This rule is unrelated to this round'}]})},sources);
+ const result=await checkStopRepair({...payload(sid),...(worker?{agent_id:'worker'}:{})},[{role:'assistant',content:fence(2500)}]);
+ assert.equal(result?.action,'request');
+ if(result?.action==='request')assert.deepEqual(result.ruleIds,['copy-rule']);
+}));

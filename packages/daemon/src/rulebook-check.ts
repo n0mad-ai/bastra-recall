@@ -134,7 +134,7 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     a.checked = true; a.ids = [...new Set(input.applicable)];
     context = state.context; round = state.round; put(s, state);
   });
-  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,...(acceptedTask?{task:acceptedTask}:{}),skipped_protected_ids:skippedProtectedIds,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
+  if (persisted && invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,...(acceptedTask?{task:acceptedTask}:{}),skipped_protected_ids:skippedProtectedIds,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   if (persisted && taskError) return { ok: false, reason: `${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
