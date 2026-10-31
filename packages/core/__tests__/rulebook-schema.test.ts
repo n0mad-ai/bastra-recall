@@ -85,3 +85,18 @@ test('Phase 4: user-directed workflows formerly found by the GitHub query enter 
   assert.equal(resolveRulebook(fm)?.rulebook, 'on-demand');
   assert.equal(resolveRulebook({...fm, write_origin: 'agent-session'}), undefined);
 });
+
+test('category proposals merge with the requested tier and preserve pending validator metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rulebook-proposal-merge-'));
+  const validator = {tool:'validate_artifact',channel:'fixture',limit:100,unit:'utf16'} as const;
+  try {
+    const saved = await saveMemory(root, SaveMemoryInput.parse({...input,rulebook:'always',applies_when:'When testing fixtures',rule_categories:['github-issues-prs'],validator}));
+    const load = async () => parseMemoryWith(matter, await readFile(saved.file_path,'utf8'),saved.file_path,0).fm;
+    let fm=await load();
+    assert.equal(fm.rulebook,undefined);assert.equal(fm.validator,undefined);
+    assert.deepEqual(fm.rulebook_proposed,{rulebook:'always',applies_when:'When testing fixtures',rule_categories:['github-issues-prs'],validator});
+    await saveMemory(root, SaveMemoryInput.parse({...input,overwrite:true,applies_when:'When replying',rule_categories:['correspondence']}));
+    fm=await load();assert.equal(fm.rulebook,undefined);
+    assert.deepEqual(fm.rulebook_proposed,{rulebook:'always',applies_when:'When replying',rule_categories:['correspondence'],validator});
+  } finally {await rm(root,{recursive:true,force:true});}
+});

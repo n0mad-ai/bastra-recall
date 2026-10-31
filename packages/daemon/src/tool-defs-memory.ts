@@ -625,7 +625,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "memories are exempt from automated lifecycle passes (curator, " +
             "consolidation). Omit otherwise: 'agent-session' is the default " +
             "for autonomous saves. On overwrite without this field, the " +
-            "existing provenance is preserved.",
+            "existing provenance is preserved. This is the agent caller’s attestation, " +
+            "not authenticated human-origin proof; user-directed can immediately bind a new rule or validator.",
         },
         body_ends_with: {
           type: "string",

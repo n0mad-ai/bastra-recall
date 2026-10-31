@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Vault,saveMemory,mutateMemoryFile} from '@bastra-recall/core';
+import {saveMemoryHandler} from '../src/save-memory-handler.js';
 import {editMemoryHandler} from '../src/edit-memory-handler.js';
 import {callerSessionStore} from '../src/caller-session.js';
 import {mutateSessionState,loadSessionState,recordActiveConventions} from '../src/session-state.js';
@@ -61,4 +62,10 @@ for(const quoted of [true,false])test(`channel authority: ${quoted?'foreign mail
  await declareUnrelatedCorrespondence(live,sid);
  const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}});
  assert.notEqual(out.decision,'block');assert.equal(JSON.stringify(out).includes('<copy-repair'),quoted);
+});
+
+test('user-directed is an agent attestation accepted for immediately binding a dictated new rule',async()=>{
+ const id='agent-attested-user-directed';
+ const result=await saveMemoryHandler(live.deps,{...base(id),recall_when:['unique attested provenance fixture'],write_origin:'user-directed',rulebook:'always',applies_when:'When checking attested fixtures',validator});
+ assert.equal(result.created,true);assert.equal(vault.get(id)!.fm.write_origin,'user-directed');assert.equal(vault.get(id)!.fm.rulebook,'always');assert.deepEqual(vault.get(id)!.fm.validator,validator);assert.equal(vault.get(id)!.fm.rulebook_proposed,undefined);
 });

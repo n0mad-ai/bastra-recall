@@ -160,3 +160,10 @@ This follow-up supersedes the earlier task-omission GAP. Every current correspon
 Declared/loaded validators check oversized answer candidates even with no activeTask. Short valid output passes. A later model report cannot erase a loaded/applied rule, weaken its constraint or reset the repair budget. New rounds expire applicability; explicitly unrelated translation/code/prose rounds do not inherit it. Current metadata refresh remains index-only, also for declared-but-unloaded IDs. User channel/approval authority and existing task receipt behavior remain separate. Claude Code gets at most two copy repair requests and one exhaustion. Codex records one violation and reports it at the next prompt, with same-turn length repair still disabled pending native evidence (#1311).
 
 Both former GAP cells now PASS for all five fixture languages and both host identifiers. Cost controls: 50 honest harmless rounds, 50 checks, zero Stop blocks/repairs; 40 deliberately unchecked harmless rounds, one first block each. Payload bytes are measured separately, not LLM tokens or real-model frequency. These are scripted production HTTP/adapter checks; native certification and universal semantic compliance are not claimed. Counters and audit delivery remain subject to existing storage/telemetry limits and fail-open behavior.
+
+
+## Review follow-up: provenance attestation and proposal merging
+
+save_memory accepts the agent's own write_origin:user-directed claim; a new rule/validator can therefore bind immediately. This is an accepted attestation/trust boundary for dictated rules, not authenticated human-origin proof. It does not replace user-turn approval of a correspondence task. Category proposals now merge with a pending declaration and validator instead of replacing the requested always tier with on-demand.
+
+The Japanese dictionary trigger メールを書く still fails against 田中さんにメールを書いてください under current ICU segmentation and conservative short-token/word-form checks. It leaves the channel unbound and retains all validator constraints. No new word list or permissive substring fallback was introduced; broader inflection matching is documented for later work.

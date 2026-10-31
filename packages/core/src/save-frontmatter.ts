@@ -318,8 +318,9 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   if (input.rule_categories !== undefined) {
     if (existingRule || (input.write_origin === "user-directed" && !prev.id)) out.rule_categories = input.rule_categories;
     else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
-      out.rulebook_proposed = { rulebook: "on-demand",
-        applies_when: input.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
+      const proposed = out.rulebook_proposed as Record<string, unknown> | undefined;
+      out.rulebook_proposed = { ...proposed, rulebook: proposed?.rulebook ?? "on-demand",
+        applies_when: input.applies_when ?? proposed?.applies_when ?? prev.applies_when ?? input.summary, rule_categories: input.rule_categories };
     }
   }
   const previousValidator = ConventionValidatorSchema.safeParse(prev.validator);
