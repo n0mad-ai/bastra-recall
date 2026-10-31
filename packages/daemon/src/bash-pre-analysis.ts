@@ -707,13 +707,6 @@ function rmTargets(cmd: string): string[] {
   return out;
 }
 
-/**
- * One line when the shim is off and would have taken this command: what it
- * would have done, how to turn it on, and — read from the user's own Claude
- * Code rules — whether the stop comes from those rules. A user `deny` stays a
- * deny with the shim on too, so it gets no line (the shim would not have
- * saved this case); the shadow event still counts it.
- */
 /** The one line for an opted-in call whose registration does not name its client. */
 export function unmarkedClientLine(): string {
   return (
@@ -724,6 +717,13 @@ export function unmarkedClientLine(): string {
   );
 }
 
+/**
+ * One line when the shim is off and would have taken this command: what it
+ * would have done, how to turn it on, and — read from the user's own Claude
+ * Code rules — whether the stop comes from those rules. A user `deny` stays a
+ * deny with the shim on too, so it gets no line (the shim would not have
+ * saved this case); the shadow event still counts it.
+ */
 export function shimOffLine(command: string, settings: BashVerdict, family: "rm" | "git" = "rm"): string {
   if (settings.verdict === "deny") return "";
   if (family === "git") {

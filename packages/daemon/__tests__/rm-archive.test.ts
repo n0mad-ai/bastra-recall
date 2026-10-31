@@ -694,6 +694,16 @@ describe("#657 — opted in, but the hook registration names no client", () => {
     assert.doesNotMatch(codex.additionalContext ?? "", /does not name its client/);
   });
 
+  it("under the user's own deny rule there is no line: the marker would not make the command run", async () => {
+    // Revert-check: drop the verdict check in the lane → the deny case gets the line.
+    const dir = mkdtempSync(join(tmpdir(), "unmarked-deny-"));
+    mkdirSync(join(dir, ".claude"));
+    writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ permissions: { deny: [`Bash(${RM}:*)`] } }));
+    const out = await preHook(`${RM} -rf victim-d`, "unknown", dir);
+    assert.match(out.additionalContext, /STOP — destructive/);
+    assert.doesNotMatch(out.additionalContext, /does not name its client/);
+  });
+
   it("with the opt-in off there is no line: off means the plain STOP as before", async () => {
     // Revert-check: drop `archiveMode(setting) !== "off"` → the off install gets the line.
     const prev = process.env.BASTRA_RM_ARCHIVES;

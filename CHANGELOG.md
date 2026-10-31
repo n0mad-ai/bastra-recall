@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- With the archive opt-in on, a destructive command from a hook registration
+  without a client marker now says why it stops and how to add the marker. A
+  `deny` rule gets no such line (#657, #1362).
+
 ## [1.1.8] — 2026-10-31
 
 ### Added

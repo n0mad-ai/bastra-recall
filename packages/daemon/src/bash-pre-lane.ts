@@ -301,10 +301,15 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
     });
   }
   if (match.unmarked) {
-    offLine = unmarkedClientLine();
+    // A deny rule wins with the marker too, so naming the fix would promise nothing.
+    const settings = bashVerdict(command, settingsFiles(payload.cwd));
+    if (settings.verdict !== "deny") offLine = unmarkedClientLine();
     await writeShadow("archive_unmarked_shadow", {
       session_id: payload.session_id ?? null,
       matched_pattern: match.label,
+      settings_verdict: settings.verdict,
+      settings_rule: settings.rule ?? null,
+      hinted: offLine !== "",
       dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
     });
   }
