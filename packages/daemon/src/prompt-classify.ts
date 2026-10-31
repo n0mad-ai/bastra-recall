@@ -5,31 +5,13 @@
  * deterministic; runs before any recall work.
  */
 import {
-  approvedCopyCues,
-  approvalBlockCues,
-  approvalClosingCues,
-  approvalQuestionTailCues,
-  sendPersonCues,
-  recipientFollowupCues,
-  targetCopyCues,
-  targetCopyRequestCues,
-  copyRevisionCues,
-  copyReferenceCues,
-  technicalTaskObjectCues,
-  technicalTaskDestinationCues,
-  personRecipientCues,
   composeVerbCues,
-  correspondenceCues,
   cueRegex,
-  draftReplyCues,
   outwardArtifactCues,
   projectStateCues,
   previousConventionCues,
-  quoteHeaderCues,
   retrievalLeadCues,
   stateQuestionCues,
-  taskApprovalCues,
-  translateOnlyCues,
 } from "./lexicon.js";
 
 export const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
@@ -185,176 +167,20 @@ export function extractPrompt(payload: ClaudeHookPayload): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-// ─── task contract (#1306) ───────────────────────────────────────────────────
-//
-// The correspondence workflow a session is in: translate the incoming text
-// only, draft a reply for the user's review, or deliver the copy the user
-// approved. The state lives in the session (session-state.ts `activeTask`);
-// this part only reads the prompt. Pure and deterministic like the rest.
-
+/** Explicit agent-reported workflow stage; prompt text never selects it. */
 export type TaskKind = "translate-only" | "draft-for-review" | "approved-copy" | "none";
 
-const PASTED_CONTENT = /<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content>|$)/giu;
-const BLOCKQUOTE_LINE = /^\s*>/u;
-
-/**
- * Split the prompt into the user's own text and quoted incoming text. Quoted
- * is a `<pasted_content>` block, a blockquote line, and everything from a
- * "… schrieb:" / "Am …, schrieb Max <a@b>:" / "… wrote:" header line on. Only `own` is ever read for a cue:
- * an instruction inside an incoming message never changes the task state.
- */
+/** Structural quote boundaries only; no language-dependent mail headers. */
 export function splitQuoted(prompt: string): { own: string; quoted: boolean } {
   let quoted = false;
-  const withoutPaste = prompt.replace(PASTED_CONTENT, (block) => {
+  const withoutPaste = prompt.replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content>|$)/giu, block => {
     if (/\S/u.test(block.replace(/<\/?pasted_content\b[^>]*>/giu, ""))) quoted = true;
     return "\n";
   });
-  const header = new RegExp(`(?<![\\p{L}\\p{N}])(?:${quoteHeaderCues().join("|")})(?![\\p{L}\\p{N}])[^\\n]{0,120}:\\s*$`, "iu");
   const own: string[] = [];
-  let tail = false;
   for (const line of withoutPaste.split("\n")) {
-    if (!tail && header.test(line)) tail = true;
-    if (tail || BLOCKQUOTE_LINE.test(line)) {
-      if (/\S/u.test(line.replace(/^\s*>/u, ""))) quoted = true;
-      continue;
-    }
-    own.push(line);
+    if (/^\s*>/u.test(line)) { if (/\S/u.test(line.replace(/^\s*>/u, ""))) quoted = true; }
+    else own.push(line);
   }
-  return { own: own.join("\n").trim(), quoted };
-}
-
-/** What the user's own text says about the task. */
-export interface TaskSignals {
-  /** "nur übersetzen" / "translate only". */
-  translate: boolean;
-  /** "ich arbeite eine eingegangene Nachricht ab" — a correspondence workflow. */
-  announce: boolean;
-  /** A compose/reply verb ("antworte", "reply", "schreib"). */
-  reply: boolean;
-  /** An explicit request for a reply draft ("Antwortentwurf", "draft a reply"). */
-  draftReply: boolean;
-  /** Quoted or pasted incoming text is present (its content is never read). */
-  quoted: boolean;
-  /** The whole short prompt is an approval ("ok", "passt", "go", "ja"). */
-  approval: boolean;
-  /** A mention can create ambiguity, never user approval. */
-  approvalMention?: boolean;
-  /** The prompt opens with one ("ok, aber kürzer") — a follow-up, not a new topic. */
-  ack: boolean;
-  /** An explicit approval phrase ("freigegeben", "approved copy"). */
-  approvedCopy: boolean;
-  sendPerson?: boolean;
-  recipientFollowup?: boolean;
-  targetCopy?: boolean;
-  revision?: boolean;
-  copyReference?: boolean;
-  technicalObject?: boolean;
-  personTarget?: boolean;
-}
-
-export function taskSignals(prompt: string): TaskSignals {
-  const { own, quoted } = splitQuoted(prompt);
-  const has = (cues: readonly string[]): boolean => own.length > 0 && cueRegex(cues).test(own);
-  // A question is never approval. Full approval phrases and a leading ack
-  // avoid interpreting an embedded word in refusals as permission. Vocabulary
-  // remains in the existing extensible multilingual lexicon.
-  const question = /[?？;؟]/u.test(own);
-  const bare = own.toLowerCase().replace(/[\s!.…]+$/u, "").trim();
-  const ackPattern = new RegExp(`^(?:${[...taskApprovalCues(), ...approvedCopyCues()].sort((a,b)=>b.length-a.length).join("|")})(?![\\p{L}\\p{N}])`, "iu");
-  const ackMatch = ackPattern.exec(bare);
-  const leadingAck = ackMatch !== null;
-  const targetClause = ackMatch ? bare.slice(ackMatch[0].length).replace(/^[\s,;:!]+/u, "") : bare;
-  const closing = new RegExp(`(?:^|[,;\\s])(?:${approvalClosingCues().join("|")})\\s+(.+)$`, "iu").exec(bare)?.[1];
-  const closingApproval = closing !== undefined && ackPattern.test(closing) && !cueRegex(approvalBlockCues()).test(closing);
-  const approval = !question && (closingApproval || (leadingAck && !new RegExp(`^(?:${approvalQuestionTailCues().join("|")})`, "iu").test(targetClause) && !cueRegex(approvalBlockCues()).test(targetClause) && !cueRegex(copyRevisionCues()).test(targetClause)));
-  const targetRequest = new RegExp(`^(?:${[...targetCopyCues(), ...targetCopyRequestCues()].join("|")})$`, "iu").test(targetClause);
-  const sendPerson = has(sendPersonCues());
-  const recipientFollowup = has(recipientFollowupCues());
-  const recipients = personRecipientCues().flatMap(cue =>
-    [...own.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])(?:${cue})`, "giu"))].map(match => {
-      const name = match[1] ?? "";
-      return { name, tail: own.slice(match.index! + match[0].lastIndexOf(name)) };
-    }));
-  const service = cueRegex(technicalTaskDestinationCues(), true);
-  // Service vocabulary applies to addressed destinations, not a service
-  // merely mentioned in a message to Max/Sarah.
-  const technicalObject = has(technicalTaskObjectCues()) || recipients.some(r => r.name && service.test(r.tail));
-  // A rule validator is not evidence that a receiver is a person. Recognize
-  // explicit handles or name-shaped tokens; unknown targets stay neutral.
-  const personTarget = !technicalObject && (sendPerson || recipientFollowup) && recipients.some(({ name }) =>
-    /^@\p{L}[\p{L}\p{M}\p{N}_-]*$/u.test(name) ||
-    /^\p{Lu}[\p{Ll}\p{M}]*(?:[-']\p{Lu}[\p{Ll}\p{M}]*)*$/u.test(name));
-  return {
-    translate: has(translateOnlyCues()),
-    announce: has(correspondenceCues()),
-    reply: has(composeVerbCues()),
-    draftReply: has(draftReplyCues()),
-    quoted,
-    approval,
-    ack: leadingAck,
-    approvalMention: has(approvedCopyCues()),
-    approvedCopy: approval && new RegExp(`^(?:${approvedCopyCues().join("|")})(?![\\p{L}\\p{N}])`, "iu").test(bare),
-    sendPerson,
-    recipientFollowup,
-    targetCopy: !question && targetRequest,
-    technicalObject,
-    personTarget,
-    revision: has(copyRevisionCues()),
-    copyReference: has(copyReferenceCues()),
-  };
-}
-
-export interface TaskContext {
-  current: TaskKind;
-  /** False when no output was observed for a model-declared draft. */
-  draftPresented?: boolean;
-  /** The choice line went out on the previous prompt of the same generation. */
-  questionOpen: boolean;
-  /** Detected mode of this prompt; "trivial" for the gated short prompts. */
-  mode: DetectedMode | "trivial";
-  /** This prompt's recall or reflex surfaced an active convention again. */
-  hitActive: boolean;
-  /** This prompt surfaced a new topic outside the active conventions. */
-  hitOther?: boolean;
-  /** A correspondence task or its clarification is already in progress. */
-  correspondenceActive?: boolean;
-  /** A standing rule alone can recover explicit compound approval, not recipient intent. */
-  correspondenceHint?: boolean;
-}
-
-/** `next` null keeps the state; `unclear` renders neutral provenance guidance. */
-export interface TaskDecision {
-  next: TaskKind | null;
-  unclear: boolean;
-}
-
-/**
- * The transition for one prompt. Explicit beats implicit: "translate only"
- * wins over a workflow announcement, an approval counts only while a draft is
- * under review (or as the explicit answer to the choice line), and quoted text
- * without a verb of the user's own is unclear rather than a guess. A prompt
- * with no cue, in a plain mode, that surfaced a new topic outside the active
- * conventions ends the task. A recall miss alone is not a task switch.
- */
-export function decideTask(sig: TaskSignals, ctx: TaskContext): TaskDecision {
-  const keep: TaskDecision = { next: null, unclear: false };
-  const explicit = [sig.translate, sig.approvedCopy || sig.approvalMention, sig.draftReply].filter(Boolean).length;
-  if (explicit > 1) return { next: null, unclear: true };
-  if (sig.translate) return { next: "translate-only", unclear: false };
-  if (sig.technicalObject) return keep;
-  if (sig.approvedCopy && (ctx.current === "draft-for-review" || ctx.questionOpen)) return { next: "approved-copy", unclear: false };
-  if (sig.approval && ctx.draftPresented !== false && ctx.current === "draft-for-review" && !ctx.questionOpen && !sig.quoted) return { next: "approved-copy", unclear: false };
-  if (sig.targetCopy && !sig.revision && !sig.quoted &&
-      (ctx.current === "draft-for-review" || (sig.ack && (ctx.correspondenceActive || ctx.correspondenceHint)))) {
-    return { next: "approved-copy", unclear: false };
-  }
-  if (ctx.current === "approved-copy" && (sig.revision || sig.reply || sig.sendPerson || sig.recipientFollowup || sig.targetCopy || sig.ack)) return keep;
-  if ((sig.sendPerson || sig.recipientFollowup) && (ctx.current !== "none" || sig.personTarget)) return { next: "draft-for-review", unclear: false };
-  if (sig.draftReply || sig.announce) return { next: "draft-for-review", unclear: false };
-  if (sig.quoted) return sig.reply ? { next: "draft-for-review", unclear: false } : { next: null, unclear: true };
-  if (ctx.questionOpen && sig.reply) return { next: "draft-for-review", unclear: false };
-  if (ctx.mode === "trivial" || ctx.current === "none") return keep;
-  const anyCue = sig.reply || sig.ack || sig.approvedCopy;
-  if (!anyCue && !sig.revision && !sig.copyReference && !ctx.hitActive && ctx.hitOther === true && (ctx.mode === "none" || ctx.mode === "generic")) return { next: "none", unclear: false };
-  return keep;
+  return {own: own.join("\n").trim(), quoted};
 }

@@ -7,9 +7,6 @@ import {checkStopRepair} from '../src/stop-repair.js';
 import {runStopLane} from '../src/stop-lane.js';
 import {recordRulebookCheck} from '../src/rulebook-check.js';
 import {mutateSessionState} from '../src/session-state.js';
-import {loadSessionState} from '../src/session-state.js';
-import {runTaskStep} from '../src/prompt-task.js';
-import {storeReceipt} from '../src/receipt-store.js';
 import type {KernelCandidates} from '../src/rulebook-catalog.js';
 import type {TranscriptTurn} from '../src/stop-transcript.js';
 
@@ -57,19 +54,15 @@ test('audit2 runStopLane repair can heal on the real hook-active followup',async
  transcript.push({role:'assistant',content:fence(1800)});
  assert.equal(await runStopLane({...payload(sid),transcript},'http://127.0.0.1:1'),'{}');
 }));
-test('audit2 delivered receipt excludes explanatory prose but a requested revision checks prose again',async()=>sandbox(async()=>{
- const sid='delivered';await seed(sid,'approved-copy');
- const turns:TranscriptTurn[]=[{role:'user',content:'passt'},{role:'assistant',content:'Kurze Endkopie.'}];
- assert.equal(await checkStopRepair(payload(sid),turns),null);
- turns.push({role:'user',content:'Danke, erklär bitte den zweiten Absatz'},{role:'assistant',content:'Erklärung '.repeat(600)});
- assert.equal(await checkStopRepair(payload(sid),turns),null);
- // Explicit regions remain enforceable even after delivery.
- turns.push({role:'assistant',content:'> '+'x'.repeat(2001)});
- assert.equal((await checkStopRepair(payload(sid),turns))?.action,'request');
- await runTaskStep({sessionId:sid,prompt:'mach den zweiten Absatz persönlicher',snapshot:await loadSessionState(sid),mode:'generic',candidates:[],surface:'fixture'});
- await storeReceipt(sid,{artifact_sha256:'new',channel:'discord-dm',limit:2000,unit_applied:'max(codepoints,utf16)',receipt:'sha256:new'},undefined);
- turns.push({role:'user',content:'mach den zweiten Absatz persönlicher'},{role:'assistant',content:'Überarbeitete Kopie '.repeat(400)});
- assert.equal((await checkStopRepair(payload(sid),turns))?.action,'request');
+test('reported stages alone control prose; old delivery and repairProse never override a report',async()=>sandbox(async()=>{
+ const sid='reported-stages';await seed(sid,'approved-copy');
+ await mutateSessionState(sid,s=>{s.repairWindows={main:{scope:'old',length:0,tail:'old',delivered:s.activeTask!.id+':0'}};});
+ assert.equal((await checkStopRepair(payload(sid),[{role:'assistant',content:'x'.repeat(2500)}]))?.action,'request');
+ await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'draft-for-review'},catalog);
+ assert.equal(await checkStopRepair(payload(sid),[{role:'assistant',content:'y'.repeat(2500)}]),null);
+ await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'none'},catalog);
+ assert.equal(await checkStopRepair(payload(sid),[{role:'assistant',content:'z'.repeat(2500)}]),null);
+ assert.equal((await checkStopRepair(payload(sid),[{role:'assistant',content:'> '+'z'.repeat(2500)}]))?.action,'request');
 }));
 test('audit2 tool metadata does not revive the already repaired copy',async()=>sandbox(async()=>{
  const sid='tools-after-repair';await seed(sid);
@@ -97,23 +90,15 @@ test('audit2 legacy task without rulebook state can heal after a repair',async()
  turns.push({role:'assistant',content:'> '+'x'.repeat(1800)});
  assert.equal(await checkStopRepair(payload(sid),turns),null);
 }));
-test('audit2 Codex receipt delivery excludes later explanatory prose while explicit copy still counts',async()=>sandbox(async()=>{
- for(const quoted of [true,false]){
-  const sid='codex-delivery-'+quoted;await seed(sid,'approved-copy');
-  const p={...payload(sid),bastra_client:'codex'};
-  const turns:TranscriptTurn[]=[{role:'user',content:'passt'},{role:'assistant',content:'Kurze Endkopie.'}];
-  assert.equal(await checkStopRepair(p,turns),null);
-  turns.push({role:'user',content:'Erkläre bitte die Entscheidung'},{role:'assistant',content:'Erklärung '.repeat(600)});
-  assert.equal(await checkStopRepair(p,turns),null);
-  turns.push({role:'assistant',content:quoted?'> '+'x'.repeat(2500):fence(2500)});
-  assert.equal((await checkStopRepair(p,turns))?.action,'observed');
- }
- const sid='codex-delivery-revision';await seed(sid,'approved-copy');
+test('Codex observes approved prose and structural blocks independently of any delivery marker',async()=>sandbox(async()=>{
+ const sid='codex-stages';await seed(sid,'approved-copy');
  const p={...payload(sid),bastra_client:'codex'};
- const turns:TranscriptTurn[]=[{role:'user',content:'passt'},{role:'assistant',content:'Kurze Endkopie.'}];
- assert.equal(await checkStopRepair(p,turns),null);
- await runTaskStep({sessionId:sid,prompt:'mach den zweiten Absatz persönlicher',snapshot:await loadSessionState(sid),mode:'generic',candidates:[],surface:'fixture'});
- await storeReceipt(sid,{artifact_sha256:'new',channel:'discord-dm',limit:2000,unit_applied:'max(codepoints,utf16)',receipt:'sha256:new'},undefined);
- turns.push({role:'user',content:'mach den zweiten Absatz persönlicher'},{role:'assistant',content:'Überarbeitete Kopie '.repeat(400)});
- assert.equal((await checkStopRepair(p,turns))?.action,'observed');
+ assert.equal(await checkStopRepair(p,[{role:'assistant',content:'Short copy.'}]),null);
+ assert.equal((await checkStopRepair(p,[{role:'assistant',content:'x'.repeat(2500)}]))?.action,'observed');
+}));
+for(const kind of [undefined,'translate-only','draft-for-review'] as const)for(const shape of ['prose','fence','quote'] as const)test('structural measurement '+kind+' '+shape,async()=>sandbox(async()=>{
+ const sid='structural';await seed(sid);
+ if(kind)await recordRulebookCheck(sid,{applicable:['copy-rule'],task:kind},catalog);
+ const text=shape==='prose'?'x'.repeat(2500):shape==='fence'?fence(2500):'> '+'x'.repeat(2500);
+ assert.equal((await checkStopRepair(payload(sid),[{role:'assistant',content:text}]))?.action??null,shape==='prose'?null:'request');
 }));

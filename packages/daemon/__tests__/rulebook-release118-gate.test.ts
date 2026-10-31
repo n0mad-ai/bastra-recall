@@ -43,13 +43,13 @@ test('compaction clears full-load evidence and the same revision gates again', a
   const sid = 'compacted'; await loaded(sid); await clearShown(sid);
   await hint(sid); assert.equal(await denied(sid), true);
 });
-test('forbidden task reports retain applicable declarations but cannot change user task', async () => {
+test('all explicit task stages are accepted while applicable action declarations remain valid', async () => {
   for (const task of ['none', 'approved-copy', 'translate-only', 'draft-for-review'] as const) {
-    const sid = `invalid-task-${task}`;
+    const sid = `reported-task-${task}`;
     await mutateSessionState(sid, s => { s.activeTask = { id: sid, kind: 'translate-only', since: 1, generation: 0 }; });
     const result = await recordRulebookCheck(sid, { applicable: ['copy-rule'], task }, catalog);
-    assert.equal(result.ok, false);
-    assert.equal((await loadSessionState(sid)).activeTask?.kind, 'translate-only');
+    assert.equal(result.ok,true);
+    assert.equal((await loadSessionState(sid)).activeTask?.kind,task);
     assert.equal(await rulebookBoundary(payload(sid), catalog, 'action'), '{}', task);
   }
 });
@@ -60,23 +60,24 @@ test('worker forbidden task report preserves its own check without inheriting ma
   assert.notEqual(await rulebookBoundary(payload(sid), catalog, 'action'), '{}');
   assert.equal((await loadSessionState(sid)).activeTask, undefined);
 });
-test('forbidden task reports retain valid non-applicable explanations', async () => {
+test('explicit task end retains valid current-round non-applicable explanations', async () => {
   const sid = 'invalid-task-dismissal';
-  assert.equal((await recordRulebookCheck(sid, { applicable: [], task: 'none', not_applicable: [{ id: 'copy-rule', reason: 'This is internal code work without correspondence.' }] }, catalog)).ok, false);
+  assert.equal((await recordRulebookCheck(sid, { applicable: [], task: 'none', not_applicable: [{ id: 'copy-rule', reason: 'This is internal code work without correspondence.' }] }, catalog)).ok,true);
   assert.equal(await rulebookBoundary(payload(sid), catalog, 'stop'), '{}');
   assert.match(await beginRulebookRound(payload(sid), catalog), /copy-rule/);
 });
 
-test('model draft report cannot remove approved-copy receipt protection while its valid declarations still count', async () => {
+test('a new explicit review report removes prose receipt duties but retains structural validator protection', async () => {
   const sid = 'approved-downgrade';
   await mutateSessionState(sid, s => {
     s.activeTask = { id: 'approved-copy@1', kind: 'approved-copy', approvalSource: 'user-turn', since: 1, generation: 0 };
     s.activeConventions = [{ id: 'copy-rule', revision: 'r1', validator, setAt: 1 }];
   });
   const result = await recordRulebookCheck(sid, {applicable: ['copy-rule'], task: 'draft-for-review'}, catalog);
-  assert.equal((await loadSessionState(sid)).activeTask?.kind, 'approved-copy');
-  assert.equal(result.ok, false);
+  assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
+  assert.equal(result.ok,true);
   assert.equal(await rulebookBoundary(payload(sid), catalog, 'action'), '{}', 'valid declarations still count');
   const { checkStopRepair } = await import('../src/stop-repair.js');
-  assert.equal((await checkStopRepair({...payload(sid), hook_event_name: 'Stop', transcript: [{role: 'assistant', content: 'Short approved copy without a receipt.'}]}))?.action, 'request');
+  assert.equal(await checkStopRepair({...payload(sid),hook_event_name:'Stop',transcript:[{role:'assistant',content:'Short review text without a receipt.'}]}),null);
+  assert.equal((await checkStopRepair({...payload(sid),hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(2500)+'\n```'}]}))?.action,'request');
 });

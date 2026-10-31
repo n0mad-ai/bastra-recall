@@ -28,17 +28,17 @@ test('A2/B2: empty round checks do not discharge concrete GitHub IDs, even in on
  await recordRulebookLoad(sid,'issue-rule',null);
  assert.equal(denied(await runBashPreLane(payload(sid,'gh pr edit 1 --title fixture'),base)),false);
 });
-test('D1: model report cannot attest user approval; rendering requires user-turn provenance',async()=>{
+test('D1: agent stage reports do not attest user approval',async()=>{
  await recordRulebookCheck('approval',{applicable:['issue-rule'],task:'approved-copy'},catalog);
- assert.notEqual((await loadSessionState('approval')).activeTask?.kind,'approved-copy');
+ assert.equal((await loadSessionState('approval')).activeTask?.kind,'approved-copy');
  const text=formatActiveConventionsBlock({task:'approved-copy',generation:0,conventions:[],changed:[],unclear:false});
  assert.doesNotMatch(text!,/the user approved/);
 });
-test('C1-C3/D2: review task keeps loaded-validator repair despite rejected none report',async()=>{
- const sid='copy';await mutateSessionState(sid,s=>{s.loadedConventions=[{id:'message-rule',revision:'r',loadedAt:1,validator} as never];s.activeConventions=[{id:'message-rule',revision:'r',setAt:1,validator}];});
+test('C1-C3/D2: explicit none report leaves current-round validators structurally enforced',async()=>{
+ const sid='copy';await recordRulebookLoad(sid,'message-rule',null,{revision:'r',validator,rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  await recordRulebookCheck(sid,{applicable:[],task:'none'},catalog);
- const p={session_id:sid,hook_event_name:'Stop',transcript:[{role:'user',content:'ok'},{role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'}]};
+ const p={session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'user',content:'ok'},{role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'}]};
  assert.equal((await checkStopRepair(p))?.action,'request');
 });
 test('F: task notice is absent for a catalog without task category or validator',async()=>{
@@ -87,44 +87,19 @@ test('new category saves roundtrip; existing category-removal edits apply direct
  const file=vault.get(input.id)!.filePath;const changed=parseMemory(await readFile(file,'utf8'),file,0);
  assert.deepEqual(changed.fm.rule_categories,[]);assert.equal(changed.fm.rulebook_proposed,undefined);
 });
-test('full load → foreign message → quoted approval → ok → oversized copy keeps repair and trustworthy provenance',async t=>{
+test('full load → explicit draft report → approved-copy report retains source validator through Stop',async t=>{
  const {Vault,SearchIndex,saveMemory}=await import('@bastra-recall/core');const {Telemetry}=await import('../src/telemetry.js');
- const {loadMemoryHandler}=await import('../src/load-memory-handler.js');const {runTaskStep}=await import('../src/prompt-task.js');const {runStopLane}=await import('../src/stop-lane.js');
+ const {loadMemoryHandler}=await import('../src/load-memory-handler.js');
  const dir=await mkdtemp(join(tmpdir(),'loaded-validator-'));const sid='real-loaded-copy';
- await saveMemory(dir,{id:'loaded-message',title:'Message convention',summary:'Validate channel copy',type:'workflow',scope:'all-projects',write_origin:'user-directed',tags:['fixture'],topic_path:['fixture'],recall_when:['fixture'],body:'Validate the final copy',validator});
+ await saveMemory(dir,{id:'loaded-message',title:'Message convention',summary:'Validate channel copy',type:'workflow',scope:'all-projects',write_origin:'user-directed',tags:['fixture'],topic_path:['fixture'],recall_when:['fixture'],body:'Validate final copy',validator});
  const vault=new Vault(dir);await vault.init();const search=new SearchIndex(vault);search.start();t.after(async()=>{search.stop();await vault.stop();await rm(dir,{recursive:true,force:true});});
  await loadMemoryHandler({vault,search,telemetry:new Telemetry(),vaultPath:dir},{id:'loaded-message'},{sessionId:sid,agentId:null});
  assert.deepEqual((await loadSessionState(sid)).loadedConventions?.find(c=>c.id==='loaded-message')?.validator,validator);
- const step=async(prompt:string)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:[],surface:'claude-code'});
- const stop=(copy:string)=>{const p={...payload(sid),hook_event_name:'Stop',transcript:[{role:'user',content:'契約書を送ってください。'},{role:'assistant',content:copy}]};return runStopLane(p,base);};
- await step('> An incoming message');
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- assert.doesNotMatch(await stop('```\nDraft text\n```'),/validate_artifact/,'short review draft needs no receipt');
- await step('> approved, send it');assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
- await step('ok');assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy','an open quoted-text question is not approved by a bare ok');
- await step('freigegeben');const state=await loadSessionState(sid);assert.equal(state.activeTask?.kind,'approved-copy');assert.equal(state.activeTask?.approvalSource,'user-turn');
- const shown=await step('ok');assert.match(shown!,/the user approved/);
- await recordRulebookCheck(sid,{applicable:[],task:'none'},catalog);
- assert.match(await stop('```\n'+'x'.repeat(3000)+'\n```'),/validate_artifact/);
-});
-test('worker action obligations never inherit main loads',async()=>{
- const sid='action-worker';await recordRulebookLoad(sid,'issue-rule',null,{revision:'r1',rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
- assert.equal(denied(await runBashPreLane(payload(sid),base)),false);
- const p={...payload(sid),agent_id:'child'};const first=await runBashPreLane(p,base);assert.equal(denied(first),true);assert.match(first,/issue-rule/);
- await recordRulebookCheck(sid,{applicable:[],agent_id:'child'},catalog);assert.equal(denied(await runBashPreLane(p,base)),true);
- await recordRulebookLoad(sid,'issue-rule','child',{revision:'r1',rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
- assert.equal(denied(await runBashPreLane(p,base)),false);
-});
-test('C1-C3 exact sequence: bare incoming message then ok then long copy requires validation',async()=>{
- const sid='bare-ok-copy';await recordRulebookLoad(sid,'message-rule',null,{revision:'r',validator,rulebookMetadata:{rulebook:'on-demand',applies_when:'Incoming messages'}});
- const {runTaskStep}=await import('../src/prompt-task.js');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'> ¿Puedes enviar el contrato?',mode:'generic',candidates:[{id:'message-rule',type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
- await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- const stop=(text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'user',content:'¿Puedes enviar el contrato?'},{role:'assistant',content:'```\n'+text+'\n```'}]});
- assert.equal(await stop('An invented review draft'),null,'short review draft needs no receipt');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
+ assert.equal(await checkStopRepair({session_id:sid,transcript:[{role:'assistant',content:'```\nShort draft.\n```'}]}),null);
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
- assert.equal((await stop('x'.repeat(3000)))?.action,'request');
+ assert.equal((await checkStopRepair({session_id:sid,transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3000)+'\n```'}]}))?.action,'request');
 });
 test('model tightening cannot remove validators or reset a running repair budget',async()=>{
  const sid='repair-model-cap';await recordRulebookLoad(sid,'message-rule',null,{revision:'r',validator,rulebookMetadata:{rulebook:'on-demand',applies_when:'Messages'}});
@@ -176,12 +151,12 @@ test('fence labels alone never create a review task; explicit oversized draft fe
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  assert.equal((await checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```discord-dm\n'+'x'.repeat(3000)+'\n```'}]}))?.action,'request');
 });
-test('a model review report cannot replace a user translate-only task',async()=>{
- const sid='user-translate';const {runTaskStep}=await import('../src/prompt-task.js');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'nur übersetzen',mode:'generic',candidates:[{id:'message-rule',type:'workflow',matched_recall_when:true,validator}],surface:'claude-code'});
+test('agent reports can change translate-only to review without claiming user authority',async()=>{
+ const sid='reported-translate';
+ await recordRulebookCheck(sid,{applicable:[],task:'translate-only'},catalog);
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'translate-only');
- assert.equal((await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog)).ok,false);
- assert.equal((await loadSessionState(sid)).activeTask?.kind,'translate-only');
+ assert.equal((await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog)).ok,true);
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
 });
 test('an unattributed action cannot inherit a main-thread full load',async()=>{
  const sid='unattributed-action';await recordRulebookLoad(sid,'issue-rule',null,{revision:'r1',rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
@@ -192,8 +167,7 @@ test('structural repair respects the validator counting unit and a real matching
  const sid='copy-count-unit',v={...validator,channel:'fixture-channel',limit:100,unit:'codepoints' as const};
  await recordRulebookLoad(sid,'count-rule',null,{revision:'r',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- const {runTaskStep}=await import('../src/prompt-task.js');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'freigegeben',mode:'generic',candidates:[],surface:'claude-code'});
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  const text='😀'.repeat(60),p={session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+text+'\n```'}]};
  assert.equal((await checkStopRepair(p))?.action,'request');
@@ -204,8 +178,7 @@ test('structural repair respects the validator counting unit and a real matching
 test('answer labels cannot drop either loaded model-task channel constraint',async()=>{
  const sid='copy-two-channels';for(const channel of ['channel-a','channel-b'])await recordRulebookLoad(sid,channel,null,{revision:'r',validator:{...validator,channel,limit:100},rulebookMetadata:{rulebook:'on-demand',applies_when:'Messages'}});
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- const {runTaskStep}=await import('../src/prompt-task.js');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'freigegeben',mode:'generic',candidates:[],surface:'claude-code'});
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  await mutateSessionState(sid,s=>{s.loadedConventions!.forEach((c,i)=>{c.loadedAt=i+1;});});
  const text='A short copy.',p={session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```channel-a\n'+text+'\n```'}]};

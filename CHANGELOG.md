@@ -16,23 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   evidence stay visible; bounded action/Stop checks on supported hook hosts do
   not claim semantic compliance or the unmeasured 99.9% reliability target
   (#1276, #1336, #1340).
-- Correspondence task states distinguish translation, review drafts and approved
-  copies. Declared convention validators activate mechanical `copy-blocks`
-  checks through `validate_artifact`, session/task-bound receipts and bounded
-  approved-copy repair. Each correspondence rule needs an explicit decision per
-  round. Model declarations cannot record user approval; own-user approval
-  recognition uses bounded language cues and format-independent assistant draft
-  output; clear approval can also advance an active draft when its transcript
-  is unavailable. Receipts do not bind the subsequently delivered text;
-  byte-exact receipt binding remains open (#1325). Before user approval, ordinary
-  prose in both user-requested and model-declared drafts is excluded from copy
-  measurement to preserve review/translation output; this boundary remains open
-  (#1351). After approval, final prose copy is measured. Revision requests keep
-  the copy task active; ordinary explanations after a receipt are excluded,
-  while explicit copy blocks and quotes remain checked. Repair checks use only
-  output produced after the repair request.
-  (#1306, #1309, #1310, #1311, #1323, #1328, #1340, #1341, #1349,
-  #1357, #1358).
+- Correspondence workflow stages are explicit agent self-reports through
+  `rulebook_check.task`: translate-only, draft-for-review, approved-copy or none.
+  Bastra does not recognize approval or change stages from the user's words,
+  recall hits or draft formatting. The self-report may be wrong and is not
+  evidence of user approval or permission to send; Bastra sends nothing itself.
+  Applicable validators check fences and quotes in every stage. Ordinary prose
+  is measured only in reported approved-copy, in the last assistant text.
+  Unmarked long final prose without that report remains unmeasured (#1351).
+  Receipts remain task/generation-bound, not byte-exact delivered-text evidence
+  (#1325). After repair requests only new output is checked; each new user round
+  requires fresh applicability decisions. Legacy session states remain readable.
+  (#1306, #1309, #1310, #1311, #1323, #1340, #1341).
 - Codex gate/fork registration, a source-backed host/runtime capability matrix,
   generated AGENTS.md/CLAUDE.md startup instructions with separate consent,
   deterministic convention replay in CI and `bastra logs --conventions`
@@ -79,12 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Claude live panels no longer count PreToolUse hook denials as failed Recall
   calls; genuine MCP errors remain visible (#1345).
 - Copy checks retain explicit fences and quotes before later tool calls and
-  measure eligible prose in the last assistant text. Review drafts leave quoted
-  originals and explanatory prose alone. Approved-copy tasks survive ordinary
-  follow-ups and revision requests; explanations after a receipt are excluded
-  from prose checks while explicit copy remains checked. Missing-receipt repair
-  stays scoped to approved copies; the pre-approval draft prose boundary remains
-  documented above (#1344, #1350–#1353, #1357, #1358).
+  measure prose only in the last text of reported approved-copy. Translation,
+  review and task end are agent reports, with no user-word classification,
+  draft-presentation heuristic or task cue lexicon. New-output repair windows
+  and the existing source/actor/round safeguards remain in force.
 - Context loss rearms reflex denials, and action-rule non-applicability
   exceptions expire at the next user round (#1347, #1348).
 - A fully loaded current rule revision remains usable for action-load checks

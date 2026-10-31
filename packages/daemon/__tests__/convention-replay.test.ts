@@ -242,6 +242,7 @@ async function fixture(projection = false) {
     if (contexts.length < 2) return context(gate) ? gate : lane;
     return { ...lane, hookSpecificOutput: { ...lane.hookSpecificOutput, additionalContext: contexts.join("\n") } };
   };
+  const reportTask=(task:"draft-for-review"|"approved-copy")=>rulebookCheckHandler({vault:loadedVault} as import("../src/tool-deps.js").ToolDeps,{applicable:["fixture-message"],task},{sessionId:"replay-fixture-conventions"});
   async function replay() {
     const start = await hook("session-hook.ts", { hook_event_name: "SessionStart", source: "compact" });
     assert.ok(context(start).includes(vault[3].id), "setup: lexical-only compact start must reach real session formatter");
@@ -264,6 +265,7 @@ async function fixture(projection = false) {
     const cueRequests = requests.slice(cueStart);
     const cueModes = promptRows.slice(cueRowStart).map(row => row.detected_mode);
     const message = await prompt(ANNOUNCEMENT);
+    await reportTask("draft-for-review");
     const followup = await prompt("ok");
     return { start, hints, first, retry, toolSearch, toolSearchRetry, bash, cue, cueRequests, cueModes, message, followup };
   }
@@ -272,7 +274,7 @@ async function fixture(projection = false) {
     // Skills are conditional, so the installer's SKILL.md is not an always-on projection.
     return global;
   }
-  return { replay, prompt, tool, hook, loadFor, requests, promptRows, dir, cwd, stateDir, set, startupProjection,
+  return { replay, prompt, tool, hook, loadFor, reportTask, requests, promptRows, dir, cwd, stateDir, set, startupProjection,
     async close() {
       search.stop();await loadedVault.stop();
       await new Promise<void>(resolve => server.close(() => resolve()));
@@ -375,14 +377,14 @@ test("8 declared frontmatter validator activates through real prompt → approve
     f.set("BASTRA_STOP_SAME_TURN", "1");
     const sid = "replay-fixture-conventions";
     await f.prompt(ANNOUNCEMENT);
+    await f.reportTask("draft-for-review");
     assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
-    // The owner can acknowledge only an actually delivered draft. Exercise the
-    // real Stop lane rather than inserting a model-set draft evidence flag.
+    // Structural Stop measurement does not infer a task or approval.
     await runStopLane({ hook_event_name: "Stop", session_id: sid, cwd: f.cwd,
       stop_hook_active: true, transcript: [{ role: "user", content: ANNOUNCEMENT },
         { role: "assistant", content: "```\nHallo Alex, bitte bestätige den erfundenen Besuch morgen.\n```" }] }, "http://127.0.0.1:1");
-    assert.equal((await loadSessionState(sid)).activeTask?.draftPresented, true);
     await f.prompt("ok");
+    await f.reportTask("approved-copy");
     const state = await loadSessionState(sid);
     assert.equal(state.activeTask?.kind, "approved-copy");
     const rule = state.activeConventions?.find((c) => c.id === "fixture-message");

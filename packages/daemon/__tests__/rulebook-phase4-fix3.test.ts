@@ -6,7 +6,6 @@ import {join} from 'node:path';
 import {checkStopRepair} from '../src/stop-repair.js';
 import {loadSessionState,mutateSessionState} from '../src/session-state.js';
 import {recordRulebookCheck,recordRulebookLoad} from '../src/rulebook-check.js';
-import {runTaskStep} from '../src/prompt-task.js';
 import {githubWriteActions} from '../src/github-shell-actions.js';
 import type {KernelCandidates} from '../src/rulebook-catalog.js';
 const discord={tool:'validate_artifact',channel:'discord-dm',limit:2000,unit:'utf16'} as const;
@@ -17,10 +16,10 @@ after(async()=>{if(prev===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;els
 async function seed(sid:string,channel='email'){
  await recordRulebookLoad(sid,'discord-rule',null,{revision:'r',validator:discord});
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
- const id=channel==='email'?'email-rule':'discord-rule',validator=channel==='email'?email:discord;
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort fixture-channel',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['fixture-channel'],validator}],surface:'claude-code'});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['approved copy'],validator}],surface:'claude-code'});
- assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy','decoy tests require genuine user approval');
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
+ // Existing persisted channel choices remain readable, without deriving any
+ // new choice from user text.
+ await mutateSessionState(sid,s=>{s.activeTask!.validatorChannel=channel;s.userValidatorChannel=channel;});
  await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:Date.now()}];});
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});
@@ -36,17 +35,18 @@ test('P2.1 a model task cannot narrow loaded channels, even after user approval'
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  assert.equal((await recordRulebookCheck(sid,{applicable:['discord-rule'],task:'draft-for-review'},catalog)).ok,true);
  assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'freigegeben',mode:'trivial',candidates:[],surface:'claude-code'});
+ await recordRulebookCheck(sid,{applicable:['discord-rule'],task:'approved-copy'},catalog);
  const task=(await loadSessionState(sid)).activeTask!;assert.equal(task.kind,'approved-copy');
  await mutateSessionState(sid,s=>{s.receipts=['discord-dm','email'].map(channel=>({taskId:task.id,generation:task.generation,hash:'a',receipt:'sha256:a',channel,limit:channel==='email'?10000:2000,unit:'max(codepoints,utf16)' as const,at:Date.now()}));});
  assert.equal(await stop(sid,'Small copy'),null);
  assert.equal((await stop(sid,'```\n'+'x'.repeat(3200)+'\n```'))?.action,'request','new explicit copy must satisfy all model-task channels after delivery');
 });
-test('P2.1 user task records the triggering rule rather than choosing an unrelated session rule',async()=>{
- await seed('user-origin');await mutateSessionState('user-origin',s=>{delete s.activeTask;delete s.userValidatorChannel;});
- await runTaskStep({sessionId:'user-origin',snapshot:await loadSessionState('user-origin'),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'discord-rule',type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator:discord}],surface:'claude-code'});
- assert.equal((await loadSessionState('user-origin')).activeTask?.kind,'draft-for-review');
- assert.equal((await loadSessionState('user-origin')).userValidatorChannel,'discord-dm');
+test('stage reports never infer a channel and clear legacy channel selection',async()=>{
+ const sid='reported-origin';await seed(sid);
+ await recordRulebookCheck(sid,{applicable:['discord-rule'],task:'draft-for-review'},catalog);
+ const state=await loadSessionState(sid);
+ assert.equal(state.activeTask?.kind,'draft-for-review');
+ assert.equal(state.userValidatorChannel,undefined);assert.equal(state.activeTask?.validatorChannel,undefined);
 });
 test('P2.2 a small fenced/quoted decoy cannot hide oversized prose despite a receipt',async()=>{
  for(const [i,text] of [ 'x'.repeat(3200)+'\n```\nok\n```', '```text\nok\n```\n'+'x'.repeat(3200), 'x'.repeat(1600)+'\n```\nok\n```\n'+'x'.repeat(1600),'x'.repeat(3200)+'\n> ok'].entries()){

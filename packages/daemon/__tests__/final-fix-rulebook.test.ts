@@ -32,6 +32,7 @@ for(const reflex of [false,true])test(`later unrelated rounds can dismiss ${refl
 test('protected ID is ignored while the remaining declarations count; notice is German',async()=>{
  const sid='partial',c=await catalog();await setPrimaryLanguage('de');await beginRulebookRound({session_id:sid},c);
  await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind:'draft-for-review',since:Date.now(),generation:0};recordActiveConventions(s,[{id:'copy',revision:'r1',scope:'task',validator}]);});
+ await recordRulebookLoad(sid,'copy',null,source); // Current-round load, not inherited task state, supplies protection.
  const result=await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip('copy'),skip('other')]},c);assert.equal(result.ok,false);
  const state=await loadSessionState(sid),a=JSON.parse(state.rulebookCheck!).actors[0];assert.ok(a.roundDismissed.some((r:any)=>r.id==='other'));assert.equal(a.checked,true);assert.ok(a.roundDismissed.every((r:any)=>r.id!=='copy'));
  // The protected rule still limits explicit copy; draft prose needs no receipt.

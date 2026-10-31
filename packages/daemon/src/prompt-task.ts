@@ -1,253 +1,60 @@
-/**
- * UserPromptSubmit lane — the task contract step (#1306), split out of
- * prompt-lane.ts like the classification and formatting before it (#680).
- *
- * Per prompt: read the task signals from the user's own text
- * (prompt-classify.ts), apply the transition to the session state, put the
- * matching conventions in force when a task starts, and render the
- * `<active-conventions>` block from the state — every turn, regardless of the
- * hint dedup, for every client (Claude Code, Codex, replay). Information
- * only: nothing here denies anything.
- *
- * Revisions are the indexed byte revision of the memory file, supplied
- * through the caller's `revisionOf`; a changed revision adds a reload line.
+/** Render and refresh the workflow stage explicitly reported by the agent.
+ * Prompt words and recall hits never create tasks, select channels or change stages.
  */
-import { tokenizeWithIdentifiers, foldTerm, type Vault, type ConventionValidator } from "@bastra-recall/core";
-import { phraseMatchesContext } from "./reflex.js";
-import { vaultConventionOf, type ConventionSource } from "./convention-source.js";
-import { GATED_HINT_TYPES } from "./hook-recall-response.js";
-import { decideTask, taskSignals, splitQuoted, type DetectedMode, type TaskKind } from "./prompt-classify.js";
-import { formatActiveConventionsBlock, type ActiveConventionsView } from "./prompt-format.js";
-import { currentReceipt, expireReceipts } from "./receipt-store.js";
-import {
-  mutateSessionState,
-  recordActiveConventions,
-  taskIdFor,
-  type ActiveConvention,
-  type ReadonlySessionState,
-} from "./session-state.js";
-
-/** A memory this prompt's recall or reflex surfaced, before the session dedup. */
-export interface TaskCandidate {
-  id: string;
-  type: string;
-  matched_recall_when?: boolean;
-  recall_when?: readonly string[];
-  recall_mode?: string;
-  validator?: ConventionValidator;
-}
+import type {Vault} from '@bastra-recall/core';
+import {vaultConventionOf,type ConventionSource} from './convention-source.js';
+import {formatActiveConventionsBlock,type ActiveConventionsView} from './prompt-format.js';
+import {currentReceipt} from './receipt-store.js';
+import {mutateSessionState,type ReadonlySessionState} from './session-state.js';
 
 export interface TaskStepInput {
-  sessionId: string;
-  prompt: string;
-  snapshot: ReadonlySessionState;
-  mode: DetectedMode | "trivial";
-  candidates: readonly TaskCandidate[];
-  /** The file revision of a memory id; absent = revisions stay unknown. */
-  revisionOf?: (id: string) => Promise<string | null>;
-  /** Authoritative paired metadata; production routes always provide this. */
-  conventionOf?: (id: string) => Promise<ConventionSource>;
-  surface: string;
-  now?: number;
+ sessionId:string;
+ snapshot:ReadonlySessionState;
+ revisionOf?:(id:string)=>Promise<string|null>;
+ conventionOf?:(id:string)=>Promise<ConventionSource>;
+ surface:string;
+ now?:number;
 }
-
-/** The convention a starting task puts in force: rule-shaped, and its own
- *  trigger matched or the user wired it as reflex (#1303's evidence). */
-export function isTaskConvention(c: TaskCandidate): boolean {
-  return GATED_HINT_TYPES.has(c.type) && (c.matched_recall_when === true || c.recall_mode === "reflex");
+export function vaultRevisionOf(vault:Pick<Vault,'get'>):(id:string)=>Promise<string|null>{
+ const source=vaultConventionOf(vault);
+ return async id=>(await source(id)).revision;
 }
-
-/** `revisionOf` over the daemon's vault index — no per-rule file read. */
-export function vaultRevisionOf(vault: Pick<Vault, "get">): (id: string) => Promise<string | null> {
-  const source = vaultConventionOf(vault);
-  return async (id) => (await source(id)).revision;
+function view(state:ReadonlySessionState,changed:string[]=[]):ActiveConventionsView{
+ return {task:state.activeTask?.kind??'none',approvalSource:state.activeTask?.approvalSource,
+  generation:state.activeTask?.generation??0,conventions:state.activeConventions??[],changed,unclear:false,receipt:currentReceipt(state)};
 }
-
-/**
- * Run the step; the block to inject, or null. One state write at most, and
- * none when the prompt changes nothing. Never throws.
- */
-export async function runTaskStep(input: TaskStepInput): Promise<string | null> {
-  try {
-    return await step(input);
-  } catch {
-    return null;
-  }
+export async function runTaskStep(input:TaskStepInput):Promise<string|null>{
+ try{return await step(input);}catch{return null;}
 }
-
-async function step(input: TaskStepInput): Promise<string | null> {
-  const { sessionId, snapshot } = input;
-  if (!sessionId) return null;
-  const now = input.now ?? Date.now();
-  const generation = snapshot.activeTask?.generation ?? 0;
-  const current: TaskKind = snapshot.activeTask?.kind ?? "none";
-  const questionOpen = snapshot.correspondenceContext !== undefined && snapshot.correspondenceContext.generation === generation;
-  const activeIds = new Set((snapshot.activeConventions ?? []).map((e) => e.id));
-  const signals=taskSignals(input.prompt);
-  const decision = decideTask(signals, {
-    draftPresented: snapshot.activeTask?.draftPresented,
-    current,
-    questionOpen,
-    correspondenceActive: current !== "none" ||
-      (questionOpen && (snapshot.correspondenceContext?.conventions?.length ?? 0) > 0),
-    correspondenceHint: (snapshot.activeConventions ?? []).some(c => c.validator) ||
-      input.candidates.some(c => isTaskConvention(c) && c.validator),
-    mode: input.mode,
-    hitActive: input.candidates.some((c) => activeIds.has(c.id)),
-    // No recall hit is not evidence of a new subject: terse edit requests
-    // commonly mention neither the original message nor its convention.
-    hitOther: input.candidates.some((c) => !activeIds.has(c.id)),
-  });
-  // A validated copy contract does not make the next ordinary explanation a
-  // new outgoing message. Retain it for explicit copy/revision instructions.
-  // A task that starts — including an explicit own follow-up — puts the
-  // conventions in force; "none" never does.
-  const entering = decision.next !== null && decision.next !== "none";
-  const surfaced = [...new Set(input.candidates.filter(isTaskConvention).map((c) => c.id))];
-  // A later own instruction can bind the pending correspondence references.
-  const asked = questionOpen ? (snapshot.correspondenceContext?.conventions ?? []) : [];
-  const askedRevision = new Map(asked.map((e) => [e.id, e.revision]));
-  const activate = entering ? [...new Set([...surfaced, ...asked.map((e) => e.id)])] : [];
-  const askAbout = decision.unclear ? surfaced : [];
-  // User-turn candidates can select one unambiguous channel even before a
-  // review task exists. Quoted-only text and bare approvals cannot retarget it.
-  const own = splitQuoted(input.prompt).own;
-  const ownTokens = tokenizeWithIdentifiers(own).map(foldTerm);
-  const ownTokenSet = new Set(ownTokens);
-  const ownSequence = ` ${ownTokens.join(" ")} `;
-  const channelSources = new Map<string, ConventionSource>();
-  const matchedChannels = await Promise.all(input.candidates.filter(isTaskConvention).map(async c => {
-    const source = input.conventionOf ? await input.conventionOf(c.id).catch(() => undefined) : undefined;
-    if (source) channelSources.set(c.id, source);
-    // A whole-prompt recall hit is not authority: its authored trigger must
-    // match the user's own text, using the existing multilingual matcher.
-    const triggers = input.conventionOf ? source?.recall_when : c.recall_when;
-    if (!triggers?.some(t => phraseMatchesContext(t, ownTokenSet, ownSequence))) return [];
-    const v = input.conventionOf ? (source?.hiddenFromPublic ? undefined : source?.validator) :
-      c.validator ?? snapshot.loadedConventions?.find(r=>r.id===c.id)?.validator ?? snapshot.activeConventions?.find(r=>r.id===c.id)?.validator;
-    return v?.channel ? [v.channel] : [];
-  }));
-  const channels = [...new Set(matchedChannels.flat())];
-  const userChannel=own&&channels.length===1&&(!signals.approval&&!signals.ack||channels[0]===snapshot.userValidatorChannel)?channels[0]:undefined;
-  const channelChanges=userChannel!==snapshot.userValidatorChannel||userChannel!==snapshot.activeTask?.validatorChannel;
-
-  // Nothing in force, nothing asked, nothing starting: the common prompt costs
-  // the snapshot the lane already read.
-  if (activeIds.size === 0 && current === "none" && !entering && !snapshot.correspondenceContext && activate.length === 0 && !decision.unclear && !channelChanges) {
-    return null;
+async function step(input:TaskStepInput):Promise<string|null>{
+ const {snapshot,sessionId}=input;
+ if(!sessionId)return null;
+ const active=snapshot.activeConventions??[];
+ if(!active.length&&(!snapshot.activeTask||snapshot.activeTask.kind==='none'))return null;
+ if(!input.conventionOf&&!input.revisionOf)return formatActiveConventionsBlock(view(snapshot),input.surface);
+ // Authoritative indexed metadata only; no matching against the user's text.
+ const entries=await Promise.all(active.map(async(c):Promise<[string,ConventionSource]>=>{
+  const source:ConventionSource=input.conventionOf?
+   await input.conventionOf(c.id).catch(()=>({revision:null})):
+   {revision:await input.revisionOf!(c.id).catch(()=>null)};
+  return [c.id,source];
+ }));
+ const sources=new Map<string,ConventionSource>(entries);
+ const drift=active.some(c=>{const source=sources.get(c.id)!;return c.revision!==source.revision||
+  (input.conventionOf!==undefined&&JSON.stringify(c.validator)!==JSON.stringify(source.validator));});
+ if(!drift)return formatActiveConventionsBlock(view(snapshot),input.surface);
+ let updated:ActiveConventionsView|null=null;
+ const persisted=await mutateSessionState(sessionId,s=>{
+  const changed:string[]=[];
+  for(const c of s.activeConventions??[]){
+   const source=sources.get(c.id);if(!source)continue;
+   if(c.revision!==source.revision&&c.revision!==null)changed.push(c.id);
+   const revisionChanged=c.revision!==source.revision;c.revision=source.revision;
+   if(input.conventionOf){if(source.validator)c.validator=source.validator;else delete c.validator;}
+   else if(revisionChanged)delete c.validator;
   }
-
-  // Revisions are read outside the lock: the lock wraps the mutation only (#539).
-  const revisions = new Map<string, string | null>();
-  const sources = new Map<string, ConventionSource>();
-  if (input.conventionOf || input.revisionOf) {
-    const ids = [...new Set([...activeIds, ...activate, ...askAbout])];
-    const read = await Promise.all(ids.map(async (id) => {
-      const source = input.conventionOf
-        ? channelSources.get(id) ?? await input.conventionOf(id).catch(() => ({ revision: null }))
-        : { revision: await input.revisionOf!(id).catch(() => null),
-            validator: input.candidates.find((c) => c.id === id)?.validator };
-      return [id, source] as const;
-    }));
-    for (const [id, source] of read) { revisions.set(id, source.revision); sources.set(id, source); }
-  }
-
-  const kindChanges = decision.next !== null && decision.next !== current;
-  const revisionDrift = (snapshot.activeConventions ?? []).some((e) => {
-    const rev = revisions.get(e.id);
-    return revisions.has(e.id) && (rev !== e.revision ||
-      (input.conventionOf !== undefined && JSON.stringify(sources.get(e.id)?.validator) !== JSON.stringify(e.validator)));
-  });
-  const needsWrite =
-    kindChanges || (current !== "none" && signals.revision) || activate.length > 0 || decision.unclear || snapshot.correspondenceContext !== undefined || revisionDrift || channelChanges;
-
-  if (!needsWrite) {
-    return formatActiveConventionsBlock(
-      { task: current, approvalSource:snapshot.activeTask?.approvalSource, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: false, receipt: currentReceipt(snapshot) },
-      input.surface,
-    );
-  }
-
-  let view: ActiveConventionsView | null = null;
-  const persisted = await mutateSessionState(sessionId, (s) => {
-    const gen = s.activeTask?.generation ?? 0;
-    if (signals.revision) {
-      if (s.repairWindows?.main) delete s.repairWindows.main.delivered;
-      if (current === "approved-copy") delete s.receipts;
-    }
-    if (s.activeTask?.kind === "draft-for-review" && signals.revision) s.activeTask.draftPresented = false;
-    delete s.correspondenceContext;
-    delete s.userValidatorChannel;
-    if(s.activeTask)delete s.activeTask.validatorChannel;
-    // A revision that moved since the convention was set: say so once, then
-    // carry the new one. Unknown before is not a change.
-    const changed: string[] = [];
-
-    for (const e of s.activeConventions ?? []) {
-      const rev = revisions.get(e.id);
-      if (!revisions.has(e.id)) continue;
-      if (rev !== e.revision && e.revision !== null) changed.push(e.id);
-      e.revision = rev ?? null;
-      if (input.conventionOf) {
-        const validator = sources.get(e.id)?.validator;
-        if (validator) e.validator = validator;
-        else delete e.validator;
-      } else if (rev !== snapshot.activeConventions?.find((c) => c.id === e.id)?.revision) {
-        delete e.validator;
-      }
-    }
-    if (decision.next !== null && decision.next !== (s.activeTask?.kind ?? "none")) {
-      s.activeTask = { id: taskIdFor(decision.next, now), kind: decision.next, since: now, generation: gen, ...(decision.next === "approved-copy" ? {approvalSource:"user-turn" as const} : {}) };
-      // #1310: a new task (or none) ends the receipts of the old one.
-      expireReceipts(s);
-      if (decision.next === "none") {
-        delete s.userValidatorChannel;
-        const rest = (s.activeConventions ?? []).filter((e) => e.scope !== "task");
-        if (rest.length > 0) s.activeConventions = rest;
-        else delete s.activeConventions;
-      }
-    }
-    // Pending context carried a revision; a later instruction under another reloads.
-    for (const id of activate) {
-      const then = askedRevision.get(id);
-      const nowRev = revisions.get(id);
-      if (typeof then === "string" && typeof nowRev === "string" && then !== nowRev && !changed.includes(id)) changed.push(id);
-    }
-    if (activate.length > 0) {
-      recordActiveConventions(s, activate.map((id) => ({
-        id, revision: revisions.get(id) ?? null, scope: "task" as const,
-        validator: input.conventionOf ? sources.get(id)?.validator
-          : (sources.get(id)?.validator ?? input.candidates.find((c) => c.id === id)?.validator),
-      })), now);
-    }
-    if(userChannel&&decision.next!=="none"){s.userValidatorChannel=userChannel;if(s.activeTask)s.activeTask.validatorChannel=userChannel;}
-
-    if (decision.unclear) {
-      s.correspondenceContext = {
-        at: now,
-        generation: gen,
-        ...(askAbout.length > 0 ? { conventions: askAbout.map((id) => ({ id, revision: revisions.get(id) ?? null })) } : {}),
-      };
-    }
-    if(revisionDrift)delete s.receipts;
-    view = {
-      task: s.activeTask?.kind ?? "none", approvalSource:s.activeTask?.approvalSource,
-      generation: gen,
-      conventions: (s.activeConventions ?? []).map((e): ActiveConvention => ({ ...e })),
-      changed,
-      unclear: decision.unclear,
-      receipt: currentReceipt(s),
-    };
-  });
-  // The assignment happens inside the callback, which control flow does not follow.
-  const written = view as ActiveConventionsView | null;
-  if (!persisted || written === null) {
-    // State not on disk: still tell this turn what the snapshot knew, and ask
-    // with neutral provenance guidance — never claim an unpersisted transition.
-    return formatActiveConventionsBlock(
-      { task: current, approvalSource:snapshot.activeTask?.approvalSource, generation, conventions: snapshot.activeConventions ?? [], changed: [], unclear: decision.unclear, receipt: currentReceipt(snapshot) },
-      input.surface,
-    );
-  }
-  return formatActiveConventionsBlock(written, input.surface);
+  delete s.receipts;
+  updated=view(s,changed);
+ });
+ return formatActiveConventionsBlock(persisted&&updated?updated:view(snapshot),input.surface);
 }

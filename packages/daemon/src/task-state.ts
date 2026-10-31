@@ -4,10 +4,9 @@ import type { TaskKind } from "./prompt-classify.js";
 export interface ActiveTask {
   id: string;
   kind: TaskKind;
+  /** Read-only legacy metadata; never an approval assertion in current output. */
   approvalSource?: "user-turn";
-  /** Stop observed actual assistant output in this draft task/generation. */
-  draftPresented?: boolean;
-  /** Channel selected by the current user turn for this task/generation only. */
+  /** Legacy persisted channel, retained for backwards-compatible reads. */
   validatorChannel?: string;
   since: number;
   generation: number;
@@ -26,7 +25,6 @@ export function decodeActiveTask(value: unknown): ActiveTask | undefined {
     id: typeof task.id === "string" ? task.id : taskIdFor(task.kind as TaskKind, task.since),
     kind: task.kind as TaskKind, since: task.since, generation: task.generation,
     ...(typeof task.validatorChannel==='string'&&task.validatorChannel?{validatorChannel:task.validatorChannel}:{}),
-    ...(typeof task.draftPresented === 'boolean' ? {draftPresented: task.draftPresented} : {}),
     ...(task.approvalSource === "user-turn" ? {approvalSource: "user-turn" as const} : {}),
   };
 }

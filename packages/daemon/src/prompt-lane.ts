@@ -376,10 +376,7 @@ async function runPromptLaneInner(
     // Prompt words never approve copy; rulebook_check reports that decision.
     const taskBlock = await runTaskStep({
       sessionId: payload.session_id ?? "",
-      prompt,
       snapshot: await loadSessionState(payload.session_id ?? ""),
-      mode: "trivial",
-      candidates: [],
       revisionOf: opts.revisionOf,
       conventionOf: opts.conventionOf,
       surface: client,
@@ -772,10 +769,7 @@ async function runPromptLaneInner(
   // are hints; they no longer decide task membership.
   const taskBlock = await runTaskStep({
     sessionId,
-    prompt,
     snapshot: state,
-    mode: detectedMode,
-    candidates: [...filtered, ...rawReflexHits.map((h) => ({ ...h, recall_mode: "reflex" }))],
     revisionOf: opts.revisionOf,
     conventionOf: opts.conventionOf,
     surface: client,

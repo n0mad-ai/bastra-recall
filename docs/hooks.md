@@ -1699,60 +1699,30 @@ the kernel after 25 tool calls without a user prompt, without using that
 redelivery as a deny. See [the rulebook contract](rulebook.md) for membership,
 privacy, budgets, bounded action/Stop checking and host limitations.
 
-#### Task contract and active conventions (prompt hook, #1306)
+#### Agent-reported task stage and active conventions (#1306)
 
-A correspondence task spans several turns, and a short follow-up ("ok") carries
-none of the words that recalled its rules. The session state therefore holds
-the task (`activeTask: {id, kind, since, generation}`) next to the active
-conventions, and the prompt hook prints both on **every** turn in a small
-`<active-conventions>` block — independent of the hint dedup and of new recall
-hits, for Claude Code, Codex and replays alike. The block is information only;
-nothing in it denies a call.
+Only the main agent's explicit `rulebook_check.task` creates, changes or ends a
+stage: translate-only, draft-for-review, approved-copy or none. The prompt hook
+only renders the saved report and refreshes indexed rule metadata. It does not
+inspect the user's words to infer stage, approval, recipient or channel, and a
+new user turn never changes the stage. No task wordlists or task cue lexicon
+remain. Structural quotes, pasted-content tags and provenance stay separate.
 
-```
-<active-conventions surface="claude-code" task="draft-for-review" generation="0">
-Session state, repeated every turn (not a new hint). Task: draft-for-review — draft for the user's review — nothing is final copy until the user approves it.
-Conventions in force (bodies: load_memory(id) or the rule kernel):
-- <id> revision=sha256:… task=draft-for-review
-</active-conventions>
-```
+The per-turn active-conventions block names the reported stage, rule revisions,
+validator parameters and current receipt. It says that this is an agent
+self-report which can be wrong, not evidence of user approval or permission to
+send. Bastra sends nothing itself. Each correspondence rule still needs an
+explicit applicable/not_applicable decision every round; a retained stage is
+not that decision. Current-round declarations and concrete action obligations
+retain their existing protection. A new report does not choose a channel from
+user wording; all applicable validators are used conservatively.
 
-Per convention it lists the id, the byte `revision` (`memoryRevision`, as
-`load_memory` returns it), the task state and, when set, the validator
-parameters (`tool`, `channel`, `limit`, `unit`). It never carries a body — the
-rule kernel and `load_memory` do. When a file's revision moved since the
-convention was set, the block adds `revision changed: reload load_memory(<id>)`
-once and then shows the new revision. Without a task, conventions or open
-question the block is absent.
-
-States and transitions, decided per prompt from the user's **own** text:
-
-| Prompt | Transition |
-|---|---|
-| announces a correspondence workflow ("ich arbeite eine eingegangene Nachricht ab", "work through the inbox"), asks for a reply draft, or pastes/quotes incoming text with a reply verb | `draft-for-review`; the rule-shaped hits of this prompt (type `user-preference`, `meta-working` or `workflow`, matched by their own trigger or wired as reflex) become active conventions bound to the task |
-| explicitly "nur übersetzen" / "translate only" | `translate-only` (overrides a draft in progress) |
-| a short approval ("ok", "passt", "go", "ja") or an explicit "freigegeben" / "approved copy" while `draft-for-review` is active | `approved-copy` |
-| no task cue, a plain (`none`/`generic`) prompt with its own recall match outside the active conventions and no match on an active convention | `none`; the task-bound conventions end with the task, session-wide ones (gate, load) stay |
-| no task cue and no new matching memory, including a short editing follow-up | unchanged; absence of recall hits does not end the task |
-| anything else, including trivial prompts | unchanged |
-
-Quoted incoming text — a blockquote, a `<pasted_content>` block, everything
-below a "… schrieb:" / "… wrote:" header — is cut off before any cue is read.
-An instruction inside an incoming message never changes the state. Ambiguous
-pasted content receives neutral provenance guidance: apply the correspondence
-rules if it is a foreign message; carry out the instruction if it is the user's
-own text. The hook does not instruct the agent to ask the user to choose a task.
-Pending correspondence references may support a later explicit user instruction
-or review draft, without claiming that a question was asked. A bare approval
-never grants copy approval for an unresolved task. Legacy transition cues remain
-language-specific data in `lexicon.ts`, extensible under `~/.bastra/lexicon/`.
-
-`compact`, `clear` and `fork` raise `generation`; the task and its conventions
-survive (subject to the rulebook delivery budget); pending ambiguity is
-dropped. A fork's new session ID starts at generation 1 without the parent's
-task (see the fork limit above). While a task is in progress the prompt lane
-does not skip the recall in mode `none` (#371), so it can still tell whether a
-prompt touches the conventions in force.
+Fences and quotes are checked in every reported stage or declared-validator
+round. Ordinary prose is considered only in the last assistant text of reported
+approved-copy. Without that report, long unmarked final prose is not measured
+(#1351). After a repair request only new output counts. Stored legacy sessions
+remain readable; old draft-presentation fields no longer drive behavior.
+Compact/clear/fork keep their existing generation and receipt lifecycle.
 
 **Receipts (#1310).** A passing `validate_artifact` call stores its receipt in
 the calling session only — the one the MCP forwarder names in
@@ -3626,62 +3596,30 @@ Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der
 [Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
 Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 
-#### Aufgabenvertrag und aktive Konventionen (Prompt-Hook, #1306)
+#### Gemeldete Aufgabenstufe und aktive Konventionen (#1306)
 
-Eine Korrespondenz-Aufgabe läuft über mehrere Turns, und ein kurzer Folgeprompt
-(„ok“) enthält keins der Wörter, die ihre Regeln abgerufen haben. Der
-Session-State hält deshalb die Aufgabe (`activeTask: {id, kind, since,
-generation}`) neben den aktiven Konventionen, und der Prompt-Hook gibt beides in
-**jedem** Turn als kleinen Block `<active-conventions>` aus, unabhängig vom
-Hinweis-Dedup und von neuen Recall-Treffern, für Claude Code, Codex und
-Replays gleich. Der Block ist reine Information; er verweigert keinen Aufruf.
+Nur die ausdrückliche Meldung des Hauptagenten über `rulebook_check.task` setzt,
+wechselt oder beendet die Stufe: translate-only, draft-for-review, approved-copy
+oder none. Der Prompt-Hook zeigt nur diese gespeicherte Selbstauskunft und die
+aktuellen Regelmetadaten. Nutzerwortlaut, neue Eingabe, Recall-Treffer oder
+Entwurfsformat ändern die Stufe nicht. Aufgaben-Wortlisten und Task-Cues im
+Lexikon sind entfernt. Strukturelle Zitate, pasted_content und Herkunft bleiben
+getrennt erhalten.
 
-```
-<active-conventions surface="claude-code" task="draft-for-review" generation="0">
-Session state, repeated every turn (not a new hint). Task: draft-for-review — draft for the user's review — nothing is final copy until the user approves it.
-Conventions in force (bodies: load_memory(id) or the rule kernel):
-- <id> revision=sha256:… task=draft-for-review
-</active-conventions>
-```
+Der Aufgabenblock nennt gemeldete Stufe, Regelfassungen, Validator und Beleg.
+Die Meldung kann falsch sein und beweist weder Nutzerfreigabe noch
+Versandberechtigung. Bastra versendet nichts selbst. Jede Korrespondenzregel
+muss weiterhin je Runde ausdrücklich als anwendbar oder nicht anwendbar erklärt
+werden; eine weiterlaufende Stufe ersetzt das nicht. Erklärungen dieser Runde
+und konkrete Aktionspflichten behalten ihren Schutz. Aus Nutzerworten wird kein
+Kanal mehr gewählt; alle anwendbaren Validatoren gelten konservativ.
 
-Je Konvention stehen dort die ID, die Byte-`revision` (`memoryRevision`, wie
-`load_memory` sie liefert), der Aufgabenzustand und, falls gesetzt, die
-Validator-Parameter (`tool`, `channel`, `limit`, `unit`). Bodies stehen nie
-darin; die liefern Regelkern und `load_memory`. Hat sich die Revision der Datei
-seit dem Setzen geändert, ergänzt der Block einmal
-`revision changed: reload load_memory(<id>)` und zeigt danach die neue
-Revision. Ohne Aufgabe, Konventionen und offene Frage fehlt der Block.
-
-Zustände und Übergänge, pro Prompt aus dem **eigenen** Text des Nutzers
-entschieden:
-
-| Prompt | Übergang |
-|---|---|
-| kündigt einen Korrespondenz-Ablauf an („ich arbeite eine eingegangene Nachricht ab“, „work through the inbox“), bittet um einen Antwortentwurf oder fügt eingehenden Text mit Antwortverb ein bzw. zitiert ihn | `draft-for-review`; die regelartigen Treffer dieses Prompts (Typ `user-preference`, `meta-working` oder `workflow`, über den eigenen Trigger getroffen oder als Reflex verdrahtet) werden an die Aufgabe gebundene aktive Konventionen |
-| ausdrücklich „nur übersetzen“ / „translate only“ | `translate-only` (überschreibt einen laufenden Entwurf) |
-| kurzes Okay („ok“, „passt“, „go“, „ja“) oder ausdrücklich „freigegeben“ / „approved copy“ bei aktivem `draft-for-review` | `approved-copy` |
-| kein Aufgaben-Cue, einfacher Prompt (`none`/`generic`) mit eigenem Recall-Treffer außerhalb der aktiven Konventionen und ohne Treffer auf eine aktive Konvention | `none`; aufgabengebundene Konventionen enden mit der Aufgabe, sessionweite (Gate, Load) bleiben |
-| kein Aufgaben-Cue und kein neu passender Memory-Treffer, auch eine kurze Textnachbesserung | unverändert; fehlende Recall-Treffer beenden die Aufgabe nicht |
-| alles andere, auch triviale Prompts | unverändert |
-
-Zitierter eingehender Text (Blockquote, Block `<pasted_content>`, alles unter
-einer Kopfzeile „… schrieb:“ / „… wrote:“) wird abgetrennt, bevor ein Cue
-gelesen wird. Eine Anweisung in einer eingegangenen Nachricht ändert den
-Zustand nie. Bei unklarem eingefügtem Text gibt es einen neutralen
-Herkunftshinweis: Bei einer fremden Nachricht die Korrespondenzregeln anwenden;
-bei eigenem Nutzertext die Anweisung ausführen. Der Hook weist den Agenten nicht
-an, eine Aufgabenwahl vom Nutzer zu verlangen. Vorgemerkte Korrespondenzverweise
-können eine spätere ausdrückliche Nutzeranweisung oder einen Entwurf unterstützen,
-ohne zu behaupten, dass eine Frage gestellt wurde. Eine bloße Zustimmung gibt
-bei ungeklärter Aufgabe keine Kopie frei. Die bisherigen Übergangs-Cues bleiben
-sprachbezogene Daten in `lexicon.ts`, erweiterbar unter `~/.bastra/lexicon/`.
-
-`compact`, `clear` und `fork` erhöhen `generation`. Aufgabe und Konventionen
-bleiben innerhalb der Zustellungsgrenzen des Regelbuchs; vorgemerkte Unklarheit
-verfällt. Die neue Session-ID eines Forks beginnt bei Generation 1 ohne die
-Aufgabe der Eltern-Session (siehe Fork-Grenze oben). Solange eine Aufgabe
-läuft, überspringt die Prompt-Lane den Recall im Modus `none` nicht (#371),
-damit sie weiter erkennt, ob ein Prompt die geltenden Konventionen berührt.
+Fences und Zitate werden in jeder Stufe beziehungsweise Runde mit erklärtem
+Validator gemessen. Gewöhnliche Prosa zählt nur in der letzten Assistentenausgabe
+bei gemeldetem approved-copy. Lange unmarkierte Endprosa ohne diese Meldung wird
+nicht gemessen (#1351). Nach einer Reparatur zählen nur neue Ausgaben. Ältere
+Sitzungszustände bleiben lesbar; die frühere Vorlage-Erkennung hat keine Wirkung
+mehr. Kontextgenerationen und Beleg-Lebenszyklus bleiben erhalten.
 
 **Prüfbelege (#1310).** Ein bestandener `validate_artifact`-Aufruf speichert
 seinen Beleg nur in der aufrufenden Session — der, die der MCP-Forwarder in

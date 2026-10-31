@@ -8,9 +8,8 @@ import {syncBuiltinESMExports} from 'node:module';
 import {Vault,saveMemory,mutateMemoryFile} from '@bastra-recall/core';
 import {serve,declareUnrelatedCorrespondence} from './fixtures/rulebook-phase5/probe.js';
 import {recordRulebookLoad,recordRulebookCheck} from '../src/rulebook-check.js';
-import {runTaskStep} from '../src/prompt-task.js';
 import {runStopLane} from '../src/stop-lane.js';
-import {loadSessionState,bumpTaskGeneration,clearShown} from '../src/session-state.js';
+import {loadSessionState,bumpTaskGeneration,clearShown,mutateSessionState} from '../src/session-state.js';
 import {editMemoryHandler} from '../src/edit-memory-handler.js';
 import {saveMemoryHandler} from '../src/save-memory-handler.js';
 import {archiveMemoryHandler} from '../src/tool-handlers.js';
@@ -21,23 +20,22 @@ before(async()=>{root=await mkdtemp(join(tmpdir(),'p5-fix2-'));process.env.BASTR
 after(async()=>{await live.close();await vault.stop();await rm(root,{recursive:true,force:true});});
 const catalog={entries:[],omitted:0};
 const load=(sid:string,id:string,v:typeof dc|typeof mail)=>recordRulebookLoad(sid,id,null,{revision:'r1',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
-const step=async(sid:string,prompt:string,email=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:email?[{id:'mail',type:'workflow',matched_recall_when:true,recall_when:['Mail geschrieben','antworte per Mail'],validator:mail}]:[],surface:'claude-code'});
 // Source/channel regressions measure an explicit delivered copy block.
 const stop=async(sid:string)=>JSON.stringify(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]},live.url))).includes('<copy-repair');
-test('S1: unrelated user turn removes an earlier channel before a new task',async()=>{
+test('S1: an explicit task report removes the earlier legacy channel',async()=>{
  const sid='S1';await load(sid,'dc',dc);await load(sid,'mail',mail);
- await step(sid,'Max hat mir per Mail geschrieben: Kannst du morgen kommen?',true);
- await step(sid,'Danke, erledigt. Neues Thema.');await step(sid,'Schreib Lisa auf Discord, dass ich später komme');
+ await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);await mutateSessionState(sid,s=>{s.userValidatorChannel='email';s.activeTask!.validatorChannel='email';});
+ await recordRulebookCheck(sid,{applicable:[],task:'none'},catalog);
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'email',limit:10000,normalize:'none'},sid);assert.equal(await stop(sid),true);
 });
 test('S1c: compact/generation and clear remove the user channel',async()=>{
- const sid='S1c';await load(sid,'mail',mail);await step(sid,'Bitte antworte per Mail',true);
+ const sid='S1c';await load(sid,'mail',mail);await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);await mutateSessionState(sid,s=>{s.userValidatorChannel='email';s.activeTask!.validatorChannel='email';});
  await bumpTaskGeneration(sid);await clearShown(sid);await load(sid,'dc',dc);
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  assert.equal(await stop(sid),true);assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
 });
 test('S2: an unloaded selected channel cannot filter out a loaded validator',async()=>{
- const sid='S2';await load(sid,'dc',dc);await step(sid,'Bitte antworte per Mail',true);
+ const sid='S2';await load(sid,'dc',dc);await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);await mutateSessionState(sid,s=>{s.userValidatorChannel='email';s.activeTask!.validatorChannel='email';});
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);assert.equal(await stop(sid),true);
 });
 const input=(id:string)=>({id,title:'Invented validation rule',summary:'When drafting invented messages',type:'workflow' as const,scope:'all-projects',tags:['fixture'],topic_path:['fixture'],recall_when:['fixture'],write_origin:'user-directed' as const,rulebook:'on-demand' as const,applies_when:'When drafting invented messages',validator:dc,body:'Validate the invented copy.'});

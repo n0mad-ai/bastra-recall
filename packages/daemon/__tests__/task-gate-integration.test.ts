@@ -50,11 +50,10 @@ for (const scope of [undefined, "task"] as const) {
     assert.deepEqual(loaded.activeConventions?.[0]?.validator, validator);
     assert.equal(loaded.activeConventions?.[0]?.revision, "new");
 
-    // A deduped, already-loaded rule can activate the task without booking a
-    // second must-load; its metadata survives task reactivation and reload.
+    // A reported task keeps the deduped, already-loaded rule without booking a
+    // second must-load; rendering/refresh never creates another task.
     const block = await runTaskStep({
-      sessionId, snapshot: loaded, prompt: "Bitte einen Antwortentwurf erstellen",
-      mode: "generic", candidates: [{ id: "rule", type: "workflow", matched_recall_when: true }],
+      sessionId, snapshot: loaded,
       conventionOf: async () => ({ revision: "new", validator }), surface: "claude-code",
     });
     assert.match(block!, /validator: tool=validate_artifact channel=discord limit=2000 unit=codepoints/);

@@ -1,3 +1,4 @@
+import {recordRulebookCheck} from "../src/rulebook-check.js";
 import {checkStopRepair} from '../src/stop-repair.js';
 /** #1311 R3: invented DM through real prompt, validation, receipt and Stop lanes.
  * Only retrieval responses are fixtures; metadata comes from a real vault file.
@@ -83,13 +84,15 @@ async function prompt(sid: string, text: string): Promise<string> {
   });
 }
 
-async function approved(sid: string): Promise<void> {
-  assert.match(await prompt(sid, ANNOUNCE), /draft-for-review/);
-  assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
-  assert.deepEqual((await loadSessionState(sid)).activeConventions?.find((c) => c.id === CONVENTION.id)?.validator, CONVENTION.validator);
-  await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
-  assert.match(await prompt(sid, "ok"), /approved-copy/);
-  assert.equal((await loadSessionState(sid)).activeTask?.kind, "approved-copy");
+const catalog={entries:[{id:CONVENTION.id,title:CONVENTION.title,group:"explicit" as const,rulebook:"on-demand" as const,applies_when:"Fixture",body:"Fixture",revision:"r1",updated:null,stale_status:"unknown" as const,validator:CONVENTION.validator}],omitted:0};
+async function approved(sid:string):Promise<void>{
+ catalog.entries[0].revision=(await vaultConventionOf(vault)(CONVENTION.id))?.revision??"r1";
+ await prompt(sid,ANNOUNCE);
+ await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"draft-for-review"},catalog);
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,"draft-for-review");
+ await checkStopRepair({session_id:sid,transcript:[{role:"assistant",content:"```\nKurzer Entwurf.\n```"}]});
+ await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"approved-copy"},catalog);
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,"approved-copy");
 }
 
 async function stop(sid: string, text = MESSAGE, repeated = true): Promise<string> {
@@ -111,7 +114,7 @@ async function exhaustion(sid: string): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
-test("DM announcement → draft → ok → validation receipt → Stop; owner revision requires validation again", async () => {
+test("DM announcement → draft → ok → validation receipt → Stop; reported stage change requires validation again", async () => {
   const sid = "workflow-validated-dm";
   await approved(sid);
   const validation = await callerSessionStore.run(sid, () => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
@@ -125,16 +128,16 @@ test("DM announcement → draft → ok → validation receipt → Stop; owner re
   assert.equal(await stop(sid), "{}");
   assert.equal((await loadSessionState(sid)).repairAttempts, undefined);
 
-  assert.match(await prompt(sid, "zweiten Satz kürzer"), /approved-copy/);
-  const edited = await loadSessionState(sid);
-  assert.deepEqual(edited.activeTask, before.activeTask);
-  assert.equal(edited.receipts, undefined);
-  assert.match(await stop(sid), /copy-repair/);
-  await callerSessionStore.run(sid, () => validateArtifactHandler({ text: MESSAGE, channel: "discord-dm", normalize: "none" }));
-  assert.equal(await stop(sid), "{}");
-  // Known P2: model-only edits without a new owner revision are not byte-bound.
-  assert.equal(await stop(sid, "Hallo Sam, morgen kommt das Paket. Adresse bitte."), "{}");
-  assert.equal((await loadSessionState(sid)).repairAttempts?.count, 1);
+  await prompt(sid,"zweiten Satz kürzer");
+  assert.deepEqual((await loadSessionState(sid)).activeTask,before.activeTask,"user wording never changes the reported stage");
+  assert.deepEqual((await loadSessionState(sid)).receipts,before.receipts);
+  await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"draft-for-review"},catalog);
+  await recordRulebookCheck(sid,{applicable:[CONVENTION.id],task:"approved-copy"},catalog);
+  assert.equal((await loadSessionState(sid)).receipts,undefined);
+  assert.match(await stop(sid),/copy-repair/);
+  await callerSessionStore.run(sid,()=>validateArtifactHandler({text:MESSAGE,channel:"discord-dm",normalize:"none"}));
+  assert.equal(await stop(sid),"{}");
+  assert.equal(await stop(sid,"Hallo Sam, tomorrow comes the package."),"{}","receipts remain task/generation evidence, not byte equality");
   assert.deepEqual(await exhaustion(sid), []);
 });
 

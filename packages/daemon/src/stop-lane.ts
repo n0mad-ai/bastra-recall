@@ -1,5 +1,4 @@
 import {refreshStopValidators} from './stop-validator-source.js';
-import {recordReviewDraft} from "./stop-task.js";
 import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
 /**
@@ -126,7 +125,6 @@ export async function runStopLane(
   } catch {
     turns = null;
   }
-  if (!payload.agent_id) await recordReviewDraft(payload.session_id,turns??[]).catch(()=>{});
   const repair = await checkStopRepair(payload, turns ?? []).catch(() => null);
   let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
   if (repair?.action === "request") {

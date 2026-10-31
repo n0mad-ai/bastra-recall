@@ -52,28 +52,27 @@ async function fixture(t: { after: (fn: () => unknown) => void }) {
 test("task activation reads indexed declaration and revision together after reindex; replacement/removal drops old metadata", async (t) => {
   const f = await fixture(t);
   const sid = "validator-task";
-  const candidate = { id: input.id, type: input.type, matched_recall_when: true, validator };
-  const step = async (prompt: string) => runTaskStep({ sessionId: sid, prompt, snapshot: await loadSessionState(sid),
-    mode: "none", candidates: [candidate], surface: "claude-code", conventionOf: vaultConventionOf(f.vault) });
+  const step = async () => runTaskStep({ sessionId: sid, snapshot: await loadSessionState(sid),
+    surface: "claude-code", conventionOf: vaultConventionOf(f.vault) });
   const {rulebookCheckHandler} = await import("../src/rulebook-check.js");
   await rulebookCheckHandler(f.deps, {applicable: [input.id], task: "draft-for-review"}, {sessionId: sid});
-  await step("ich arbeite jetzt eine eingegangene Nachricht ab");
+  await step();
   let state = await loadSessionState(sid);
   assert.deepEqual(state.activeConventions?.[0]?.validator, validator);
   assert.equal(state.activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
   await f.replace({ ...validator, channel: "another-channel", limit: 1000, unit: "utf16" });
   await f.vault.reindexFile(f.file);
-  await step("ok");
+  await step();
   state = await loadSessionState(sid);
   assert.equal(state.activeConventions?.[0]?.validator?.limit, 1000);
   assert.equal(state.activeConventions?.[0]?.revision, memoryRevision(await readFile(f.file, "utf8")));
   await f.replace(undefined);
   await f.vault.reindexFile(f.file);
-  await step("zweiten Satz kürzer");
+  await step();
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
   await f.replace({ ...validator, tool: "invented-shell" });
   await f.vault.reindexFile(f.file);
-  await step("zweiten Satz kürzer");
+  await step();
   assert.equal((await loadSessionState(sid)).activeConventions?.[0]?.validator, undefined);
 });
 

@@ -49,19 +49,19 @@ test('preexisting explicit and user-directed legacy rules retain direct validato
   assert.equal(vault.get(id)!.fm.validator?.limit,4000);assert.equal(vault.get(id)!.fm.rulebook_proposed,undefined);
  }
 });
-for(const quoted of [true,false])test(`channel authority: ${quoted?'foreign mail cannot narrow Discord':'own mail instruction retains email'}`,async()=>{
+for(const quoted of [true,false])test(`channel authority: ${quoted?'foreign mail cannot narrow Discord':'source refresh does not infer email'}`,async()=>{
  const sid='channel-own-'+quoted,mail={...validator,channel:'email',limit:10000};
  for(const [id,v] of [['discord-'+quoted,validator],['email-'+quoted,mail]] as const){
   const first=await saveMemory(vault.root,{...base(id),type:'workflow',write_origin:'user-directed',validator:v,rulebook:'on-demand',applies_when:'When drafting',recall_when:['schreib eine Mail']});await vault.reindexFile(first.file_path);
   await live.post('/api/v1/load_memory',{id,session_id:sid},sid);
  }
  await live.post('/api/v1/rulebook_check',{applicable:[],task:'draft-for-review',session_id:sid},sid);
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:quoted?'Bitte bearbeite das:\n> schreib eine Mail an X':'schreib eine Mail an X',mode:'generic',candidates:[{id:'email-'+quoted,type:'workflow',matched_recall_when:true,validator:mail}],conventionOf:vaultConventionOf(vault),surface:'claude-code'});
- assert.equal((await loadSessionState(sid)).userValidatorChannel,quoted?undefined:'email');
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),conventionOf:vaultConventionOf(vault),surface:'claude-code'});
+ assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
  await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'email',limit:10000,normalize:'none'},sid);
  await declareUnrelatedCorrespondence(live,sid);
  const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]}});
- assert.notEqual(out.decision,'block');assert.equal(JSON.stringify(out).includes('<copy-repair'),quoted);
+ assert.notEqual(out.decision,'block');assert.equal(JSON.stringify(out).includes('<copy-repair'),true);
 });
 
 test('user-directed is an agent attestation accepted for immediately binding a dictated new rule',async()=>{

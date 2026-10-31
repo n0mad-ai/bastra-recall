@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { validateCopyBlocks } from "@bastra-recall/core";
 import { callerSessionStore } from "../src/caller-session.js";
 import { formatActiveConventionsBlock } from "../src/prompt-format.js";
+import {recordRulebookCheck} from "../src/rulebook-check.js";
 import { runTaskStep } from "../src/prompt-task.js";
 import { RECEIPTS_CAP, currentReceipt, findReceipt, storeReceipt } from "../src/receipt-store.js";
 import { bumpTaskGeneration, loadSessionState, mutateSessionState, taskIdFor } from "../src/session-state.js";
@@ -156,12 +157,7 @@ test("a generation jump (compact/clear/fork) expires the receipts", async () => 
 test("the task ending (kind none) expires the receipts", async () => {
   await seedTask("rs-none", "draft-for-review");
   await storeReceipt("rs-none", passing(), undefined);
-  const snapshot = await loadSessionState("rs-none");
-  // A plain prompt with its own new match outside the active conventions ends the task (#1306).
-  await runTaskStep({
-    sessionId: "rs-none", prompt: "Wie spät ist es in Tokio?", snapshot, mode: "generic",
-    candidates: [{ id: "tokio-topic", type: "project-fact", matched_recall_when: true }], surface: "claude-code",
-  });
+  await recordRulebookCheck("rs-none",{applicable:[],task:"none"},{entries:[],omitted:0});
   const state = await loadSessionState("rs-none");
   assert.equal(state.activeTask?.kind, "none");
   assert.equal(state.receipts, undefined);
@@ -172,7 +168,7 @@ test("the active-conventions block shows the receipt line while it is valid", as
   const r = passing();
   await storeReceipt("rs-block", r, undefined);
   const step = async () => runTaskStep({
-    sessionId: "rs-block", prompt: "ok", snapshot: await loadSessionState("rs-block"), mode: "trivial", candidates: [], surface: "claude-code",
+    sessionId: "rs-block", snapshot: await loadSessionState("rs-block"), surface: "claude-code",
   });
   const short = r.receipt.slice("sha256:".length, "sha256:".length + 12);
   const shown = await step();

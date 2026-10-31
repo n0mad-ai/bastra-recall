@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkStopRepair } from '../src/stop-repair.js';
 import { loadSessionState, mutateSessionState } from '../src/session-state.js';
-import { beginRulebookRound, recordRulebookCheck, roundCorrespondence } from '../src/rulebook-check.js';
+import { beginRulebookRound, recordRulebookCheck } from '../src/rulebook-check.js';
 import type { KernelCandidates } from '../src/rulebook-catalog.js';
 
 const validator = { tool: 'validate_artifact', channel: 'discord-dm', limit: 2000, unit: 'utf16' } as const;
@@ -80,22 +80,21 @@ test('release118: repairing a draft fence never turns the surrounding translatio
       await seed(sid, 'draft-for-review', actor);
       const initial = await stop(sid, '```\n' + 'x'.repeat(2001) + '\n```', actor, client);
       assert.equal(initial?.action, client === 'codex' ? 'observed' : 'request');
-      const state = await loadSessionState(sid);
-      assert.equal(roundCorrespondence(state, {bastra_client: client, agent_id: actor}).repairProse, false);
       assert.equal(await stop(sid, translation + '\n```\nKurzer Vorschlag.\n```', actor, client), null);
     }
   });
 });
-test('release118: no-task prose repair cannot be hidden by a model draft report; the next user round resets that origin', async () => {
+test('release118: plain prose is measured only while the agent reports approved-copy', async () => {
   await sandbox(async () => {
-    const sid = 'repair-origin';
-    assert.equal((await recordRulebookCheck(sid, {applicable: ['copy-rule']}, catalog)).ok, true);
-    assert.equal((await stop(sid, 'x'.repeat(2001)))?.action, 'request');
-    assert.equal((await recordRulebookCheck(sid, {applicable: ['copy-rule'], task: 'draft-for-review'}, catalog)).ok, true);
-    assert.equal(await stop(sid, 'x'.repeat(2001)), null, 'already observed output is outside the repair window');
-    assert.equal((await stop(sid, 'y'.repeat(2001)))?.action, 'request', 'new prose retains the observed copy contract');
-    await beginRulebookRound({session_id: sid, bastra_client: 'claude-code'}, catalog);
-    await recordRulebookCheck(sid, {applicable: ['copy-rule']}, catalog);
-    assert.equal(await stop(sid, 'x'.repeat(2001)), null);
+    const sid='reported-prose';
+    await recordRulebookCheck(sid,{applicable:['copy-rule']},catalog);
+    assert.equal(await stop(sid,'x'.repeat(2001)),null);
+    await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'approved-copy'},catalog);
+    assert.equal((await stop(sid,'y'.repeat(2001)))?.action,'request');
+    await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'draft-for-review'},catalog);
+    assert.equal(await stop(sid,'z'.repeat(2001)),null);
+    await beginRulebookRound({session_id:sid,bastra_client:'claude-code'},catalog);
+    await recordRulebookCheck(sid,{applicable:['copy-rule']},catalog);
+    assert.equal(await stop(sid,'x'.repeat(2001)),null);
   });
 });

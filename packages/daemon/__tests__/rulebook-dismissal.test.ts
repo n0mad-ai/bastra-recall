@@ -16,14 +16,16 @@ for(let i=0;i<45;i++){const m=await saveMemory(vault.root,{id:`rule-${i}`,title:
 after(async()=>{await live.close();await vault.stop();await rm(root,{recursive:true,force:true});});
 const catalog=()=>cachedRulebookCatalog(vault,{project:null,active:[]});
 const skip={id:'rule-0',reason:'This round explains an unrelated technical topic.'};
-for(const kind of ['draft-for-review','approved-copy','loaded'] as const)test(`model cannot dismiss ${kind} validator across rounds`,async()=>{
+for(const kind of ['draft-for-review','approved-copy','loaded'] as const)test(`new round may dismiss inherited ${kind} validator; current-round loads stay protected`,async()=>{
  const sid=kind,c=await catalog();await beginRulebookRound({session_id:sid},c);
  if(kind==='loaded'){await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind:'draft-for-review',since:Date.now(),generation:0};});await recordRulebookLoad(sid,'rule-0',null,{revision:'r1',validator,rulebookMetadata:{rulebook:'on-demand'}});}
  else await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind,since:Date.now(),generation:0,...(kind==='approved-copy'?{approvalSource:'user-turn' as const}:{})};recordActiveConventions(s,[{id:'rule-0',revision:'r1',scope:'task',validator}]);});
  await beginRulebookRound({session_id:sid},c);
+ assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,true);
+ assert.equal(await checkStopRepair({session_id:sid,bastra_client:'claude-code'},[{role:'assistant',content:'```\n'+'x'.repeat(30)+'\n```'}]),null);
+ await recordRulebookLoad(sid,'rule-0',null,{revision:'r1',validator});
  assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,false);
  assert.ok(JSON.parse((await loadSessionState(sid)).rulebookCheck!).unchecked>0);
- // Explicit oversized copy must still request repair even for an old persisted dismissal.
  assert.equal((await checkStopRepair({session_id:sid,bastra_client:'claude-code'},[{role:'assistant',content:'```\n'+'x'.repeat(30)+'\n```'}]))?.action,'request');
 });
 test('category declaration covers every unprotected ID in one check',async()=>{
@@ -40,10 +42,13 @@ test('category declaration never dismisses a loaded ID',async()=>{
  const a=JSON.parse((await loadSessionState(sid)).rulebookCheck!).actors[0];assert.equal(a.roundDismissed.length,44);assert.equal(a.roundApplied[0].id,'rule-0');
 });
 
-test('Codex observes an active user-task validator after a new round without a load',async()=>{
+test('Codex respects a new-round dismissal but observes a current-round loaded validator',async()=>{
  const sid='codex-active',c=await catalog();await beginRulebookRound({session_id:sid,bastra_client:'codex',bastra_codex_version:'0.162.1'},c);
  await mutateSessionState(sid,s=>{s.activeTask={id:sid,kind:'approved-copy',approvalSource:'user-turn',since:Date.now(),generation:0};recordActiveConventions(s,[{id:'rule-0',revision:'r1',scope:'task',validator}]);});
  await beginRulebookRound({session_id:sid,bastra_client:'codex',bastra_codex_version:'0.162.1'},c);
+ assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,true);
+ assert.equal(await checkStopRepair({session_id:sid,bastra_client:'codex',bastra_codex_version:'0.162.1'},[{role:'assistant',content:'x'.repeat(30)}]),null);
+ await recordRulebookLoad(sid,'rule-0',null,{revision:'r1',validator});
  assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,false);
  assert.equal((await checkStopRepair({session_id:sid,bastra_client:'codex',bastra_codex_version:'0.162.1'},[{role:'assistant',content:'x'.repeat(30)}]))?.action,'observed');
  const notice=await beginRulebookRound({session_id:sid},c);assert.match(notice,/dismissal ignored/);assert.ok(notice.includes('rule-0'));

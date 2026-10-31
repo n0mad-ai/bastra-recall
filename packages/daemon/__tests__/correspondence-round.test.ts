@@ -24,10 +24,10 @@ const catalog=()=>cachedRulebookCatalog(vault,{project:null,active:[]});
 const begin=async(sid:string,client='claude-code')=>beginRulebookRound({session_id:sid,bastra_client:client,bastra_codex_version:'0.162.1'},await catalog());
 const check=(sid:string,input:object)=>live.post('/api/v1/rulebook_check',{session_id:sid,...input},sid);
 const skip=(id:string)=>({id,reason:'This round only explains an unrelated technical topic.'});
-const stop=(sid:string,text='short',client='claude-code',active=false)=>live.post('/hook/stop',{payload:{session_id:sid,bastra_client:client,bastra_codex_version:'0.162.1',hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]}});
+const stop=(sid:string,text='short',client='claude-code',active=false)=>live.post('/hook/stop',{payload:{session_id:sid,bastra_client:client,bastra_codex_version:'0.162.1',hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text.includes('```')?text:'```\n'+text+'\n```'}]}});
 const repeatedOutput=(sid:string)=>{
  const transcript:Array<{role:string;content:string}>=[];
- return (text:string,active=false)=>{transcript.push({role:'assistant',content:text});return live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',stop_hook_active:active,transcript:[...transcript]}});};
+ return (text:string,active=false)=>{transcript.push({role:'assistant',content:text.includes('```')?text:'```\n'+text+'\n```'});return live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',stop_hook_active:active,transcript:[...transcript]}});};
 };
 async function events(sid:string){const out:any[]=[];for(const name of await readdir(join(root,'logs')).catch(()=>[]))if(name.startsWith('events-'))for(const line of (await readFile(join(root,'logs',name),'utf8')).trim().split('\n').filter(Boolean)){const row=JSON.parse(line);if(row.session_id===sid)out.push(row);}return out;}
 test('every structural correspondence ID needs a current-round declaration; empty check and unrelated load cannot discharge it',async()=>{
@@ -55,13 +55,13 @@ test('full load also declares applicability; empty checks cannot erase it or dis
  assert.equal((await check(sid,{applicable:[],not_applicable:[skip('copy-rule')]})).ok,false);
  assert.match(JSON.stringify(await stop(sid,'x'.repeat(30))),/copy-repair/);
 });
-test('round-only applicability expires, while an active task copy block remains protected',async()=>{
+test('each round declares applicability independently of retained task state',async()=>{
  const sid='new-round';await begin(sid);await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
  assert.doesNotMatch(JSON.stringify(await stop(sid,'valid')),/copy-repair/);
  await begin(sid);assert.equal((await check(sid,{applicable:[],not_applicable:[skip('copy-rule'),skip('correspondence-rule')]})).ok,true);
  assert.doesNotMatch(JSON.stringify(await stop(sid,'An unrelated translation or explanation'.repeat(10))),/copy-repair/);
  const active='active-across-rounds';await begin(active);await check(active,{applicable:['copy-rule'],task:'draft-for-review',not_applicable:[skip('correspondence-rule')]});
- await begin(active);assert.equal((await check(active,{applicable:[],not_applicable:[skip('copy-rule')]})).ok,false);
+ await begin(active);assert.equal((await check(active,{applicable:[],not_applicable:[skip('copy-rule')]})).ok,true);
  await check(active,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
  assert.match(JSON.stringify(await stop(active,'```\n'+'x'.repeat(30)+'\n```')),/copy-repair/);
 });
@@ -94,7 +94,7 @@ test('a later model check cannot replace a strict declared validator with a lax 
  const sid='model-weakening';await begin(sid);await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
  const relaxed=await catalog();relaxed.entries=relaxed.entries.map(e=>e.id==='copy-rule'?{...e,validator:{...validator,limit:1000}}:e);
  assert.equal((await recordRulebookCheck(sid,{applicable:['copy-rule']},relaxed)).ok,true);
- assert.equal((await checkStopRepair({session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(30)}]}))?.action,'request');
+ assert.equal((await checkStopRepair({session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(30)+'\n```'}]}))?.action,'request');
 });
 
 test('one check can explicitly dismiss a large correspondence category without Stop blocks or false violations',async t=>{

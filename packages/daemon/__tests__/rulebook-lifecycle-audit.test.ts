@@ -59,11 +59,15 @@ test("audit 7: pending obligations and actual loads survive round reset without 
   assert.equal(denied(await rulebookBoundary(worker, catalog, "action", { requiredOnly: true })), true);
 });
 
-test("audit 7: ongoing copy task rules remain binding after round reset", async () => {
+test("new round decisions can dismiss inherited task rules without changing stage", async () => {
   const sid = "ongoing-task";
   await recordRulebookCheck(sid, { applicable: [ref.id], task: "draft-for-review" }, catalog);
   await beginRulebookRound(p(sid), catalog);
-  const result = await recordRulebookCheck(sid, { applicable: [], not_applicable: [{ id: ref.id, reason: "Trying to dismiss a task rule." }] }, catalog);
-  assert.equal(result.ok, false);
+  const result = await recordRulebookCheck(sid, { applicable: [], not_applicable: [{ id: ref.id, reason: "This new round has no copy artifact." }] }, catalog);
+  assert.equal(result.ok, true);
+  assert.equal((await loadSessionState(sid)).activeTask?.kind, "draft-for-review");
+  assert.ok(!roundCorrespondence(await loadSessionState(sid), p(sid)).rules.some(r => r.id === ref.id));
+  await recordRulebookCheck(sid, {applicable:[ref.id]}, catalog);
+  assert.equal((await recordRulebookCheck(sid, {applicable:[],not_applicable:[{id:ref.id,reason:"Attempt to dismiss this round declaration"}]},catalog)).ok,false);
   assert.ok(roundCorrespondence(await loadSessionState(sid), p(sid)).rules.some(r => r.id === ref.id));
 });

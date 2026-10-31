@@ -23,7 +23,7 @@ test('loaded validator checks explicit review copies and all approved forms, wit
  for(const kind of ['draft-for-review','approved-copy'] as const)for(const [i,text] of forms.entries()){
   const sid=`form-${kind}-${i}`;await load(sid);await task(sid,kind);
   assert.equal((await loadSessionState(sid)).activeConventions,undefined);
-  if(kind==='draft-for-review'&&(i===0||i===4)){assert.equal(await stop(sid,text),null,'review prose is not delivered copy');continue;}
+  if(kind==='draft-for-review'&&i===0){assert.equal(await stop(sid,text),null,'review prose is not delivered copy');continue;}
   const p={session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]};
   assert.equal((await checkStopRepair(p))?.action,'request',sid);
   p.transcript.push({role:'assistant',content:text});
@@ -69,18 +69,12 @@ test('AST detects issue/pr lifecycle writes and GraphQL mutation fields, not que
  for(const command of [`gh api graphql -f 'query=query { repository { issues { nodes { id } } } }'`,`echo 'gh pr merge 1'`,`gh pr merge --help`,`gh api graphql -f 'query=query { repository(name: "createIssue(input: {})") { id } }'`])assert.deepEqual(await githubWriteActions(command),[],command);
 });
 
-test('legacy review C3: load → incoming message → explicit draft → user ok → unfenced oversized copy',async()=>{
+test('loaded-only validator measures a reported approved-copy task without wording inference',async()=>{
  const sid='original-c3';await load(sid);
- const {runTaskStep}=await import('../src/prompt-task.js');
- const {recordReviewDraft}=await import('../src/stop-task.js');
- const step=async(prompt:string)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:[],surface:'claude-code'});
- await step('Kannst du morgen kommen?');
- const draft=[{role:'user',content:'Kannst du morgen kommen?'},{role:'assistant',content:'Deutscher Entwurf zur Freigabe:\n```\nJa, ich komme.\n```'}];
- await recordReviewDraft(sid,draft);
- assert.equal((await loadSessionState(sid)).activeTask?.kind,'draft-for-review');
- assert.equal(await checkStopRepair({session_id:sid,hook_event_name:'Stop'},draft),null,'short draft requires no receipt before user approval');
- await step('ok');const state=await loadSessionState(sid);
- assert.equal(state.activeTask?.kind,'approved-copy');assert.equal(state.activeTask?.approvalSource,'user-turn');
+ await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
+ assert.equal(await checkStopRepair({session_id:sid,hook_event_name:'Stop'},[{role:'assistant',content:'```\nShort draft.\n```'}]),null);
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
+ const state=await loadSessionState(sid);assert.equal(state.activeTask?.kind,'approved-copy');
  assert.equal(state.activeConventions,undefined,'loaded-only validator must suffice');
  assert.equal((await stop(sid,'x'.repeat(3000)))?.action,'request');
 });

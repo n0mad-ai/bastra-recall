@@ -6,7 +6,6 @@ import {join} from 'node:path';
 import {runStopLane} from '../src/stop-lane.js';
 import {recordRulebookCheck,recordRulebookLoad} from '../src/rulebook-check.js';
 import {loadSessionState,mutateSessionState} from '../src/session-state.js';
-import {runTaskStep} from '../src/prompt-task.js';
 import type {KernelCandidates} from '../src/rulebook-catalog.js';
 const strict={tool:'validate_artifact',channel:'discord-dm',limit:2000,unit:'utf16'} as const;
 const lax={...strict,channel:'email',limit:10000};
@@ -62,20 +61,21 @@ test('security: trusted same-ID reload replaces the prior session limit',async()
  await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);
 });
 test('security: trusted user source revision is current through approval',async()=>{
- const sid='user-snapshot';await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'strict',type:'workflow',matched_recall_when:true,validator:strict}],surface:'claude-code'});
+ const sid='user-snapshot';await recordRulebookCheck(sid,{applicable:['strict'],task:'draft-for-review'},catalog);
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
  await stop(sid,'Kurzer Entwurf.');
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'ok',mode:'trivial',candidates:[],surface:'claude-code'});
+ await recordRulebookCheck(sid,{applicable:[],task:'approved-copy'},catalog);
  assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
  await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);
 });
-test('security: a real user-turn email task remains bound to email despite Discord loads/model reports',async()=>{
+test('security: a new stage report drops legacy channel selection and retains all validators',async()=>{
  const sid='user-email';await legacy(sid);await mutateSessionState(sid,s=>{delete s.activeTask;});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'lax',type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator:lax}],surface:'claude-code'});
+ await recordRulebookCheck(sid,{applicable:['lax'],task:'draft-for-review'},catalog);await mutateSessionState(sid,s=>{s.userValidatorChannel='email';s.activeTask!.validatorChannel='email';});
  assert.equal((await loadSessionState(sid)).userValidatorChannel,'email');
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:strict});
  await recordRulebookCheck(sid,{applicable:['strict','lax'],task:'draft-for-review'},catalog);
- await receipt(sid);assert.equal(await stop(sid),null);
+ await receipt(sid);assert.equal((await stop(sid))?.action,'request');
+ assert.equal((await loadSessionState(sid)).userValidatorChannel,undefined);
 });
 test('security: incomparable units both constrain model tasks, not just the smallest numeric limit',async()=>{
  const sid='units';const c={...catalog,entries:catalog.entries.map(e=>({...e,validator:{...strict,channel:'fixture',limit:e.id==='strict'?100:120,unit:e.id==='strict'?'codepoints' as const:'utf16' as const}}))};

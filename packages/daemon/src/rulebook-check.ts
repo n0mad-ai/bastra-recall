@@ -57,8 +57,8 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const correspondence=catalog.entries.filter(isCorrespondenceRule).map(e=>e.id);
   const taskNote = correspondence.length ? (de ?
-    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. Regeln einer laufenden Entwurfs-/Kopieraufgabe oder dieser Runde bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Nur der Nutzer kann freigeben.` :
-    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules of a current review/copy task or loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. Only the user can approve.`) : "";
+    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. In dieser Runde geladene oder als anwendbar erklärte Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Die Aufgabenstufe ist eine Selbstauskunft des Agenten, kein Nachweis einer Nutzerfreigabe oder Versandberechtigung.` :
+    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. The workflow stage is an agent self-report, not evidence of user approval or sending permission.`) : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
     taskNote, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
@@ -68,26 +68,41 @@ export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
+/** Explicit agent self-report; stage is not evidence of consent or authorization. */
+function applyReportedTask(s:SessionState,kind:NonNullable<z.infer<typeof RulebookCheckArgs>["task"]>,ids:readonly string[],catalog:KernelCandidates):void {
+ const shape=()=>JSON.stringify((s.activeConventions??[]).map(c=>[c.id,c.revision,c.validator,c.scope]));
+ const now=Date.now(),before=shape();
+ const changed=!s.activeTask||s.activeTask.kind!==kind;
+ if(changed){
+  s.activeConventions=(s.activeConventions??[]).filter(c=>c.scope!=="task");
+  if(!s.activeConventions.length)delete s.activeConventions;
+  s.activeTask={id:taskIdFor(kind,now),kind,since:now,generation:s.activeTask?.generation??0};
+  expireReceipts(s);
+ }
+ delete s.userValidatorChannel;
+ if(s.activeTask){delete s.activeTask.validatorChannel;delete s.activeTask.approvalSource;}
+ delete s.correspondenceContext;
+ if(kind!=="none")recordActiveConventions(s,catalog.entries.filter(e=>ids.includes(e.id)).map(e=>({id:e.id,revision:e.revision,scope:"task" as const,validator:e.validator})),now);
+ if(shape()!==before)delete s.receipts;
+}
 export async function recordRulebookCheck(sessionId: string | null | undefined, input: z.infer<typeof RulebookCheckArgs>, catalog: KernelCandidates) {
   if (input.not_applicable?.some(e => !ExceptionReason.safeParse(e.reason).success)) return {ok:false,reason:"Non-applicability requires at least 10 characters of substantive explanation."};
   if (!sessionId) return { ok: false, reason: "Session unknown; no receipt recorded. Supply the session_id from your hook, or continue within the bounded gate." };
   let task = input.task;
   let taskError: string | undefined;
   if (task !== undefined && input.agent_id) taskError = "Worker task reports cannot change the main session task.";
-  else if (task !== undefined && task !== "draft-for-review") taskError = "A model report may only tighten to draft-for-review. Approval, translation-only and task end require the user-turn path.";
   if (taskError) task = undefined;
   const ids = new Set(catalog.entries.map(e => e.id));
   if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
   let context = "", round = 0, taskGeneration = 0, invalidDismissal = false, actionException=false;
   const persisted = await mutateSessionState(sessionId, s => {
-    if (task && s.activeTask?.kind === "translate-only") { taskError = "A model task report cannot replace the user's translate-only task."; task = undefined; }
-    if (task && s.activeTask?.kind === "approved-copy") { taskError = "A model task report cannot remove the user-approved copy task and its receipt obligation."; task = undefined; }
-    if (task !== undefined && new Set([
+    if (task !== undefined && task !== "none" && new Set([
       ...(s.activeConventions ?? []).map(e => e.id), ...input.applicable,
     ]).size > ACTIVE_CONVENTIONS_CAP) { taskError = `Task rules exceed the existing ${ACTIVE_CONVENTIONS_CAP}-convention session capacity.`; task = undefined; }
+    if (task !== undefined) { applyReportedTask(s, task, input.applicable, catalog); taskGeneration = s.activeTask?.generation ?? 0; }
     const state = read(s), a = actor(state, input.agent_id ? `agent:${input.agent_id}` : "main");
     const correspondence=catalog.entries.filter(isCorrespondenceRule);
-    const protectedIds=new Set([...a.roundApplied,...(hasCopyTask(s)?[...(s.activeConventions??[]),...(s.loadedConventions??[])]:[])].map(r=>r.id));
+    const protectedIds=new Set(a.roundApplied.map(r=>r.id));
     const requiredIds=new Set(a.required.map(r=>r.id));
     const skips=(input.not_applicable??[]).flatMap(e=>'id' in e?[e]:correspondence.filter(r=>!protectedIds.has(r.id)&&!requiredIds.has(r.id)&&!input.applicable.includes(r.id)).map(r=>({id:r.id,reason:e.reason})));
     const accepted=skips.filter(e=>{
@@ -114,30 +129,9 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
       a.roundDismissed=a.roundDismissed.filter(r=>r.id!==entry.id);
     }
     a.checked = true; a.ids = [...new Set(input.applicable)];
-    if (task !== undefined) {
-      const now = Date.now();
-      const beforeConventions = s.activeConventions;
-      const startingTask = task !== (s.activeTask?.kind ?? "none");
-      if (startingTask) {
-        if(s.activeTask&&s.activeTask.kind!=="none")delete s.userValidatorChannel;
-        s.activeTask = { id: taskIdFor(task, now), kind: task, since: now, generation: s.activeTask?.generation ?? 0, ...(s.userValidatorChannel?{validatorChannel:s.userValidatorChannel}:{}) };
-        expireReceipts(s);
-      }
-      // A model report only adds stricter review obligations.
-      // The transitional user-turn path owns approval/end/translation changes.
-      if (task !== "none") recordActiveConventions(s, catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({
-        id: e.id, revision: e.revision, scope: "task" as const, validator: e.validator,
-      })), now);
-      if (JSON.stringify((s.activeConventions ?? []).map(e => [e.id,e.revision,e.validator])) !==
-          JSON.stringify((beforeConventions ?? []).map(e => [e.id,e.revision,e.validator]))) {
-        delete s.receipts;
-      }
-      taskGeneration = s.activeTask?.generation ?? 0;
-      delete s.correspondenceContext;
-    }
     context = state.context; round = state.round; put(s, state);
   });
-  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A current review/copy task rule or a rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
+  if (invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   if (persisted && taskError) return { ok: false, reason: `${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
@@ -225,7 +219,7 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
     context = state.context; round = state.round;
-    requiredIds=boundary==="action"?a.required.map(r=>r.id):catalog.entries.filter(isCorrespondenceRule).filter(e=>!roundCorrespondence(s,p).rules.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
+    requiredIds=boundary==="action"?a.required.map(r=>r.id):catalog.entries.filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
     if ((!options.requiredOnly&&!a.checked) || requiredIds.length) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }
@@ -279,15 +273,15 @@ export async function takeDeferredRulebookStop(p: RulebookPayload): Promise<bool
 export function isCorrespondenceRule(e:{validator?:unknown;rule_categories?:readonly string[]}):boolean{
  return !!e.validator||!!e.rule_categories?.includes("correspondence");
 }
-function hasCopyTask(state:Pick<import("./session-state.js").ReadonlySessionState,"activeTask">):boolean{
- return state.activeTask?.kind==="draft-for-review"||state.activeTask?.kind==="approved-copy";
+function hasReportedTask(state:Pick<import("./session-state.js").ReadonlySessionState,"activeTask">):boolean{
+ return !!state.activeTask && state.activeTask.kind!=="none";
 }
 export function roundCorrespondence(state:Pick<import("./session-state.js").ReadonlySessionState,"rulebookCheck"|"loadedConventions"|"activeConventions"|"activeTask">,p:RulebookPayload={bastra_client:"claude-code"}){
  const value=read(state),a=value.actors.find(a=>a.key===identity(p));
  const rules=[...(a?.roundApplied??[])];
- if(identity(p)==="main"&&hasCopyTask(state))for(const loaded of [...(state.loadedConventions??[]),...(state.activeConventions??[])]){
+ if(identity(p)==="main"&&hasReportedTask(state))for(const loaded of [...(state.loadedConventions??[]),...(state.activeConventions??[])]){
   const validator=ConventionValidatorSchema.safeParse(loaded.validator);
-  if(validator.success&&!rules.some(r=>r.id===loaded.id))rules.push({id:loaded.id,revision:loaded.revision,validator:validator.data});
+  if(validator.success&&!a?.roundDismissed.some(r=>r.id===loaded.id)&&!rules.some(r=>r.id===loaded.id))rules.push({id:loaded.id,revision:loaded.revision,validator:validator.data});
  }
  return {key:`${value.context}:${value.round}:${identity(p)}`,round:value.round,rules,dismissed:(a?.roundDismissed??[]).map(r=>r.id),repairs:a?.repairs??0,repairProse:a?.repairProse??false};
 }

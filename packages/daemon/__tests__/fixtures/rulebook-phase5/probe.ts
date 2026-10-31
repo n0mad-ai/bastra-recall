@@ -198,11 +198,11 @@ export async function runProbe(): Promise<ProbeResult> {
             assert.equal((await loadSessionState(sid)).activeTask,undefined);
             const out=await stop(sid,client,text);
             assert.notEqual(out.decision,'block');
-            assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
-            if(client==='codex')assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).copyViolations,1);
+            assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code'&&i>0);
+            if(client==='codex')assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).copyViolations,i>0?1:0);
             assert.equal((await loadSessionState(sid)).activeTask,undefined,'no invented task or approval');
           }
-          return client==='claude-code'?'All 3 oversized forms request repair without any task report':'All 3 oversized forms record a violation without a task report; Codex same-turn repair remains disabled';
+          return 'Without a task report, oversized fences and quotes count; ordinary prose does not. Codex remains observation-only.';
         });
         await attempt(lang,client,'task-before-load',async()=>{
           const sid=`task-first-${client}-${lang}`;await prompt(sid,client,t.incoming);
@@ -237,10 +237,10 @@ export async function runProbe(): Promise<ProbeResult> {
             assert.notEqual((await stop(sid,client,'42')).decision,'block');
             const state=await loadSessionState(sid);assert.equal(state.activeTask,undefined);assert.equal(state.receipts,undefined);
             assert.equal(state.repairAttempts,undefined);
-            assert.equal((await check(sid,{applicable:[],task:'approved-copy'})).ok,false,'model cannot fabricate user approval');
-            assert.equal((await loadSessionState(sid)).activeTask,undefined);
+            assert.equal((await check(sid,{applicable:[],task:'approved-copy'})).ok,true,'stage reports are explicit agent self-reports');
+            assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
           }
-          return '4 benign prompts: reads pass; at most one generic rulebook Stop; no task, approval or validator receipt fabricated';
+          return '4 benign prompts: reads pass; at most one generic rulebook Stop; no task or receipt inferred from prompts; explicit agent reports remain possible';
         });
       }
     }
