@@ -60,7 +60,7 @@ for(const quoted of [true,false])test(`channel authority: ${quoted?'foreign mail
  assert.equal((await loadSessionState(sid)).userValidatorChannel,quoted?undefined:'email');
  await live.post('/api/v1/validate_artifact',{text:'x'.repeat(3200),channel:'email',limit:10000,normalize:'none'},sid);
  await declareUnrelatedCorrespondence(live,sid);
- const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}});
+ const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]}});
  assert.notEqual(out.decision,'block');assert.equal(JSON.stringify(out).includes('<copy-repair'),quoted);
 });
 

@@ -211,7 +211,7 @@ export async function runProbe(): Promise<ProbeResult> {
           assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
           assert.ok((await loadSessionState(sid)).loadedConventions?.some(c=>c.id===`p5-${lang}-correspondence`&&c.validator?.limit===2000));
           assert.ok(taskValidators(await loadSessionState(sid)).some(c=>c.validator.limit===2000&&c.validator.channel==='discord-dm'));
-          const out=await stop(sid,client,t.draft.repeat(150));
+          const out=await stop(sid,client,`\x60\x60\x60\n${t.draft.repeat(150)}\n\x60\x60\x60`);
           assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code');
           return client==='claude-code'?'Late load activates repair on real Stop lane':'Codex repair unsupported; actual loaded ID and selected constraint verified';
         });

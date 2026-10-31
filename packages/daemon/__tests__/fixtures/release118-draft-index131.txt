@@ -1,0 +1,41 @@
+**Übersetzung**
+
+**21:00:** Interessant, hör mal, was das angeht. Das erinnert mich an meine Idee von „Routinen“, so wie ich sie damals gesehen habe.
+Es erinnert mich daran, Skills zu erstellen, wie du es beschrieben hast: Was sich oft wiederholt, wird Teil eines automatisierten Ablaufs mit Schritten und einer vollständigen Kette, statt manuell und mit Glück zu laufen.
+Ich muss mein Opus befragen.
+
+*(Danach ein Terminal-Auszug: Ein Hook blockiert `.ьщв`, weil das in russischer Tastaturbelegung nach `/mod` aussieht. Danach stellt `/model` Opus 5.5 mit hoher Effort-Stufe ein.)*
+
+Das ist ganz wie der „Shred“, den jeder Nutzer will, aber nur für die, die die Krankheit haben. *(Wörtlich übersetzt, die Anspielung ist mir unklar.)*
+
+**21:17:** Ich habe darüber nachgedacht. Ich beziehe noch keine Position: Ich habe die Arbeit an 1.1.8 nicht gelesen und kann nicht sagen, wo das hineinpasst. Ich kann nur teilen, was ich von meiner Seite weiß.
+
+Es erinnert mich an #256, Trace-Routinen. Das haben wir im Juli und August ausführlich durchgespielt: ein ausdrückliches Aufzeichnungsfenster, Schritte mit Labels für Besitzer und Modus, ein Laufprotokoll. Ich habe eine Routine lokal betrieben, 17 Überarbeitungen, ein echter Lauf. Vielleicht ist es dasselbe, was du beschreibst, vielleicht nicht. Das siehst du besser als ich.
+
+Dieser Lauf hat mir gezeigt: Der Wortlaut ist die Berechtigung. Ein Schritt wurde von „Patches neu anwenden“ zu „Patches neu anwenden und die gesamte lokale Laufzeit in einem isolierten Klon rebasen“. Das Label blieb gleich, und nichts hielt das als Änderung dessen fest, was der Agent darf. Agenten reagieren derzeit sehr empfindlich, ein Wort in einem Schritt ändert, was sie tun.
+
+Das gilt auch für geteilte Skills. Der Skill eines anderen fügt nicht nur einen Ablauf hinzu. Er verschiebt die Gewohnheiten deines Agenten, und zwar nicht nur innerhalb dieses Skills.
+
+Bewusst, ja. Aber die Bestätigung muss etwas sein, das Leute wirklich lesen: ein klares Popup, keine Textwand. Schon jetzt lesen Leute nicht, was ihre Agenten tun, es ist zu viel. Bei mir hat funktioniert: Ein Hintergrund-Agent führt es zuerst aus (Backfill ist okay?) und zeigt das Ergebnis, erst dann gebe ich es frei. Ein Ergebnis freizugeben ist leicht, und du kannst ihm nur trauen, wenn es bei dir bereits funktioniert. Eine Beschreibung freizugeben ist etwas anderes.
+
+Ehrlich gesagt weiß ich es nicht. Nur wenn es etwas Nützliches bringt, ohne Overhead und ohne alles abzuriegeln. Wo es nötig ist, automatisieren. Bevor ich einen Reviewer auswähle, würde ich fragen: Wer liest einen geteilten Skill, wer schreibt ihn, und warum sollte er ihn überhaupt teilen?
+
+Hoffentlich habe ich morgen etwas Zeit. Ich glaube, alle hatten heute einen harten Tag. Furchtbar.
+Ich schaue morgen oder am Sonntag genauer hin, je nachdem, was zuerst kommt.
+
+Oder auch nicht, dann lese ich am Handy, was mir einfällt. Bei der Arbeit wird es gerade heftig, ich halte diesen „Share“ nicht aus ) *(„violent“ und „share“ sind unklar, vermutlich ein Übersetzungsfehler.)*
+
+**21:32:** 🙂 *(plus ein Bild, das nicht mit eingefügt wurde)*
+
+**21:39:** Ahhh, Moment, ich hab's verstanden. Regeln für die Arbeit mit diesem oder jenem Teil des Vaults, entweder global für den Nutzer oder für diesen bestimmten Vault. ??
+
+**Antwortvorschlag**
+
+Danke, das hilft mir sehr. Drei Punkte nehme ich mit:
+- Eine Änderung am Wortlaut eines Schritts ist auch eine Änderung der Berechtigung und muss als solche sichtbar werden.
+- Freigegeben wird ein gezeigtes Ergebnis, nicht eine Beschreibung.
+- Bevor wir über Reviewer reden, muss klar sein, wer geteilte Skills schreibt und liest und warum.
+
+Zu deiner letzten Frage: [Ja, genau das meine ich / Nein, ich meine …]. Schau es dir an, wenn du Zeit hast, es eilt nicht.
+
+**Offen:** Deine Nachricht, auf die sich zzalli bezieht, steht nicht im Vault. Deshalb weiß ich nicht, ob seine Deutung mit den Regeln stimmt. Sag mir kurz, was du meintest, dann ergänze ich die Klammer. Danach bekommst du die englische Fassung zum Kopieren, und ich trage den Verlauf im Vault nach.

@@ -18,7 +18,8 @@ before(async()=>{root=await mkdtemp(join(tmpdir(),'p5-fix1-'));process.env.BASTR
 after(async()=>{if(prev===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=prev;await rm(root,{recursive:true,force:true});});
 const load=(sid:string,id:string,v:typeof discord|typeof email)=>recordRulebookLoad(sid,id,null,{revision:'r1',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Invented reply'}});
 const step=async(sid:string,prompt:string,mail=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:mail?[{id:'mail',type:'workflow',matched_recall_when:true,recall_when:['Mail geschrieben','per Mail antworten'],validator:email}]:[],surface:'claude-code'});
-const stop=async(sid:string,text:string)=>JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]},'http://127.0.0.1:1'));
+// Explicit copy keeps these channel/source tests independent of draft prose.
+const stop=async(sid:string,text:string)=>JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text.includes('```')?text:'```\n'+text+'\n```'}]},'http://127.0.0.1:1'));
 const repair=(out:unknown)=>JSON.stringify(out).includes('<copy-repair');
 const validate=(sid:string,text:string,v= email)=>callerSessionStore.run(sid,()=>validateArtifactHandler({text,channel:v.channel,limit:v.limit,unit:v.unit,normalize:'none'}));
 test('P1: real user mail candidate → review draft → approval preserves email channel through the Stop lane',async()=>{

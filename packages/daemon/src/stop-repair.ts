@@ -39,13 +39,13 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     const latest=turns.at(-1),response=latest?.role==="assistant"?latest.content:"";
     const oversized=(state:ReadonlySessionState)=>roundValidators(state,payload).some(v=>{
       const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
-      return countCopyUnits(deliveredCopy(response,contract.unit_applied),contract.unit_applied)>contract.limit;
+      return countCopyUnits(deliveredCopy(response,contract.unit_applied,includeProse(state,payload)),contract.unit_applied)>contract.limit;
     });
     if(!oversized(snapshot)||round.repairs>2)return null;
     let decision:RepairDecision|null=null;
     const persisted=await mutateSessionState(sessionId,s=>{
       if(!oversized(s))return;
-      const count=claimRoundRepair(s,payload,round.key,codex);if(count===null)return;
+      const count=claimRoundRepair(s,payload,round.key,codex,0,includeProse(s,payload));if(count===null)return;
       decision=codex?{action:"observed",roundId:round.key}:count<2?{action:"request",attempt:count+1}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
     },{noQueue:true,deadline});
     if(!persisted)void spoolRulebookFailure(sessionId).catch(()=>{});
@@ -57,14 +57,15 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   const latest = turns.at(-1);
   const response = latest?.role === "assistant" ? latest.content : "";
   const hasReceipt = (state: ReadonlySessionState) => {
-    const validators = taskValidators(state);
+    // A model task report cannot weaken this round's declared constraints.
+    const validators = [...taskValidators(state).map(({validator}) => validator), ...roundValidators(state, payload)];
     if (!validators.length) return false;
-    return validators.every(({validator:v})=>{
+    return validators.every(v=>{
     const contract = validateCopyBlocks({text: "", channel: v.channel, limit: v.limit, unit: v.unit, normalize: "none"});
-    const copy = deliveredCopy(response, contract.unit_applied);
-    return countCopyUnits(copy, contract.unit_applied) <= contract.limit && (state.receipts ?? []).some(r =>
+    const copy = deliveredCopy(response, contract.unit_applied, includeProse(state, payload));
+    return countCopyUnits(copy, contract.unit_applied) <= contract.limit && (state.activeTask?.kind !== "approved-copy" || (state.receipts ?? []).some(r =>
       r.taskId === task.id && r.generation === task.generation && r.channel === contract.channel && r.limit <= contract.limit &&
-      (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)"));
+      (r.unit === contract.unit_applied || r.unit === "max(codepoints,utf16)")));
     });
   };
   // Receipts are task/generation evidence, not byte-exact proof for later edits.
@@ -85,7 +86,7 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
     let count = r && r.taskId === t.id && r.generation === t.generation ? r.count : 0;
     const round=roundCorrespondence(s,payload);
     if(s.rulebookCheck&&round.rules.some(r=>r.validator)){
-      const claimed=claimRoundRepair(s,payload,round.key,false,count);if(claimed===null)return;count=claimed;
+      const claimed=claimRoundRepair(s,payload,round.key,false,count,includeProse(s,payload));if(claimed===null)return;count=claimed;
     }
     if (count > REPAIR_MAX_ATTEMPTS) return;
     s.repairAttempts = { taskId: t.id, generation: t.generation, count: count + 1 };
@@ -96,11 +97,20 @@ export async function checkStopRepair(payload: ClaudeStopPayload, suppliedTurns?
   return persisted ? decision : null;
 }
 
-/** Pick explicit copy regions structurally, independent of language/channel names.
- * Fences, quotes and all remaining prose are competing copy candidates.
- * An unclosed fence is ambiguous and falls back to the complete answer.
+/** Review/translation prose is not delivered copy. An already observed overlong
+ * copy stays subject to repair if a later model report starts a review task.
+ * Neither the new task nor its receipt policy may erase a round violation.
  */
-function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1]): string {
+function includeProse(state: ReadonlySessionState, payload: RulebookPayload): boolean {
+  const kind = state.activeTask?.kind;
+  return (kind !== "draft-for-review" && kind !== "translate-only") || roundCorrespondence(state, payload).repairProse;
+}
+
+/** Pick explicit copy regions structurally, independent of language/channel names.
+ * Approved/no-task responses also consider all remaining prose, preventing decoys.
+ * In review/translation, an unclosed fence still contributes its body as copy.
+ */
+function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1], proseIsCopy = true): string {
   const blocks: string[] = [], prose: string[] = [];
   let fence = "", body: string[] = [], quote: string[] = [];
   const flushQuote = () => { if (quote.length) blocks.push(quote.join("\n")); quote = []; };
@@ -118,8 +128,12 @@ function deliveredCopy(text: string, unit: Parameters<typeof countCopyUnits>[1])
     if (quoted) quote.push(quoted[1]); else { flushQuote(); prose.push(line); }
   }
   flushQuote();
-  if (prose.join("\n").trim()) blocks.push(prose.join("\n").trim());
-  if (fence || !blocks.length) return text;
+  if (proseIsCopy && prose.join("\n").trim()) blocks.push(prose.join("\n").trim());
+  if (fence) {
+    if (proseIsCopy) return text;
+    blocks.push(body.join("\n"));
+  }
+  if (!blocks.length) return proseIsCopy ? text : "";
   let largest = "", size = -1;
   for (const block of blocks) {
     const count = countCopyUnits(block, unit);

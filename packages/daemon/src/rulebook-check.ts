@@ -15,7 +15,7 @@ import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js
 
 const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
 const RoundRule = RuleRef.extend({validator:ConventionValidatorSchema.optional()});
-const Actor = z.object({roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
+const Actor = z.object({roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),repairProse:z.boolean().default(false),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
 const State = z.object({ copyViolations:z.number().default(0), blockedDismissals:z.array(z.string()).default([]), context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
 type CheckState = z.infer<typeof State>;
@@ -27,7 +27,7 @@ function read(state: { readonly rulebookCheck?: string }): CheckState {
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
   let found = state.actors.find(a => a.key === key);
-  if (!found) { found = { key, roundApplied:[],roundDismissed:[],repairs:0,checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
+  if (!found) { found = { key, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false,checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
   return found;
 }
 function identity(p: RulebookPayload): string {
@@ -35,7 +35,7 @@ function identity(p: RulebookPayload): string {
   return hookAgent(p) === "main" ? "main" : "unattributed";
 }
 // Pending ordinary Stop work survives a context/round reset; checking evidence does not.
-const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0 }));
+const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length || a.dismissed.length).map(a => ({ ...a, checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
     const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });
@@ -289,12 +289,13 @@ export function roundCorrespondence(state:Pick<import("./session-state.js").Read
   const validator=ConventionValidatorSchema.safeParse(loaded.validator);
   if(validator.success&&!rules.some(r=>r.id===loaded.id))rules.push({id:loaded.id,revision:loaded.revision,validator:validator.data});
  }
- return {key:`${value.context}:${value.round}:${identity(p)}`,round:value.round,rules,dismissed:(a?.roundDismissed??[]).map(r=>r.id),repairs:a?.repairs??0};
+ return {key:`${value.context}:${value.round}:${identity(p)}`,round:value.round,rules,dismissed:(a?.roundDismissed??[]).map(r=>r.id),repairs:a?.repairs??0,repairProse:a?.repairProse??false};
 }
 /** Called only under the existing bounded Stop state claim. */
-export function claimRoundRepair(state:SessionState,p:RulebookPayload,key:string,observeOnly=false,minimum=0):number|null{
+export function claimRoundRepair(state:SessionState,p:RulebookPayload,key:string,observeOnly=false,minimum=0,proseIsCopy=true):number|null{
  const current=roundCorrespondence(state,p);if(current.key!==key||current.repairs>2)return null;
  const value=read(state),a=actor(value,identity(p)),count=Math.max(a.repairs,minimum);if(count>2)return null;
+ if(a.repairs===0)a.repairProse=proseIsCopy;
  a.repairs=observeOnly?3:count+1;
  if(observeOnly||count===2){value.copyViolations++;value.unchecked++;}
  put(state,value);return count;

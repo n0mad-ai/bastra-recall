@@ -22,7 +22,8 @@ after(async()=>{await live.close();await vault.stop();await rm(root,{recursive:t
 const catalog={entries:[],omitted:0};
 const load=(sid:string,id:string,v:typeof dc|typeof mail)=>recordRulebookLoad(sid,id,null,{revision:'r1',validator:v,rulebookMetadata:{rulebook:'on-demand',applies_when:'Fixture'}});
 const step=async(sid:string,prompt:string,email=false)=>runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt,mode:'generic',candidates:email?[{id:'mail',type:'workflow',matched_recall_when:true,recall_when:['Mail geschrieben','antworte per Mail'],validator:mail}]:[],surface:'claude-code'});
-const stop=async(sid:string)=>JSON.stringify(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]},live.url))).includes('<copy-repair');
+// Source/channel regressions measure an explicit delivered copy block.
+const stop=async(sid:string)=>JSON.stringify(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]},live.url))).includes('<copy-repair');
 test('S1: unrelated user turn removes an earlier channel before a new task',async()=>{
  const sid='S1';await load(sid,'dc',dc);await load(sid,'mail',mail);
  await step(sid,'Max hat mir per Mail geschrieben: Kannst du morgen kommen?',true);
@@ -44,7 +45,7 @@ async function fixture(id:string){const saved=await saveMemory(vault.root,input(
  await live.post('/api/v1/load_memory',{id,session_id:sid},sid);assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[id],task:'draft-for-review',session_id:sid},sid)).ok,true);return sid;}
 const httpStop=async(sid:string)=>{
  await declareUnrelatedCorrespondence(live,sid);
- const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]}});
+ const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]}});
  assert.notEqual(out.decision,'block','source regression has explicitly resolved correspondence IDs');
  return JSON.stringify(out).includes('<copy-repair');
 };
@@ -68,7 +69,7 @@ test('indexed user deletion of the rule removes its Stop obligation',async()=>{
 });
 test('an unavailable source lookup is bounded and retains the last valid constraint',async()=>{
  const sid='slow-source';await load(sid,'dc',dc);await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
- const start=Date.now();const out=await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'x'.repeat(3200)}]},live.url,{conventionOf:()=>new Promise(()=>{})});
+ const start=Date.now();const out=await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]},live.url,{conventionOf:()=>new Promise(()=>{})});
  assert.ok(out.includes('<copy-repair'));assert.ok(Date.now()-start<1000);
 });
 test('agent edit changes the effective limit at the next indexed Stop without a proposal',async()=>{

@@ -14,7 +14,8 @@ const catalog:KernelCandidates={entries:[['strict',strict],['lax',lax]].map(([id
 let root:string;const previous=process.env.BASTRA_HOOK_STATE_DIR;
 before(async()=>{root=await mkdtemp(join(tmpdir(),'phase5-security-'));process.env.BASTRA_HOOK_STATE_DIR=root;});
 after(async()=>{if(previous===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=previous;await rm(root,{recursive:true,force:true});});
-const stop=async(sid:string,text='x'.repeat(3200))=>{const out=await runStopLane({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]},'http://127.0.0.1:1');return out.includes('<copy-repair')?{action:'request'}:null;};
+// Preserve the rule/unit attacks using explicit copy, even before approval.
+const stop=async(sid:string,text='x'.repeat(3200))=>{const out=await runStopLane({session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+text+'\n```'}]},'http://127.0.0.1:1');return out.includes('<copy-repair')?{action:'request'}:null;};
 async function receipt(sid:string,channel='email',limit=10000){await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a',receipt:'sha256:a',channel,limit,unit:'max(codepoints,utf16)',at:1}];});}
 async function legacy(sid:string){
  await recordRulebookLoad(sid,'strict',null,{revision:'r1',validator:strict});
@@ -54,10 +55,11 @@ test('security: an empty model task report retains all validators already loaded
  await recordRulebookCheck(sid,{applicable:[],task:'draft-for-review'},catalog);
  await receipt(sid);assert.equal((await stop(sid))?.action,'request');
 });
-test('security: same-ID reload retains the smaller session limit',async()=>{
+test('security: trusted same-ID reload replaces the prior session limit',async()=>{
  const sid='legacy-reload';await legacy(sid);
  await recordRulebookLoad(sid,'strict',null,{revision:'r2',validator:{...strict,limit:10000}});
- await receipt(sid,'discord-dm');assert.equal((await stop(sid))?.action,'request');
+ // Trusted reload updates loadedConventions and roundApplied; no session floor.
+ await receipt(sid,'discord-dm');assert.equal(await stop(sid),null);
 });
 test('security: trusted user source revision is current through approval',async()=>{
  const sid='user-snapshot';await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id:'strict',type:'workflow',matched_recall_when:true,validator:strict}],surface:'claude-code'});

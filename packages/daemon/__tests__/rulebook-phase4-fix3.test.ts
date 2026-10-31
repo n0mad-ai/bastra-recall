@@ -18,8 +18,9 @@ async function seed(sid:string,channel='email'){
  await recordRulebookLoad(sid,'discord-rule',null,{revision:'r',validator:discord});
  await recordRulebookLoad(sid,'email-rule',null,{revision:'r',validator:email});
  const id=channel==='email'?'email-rule':'discord-rule',validator=channel==='email'?email:discord;
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator}],surface:'claude-code'});
- await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy, entwirf eine Antwort',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['entwirf eine Antwort'],validator}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'entwirf eine Antwort fixture-channel',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['fixture-channel'],validator}],surface:'claude-code'});
+ await runTaskStep({sessionId:sid,snapshot:await loadSessionState(sid),prompt:'approved copy fixture-channel',mode:'generic',candidates:[{id,type:'workflow',matched_recall_when:true,recall_when:['fixture-channel'],validator}],surface:'claude-code'});
+ assert.equal((await loadSessionState(sid)).activeTask?.kind,'approved-copy','decoy tests require genuine user approval');
  await mutateSessionState(sid,s=>{s.receipts=[{taskId:s.activeTask!.id,generation:s.activeTask!.generation,hash:'a'.repeat(64),receipt:'sha256:'+'a'.repeat(64),channel,limit:channel==='email'?10000:2000,unit:channel==='email'?'utf16':'max(codepoints,utf16)',at:Date.now()}];});
 }
 const stop=(sid:string,text:string)=>checkStopRepair({session_id:sid,hook_event_name:'Stop',transcript:[{role:'assistant',content:text}]});

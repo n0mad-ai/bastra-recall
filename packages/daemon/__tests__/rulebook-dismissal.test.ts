@@ -23,8 +23,8 @@ for(const kind of ['draft-for-review','approved-copy','loaded'] as const)test(`m
  await beginRulebookRound({session_id:sid},c);
  assert.equal((await recordRulebookCheck(sid,{applicable:[],not_applicable:[skip]},c)).ok,false);
  assert.ok(JSON.parse((await loadSessionState(sid)).rulebookCheck!).unchecked>0);
- // An active task must still request repair even for an old persisted dismissal.
- assert.equal((await checkStopRepair({session_id:sid,bastra_client:'claude-code'},[{role:'assistant',content:'x'.repeat(30)}]))?.action,'request');
+ // Explicit oversized copy must still request repair even for an old persisted dismissal.
+ assert.equal((await checkStopRepair({session_id:sid,bastra_client:'claude-code'},[{role:'assistant',content:'```\n'+'x'.repeat(30)+'\n```'}]))?.action,'request');
 });
 test('category declaration covers every unprotected ID in one check',async()=>{
  const sid='category',c=await catalog();const note=await beginRulebookRound({session_id:sid},c);
