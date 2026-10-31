@@ -10,6 +10,7 @@ import {
   RM_ARCHIVES,
   RM_SHIM,
   GIT_SHIM,
+  archiveMode,
   reversibleDefault,
   rmShim,
   rmShimSwitchedOff,
@@ -612,6 +613,10 @@ interface Hint {
   /** The STOP comes only from a write to the variable `path` (#1047): with
    *  it renamed, the command would get its receipt. */
   pathVar?: boolean;
+  /** Opted in, but the hook registration does not name its client (#657), so
+   *  the call is weighed as unknown and the shims never apply: every act here
+   *  is one they would have taken, and the STOP is only the fallback. */
+  unmarked?: boolean;
 }
 
 /**
@@ -639,7 +644,18 @@ export function hintFor(cmd: string, surface: string, setting = false): Hint | n
       : gitShimSwitchedOff(surface, setting) && labels.every((l) => GIT_SHIM[l])
         ? "git"
         : null;
-  if (!family) return h;
+  if (!family) {
+    // #657 left registrations written before the marker without it: the
+    // opt-in is on, yet every rm is a STOP and nothing says why.
+    const unmarked =
+      surface === "unknown" &&
+      archiveMode(setting) !== "off" &&
+      labels.every((l) => RM_ROWS.some((r) => r.label === l) || GIT_SHIM[l]) &&
+      // the same "would have taken" as the switched-off line: made of shim acts only
+      (labels.every((l) => GIT_SHIM[l]) || rmRunsThroughPath(cmd)) &&
+      shimOnly(cmd);
+    return unmarked ? { ...h, unmarked } : h;
+  }
   return { ...h, offFamily: family, wouldShim: (family === "git" || rmRunsThroughPath(cmd)) && shimOnly(cmd) };
 }
 
@@ -698,6 +714,16 @@ function rmTargets(cmd: string): string[] {
  * deny with the shim on too, so it gets no line (the shim would not have
  * saved this case); the shadow event still counts it.
  */
+/** The one line for an opted-in call whose registration does not name its client. */
+export function unmarkedClientLine(): string {
+  return (
+    "bastra's archive opt-in is on here, but this hook's registration does not name its client, so the call is " +
+    "weighed as unknown: the archiving rm and the git snapshots are not applied, and this stop is only the fallback. " +
+    "Registrations written before the client marker need it: re-run `bastra install`, or append " +
+    "`--client=claude-code` to each bastra hook command in Claude Code's settings.json. The user's call, tell them."
+  );
+}
+
 export function shimOffLine(command: string, settings: BashVerdict, family: "rm" | "git" = "rm"): string {
   if (settings.verdict === "deny") return "";
   if (family === "git") {
