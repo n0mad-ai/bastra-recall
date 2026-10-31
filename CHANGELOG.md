@@ -6,84 +6,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.8] — 2026-10-31
+
 ### Added
 
-- Conventions can declare an optional `validator: {tool, channel, limit, unit}`
-  in frontmatter. Save/edit/load and hook projections carry the declaration;
-  task and gate activation bind current source metadata and revision, enabling
-  bounded approved-copy repair without manually editing session state (#1323).
-
-- Optional generated startup instructions for Codex AGENTS.md and Claude Code
-  CLAUDE.md, with separate installer consent, byte-preserving updates/removal,
-  and doctor diagnosis of stale content and discovery limits. Convention replay
-  now gates CI, including the real installer bootstrap comparison (#1314/#1302).
-- `bastra logs --conventions [--since 7d]` reports per-session convention
-  delivery, loads, gate outcomes, harvest memory IDs and mechanical validator
-  receipts. Unknown attribution and unverified/failed attempts remain visible;
-  receipt and deny-cleared evidence do not claim semantic compliance (#1313).
-
-- Previous-convention references such as "wie beim letzten Mal" and "like last
-  time" force prompt retrieval at floor 50, including retrieval-only mode. A
-  successful lookup with no matching `recall_when` explicitly says that no
-  stored rule matched. A repeated user correction without a subsequent
-  `save_memory` gets one existing same-turn save reminder per session (#1307).
-- The curator proposes reflex recall once for user-directed frustration memories
-  with salience at least 0.8 and no recall mode, excluding superseded or obsolete
-  memories. Promotion still requires explicit user confirmation (#1308).
-
-- Codex 0.162.1: the one-time must-load/reflex gate and fork registration,
-  with preparation-only hints on unverified runtimes, preserved wrappers,
-  stale-registration diagnosis and explicit hook re-trust (#1304).
-- A source-backed host/runtime capability matrix distinguishes native support
-  from Bastra registration, tool coverage and unverified paths, with checked
-  README summaries (#1312).
-- Claude Code's catch-all PreToolUse gate interrupts once for must-load hints
-  and matching user-directed reflex rules, then lets retries through (#1303).
-  Existing installations must run `bastra install claude-code` again after
-  updating to register the gate and add `fork` to the SessionStart matcher;
-  `bastra doctor` reports the missing gate and `fork` registration until then.
-- After `/compact`, `/clear` or a fork the session hook restores a rule kernel:
-  the full bodies of the session's active conventions, floors, reflex rules and
-  user-directed preferences, within 6,000 characters, with
-  `degraded: load_memory(id)` instead of a cut body, revision and staleness per
-  rule, and an instruction to ask before deviating. `resume` gets none. The gate
-  delivers the kernel again as a hint after 25 tool calls without a prompt (#1305).
-- The prompt hook keeps a correspondence task in the session state
-  (`translate-only`, `draft-for-review`, `approved-copy`, `none`) and prints an
-  `<active-conventions>` block every turn with the ids, byte revisions, task
-  state and validator parameters of the conventions in force, regardless of the
-  hint dedup and for every client. A changed revision adds a reload line;
-  quoted or pasted incoming text never changes the state; an ambiguous intent
-  adds one "task unclear" choice line, and an unanswered choice never approves
-  copy. `compact`, `clear` and `fork` raise the task generation (#1306).
-- A passing `validate_artifact` call stores its receipt (hash and parameters,
-  never text) in the calling session, bound to the running task id and
-  generation, at most 20 per session. Without a known session nothing is
-  stored: the answer says `session_known: false` and telemetry writes
-  `receipt_unattributed`. Receipts expire when the task changes or ends and on
-  compact, clear and fork; the `<active-conventions>` block shows a
-  `receipt:` line while one is valid. `findReceipt` is the read side for the
-  Stop lane (#1310).
-- The Stop hook asks an `approved-copy` task whose active conventions require a
-  validator to run `validate_artifact` when the session holds no receipt for
-  the running task and generation: in the same turn via `additionalContext`,
-  never as a block, at most twice per task (edits do not reset the count).
-  The next Stop writes a `non_conformance` event (`repair_exhausted`) and
-  stops requesting repair; ordinary Save evaluation is preserved. Codex gets
-  no Stop repair. This requires existing validator metadata; production
-  activation wiring remains tracked in #1323 (#1311).
-- Code awareness (experimental, off by default): a coverage map collected from the test runs the agent already makes. With `bastra config set coverageMap.enabled true`, test commands (`npm test`, `node --test`, `vitest`, `jest`, `tsx --test`) in a repository with code awareness run with `NODE_V8_COVERAGE` into the git-ignored `.bastra-coverage/`; the raw output is folded in the background into a map of which tests executed which files and functions, paths only. The Write/Edit and task-boundary blocks add one line naming the tests that ran the changed functions, at most five, never as an instruction. `bastra code` and `bastra doctor` show whether a map exists and how old it is (#629, refs #668).
-- `bastra doctor --replay [--days N] [--json] [--compare <report.json>]` sends your own Claude Code prompts of the last N days (default 14) through the running daemon's prompt lane in shadow and reports how recall behaves on your vault: share of system turns, prompts with a hint, hint slots and the share of the ten most frequent notes, slots on notes the agent loaded, bridge fires, p50/p95 latency and timeouts. A replay writes nothing to the vault, opens no join window, teaches the latency profile nothing and logs to its own `replay-YYYY-MM-DD.jsonl`, which no live readout counts and which ages out with the event logs. `bastra onboard` runs it once at the end; a daemon without the replay mode is refused (#702).
+- A vault-backed rulebook with complete always-on rule bodies within explicit
+  budgets, a paginated description catalog (`list_rules`) and per-round
+  `rulebook_check` declarations. Rule IDs, revisions, scope, overflow and missing
+  evidence stay visible; bounded action/Stop checks on supported hook hosts do
+  not claim semantic compliance or the unmeasured 99.9% reliability target
+  (#1276, #1336, #1340).
+- Correspondence task states distinguish translation, review drafts and approved
+  copies. Declared convention validators activate exact-artifact `copy-blocks`
+  checks through `validate_artifact`, session/task-bound receipts and bounded
+  approved-copy repair. Each correspondence rule needs an explicit decision per
+  round; model declarations cannot grant user approval or weaken validator
+  constraints (#1306, #1309, #1310, #1311, #1323, #1328, #1340, #1341).
+- Codex gate/fork registration, a source-backed host/runtime capability matrix,
+  generated AGENTS.md/CLAUDE.md startup instructions with separate consent,
+  deterministic convention replay in CI and `bastra logs --conventions`
+  evidence readout. Existing installations must rerun their client installer
+  to register new hooks; unsupported hosts retain advisory behavior
+  (#1302–#1305, #1312–#1314).
+- References such as “like last time” force retrieval; missing matching rules
+  are reported. Repeated corrections can trigger a save reminder, and the
+  curator can propose reflex mode for user-directed frustration memories;
+  promotion requires user confirmation (#1307, #1308).
+- Remote MCP over Streamable HTTP at `/api/v1/mcp`, OAuth 2.1 login and a
+  remote-access guide (#1279). Assistant name and local browser-address setup
+  include guarded recovery and update/uninstall handling (#1332).
+- Opt-in Windows Task Scheduler autostart/supervision, Windows client-path
+  handling and hook-stub build/registration preparation. Native Windows hook
+  execution remains unverified (#1268–#1270).
+- English language support for the Ember, classic and orbital status panels.
+- `bastra doctor --replay` shadows your own Claude prompts against the running
+  daemon without live-learning side effects (#702). Experimental code awareness
+  adds opt-in test coverage maps, evidence-ranked dependents, visible refresh
+  failures and corrected delivery/refresh telemetry (#629, #637, #665, #1148).
+- Generated OpenAPI route documentation and a curator demand-gap report
+  (#13, #1258).
 
 ### Fixed
 
-- Code-awareness telemetry (#665): graph refreshes the daemon never finished now
-  appear as `interrupted`, so started = ok + failed + locked + interrupted; "by lane"
-  counts only the blocks actually injected; an untimed delivered block omits `took_ms`
-  instead of writing 0; `bastra logs --stats` and the Telemetry tab print `n/a`
-  where nothing was measured and keep sub-10 ms latencies from rounding to "0 ms".
-- Code awareness (experimental): dependents are ranked by evidence within a hop — a call site before an import, an import before a re-export or package import — and only then by file name. Under the impact block's ten-file cap an alphabetical list dropped tests that really call the changed symbol; on the 44 registered delivered-run scenarios the block now names a correct file in 16 of 37 instead of 15, at the same block size (#637).
-- Code awareness (experimental): a paused (busy lock) or stopped (three failed builds) automatic refresh is now shown by `bastra code` and `bastra doctor` with the last error and the next attempt, and `bastra code index` / `rebuild` tells the running daemon to resume. A build-lock takeover interrupted between its steps no longer wedges a repository until someone deletes the marker by hand (#1148).
+- Translation/review prose no longer triggers copy-repair false alarms or a
+  missing-receipt repair. Explicit oversized fences/quotes remain checked;
+  approved copies still require a receipt and later model task reports cannot
+  erase an observed length violation (#1344).
+- A fully loaded current rule revision remains usable for action-load checks
+  within its context; compact/clear/fork invalidates that evidence. Invalid
+  `rulebook_check.task` values reject only the task update while preserving
+  valid rule declarations from the same call (#1343).
+- Rulebook checks preserve user provenance, current exceptions and rule-source
+  integrity. Agent-generated draft quotes do not become user instructions;
+  pasted own-user text retains its origin. Validator channels and deletion
+  approval come from the current user action, not quoted or model-provided
+  authority (#1336, #1338, #1341, #1342).
+- GitHub mutations load applicable saved issue/PR conventions at action time,
+  with current revisions, bounded delivery and explicit exceptions (#1330).
+- Assistant address recovery preserves partial state, owns both loopback
+  listeners and publishes usable runtime state before exposing its launcher
+  (#1332). Remaining process-bound and migration work is tracked in #1335.
+- Updating preserves managed LaunchAgent environment variables and task opt-ins,
+  snapshots the prior plist and avoids treating Ember's panel feed as Bastra's
+  own statusline. Windows updates preserve daemon lifecycle (#1273, #1326,
+  #1327, #1329). Commissioned notify reminders are armed across supported agent
+  creation paths when the task preview is enabled (#1331).
+- Search includes indexed stems for previously unindexed query words; code-graph
+  diff handling recognizes Git-quoted paths and pure renames (#1194, #1246).
+- npm packaging rebuilds compiled output and required workspace dependencies
+  before packing, refusing publication after a failed build.
+
+### Security
+
+- OAuth public routes use an explicit allowlist; bootstrap and staged metadata
+  reads use guarded file descriptors, and session paths are bounded (#1279,
+  #1337). Runtime and development dependencies were refreshed; the remaining
+  development MCPB audit exposure is documented rather than claimed fixed.
 
 ## [1.1.1] — 2026-10-17
 
@@ -3451,7 +3449,8 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
-[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.1...v1.1.8
 [1.1.1]: https://github.com/n0mad-ai/bastra-recall/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.1

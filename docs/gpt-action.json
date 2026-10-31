@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Bastra.Recall GPT Action",
-    "version": "1.1.1",
+    "version": "1.1.8",
     "description": "Set the server URL to your HTTPS tunnel ending in /api/v1 and configure bearer authentication with BASTRA_API_TOKEN. Task routes are local-only and excluded. Document writes require BASTRA_DOCUMENT_WRITE=1. Response objects have operation-specific fields."
   },
   "servers": [

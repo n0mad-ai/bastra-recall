@@ -89,3 +89,27 @@ test("a hyphen in build metadata does not bypass stable documentation checks", t
   writeFileSync(join(dir, "CHANGELOG.md"), "## [2.3.4+build-1]\n");
   checkReleaseDocs(dir, "2.3.4+build-1");
 });
+
+
+test("release targets are version-checked without claiming publication", t => {
+  const dir = mkdtempSync(join(tmpdir(), "bastra-release-target-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const target = v => `**Release target: ${v}.**\n**Release-Ziel: ${v}.**\n`;
+  writeFileSync(join(dir, "README.md"), target("2.3.4"));
+  writeFileSync(join(dir, "CHANGELOG.md"), "## [2.3.4] — today\n");
+  checkReleaseDocs(dir, "2.3.4");
+  for (const bad of [target("2.3.3"), target("2.3.4") + prose("2.3.4")]) {
+    writeFileSync(join(dir, "README.md"), bad);
+    assert.throws(() => checkReleaseDocs(dir, "2.3.4"), /README/);
+  }
+  mkdirSync(join(dir, "scripts"));
+  for (const name of ["bump.mjs", "release-docs.mjs"]) copyFileSync(new URL(`scripts/${name}`, root), join(dir, "scripts", name));
+  mkdirSync(join(dir, "packages/daemon/src/cli"), { recursive: true });
+  for (const file of ["index.ts", "mcp-forwarder.ts", "version.ts", "cli/helpers.ts"]) writeFileSync(join(dir, "packages/daemon/src", file), "// no literal\n");
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0", workspaces: [] }));
+  writeFileSync(join(dir, "README.md"), target("1.0.0"));
+  const run = spawnSync(process.execPath, [join(dir, "scripts/bump.mjs"), "2.3.4"], { encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(readFileSync(join(dir, "README.md"), "utf8"), target("2.3.4"));
+  checkReleaseDocs(dir, "2.3.4");
+});

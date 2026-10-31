@@ -1,6 +1,6 @@
 {
   "name": "@bastra-recall/core",
-  "version": "1.1.1",
+  "version": "1.1.8",
   "description": "Reusable core library: vault loader, BM25 index, save_memory. Used by the daemon and the Mac-app.",
   "type": "module",
   "license": "MIT",
@@ -51,7 +51,8 @@
     "build": "tsc && node ../../scripts/write-build-revision.mjs dist",
     "check:types": "tsc --noEmit && tsc -p tsconfig.tests.json",
     "test": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/*.test.ts",
-    "bench:vault-init": "tsx scripts/bench-vault-init.ts"
+    "bench:vault-init": "tsx scripts/bench-vault-init.ts",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

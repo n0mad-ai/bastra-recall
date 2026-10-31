@@ -40,7 +40,7 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Version 1.1.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Release target: 1.1.8.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Real work in cmux: Claude Code and Codex retrieve memories with Bastra Recall, exchange findings and use expanded live Ember panels." width="100%" />
@@ -96,7 +96,7 @@ You can repeat the lookup in another connected client using the same vault. This
 | **Codex CLI** | Verified for the v1.0 integration | MCP, Skill and native hooks. [Setup](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implemented; not yet field-tested | Share the local Codex configuration. [Setup and limitations](./docs/CODEX.md) |
 | **Cursor** | Implemented; not yet field-tested | MCP registration; add project rules with `bastra rules cursor` |
-| **ChatGPT web + iPhone app** | Tested on `main` (not yet released) | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
+| **ChatGPT web + iPhone app** | Tested; remote MCP included in 1.1.8 | Remote MCP with OAuth through your own HTTPS address and tunnel; the computer running Recall must be online. [Remote access](./docs/REMOTE-ACCESS.md) |
 | **claude.ai custom connectors** | Untested | Same remote MCP address and OAuth login; expected to work. [Remote access](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) |
 | **ChatGPT Custom GPT Actions** | Legacy | OpenAI retires Custom GPTs on 2026-12-11; use the remote MCP connection instead. [Legacy setup](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 
@@ -209,7 +209,7 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Version 1.1.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Release-Ziel: 1.1.8.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Echte Arbeit in cmux: Claude Code und Codex laden Erinnerungen mit Bastra Recall, tauschen Befunde aus und nutzen vollständig geöffnete Ember-Panels mit Live-Daten." width="100%" />
@@ -265,7 +265,7 @@ Wiederhole die Abfrage bei Bedarf in einem anderen verbundenen Client mit demsel
 | **Codex CLI** | Für die v1.0-Integration verifiziert | MCP, Skill und native Hooks. [Einrichtung](./docs/CODEX.md) |
 | **Codex IDE + ChatGPT Desktop** | Implementiert; noch nicht im Feld getestet | Nutzen die lokale Codex-Konfiguration gemeinsam. [Einrichtung und Grenzen](./docs/CODEX.md) |
 | **Cursor** | Implementiert; noch nicht im Feld getestet | MCP-Registrierung; Projektregeln mit `bastra rules cursor` ergänzen |
-| **ChatGPT Web + iPhone-App** | Auf `main` getestet (noch nicht veröffentlicht) | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
+| **ChatGPT Web + iPhone-App** | Getestet; Remote-MCP in 1.1.8 enthalten | Remote-MCP mit OAuth über deine eigene HTTPS-Adresse und einen Tunnel; der Rechner mit Recall muss online sein. [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch) |
 | **claude.ai Custom Connectors** | Ungetestet | Dieselbe Remote-MCP-Adresse und derselbe OAuth-Login; sollte funktionieren. [Fernzugriff](./docs/REMOTE-ACCESS.md#claudeai-custom-connectors-untested) (Englisch) |
 | **ChatGPT Custom GPT Actions** | Veraltet | OpenAI stellt Custom GPTs am 11.12.2026 ein; nutze stattdessen die Remote-MCP-Verbindung. [Bisherige Einrichtung](./docs/openapi-generation.md#legacy-custom-gpt-action) |
 

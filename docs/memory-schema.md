@@ -38,7 +38,7 @@ The active text index is in-memory MiniSearch/BM25. Optional embeddings are stor
 
 ### Rulebook metadata (additive)
 
-Optional `rulebook: always|on-demand` selects the delivery tier. `applies_when` is a nonblank description in the user's language; new declarations require it, while older loaded notes can use their summary (response marker `applies_when_derived: true`). `rulebook_proposed: {rulebook, applies_when}` stores unconfirmed metadata separately. Existing files need no migration. See [rulebook scope and implementation status](rulebook.md#schema-stage); schema support does not imply that the new delivery/gate is already implemented.
+Optional `rulebook: always|on-demand` selects the delivery tier. `applies_when` is a nonblank description in the user's language; new declarations require it, while older loaded notes can use their summary (response marker `applies_when_derived: true`). `rulebook_proposed: {rulebook, applies_when}` stores unconfirmed metadata separately. Existing files need no migration. See [rulebook scope and implementation status](rulebook.md#schema-stage); delivery and bounded gate/Stop checks are implemented with the documented host and evidence limits.
 
 ### Minimal Frontmatter
 
@@ -697,7 +697,7 @@ No 1.x release rewrites existing files in bulk to produce its own format. Where 
 
 ## Deutsch
 
-Optionale Regelbuch-Felder: `rulebook: always|on-demand`, die Anwendungsbeschreibung `applies_when` und getrennte Vorschläge in `rulebook_proposed: {rulebook, applies_when}`. Neue Deklarationen brauchen die Beschreibung, bestehende Dateien werden nicht migriert. Der [Umsetzungsstand](rulebook.md#schema-stage) unterscheidet Schema-Unterstützung von späterer Zustellung und Durchsetzung.
+Optionale Regelbuch-Felder: `rulebook: always|on-demand`, die Anwendungsbeschreibung `applies_when` und getrennte Vorschläge in `rulebook_proposed: {rulebook, applies_when}`. Neue Deklarationen brauchen die Beschreibung, bestehende Dateien werden nicht migriert. Der [Umsetzungsstand](rulebook.md#schema-stage) beschreibt die umgesetzte Zustellung und begrenzte Prüfung samt Host- und Beleggrenzen.
 
 
 Dieses Schema beschreibt eine gespeicherte Erinnerung oder einen Dokument-Sidecar. Dateien sind reines Markdown mit YAML-Frontmatter, damit sie in Obsidian und von Hand bearbeitbar bleiben.

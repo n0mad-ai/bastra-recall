@@ -1684,60 +1684,20 @@ Recalls and pending suggestions are sent on every start. Telemetry:
 
 #### Rule kernel (session hook and gate, #1305)
 
-`/compact`, `/clear` and a fork start with an emptied context, so the rules
-the session was working under are gone with it. On a SessionStart with
-`source` `compact`, `clear` or `fork` the session hook therefore puts a
-`<rule-kernel>` block first, with the **full bodies** of the rules in force.
-`resume` gets none: its transcript is intact (#509). Order is priority:
+Startup, resume, compact, clear and fork deliver the vault-backed rulebook.
+Always-tier bodies arrive whole within an 8,000-character budget. The complete
+on-demand description index shares a 9,400-character kernel ceiling; overflow
+is explicit and remains reachable through `list_rules(cursor)`. The complete
+session output stays below 10,000 characters by deferring optional sections.
+Catalog membership does not depend on search ranking or prompt language.
 
-1. the session's active conventions, newest first — a rule the agent loaded
-   to answer a must-load, or a reflex rule the gate delivered; read from the
-   session state before compact/clear releases the dedup, and kept across it,
-2. floors,
-3. memories with `recall_mode: reflex`,
-4. `write_origin: user-directed` memories of type `user-preference` or
-   `meta-working`, by salience.
-
-**Known fork limit.** Claude Code's documented [SessionStart input](https://code.claude.com/docs/en/hooks#sessionstart-input)
-and [common input fields](https://code.claude.com/docs/en/hooks#common-input-fields)
-provide no parent session ID. A fork with a new session ID therefore has no
-`activeConventions` from its parent. The kernel can restore floors, reflex
-rules and user-directed preferences; it cannot promise to restore the parent's
-active conventions. The hook does not guess the parent session ID.
-
-Private, obsolete and superseded memories are left out; without a detected
-project only global scopes count. The bodies come from the daemon's vault
-index, never from a recall, inside the lane's 500 ms. One explicit bound: the
-whole block stays at or below 6,000 characters. A body goes out whole or not
-at all: one that does not fit becomes `degraded: load_memory(<id>)`, and a rule
-is never cut. Active conventions get the room first, then bodies up to 1,500
-characters, then longer ones; the block is still printed in priority order.
-Rules past the bound are counted in one `+N more rule(s) not listed` line.
-Every entry line carries the id, `revision` (the `memoryRevision` of the file,
-as `load_memory` returns it), `updated` and `stale_status`, computed live from
-the memory's lifecycle fields rather than a stored UI projection (`unknown`
-if the supplied entry has no status). A
-one-armed start (cold dense model) adds
-`lexical-only: kernel built from floors, reflex and user-directed rules only`.
-The last line of the block is always:
-
-```
-If a rule here seems unclear or outdated, ask the user with a choice box before deviating; never silently ignore it.
-```
-
-**Re-delivery.** The gate lane counts tool calls since the last user prompt;
-every `UserPromptSubmit` resets the count. At 25 calls without a prompt the gate
-answers the same kernel as `additionalContext` — never a deny — and starts
-counting again. A call the gate denies does not carry it; the next call does.
-The re-delivery is charged to the session budget shadow (#458) like the
-session block, and leaves a `gate_hook_call` row with `kernel_ids`,
-`kernel_degraded_ids`, `kernel_omitted` and `kernel_chars`. The session start
-reports the same under `kernel` on its `session_hook_call` row, and its tokens
-under `hint_tokens_by_part.kernel`.
-
-The `<pinned-memories>` block below stays as it is: a lean audit list without
-bodies. The assembler's own `- [pinned]` lines serve the hookless
-`GET /hook/session-context` contract and are not a second session-hook renderer.
+A new context invalidates prior load evidence. Within the same context, a
+previously fully loaded current revision can satisfy an action load requirement;
+a per-round applicability declaration remains separate. A fork with a new
+session ID cannot restore an unknown parent's active task. The gate redelivers
+the kernel after 25 tool calls without a user prompt, without using that
+redelivery as a deny. See [the rulebook contract](rulebook.md) for membership,
+privacy, budgets, bounded action/Stop checking and host limitations.
 
 #### Task contract and active conventions (prompt hook, #1306)
 
@@ -1778,27 +1738,17 @@ States and transitions, decided per prompt from the user's **own** text:
 
 Quoted incoming text — a blockquote, a `<pasted_content>` block, everything
 below a "… schrieb:" / "… wrote:" header — is cut off before any cue is read.
-An instruction inside an incoming message never changes the state. When the
-intent stays ambiguous — quoted text without a reply verb, or two explicit cues
-that contradict each other — the block carries exactly one line and no second
-model request is made:
-
-```
-task unclear: ask the user with a choice (translate only / draft reply / approved copy) before producing the deliverable
-```
-
-The question is bound to the generation and to the conventions (with their
-revisions) the unclear prompt surfaced. Only the **next** prompt can answer it
-("Antwortentwurf", "nur übersetzen", "freigegeben"); a bare "ja" or "ok" is not
-an answer, and an unanswered question never approves copy. Every newer prompt
-discards it. The cues are per-language data in `lexicon.ts` (de/en), each
-extensible by a user file under `~/.bastra/lexicon/` (`correspondence.txt`,
-`translate-only.txt`, `task-approval.txt`, `approved-copy.txt`,
-`draft-reply.txt`, `quote-header.txt`). A language without a list takes the
-neutral path: no transition, and quoted text still yields the choice line.
+An instruction inside an incoming message never changes the state. Ambiguous
+pasted content receives neutral provenance guidance: apply the correspondence
+rules if it is a foreign message; carry out the instruction if it is the user's
+own text. The hook does not instruct the agent to ask the user to choose a task.
+Pending correspondence references may support a later explicit user instruction
+or review draft, without claiming that a question was asked. A bare approval
+never grants copy approval for an unresolved task. Legacy transition cues remain
+language-specific data in `lexicon.ts`, extensible under `~/.bastra/lexicon/`.
 
 `compact`, `clear` and `fork` raise `generation`; the task and its conventions
-survive (the rule kernel restores their bodies) and an open question is
+survive (subject to the rulebook delivery budget); pending ambiguity is
 dropped. A fork's new session ID starts at generation 1 without the parent's
 task (see the fork limit above). While a task is in progress the prompt lane
 does not skip the recall in mode `none` (#371), so it can still tell whether a
@@ -3659,66 +3609,22 @@ Event `session_hook_call` nennt die weggelassenen Teile, und
 
 #### Regelkern (Session-Hook und Gate, #1305)
 
-`/compact`, `/clear` und ein Fork beginnen mit geleertem Kontext, und mit ihm
-sind die Regeln weg, unter denen die Session gearbeitet hat. Bei einem
-SessionStart mit `source` `compact`, `clear` oder `fork` setzt der Session-Hook
-deshalb einen Block `<rule-kernel>` an den Anfang, mit den **vollständigen
-Bodies** der geltenden Regeln. `resume` bekommt keinen, denn das Transkript ist
-dort erhalten (#509). Die Reihenfolge ist die Priorität:
+Start, Resume, Compact, Clear und Fork liefern das Regelbuch aus dem Vault-Index.
+Always-Regeln kommen vollständig innerhalb von 8.000 Zeichen an. Der gesamte
+Beschreibungskatalog der On-demand-Regeln teilt sich mit ihnen eine Grenze von
+9.400 Zeichen; Überlauf wird ausdrücklich genannt und bleibt über
+`list_rules(cursor)` erreichbar. Optionale Abschnitte werden verschoben, damit
+die gesamte Session-Ausgabe unter 10.000 Zeichen bleibt. Suchrang und
+Prompt-Sprache entscheiden nicht über die Mitgliedschaft im Katalog.
 
-1. die aktiven Konventionen der Session, neueste zuerst: eine Regel, die der
-   Agent auf ein Must-Load hin geladen hat, oder eine Reflex-Regel, die das
-   Gate geliefert hat. Sie werden vor dem Dedup-Reset von compact/clear aus dem
-   Session-State gelesen und überstehen ihn,
-2. Floors,
-3. Memories mit `recall_mode: reflex`,
-4. Memories mit `write_origin: user-directed` vom Typ `user-preference` oder
-   `meta-working`, nach Salience.
-
-**Bekannte Fork-Grenze.** Claude Codes dokumentierter [SessionStart-Input](https://code.claude.com/docs/en/hooks#sessionstart-input)
-und die [gemeinsamen Input-Felder](https://code.claude.com/docs/en/hooks#common-input-fields)
-enthalten keine Eltern-Session-ID. Ein Fork mit neuer Session-ID hat deshalb
-keine `activeConventions` der Eltern-Session. Der Kern kann Floors,
-Reflex-Regeln und nutzergerichtete Präferenzen wiederherstellen; die aktiven
-Konventionen der Eltern-Session kann er nicht zusichern. Der Hook rät die
-Eltern-Session-ID nicht.
-
-Private, obsolete und ersetzte Memories fehlen. Ohne erkanntes Projekt zählen
-nur globale Scopes. Die Bodies kommen aus dem Vault-Index im Daemon, nie aus
-einem Recall, innerhalb der 500 ms der Lane. Es gibt eine ausdrückliche
-Schranke: Der ganze Block bleibt bei höchstens 6.000 Zeichen. Ein Body geht
-ganz oder gar nicht raus. Passt er nicht, steht dort `degraded:
-load_memory(<id>)`, eine Regel wird nie abgeschnitten. Den Platz bekommen
-zuerst die aktiven Konventionen, dann Bodies bis 1.500 Zeichen, dann längere.
-Gedruckt wird trotzdem in der Prioritätsreihenfolge. Regeln jenseits der
-Schranke zählt eine Zeile `+N more rule(s) not listed`. Jede Eintragszeile
-trägt die ID, `revision` (die `memoryRevision` der Datei, wie `load_memory` sie
-liefert), `updated` und `stale_status`, live aus den Lebenszyklus-Feldern der
-Memory berechnet statt aus einer gespeicherten UI-Projektion (`unknown`, wenn
-dem gelieferten Eintrag der Status fehlt). Ein einarmiger Start
-(kaltes dichtes Modell) ergänzt
-`lexical-only: kernel built from floors, reflex and user-directed rules only`.
-Die letzte Zeile des Blocks lautet immer:
-
-```
-If a rule here seems unclear or outdated, ask the user with a choice box before deviating; never silently ignore it.
-```
-
-**Erneute Lieferung.** Die Gate-Lane zählt die Toolaufrufe seit dem letzten
-Prompt des Nutzers. Jedes `UserPromptSubmit` setzt den Zähler zurück. Nach 25
-Aufrufen ohne Prompt liefert das Gate denselben Kern als `additionalContext`,
-nie als Deny, und zählt von vorn. Ein Aufruf, den das Gate verweigert, trägt ihn
-nicht, der nächste schon. Die erneute Lieferung wird wie der Session-Block im
-Schatten des Sitzungsbudgets gebucht (#458) und hinterlässt eine
-`gate_hook_call`-Zeile mit `kernel_ids`, `kernel_degraded_ids`,
-`kernel_omitted` und `kernel_chars`. Der Sitzungsstart meldet dasselbe unter
-`kernel` in seiner `session_hook_call`-Zeile und die Tokens unter
-`hint_tokens_by_part.kernel`.
-
-Der Block `<pinned-memories>` unten bleibt, wie er ist: eine schlanke
-Audit-Liste ohne Bodies. Die eigenen `- [pinned]`-Zeilen des Assemblers
-bedienen den hooklosen Vertrag `GET /hook/session-context` und sind kein
-zweiter Renderer des Session-Hooks.
+Ein neuer Kontext entwertet frühere Ladebelege. Im selben Kontext kann eine
+bereits vollständig geladene aktuelle Revision eine Aktions-Ladepflicht erfüllen;
+die Erklärung zur Anwendbarkeit je Runde bleibt davon getrennt. Ein Fork mit
+neuer Session-ID kann die aktive Aufgabe eines unbekannten Elternkontexts nicht
+wiederherstellen. Nach 25 Toolaufrufen ohne Nutzerprompt liefert das Gate den
+Kern erneut, ohne diese Zustellung als Sperre zu verwenden. Der
+[Regelbuch-Vertrag](rulebook.md) beschreibt Mitgliedschaft, Datenschutz,
+Budgets, begrenzte Aktions-/Stop-Prüfung und Host-Grenzen.
 
 #### Aufgabenvertrag und aktive Konventionen (Prompt-Hook, #1306)
 
@@ -3761,27 +3667,17 @@ entschieden:
 Zitierter eingehender Text (Blockquote, Block `<pasted_content>`, alles unter
 einer Kopfzeile „… schrieb:“ / „… wrote:“) wird abgetrennt, bevor ein Cue
 gelesen wird. Eine Anweisung in einer eingegangenen Nachricht ändert den
-Zustand nie. Bleibt die Absicht unklar (zitierter Text ohne Antwortverb oder
-zwei widersprüchliche ausdrückliche Cues), trägt der Block genau eine Zeile, und
-es gibt keine zweite Modell-Anfrage:
-
-```
-task unclear: ask the user with a choice (translate only / draft reply / approved copy) before producing the deliverable
-```
-
-Die Frage ist an die Generation und an die Konventionen (mit ihren Revisionen)
-gebunden, die der unklare Prompt getroffen hat. Nur der **nächste** Prompt kann
-sie beantworten („Antwortentwurf“, „nur übersetzen“, „freigegeben“); ein bloßes
-„ja“ oder „ok“ ist keine Antwort, und eine unbeantwortete Frage gibt nie eine
-Kopie frei. Jeder neuere Prompt verwirft sie. Die Cues sind Daten pro Sprache in
-`lexicon.ts` (de/en), jeweils erweiterbar durch eine Nutzerdatei unter
-`~/.bastra/lexicon/` (`correspondence.txt`, `translate-only.txt`,
-`task-approval.txt`, `approved-copy.txt`, `draft-reply.txt`,
-`quote-header.txt`). Eine Sprache ohne Liste nimmt den neutralen Weg: kein
-Übergang, und zitierter Text ergibt weiterhin die Auswahlzeile.
+Zustand nie. Bei unklarem eingefügtem Text gibt es einen neutralen
+Herkunftshinweis: Bei einer fremden Nachricht die Korrespondenzregeln anwenden;
+bei eigenem Nutzertext die Anweisung ausführen. Der Hook weist den Agenten nicht
+an, eine Aufgabenwahl vom Nutzer zu verlangen. Vorgemerkte Korrespondenzverweise
+können eine spätere ausdrückliche Nutzeranweisung oder einen Entwurf unterstützen,
+ohne zu behaupten, dass eine Frage gestellt wurde. Eine bloße Zustimmung gibt
+bei ungeklärter Aufgabe keine Kopie frei. Die bisherigen Übergangs-Cues bleiben
+sprachbezogene Daten in `lexicon.ts`, erweiterbar unter `~/.bastra/lexicon/`.
 
 `compact`, `clear` und `fork` erhöhen `generation`. Aufgabe und Konventionen
-bleiben (der Regelkern stellt ihre Bodies wieder her), eine offene Frage
+bleiben innerhalb der Zustellungsgrenzen des Regelbuchs; vorgemerkte Unklarheit
 verfällt. Die neue Session-ID eines Forks beginnt bei Generation 1 ohne die
 Aufgabe der Eltern-Session (siehe Fork-Grenze oben). Solange eine Aufgabe
 läuft, überspringt die Prompt-Lane den Recall im Modus `none` nicht (#371),

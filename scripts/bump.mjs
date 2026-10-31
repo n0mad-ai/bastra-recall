@@ -20,7 +20,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { README_RELEASE_LINE, isPrereleaseVersion } from "./release-docs.mjs";
+import { README_RELEASE_LINE, README_RELEASE_TARGET_LINE, isPrereleaseVersion } from "./release-docs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -50,12 +50,14 @@ const readmePath = resolve(repoRoot, "README.md");
 const readme = readFileSync(readmePath, "utf8");
 const isPrerelease = isPrereleaseVersion(version);
 if (!isPrerelease && ["is available", "ist verfügbar"].some(phrase =>
-  (readme.match(README_RELEASE_LINE) ?? []).filter(line => line.includes(phrase)).length !== 1)) {
+  (readme.match(README_RELEASE_LINE) ?? []).filter(line => line.includes(phrase)).length +
+  (readme.match(README_RELEASE_TARGET_LINE) ?? []).filter(line => line.includes(phrase === "is available" ? "Release target" : "Release-Ziel")).length !== 1)) {
   console.error("error: README needs one English and one German release version line");
   process.exit(1);
 }
 const updatedReadme = isPrerelease ? readme : readme.replace(README_RELEASE_LINE,
-  (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`);
+  (_line, _oldVersion, phrase) => `**Version ${version} ${phrase}.**`).replace(README_RELEASE_TARGET_LINE,
+  (_line, label) => `**${label}: ${version}.**`);
 
 // 1) Collect package.json paths: root + every workspace.
 const rootPkgPath = resolve(repoRoot, "package.json");

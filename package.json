@@ -1,7 +1,7 @@
 {
   "name": "bastra-recall-monorepo",
-  "version": "1.1.1",
-  "description": "Workspace root for bastra-recall: OSS daemon, MCP server, and shared ChatGPT/Codex/Claude skill \u2014 the open foundation under the Bastra Mac app.",
+  "version": "1.1.8",
+  "description": "Workspace root for bastra-recall: OSS daemon, MCP server, and shared ChatGPT/Codex/Claude skill — the open foundation under the Bastra Mac app.",
   "private": true,
   "license": "MIT",
   "engines": {
