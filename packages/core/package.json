@@ -55,7 +55,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "chokidar": "^5.0.0",
+    "chokidar": "^6.0.0",
     "gray-matter": "^4.0.3",
     "minisearch": "^7.1.1",
     "zod": "^4.6.6"
