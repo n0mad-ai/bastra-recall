@@ -6,7 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `bastra archive put <path>...` moves paths into the archive with the same
+  move and restore as the archiving `rm`, and never deletes. A user who denies
+  `Bash(rm:*)` in Claude Code can allow `Bash(bastra archive put:*)` on its
+  own; the line under the deny names that rule. The hook never rewrites `rm`
+  into it (#1383).
+
 ### Fixed
+
+- Under the user's own `deny` rule an archiving `rm` no longer gets an allow,
+  a rewrite or "No confirmation needed"; it keeps the STOP and one line naming
+  the rule. Thanks to @zzallirog (#650, #1362).
 
 - With the archive opt-in on, a destructive command from a hook registration
   without a client marker now says why it stops and how to add the marker. A

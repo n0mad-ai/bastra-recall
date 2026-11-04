@@ -129,9 +129,10 @@ Commands:
                              'bug' includes a sanitized diagnostics block
                              (version, OS, embedding mode, vault size — never
                              vault content); you review and submit it yourself
-  archive <list|restore|reconcile>
-                             What the agent's rm moved to ~/.bastra/archive,
-                             put a path back, or let old entries go
+  archive <put|list|restore|reconcile>
+                             Move a path into ~/.bastra/archive yourself, see
+                             what the agent's rm moved there, put a path back,
+                             or let old entries go
   reconcile [other-store]    Two copies of the same vault: which one is ahead,
                              per memory (dry run; --yes copies with backup,
                              conflicts are only listed); no argument lists
@@ -793,6 +794,7 @@ browser opens with the form filled in — you read it and submit it yourself.
   archive: `bastra archive — the archive behind the agent's rm
 
 Usage:
+  bastra archive put <path>...        move paths into the archive (never deletes)
   bastra archive list                 what was archived, deleted or refused (30 days)
   bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)
   bastra archive reconcile [--yes]    show (with --yes: remove) what can go
@@ -817,6 +819,11 @@ BASTRA_ARCHIVE_MAX_ITEM win):
                                            none; off removes it). A larger one
                                            is refused, not archived, not deleted.
 Only the rm part off: BASTRA_RM_SHIM=0.
+
+bastra archive put <path>... makes the archiving rm's move by hand, opt-in
+or not: same archive, same restore, and temp dirs are archived too, never
+deleted. A user who denies Bash(rm:*) in Claude Code can allow
+Bash(bastra archive put:*) on its own; the hook never rewrites rm into it.
 
 git acts that lose work (clean -f, reset --hard, checkout [<tree>] -- <paths>,
 restore, branch -D, stash drop|clear) are snapshotted first: clean's files

@@ -767,6 +767,42 @@ describe("#650 — the user's own deny rule over an archiving rm", () => {
       assert.match(out.additionalContext, /agent-archive restore <path>/);
     }, { BASTRA_RM_ARCHIVES: "host" });
   });
+
+  it("#1383: the line names `Bash(bastra archive put:*)` as the user's way; allowed it says so; denied too, or host mode: not named", async () => {
+    // Revert-check: pass null instead of `put` to denyLine in the lane → no rule is named in either case;
+    // drop the `put.verdict !== "deny"` check → a denied put is offered.
+    await withCfg(async () => {
+      const deny = [`Bash(${RM}:*)`];
+      const offered = await preHook(`${RM} -rf victim-p`, "claude-code", project({ deny }));
+      assert.match(offered.additionalContext, /the user can allow only the archive move, with the rule `Bash\(bastra archive put:\*\)`/);
+      assert.match(offered.additionalContext, /do not route around the rule/);
+      assert.equal(offered.permissionDecision, undefined, "the deny still wins: nothing is allowed");
+      assert.equal(offered.updatedInput, undefined, "rm is never rewritten into archive put");
+      const granted = await preHook(`${RM} -rf victim-p`, "claude-code", project({ deny, allow: ["Bash(bastra archive put:*)"] }));
+      assert.match(granted.additionalContext, /The user allows the archive move on its own \(rule `Bash\(bastra archive put:\*\)`\)/);
+      assert.equal(granted.updatedInput, undefined, "allowed or not, the lane does not rewrite rm into put");
+      const both = await preHook(`${RM} -rf victim-p`, "claude-code", project({ deny: [...deny, "Bash(bastra archive put:*)"] }));
+      assert.match(both.additionalContext, /denies this command, and it wins/);
+      assert.doesNotMatch(both.additionalContext, /archive put/, "a denied put is not offered as a way");
+    });
+    await withCfg(async () => {
+      const host = await preHook(`${RM} -rf victim-p`, "claude-code", project({ deny: [`Bash(${RM}:*)`] }));
+      assert.doesNotMatch(host.additionalContext, /archive put/, "host mode: bastra's archive is not the host's");
+    }, { BASTRA_RM_ARCHIVES: "host" });
+  });
+
+  it("#1383: without a deny nothing changes — rm runs through the shim, and `bastra archive put` itself is not a destructive act", async () => {
+    // Revert-check: name the rule outside the deny branch → the free rm gets a line about archive put.
+    await withCfg(async () => {
+      const free = await preHook(`${RM} -rf victim-q`, "claude-code", project());
+      assert.equal(free.permissionDecision, "allow");
+      assert.doesNotMatch(free.updatedInput.command, /archive put/);
+      assert.doesNotMatch(free.additionalContext, /archive put/);
+      const put = await preHook("bastra archive put victim-q", "claude-code", project());
+      assert.equal(put.permissionDecision, undefined, "the lane claims nothing for put: the user's own rules decide");
+      assert.doesNotMatch(put.additionalContext ?? "", /STOP/);
+    });
+  });
 });
 
 describe("#650 — the shim switched off says it exists, and the off switch is counted", () => {
@@ -999,5 +1035,59 @@ describe("#695 — a full disk: a clear refusal, the target untouched, nothing d
     );
     assert.equal(readFileSync(target, "utf8"), "keep me\n");
     assert.match(errs.join("\n"), /disk is full.*archive reconcile --yes/s);
+  });
+});
+
+describe("#1383 — `bastra archive put <path>`", () => {
+  /** The CLI on process.env: the archive in a sandbox, the sandbox itself a temp root. */
+  async function cli(argv: string[], env: NodeJS.ProcessEnv): Promise<{ rc: number; out: string; err: string }> {
+    const keys = ["BASTRA_ARCHIVE_DIR", "BASTRA_RM_TEMP_ROOTS", "BASTRA_ARCHIVE_MAX_ITEM", "BASTRA_RM_CALL"];
+    const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) if (env[k] === undefined) delete process.env[k]; else process.env[k] = env[k];
+    const out: string[] = [];
+    const err: string[] = [];
+    const orig = { log: console.log, error: console.error };
+    console.log = (s: unknown) => void out.push(String(s));
+    console.error = (s: unknown) => void err.push(String(s));
+    try {
+      const { cmdArchive } = await import("../src/cli/archive-cmd.js");
+      const { parseArgs } = await import("../src/cli/commands.js");
+      return { rc: await cmdArchive(parseArgs(argv)), out: out.join("\n"), err: err.join("\n") };
+    } finally {
+      console.log = orig.log;
+      console.error = orig.error;
+      for (const [k, v] of Object.entries(prev)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+
+  it("puts a directory into the archive and `restore` brings it back — under a temp root too, never deleted", async () => {
+    // Revert-check: drop `archiveTemp: true` in archive-cmd.ts (or `!io.archiveTemp &&` in runRmShim)
+    // → the temp target is really deleted, the row says "deleted" and restore finds nothing.
+    const { dir, env } = sandbox();
+    const putEnv = { ...env, BASTRA_RM_TEMP_ROOTS: dir, BASTRA_ARCHIVE_MAX_ITEM: "off" };
+    const target = join(dir, "work");
+    mkdirSync(target);
+    writeFileSync(join(target, "a.txt"), "keep me\n");
+    const put = await cli(["archive", "put", target], putEnv);
+    assert.equal(put.rc, 0, put.err);
+    assert.equal(existsSync(target), false);
+    assert.match(put.out, /archived '.*work' → /);
+    assert.match(put.out, /put back with: bastra archive restore <path>/);
+    const row = manifestRows(putEnv).at(-1);
+    assert.equal(row?.action, "archived");
+    const back = await cli(["archive", "restore", target], putEnv);
+    assert.equal(back.rc, 0, back.err);
+    assert.equal(readFileSync(join(target, "a.txt"), "utf8"), "keep me\n");
+  });
+
+  it("no path: usage, exit 2; a missing path: exit 1 in put's own words, nothing archived", async () => {
+    // Revert-check: drop the "rm: " → "bastra archive put: " mapping → the message starts with "rm:".
+    const { dir, env } = sandbox();
+    const putEnv = { ...env, BASTRA_ARCHIVE_MAX_ITEM: "off" };
+    assert.equal((await cli(["archive", "put"], putEnv)).rc, 2);
+    const missing = await cli(["archive", "put", join(dir, "nope")], putEnv);
+    assert.equal(missing.rc, 1);
+    assert.match(missing.err, /^bastra archive put: cannot remove '.*nope': No such file or directory/);
+    assert.doesNotMatch(missing.out, /put back with/);
   });
 });

@@ -321,6 +321,9 @@ export interface ShimIo {
   now?: Date;
   /** Temp roots — injectable so a test can archive inside os.tmpdir(). */
   ephemeral?: string[];
+  /** `bastra archive put`: a target under a temp root is archived too, never
+   *  deleted — the verb a user allows in place of `rm` only ever moves. */
+  archiveTemp?: boolean;
   /** The git act this rm stands in for (git-archive.ts); the receipt names it. */
   via?: string;
   out?: (s: string) => void;
@@ -433,7 +436,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       rc = 1;
       continue;
     }
-    if (eph.some((r) => under(real, r))) {
+    if (!io.archiveTemp && eph.some((r) => under(real, r))) {
       try {
         rmSync(real, { recursive: true, force: true });
       } catch (e) {

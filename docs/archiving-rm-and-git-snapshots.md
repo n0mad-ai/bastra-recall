@@ -76,7 +76,9 @@ A target over `archive.max-item` is neither archived nor deleted: `rm` exits non
 
 How the size is measured: the shim walks the target with `lstat` and adds up file sizes. Without a limit that walk stops after 50,000 entries, because the number only feeds the manifest. With a limit it has to be right, so the walk goes on past 50,000 entries and stops as soon as the total is over the limit. A target over the limit therefore costs less than before; a very large tree *under* the limit is walked in full (about 80,000 to 220,000 files per second on a laptop SSD). The daemon reads the setting and hands the limit to the shim in the rewritten command (`BASTRA_ARCHIVE_MAX_ITEM=<bytes>B`); the shim itself reads no settings file. `bastra doctor` shows both effective values on the archive line while the archive is on.
 
-**5. CLI:** `bastra archive list | restore <path> | reconcile [--yes]`.
+**5. CLI:** `bastra archive put <path>... | list | restore <path> | reconcile [--yes]`.
+
+`bastra archive put <path>...` (#1383) is the archiving `rm`'s move as a command of its own: the same archive, the same manifest line, the same `bastra archive restore <path>`. It never deletes: a target under a temp root is archived too, where `rm` really removes it. It works with the opt-in on or off; with it off, nothing cleans up by itself, so run `bastra archive reconcile --yes` now and then. A user who denies `Bash(rm:*)` in Claude Code can allow `Bash(bastra archive put:*)` as a rule of its own: the deny keeps meaning "no deletion", and the move into the archive is something they allowed. The hook never rewrites `rm` into `archive put`.
 
 #### Exactly what is rewritten, what keeps the STOP, what is not covered
 
@@ -208,7 +210,7 @@ The archiving `rm` depends on knowing when a command changes what `rm` resolves 
 - With the opt-in on, `BASTRA_RM_SHIM=0` leaves out the `rm` part and `BASTRA_GIT_SHIM=0` the git part. A command the switched-off shim would have taken keeps the STOP and gets one extra line saying what it would have saved; the wording follows the user's own Claude Code permission rules (with an `ask` rule it says the command would still be asked about; with a `deny` rule there is no line). Each such command is a telemetry event `rm_shim_shadow` / `git_shim_shadow`. Nothing is written to the vault.
 - Each shim runs only where it is on: with one of the two switched off, a command that needs both (`rm -rf build && git stash drop`) is not rewritten. `shims/git` also reads `BASTRA_GIT_SHIM=0` from its own environment and then hands every call to the real git.
 - A host with its own archiving `rm` sets `BASTRA_RM_ARCHIVES=host`: receipt text, no rewrite.
-- Under the user's own `deny` rule for the command the lane claims nothing: no allow, no rewrite, no receipt, the plain STOP and one line for the user naming the rule and what `rm` would have been with it relaxed, with no route around it. Each such command is a telemetry event `archive_deny_shadow`.
+- Under the user's own `deny` rule for the command the lane claims nothing: no allow, no rewrite, no receipt, the plain STOP and one line for the user naming the rule and what `rm` would have been with it relaxed, with no route around it. When bastra's own archive would have taken an rm-only command, the line also names the user's way that keeps the rule (#1383): without a rule for it, that the user can allow `Bash(bastra archive put:*)`; with such an allow, that `bastra archive put <path>` makes the same move; if `archive put` is denied too, nothing. Each such command is a telemetry event `archive_deny_shadow`, with the verdict on `archive put` as `put_verdict`.
 
 ### How it was tested (at the time of the PRs)
 
@@ -299,7 +301,9 @@ Ein Ziel über `archive.max-item` wird weder archiviert noch gelöscht: `rm` end
 
 So wird die Größe gemessen: Der Shim läuft das Ziel mit `lstat` ab und addiert die Dateigrößen. Ohne Grenze endet dieser Lauf nach 50.000 Einträgen, weil die Zahl nur ins Manifest geht. Mit Grenze muss sie stimmen, also läuft er über 50.000 Einträge hinaus und hört auf, sobald die Summe über der Grenze liegt. Ein Ziel über der Grenze kostet damit weniger als bisher; ein sehr großer Baum *unter* der Grenze wird ganz abgelaufen (etwa 80.000 bis 220.000 Dateien pro Sekunde auf einer Laptop-SSD). Der Daemon liest die Einstellung und gibt die Grenze im umgeschriebenen Befehl an den Shim (`BASTRA_ARCHIVE_MAX_ITEM=<Bytes>B`); der Shim selbst liest keine Einstellungsdatei. `bastra doctor` zeigt beide wirksamen Werte in der Archiv-Zeile, solange das Archiv an ist.
 
-**5. CLI:** `bastra archive list | restore <Pfad> | reconcile [--yes]`.
+**5. CLI:** `bastra archive put <Pfad>... | list | restore <Pfad> | reconcile [--yes]`.
+
+`bastra archive put <Pfad>...` (#1383) ist der Umzug des archivierenden `rm` als eigener Befehl: dasselbe Archiv, dieselbe Manifestzeile, dasselbe `bastra archive restore <Pfad>`. Es löscht nie: Auch ein Ziel unter einem Temp-Wurzelordner wird archiviert, wo `rm` es wirklich entfernt. Es läuft mit Opt-in an oder aus; ist er aus, räumt nichts von selbst auf, also ab und zu `bastra archive reconcile --yes` ausführen. Wer in Claude Code `Bash(rm:*)` verbietet, kann `Bash(bastra archive put:*)` als eigene Regel erlauben: Die Deny-Regel bedeutet weiter „kein Löschen“, und den Umzug ins Archiv hat der Nutzer selbst erlaubt. Der Hook schreibt `rm` nie in `archive put` um.
 
 #### Was umgeschrieben wird, was das STOP behält, was nicht abgedeckt ist
 
@@ -431,7 +435,7 @@ Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 
 - Mit Opt-in lässt `BASTRA_RM_SHIM=0` den `rm`-Teil weg, `BASTRA_GIT_SHIM=0` den Git-Teil. Ein Befehl, den der abgeschaltete Shim übernommen hätte, behält das STOP und bekommt eine Zusatzzeile, was er gesichert hätte; die Formulierung folgt den eigenen Claude-Code-Berechtigungsregeln des Nutzers (bei einer `ask`-Regel: würde weiter nachgefragt; bei einer `deny`-Regel keine Zeile). Jeder solche Befehl ist ein Telemetrie-Ereignis `rm_shim_shadow` / `git_shim_shadow`. In den Vault wird nichts geschrieben.
 - Jeder Shim läuft nur, wo er an ist: Ist einer der beiden aus, wird ein Befehl, der beide braucht (`rm -rf build && git stash drop`), nicht umgeschrieben. `shims/git` liest `BASTRA_GIT_SHIM=0` auch aus der eigenen Umgebung und reicht dann jeden Aufruf an das echte git weiter.
 - Ein Host mit eigenem archivierenden `rm` setzt `BASTRA_RM_ARCHIVES=host`: Quittungstext, kein Umschreiben.
-- Unter einer eigenen `deny`-Regel des Nutzers für den Befehl beansprucht die Lane nichts: kein Allow, kein Umschreiben, keine Quittung, das einfache STOP und eine Zeile für den Nutzer, die die Regel nennt und was `rm` ohne sie gewesen wäre, ohne Weg um die Regel herum. Jeder solche Befehl ist ein Telemetrie-Ereignis `archive_deny_shadow`.
+- Unter einer eigenen `deny`-Regel des Nutzers für den Befehl beansprucht die Lane nichts: kein Allow, kein Umschreiben, keine Quittung, das einfache STOP und eine Zeile für den Nutzer, die die Regel nennt und was `rm` ohne sie gewesen wäre, ohne Weg um die Regel herum. Hätte bastras eigenes Archiv einen reinen `rm`-Befehl übernommen, nennt die Zeile zusätzlich den Weg des Nutzers, der die Regel stehen lässt (#1383): ohne Regel dafür, dass der Nutzer `Bash(bastra archive put:*)` erlauben kann; mit einer solchen Erlaubnis, dass `bastra archive put <Pfad>` denselben Umzug macht; ist auch `archive put` verboten, nichts. Jeder solche Befehl ist ein Telemetrie-Ereignis `archive_deny_shadow`, das Urteil über `archive put` steht in `put_verdict`.
 
 ### Wie getestet wurde (Stand der PRs)
 

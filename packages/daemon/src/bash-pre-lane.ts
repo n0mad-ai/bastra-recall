@@ -320,11 +320,15 @@ async function runBashPreLaneOriginal(payload: BashHookPayload, selfBaseUrl: str
     });
   }
   if (deniedRule && receiptRm) {
-    offLine = denyLine(deniedRule, receiptRm);
+    // #1383: the verb a user can allow apart from rm — only for bastra's own
+    // archive and an rm-only command (put does not stand in for a git act).
+    const put = match.viaShim && !match.viaGit ? bashVerdict("bastra archive put x", settingsFiles(payload.cwd)) : null;
+    offLine = denyLine(deniedRule, receiptRm, put);
     await writeShadow("archive_deny_shadow", {
       session_id: payload.session_id ?? null,
       matched_pattern: match.label,
       settings_rule: deniedRule,
+      put_verdict: put?.verdict ?? null,
       dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
     });
   }

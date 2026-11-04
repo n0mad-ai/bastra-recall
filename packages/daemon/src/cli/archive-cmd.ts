@@ -1,14 +1,15 @@
 /**
- * `bastra archive list|restore <path>|reconcile [--yes]` — the other half of
- * the archiving `rm` (rm-archive.ts): what went where, put it back, and let
- * the archive go of what it no longer needs to keep.
+ * `bastra archive put|list|restore <path>|reconcile [--yes]` — the other half
+ * of the archiving `rm` (rm-archive.ts): put a path in by hand, what went
+ * where, put it back, and let the archive go of what it no longer needs to keep.
  */
-import { applyReconcile, archiveCap, manifestRows, reconcilePlan, restore, retainDays } from "../rm-archive.js";
-import { getArchiveCap, getArchiveRetain } from "../settings.js";
+import { applyReconcile, archiveCap, archiveMaxItem, manifestRows, reconcilePlan, restore, retainDays, runRmShim } from "../rm-archive.js";
+import { getArchiveCap, getArchiveMaxItem, getArchiveRetain } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 
 const USAGE =
-  "usage: bastra archive list                 what the agent's rm archived (last 30 days)\n" +
+  "usage: bastra archive put <path>...        move paths into the archive (never deletes, temp dirs too)\n" +
+  "       bastra archive list                 what the agent's rm archived (last 30 days)\n" +
   "       bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)\n" +
   "       bastra archive reconcile [--yes]    show (or, with --yes, remove) what the archive can let go\n" +
   "retention: bastra config set archive.retain junk=1,in-git=2,user=2  (days; env BASTRA_ARCHIVE_RETAIN wins)\n" +
@@ -17,6 +18,30 @@ const USAGE =
 
 export async function cmdArchive(args: ParsedArgs): Promise<number> {
   const sub = args.surface;
+  if (sub === "put") {
+    // #1383: the archiving rm's own move, as a verb of its own — a user who
+    // denies `Bash(rm:*)` can allow `Bash(bastra archive put:*)` on its own.
+    const targets = args.positional.slice(2);
+    if (targets.length === 0) {
+      console.error(USAGE);
+      return 2;
+    }
+    // The shim reads no settings file; the stored per-target limit rides along as for the lane.
+    const maxItem = archiveMaxItem(process.env, await getArchiveMaxItem().catch(() => undefined));
+    const env = maxItem === null ? process.env : { ...process.env, BASTRA_ARCHIVE_MAX_ITEM: `${maxItem}B` };
+    let moved = 0;
+    const rc = runRmShim(["-r", "-v", "--", ...targets], {
+      env,
+      archiveTemp: true,
+      out: (s) => {
+        moved++;
+        console.log(s);
+      },
+      err: (s) => console.error(s.replace(/^rm: /, "bastra archive put: ")),
+    });
+    if (moved > 0) console.log("put back with: bastra archive restore <path>");
+    return rc;
+  }
   if (sub === "list") {
     const cut = Date.now() - 30 * 86_400_000;
     const rows = manifestRows().filter((r) => new Date(r.ts).getTime() >= cut);

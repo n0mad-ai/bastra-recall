@@ -723,12 +723,33 @@ export function unmarkedClientLine(): string {
  * receipt would be false; and without a word, the person who set the rule out
  * of fear of deletion never learns that here it blocks a move with an address.
  * Addressed to the user, with no route around the rule.
+ *
+ * `put` is the user's own verdict on `bastra archive put` (#1383) when bastra's
+ * archive would have taken the command, else null: allowed, the line names the
+ * move the user granted; denied too, it names nothing; otherwise it names the
+ * rule the user could add. The lane never rewrites rm into it.
  */
-export function denyLine(rule: string, undo: Undo): string {
-  return (
+export function denyLine(rule: string, undo: Undo, put: BashVerdict | null = null): string {
+  const head =
     `The user's own Claude Code rule \`${rule}\` denies this command, and it wins: nothing runs, nothing is archived. ` +
-    `With that rule relaxed: ${undo.text} Whether to relax it is the user's call: tell them, and do not route around the rule.`
-  );
+    `With that rule relaxed: ${undo.text} `;
+  if (put?.verdict === "allow") {
+    return (
+      head +
+      `The user allows the archive move on its own (rule \`${put.rule ?? "allow"}\`): \`bastra archive put <path>\` ` +
+      `moves the same targets into the archive, \`bastra archive restore <path>\` puts them back. ` +
+      `Relaxing the rm rule stays the user's call: do not route around it.`
+    );
+  }
+  if (put && put.verdict !== "deny") {
+    return (
+      head +
+      `Without relaxing it, the user can allow only the archive move, with the rule \`Bash(bastra archive put:*)\` ` +
+      `in their Claude Code permissions; then \`bastra archive put <path>\` moves the targets into the archive, ` +
+      `\`bastra archive restore <path>\` puts them back. Both are the user's call: tell them, and do not route around the rule.`
+    );
+  }
+  return head + `Whether to relax it is the user's call: tell them, and do not route around the rule.`;
 }
 
 /**
