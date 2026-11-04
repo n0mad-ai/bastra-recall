@@ -98,7 +98,25 @@ export function archiveRoot(env: NodeJS.ProcessEnv = process.env): string {
   // Only the user reads the archive: what moves in keeps its own mode, the
   // directories around it are new and must not open it to others.
   mkdirSync(raw, { recursive: true, mode: 0o700 });
-  return realpathSync(raw);
+  const root = realpathSync(raw);
+  // An archive made before 0700 stays open to others: close it once, with the
+  // dated directories and manifests in it. The configured path may be a
+  // symlink the user set on purpose; what is checked is where it leads.
+  if (archiveDirState(root) === "open") {
+    chmodSync(root, 0o700);
+    for (const name of readdirSync(root)) {
+      const p = join(root, name);
+      const st = lstatSync(p);
+      if (st.isDirectory()) chmodSync(p, 0o700);
+      else if (st.isFile() && name.startsWith("manifest")) chmodSync(p, 0o600);
+    }
+  }
+  return root;
+}
+
+/** The manifest is created 0600: it names every archived path. */
+export function appendManifest(archive: string, line: string): void {
+  appendFileSync(join(archive, "manifest.jsonl"), line, { mode: 0o600 });
 }
 
 export function ephemeralRoots(env: NodeJS.ProcessEnv = process.env): string[] {
@@ -299,17 +317,31 @@ function mountpointOf(path: string): string {
   return cur;
 }
 
+const myUid = (): number => (typeof process.getuid === "function" ? process.getuid() : -1);
+
+/** lstat, so a symlink is "foreign": not a directory of this user. */
+function archiveDirState(dir: string, uid = myUid()): "own" | "open" | "foreign" {
+  const st = lstatSync(dir);
+  if (!st.isDirectory() || (uid >= 0 && st.uid !== uid)) return "foreign";
+  return (st.mode & 0o077) !== 0 ? "open" : "own";
+}
+
 /**
  * A volume's own `.bastra-archive` is used only if it is a real directory of
- * this user, never a symlink; open to others, it is closed to 0700 first. Its
- * mount root can be writable by everyone (Linux's tmpfs `/tmp`, `/dev/shm`):
- * another user could have made the name first and read or swap what moves in.
+ * this user, closed to others. Its mount root can be writable by everyone
+ * (Linux's tmpfs `/tmp`, `/dev/shm`): another user could have made the name
+ * first, or swap an open one between a check and a chmod — so an open one is
+ * refused, not taken over.
  */
-export function ownArchiveDir(dir: string, uid = typeof process.getuid === "function" ? process.getuid() : -1): boolean {
-  const st = lstatSync(dir);
-  // lstat: a symlink is not a directory here.
-  if (!st.isDirectory() || (uid >= 0 && st.uid !== uid)) return false;
-  if ((st.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+export function ownArchiveDir(dir: string, uid = myUid()): boolean {
+  return archiveDirState(dir, uid) === "own";
+}
+
+/** Every directory from the archive root down to `dir` is a real one of this user. */
+function ownArchivePath(root: string, dir: string, uid = myUid()): boolean {
+  for (let d = dir; under(d, root) && d !== root; d = dirname(d)) {
+    if (archiveDirState(d, uid) === "foreign") return false;
+  }
   return true;
 }
 
@@ -387,7 +419,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const ts = localIso(now);
   const log = (row: Omit<ManifestRow, "ts" | "cwd" | "argv" | "call">): void => {
     const write = (): void =>
-      appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify({ ts, ...row, ...(io.via ? { via: io.via } : {}), cwd, argv, call }) + "\n");
+      appendManifest(archive, JSON.stringify({ ts, ...row, ...(io.via ? { via: io.via } : {}), cwd, argv, call }) + "\n");
     if (row.action === "archived") return write();
     try {
       write();
@@ -478,7 +510,10 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       continue;
     }
     if (!root) {
-      err(`rm: '${t}' is on another filesystem without a writable .bastra-archive — not archived, not removed`);
+      err(
+        `rm: '${t}' is on another filesystem without a usable .bastra-archive (missing, not writable, a symlink, ` +
+          "another user's, or open to others: chmod 700 it if it is yours) — not archived, not removed",
+      );
       log({ action: "refused", orig: real, reason: "no archive on this filesystem" });
       rc = 1;
       continue;
@@ -501,6 +536,8 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     const fresh = !existsSync(top);
     try {
       mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
+      // A planted symlink or another user's directory on the way would take the move elsewhere.
+      if (!ownArchivePath(root, dirname(dest))) throw new Error(`a directory under ${root} is not this user's own`);
       renameSync(real, dest);
     } catch (e) {
       // Only the empty directories this mkdir made; rmdir refuses anything else.

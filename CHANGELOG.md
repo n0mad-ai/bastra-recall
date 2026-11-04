@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a symlink, closed to 0700 if open). On a mount root writable by everyone,
   such as a tmpfs `/tmp` on Linux, another user could otherwise have made the
   name first and read or changed what moves in (#1383).
+- An archive made 0755 by an earlier version is closed once: the archive root
+  and its dated directories become 0700, the manifests 0600, and a new
+  manifest is created 0600. A volume's `.bastra-archive` that is open to
+  others is now refused instead of taken over, since it could be swapped
+  between the check and the chmod (`chmod 700` it if it is yours). Before the
+  move, every directory between the archive root and the destination must be
+  a real directory of this user, never a symlink; otherwise the target stays
+  where it is. A symlinked archive path the user set keeps working (#1383).
 
 ### Fixed
 

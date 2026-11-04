@@ -1094,9 +1094,9 @@ describe("#1383 — `bastra archive put <path>`", () => {
 });
 
 describe("the archive is the user's own: no symlinked or foreign volume archive, directories 0700", () => {
-  it("a volume's .bastra-archive that is a symlink or a file is refused; one open to others is closed to 0700", () => {
-    // Revert-check: drop `!st.isDirectory() ||` in ownArchiveDir → the symlink (ours, so the uid check passes) is accepted;
-    // drop the chmodSync → the 0777 directory stays open.
+  it("a volume's .bastra-archive that is a symlink, a file, open to others or another user's is refused, and left as it is", () => {
+    // Revert-check: drop `!st.isDirectory() ||` in archiveDirState → the symlink (ours, so the uid check passes) is accepted;
+    // let ownArchiveDir accept "open" (or chmod it as before) → the 0777 directory is taken over.
     const { dir } = sandbox();
     const elsewhere = join(dir, "someone-elses");
     mkdirSync(elsewhere);
@@ -1109,8 +1109,10 @@ describe("the archive is the user's own: no symlinked or foreign volume archive,
     const open = join(dir, "open-archive");
     mkdirSync(open);
     chmodSync(open, 0o777);
+    assert.equal(ownArchiveDir(open), false, "open to others: it may have been swapped, so it is not taken over");
+    assert.equal(statSync(open).mode & 0o777, 0o777, "and not chmodded");
+    chmodSync(open, 0o700);
     assert.equal(ownArchiveDir(open), true);
-    assert.equal(statSync(open).mode & 0o777, 0o700);
     assert.equal(ownArchiveDir(open, (process.getuid?.() ?? 0) + 1), false, "another user's directory is not used");
   });
 
@@ -1124,5 +1126,60 @@ describe("the archive is the user's own: no symlinked or foreign volume archive,
     const row = manifestRows(env).at(-1);
     assert.equal(statSync(env.BASTRA_ARCHIVE_DIR as string).mode & 0o777, 0o700);
     assert.equal(statSync(dirname(row?.dest as string)).mode & 0o777, 0o700);
+  });
+});
+
+describe("the home archive closes itself, and the move checks every directory on its way", () => {
+  it("an archive made 0755 before is closed once: root and dated directories 0700, manifests 0600; a new manifest is 0600", () => {
+    // Revert-check: drop the `open` branch in archiveRoot → the old root stays 0755;
+    // drop `{ mode: 0o600 }` in appendManifest → a new manifest is 0644 under umask 022.
+    const { env } = sandbox();
+    const root = env.BASTRA_ARCHIVE_DIR as string;
+    mkdirSync(join(root, "2026-10-01"), { recursive: true });
+    writeFileSync(join(root, "manifest.jsonl"), "");
+    chmodSync(root, 0o755);
+    chmodSync(join(root, "2026-10-01"), 0o755);
+    chmodSync(join(root, "manifest.jsonl"), 0o644);
+    archiveRoot(env);
+    assert.equal(statSync(root).mode & 0o777, 0o700);
+    assert.equal(statSync(join(root, "2026-10-01")).mode & 0o777, 0o700);
+    assert.equal(statSync(join(root, "manifest.jsonl")).mode & 0o777, 0o600);
+    const fresh = sandbox();
+    const target = join(fresh.dir, "f.txt");
+    writeFileSync(target, "x");
+    assert.equal(runRmShim([target], { env: fresh.env, cwd: fresh.dir, ...quiet }), 0);
+    assert.equal(statSync(join(fresh.env.BASTRA_ARCHIVE_DIR as string, "manifest.jsonl")).mode & 0o777, 0o600);
+  });
+
+  it("an archive path the user set to a symlink keeps working: the check applies to where it leads", () => {
+    // Revert-check: lstat `raw` instead of the realpath in archiveRoot and refuse a symlink → this archive breaks.
+    const { dir, env } = sandbox();
+    const real = join(dir, "real-archive");
+    mkdirSync(real, { mode: 0o700 });
+    const link = join(dir, "archive-link");
+    symlinkSync(real, link);
+    const linkedEnv = { ...env, BASTRA_ARCHIVE_DIR: link };
+    const target = join(dir, "g.txt");
+    writeFileSync(target, "x");
+    assert.equal(runRmShim([target], { env: linkedEnv, cwd: dir, ...quiet }), 0);
+    assert.equal(manifestRows(linkedEnv).at(-1)?.action, "archived");
+    assert.ok(readdirSync(real).includes("manifest.jsonl"));
+  });
+
+  it("a symlink planted on the way to the destination stops the move: the target stays, nothing lands elsewhere", () => {
+    // Revert-check: drop the ownArchivePath check before the rename → the target moves through the symlink.
+    const { dir, env } = sandbox();
+    const root = archiveRoot(env);
+    const elsewhere = join(dir, "elsewhere");
+    mkdirSync(elsewhere);
+    const now = new Date(2026, 10, 4, 12, 0, 0);
+    symlinkSync(elsewhere, join(root, "2026-11-04"));
+    const target = join(dir, "h.txt");
+    writeFileSync(target, "keep\n");
+    const errs: string[] = [];
+    assert.equal(runRmShim([target], { env, cwd: dir, now, out: () => {}, err: (s) => errs.push(s) }), 1);
+    assert.equal(readFileSync(target, "utf8"), "keep\n", "the target is untouched");
+    assert.deepEqual(readdirSync(elsewhere), [], "nothing went through the symlink");
+    assert.match(errs.join("\n"), /not moved to the archive: a directory under .* is not this user's own/);
   });
 });

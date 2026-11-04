@@ -37,9 +37,9 @@
  * hold what the act discards: submodules with `submodule.recurse` on.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
-import { SHIM_DIR, archiveRoot, localIso, runRmShim, type ShimIo } from "./rm-archive.js";
+import { SHIM_DIR, appendManifest, archiveRoot, localIso, runRmShim, type ShimIo } from "./rm-archive.js";
 import { isOffValue } from "./env.js";
 
 export type GitAct =
@@ -486,7 +486,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     const [first, ...then] = restore;
     const row = { ts, action: "pinned", orig: home, dest: ref, sha, act: what, restore: first, ...(then.length > 0 ? { then } : {}), kind: "user", cwd, argv, call };
     try {
-      appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify(row) + "\n");
+      appendManifest(archive, JSON.stringify(row) + "\n");
     } catch {
       git(["update-ref", "-d", ref, sha]);
       return false;
