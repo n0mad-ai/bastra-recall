@@ -8,7 +8,7 @@ Abfragen: Jede `[y/N]`-Frage hat **Nein** als Standard. Für Zustimmung `yes` ti
 
 ## Start
 
-Im gebauten Checkout am eigenen Terminal (Node 22 oder neuer, Bash):
+Im gebauten Checkout am eigenen Terminal (Node 22.22 oder neuer, Bash):
 
 ```sh
 npm run build

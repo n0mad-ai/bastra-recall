@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   own; the line under the deny names that rule. The hook never rewrites `rm`
   into it (#1383).
 
+### Changed
+
+- **Node 22.22 or newer is now required** (was Node 22). Supported versions
+  are Node 22.22 to 26. On an older Node 22, update Node before updating
+  Bastra Recall; `node --version` shows what you run (#1368).
+- The vault file watcher now uses chokidar 6, which needs Node 22.22 (#1368).
+
 ### Security
 
 - The archive's directories are created 0700, and a volume's own

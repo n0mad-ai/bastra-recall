@@ -39,8 +39,9 @@ branch in your fork.
 
 ### Requirements
 
-- Node ≥ 22.18 (`node --version`) — the build needs it (tsdown 0.23); the
-  workspace `engines` field (runtime) stays at ≥ 22
+- Node ≥ 22.22 (`node --version`) — the runtime floor in the workspace
+  `engines` field (chokidar 6 needs it); it also covers the build tool
+  (tsdown 0.23 needs ≥ 22.18)
 - macOS for the full experience (Linux works for daemon + CLI; some
   adapters are macOS-only)
 - npm (comes with Node)

@@ -4,7 +4,7 @@ Offline, repeatable production HTTP/lane replay with 125 invented rules in
 German, English, Japanese, Russian and Spanish. No native host or model is
 started. No installed hooks or user vault are used by the default run.
 
-From the repository root (Node >=22, dependencies and core/daemon built):
+From the repository root (Node >=22.22, dependencies and core/daemon built):
 
 ```sh
 node --import tsx --import ./scripts/test-env.mjs tools/probes/rulebook-phase5/run.ts --report /private/tmp/phase5-report.md

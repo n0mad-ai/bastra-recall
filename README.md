@@ -55,7 +55,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
+1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
 ### Install
 
@@ -67,7 +67,7 @@ curl -fsSL https://bastra.io/install | bash
 
 The script installs Homebrew if needed, installs Bastra Recall and starts setup. Choose a folder for your memories and the AI clients you want to connect. [Read the installer](./distribution/install.sh) before running it if you prefer.
 
-**macOS or Linux — with Node 22–26:**
+**macOS or Linux — with Node 22.22–26:**
 
 ```bash
 npx bastra-recall install
@@ -225,7 +225,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
+1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
 ### Installation
 
@@ -237,7 +237,7 @@ curl -fsSL https://bastra.io/install | bash
 
 Das Skript installiert bei Bedarf Homebrew, installiert Bastra Recall und startet die Einrichtung. Wähle einen Ordner für deine Erinnerungen und die KI-Clients, die du verbinden möchtest. Du kannst das [Installationsskript vorher lesen](./distribution/install.sh).
 
-**macOS oder Linux – mit Node 22–26:**
+**macOS oder Linux – mit Node 22.22–26:**
 
 ```bash
 npx bastra-recall install

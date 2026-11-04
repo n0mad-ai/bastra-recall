@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.18"
+          node-version: "22.22"
       # The decision lives in a script, not in this YAML: a diverged dispatch
       # has to be refusable in a test, and a shell block in a workflow file can
       # only ever be asserted as text.
@@ -116,7 +116,7 @@ jobs:
           ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.18"
+          node-version: "22.22"
           cache: npm
       - run: npm ci
       # The stub embeds the statusline bundle (`bastra-hook statusline`, #347)
@@ -271,7 +271,7 @@ jobs:
           ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.18"
+          node-version: "22.22"
           cache: npm
       - run: npm ci
       - run: npm run build
@@ -367,7 +367,7 @@ jobs:
           ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22.18"
+          node-version: "22.22"
       - name: Verify every npm package of the set is published and on `latest`
         run: node scripts/publish-release-set.mjs --verify
       # #549/#548: the list of what a complete release carries is a decision,
