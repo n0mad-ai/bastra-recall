@@ -69,13 +69,13 @@
     "@bastra-recall/core": "1.1.8",
     "@bastra-recall/statusline": "1.1.8",
     "@clack/prompts": "^1.8.1",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "web-tree-sitter": "0.27.1",
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@types/node": "^22.20.4",
+    "@types/node": "^22.20.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },
