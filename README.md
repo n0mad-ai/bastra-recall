@@ -40,7 +40,7 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Release target: 1.1.8.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Version 1.1.8 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Real work in cmux: Claude Code and Codex retrieve memories with Bastra Recall, exchange findings and use expanded live Ember panels." width="100%" />
@@ -55,7 +55,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.1 fixes successor ranking, reflex word forms, concurrent saves and locks, code-graph refresh costs, Linux watches, statusline updates and hint-block boundaries. Node 22–26 are supported. [Changelog](./CHANGELOG.md) · [statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
+1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
 ### Install
 
@@ -210,7 +210,7 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Release-Ziel: 1.1.8.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Version 1.1.8 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo-cmux.gif" alt="Echte Arbeit in cmux: Claude Code und Codex laden Erinnerungen mit Bastra Recall, tauschen Befunde aus und nutzen vollständig geöffnete Ember-Panels mit Live-Daten." width="100%" />
@@ -225,7 +225,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 </details>
 
-1.1.1 korrigiert die Suchreihenfolge abgelöster Notizen, Wortformen im Reflex, gleichzeitiges Speichern und Sperren, Code-Graph-Kosten, Linux-Watches, Statusline und Hinweisblock-Grenzen. Node 22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Statusline](https://github.com/n0mad-ai/bastra-recall/wiki/Statusline).
+1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
 ### Installation
 
