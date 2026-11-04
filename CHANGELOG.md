@@ -21,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Bastra Recall; `node --version` shows what you run (#1368).
 - The vault file watcher now uses chokidar 6, which needs Node 22.22 (#1368).
 
+### Security
+
+- The archive's directories are created 0700, and a volume's own
+  `.bastra-archive` is used only when it is a real directory of this user (not
+  a symlink, closed to 0700 if open). On a mount root writable by everyone,
+  such as a tmpfs `/tmp` on Linux, another user could otherwise have made the
+  name first and read or changed what moves in (#1383).
+- An archive made 0755 by an earlier version is closed once: the archive root
+  and its dated directories become 0700, the manifests 0600, and a new
+  manifest is created 0600. A volume's `.bastra-archive` that is open to
+  others is now refused instead of taken over, since it could be swapped
+  between the check and the chmod (`chmod 700` it if it is yours). Before the
+  move, every directory between the archive root and the destination must be
+  a real directory of this user, never a symlink; otherwise the target stays
+  where it is. A symlinked archive path the user set keeps working (#1383).
+
 ### Fixed
 
 - Under the user's own `deny` rule an archiving `rm` no longer gets an allow,
