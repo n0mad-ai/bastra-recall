@@ -28,7 +28,7 @@ The CLI itself ships in [`@bastra-recall/daemon`](https://www.npmjs.com/package/
 
 ## Requirements
 
-Node 22+. Keyword search works by default. Run `bastra embeddings on` to set up optional local semantic search with Ollama, or `bastra embeddings off` to return to keyword-only search.
+Node 22.22+. Keyword search works by default. Run `bastra embeddings on` to set up optional local semantic search with Ollama, or `bastra embeddings off` to return to keyword-only search.
 
 Platforms — the full matrix is in the [main README](https://github.com/n0mad-ai/bastra-recall#supported-platforms):
 

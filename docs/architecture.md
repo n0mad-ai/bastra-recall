@@ -22,7 +22,7 @@ Markdown vault
           |
           | Vault loader + chokidar watcher
           v
-bastra-recall daemon (Node 22+, TypeScript)
+bastra-recall daemon (Node 22.22+, TypeScript)
   - in-memory MiniSearch BM25 index
   - optional in-memory EmbeddingIndex persisted at <vault>/.bastra/embeddings.json
   - optional Auto-Related enrichment via embedding similarity
@@ -380,7 +380,7 @@ Storage and keyword search run locally. MCP results and hook context are handed 
 
 | Layer | Current choice |
 |---|---|
-| Runtime | Node 22+, TypeScript, ESM |
+| Runtime | Node 22.22+, TypeScript, ESM |
 | MCP | `@modelcontextprotocol/sdk` |
 | Search | MiniSearch BM25 in memory |
 | Embeddings | Optional local Ollama provider, or OpenAI after an explicit opt-in; in-memory vectors with JSON persistence |
@@ -413,7 +413,7 @@ Markdown vault
           |
           | Vault loader + chokidar watcher
           v
-bastra-recall daemon (Node 22+, TypeScript)
+bastra-recall daemon (Node 22.22+, TypeScript)
   - in-memory MiniSearch BM25 index
   - optional in-memory EmbeddingIndex persisted at <vault>/.bastra/embeddings.json
   - optional Auto-Related enrichment via embedding similarity
@@ -767,7 +767,7 @@ Speicherung und Stichwortsuche laufen lokal. MCP-Ergebnisse und Hook-Kontext wer
 
 | Schicht | Aktuelle Wahl |
 |---|---|
-| Laufzeit | Node 22+, TypeScript, ESM |
+| Laufzeit | Node 22.22+, TypeScript, ESM |
 | MCP | `@modelcontextprotocol/sdk` |
 | Suche | MiniSearch BM25 im Arbeitsspeicher |
 | Embeddings | Optional lokaler Ollama-Provider oder OpenAI nach ausdrücklicher Zustimmung; Vektoren im Arbeitsspeicher mit JSON-Persistenz |

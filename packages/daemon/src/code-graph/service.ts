@@ -15,7 +15,7 @@
  * non-recursive watch per eligible directory, pruning before registration.
  * Kernel watch slots and memory are shared with the user's other processes.
  * No file-level watches are needed: directory watches report entry changes.
- * Node >= 22 is already required.
+ * Node >= 22.22 is already required.
  *
  * The reliability gap that buys is affordable HERE, and only here, because the
  * watcher is not the only trigger: git events, the Stop hook and startup
