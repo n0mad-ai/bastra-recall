@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   own; the line under the deny names that rule. The hook never rewrites `rm`
   into it (#1383).
 
+### Security
+
+- The archive's directories are created 0700, and a volume's own
+  `.bastra-archive` is used only when it is a real directory of this user (not
+  a symlink, closed to 0700 if open). On a mount root writable by everyone,
+  such as a tmpfs `/tmp` on Linux, another user could otherwise have made the
+  name first and read or changed what moves in (#1383).
+
 ### Fixed
 
 - Under the user's own `deny` rule an archiving `rm` no longer gets an allow,

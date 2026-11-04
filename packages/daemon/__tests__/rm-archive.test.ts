@@ -5,7 +5,7 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -18,6 +18,7 @@ import {
   callReport,
   manifestFiles,
   manifestRows,
+  ownArchiveDir,
   reconcilePlan,
   restore,
   runRmShim,
@@ -1089,5 +1090,39 @@ describe("#1383 — `bastra archive put <path>`", () => {
     assert.equal(missing.rc, 1);
     assert.match(missing.err, /^bastra archive put: cannot remove '.*nope': No such file or directory/);
     assert.doesNotMatch(missing.out, /put back with/);
+  });
+});
+
+describe("the archive is the user's own: no symlinked or foreign volume archive, directories 0700", () => {
+  it("a volume's .bastra-archive that is a symlink or a file is refused; one open to others is closed to 0700", () => {
+    // Revert-check: drop `!st.isDirectory() ||` in ownArchiveDir → the symlink (ours, so the uid check passes) is accepted;
+    // drop the chmodSync → the 0777 directory stays open.
+    const { dir } = sandbox();
+    const elsewhere = join(dir, "someone-elses");
+    mkdirSync(elsewhere);
+    const link = join(dir, "link-archive");
+    symlinkSync(elsewhere, link);
+    assert.equal(ownArchiveDir(link), false, "a symlink planted under the name is not used");
+    const file = join(dir, "file-archive");
+    writeFileSync(file, "");
+    assert.equal(ownArchiveDir(file), false);
+    const open = join(dir, "open-archive");
+    mkdirSync(open);
+    chmodSync(open, 0o777);
+    assert.equal(ownArchiveDir(open), true);
+    assert.equal(statSync(open).mode & 0o777, 0o700);
+    assert.equal(ownArchiveDir(open, (process.getuid?.() ?? 0) + 1), false, "another user's directory is not used");
+  });
+
+  it("the archive root and the directories made around a moved target are 0700", () => {
+    // Revert-check: drop `mode: 0o700` from the mkdir in archiveRoot or before the rename → 0755 under umask 022.
+    const { dir, env } = sandbox();
+    const target = join(dir, "private", "secret.txt");
+    mkdirSync(dirname(target));
+    writeFileSync(target, "s\n");
+    assert.equal(runRmShim([target], { env, cwd: dir, ...quiet }), 0);
+    const row = manifestRows(env).at(-1);
+    assert.equal(statSync(env.BASTRA_ARCHIVE_DIR as string).mode & 0o777, 0o700);
+    assert.equal(statSync(dirname(row?.dest as string)).mode & 0o777, 0o700);
   });
 });

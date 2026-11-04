@@ -27,6 +27,7 @@ import { archiveMaxItem, formatSize } from "./rm-archive-reconcile.js";
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -94,7 +95,9 @@ export function archiveDir(env: NodeJS.ProcessEnv): string {
 
 export function archiveRoot(env: NodeJS.ProcessEnv = process.env): string {
   const raw = archiveDir(env);
-  mkdirSync(raw, { recursive: true });
+  // Only the user reads the archive: what moves in keeps its own mode, the
+  // directories around it are new and must not open it to others.
+  mkdirSync(raw, { recursive: true, mode: 0o700 });
   return realpathSync(raw);
 }
 
@@ -296,14 +299,28 @@ function mountpointOf(path: string): string {
   return cur;
 }
 
+/**
+ * A volume's own `.bastra-archive` is used only if it is a real directory of
+ * this user, never a symlink; open to others, it is closed to 0700 first. Its
+ * mount root can be writable by everyone (Linux's tmpfs `/tmp`, `/dev/shm`):
+ * another user could have made the name first and read or swap what moves in.
+ */
+export function ownArchiveDir(dir: string, uid = typeof process.getuid === "function" ? process.getuid() : -1): boolean {
+  const st = lstatSync(dir);
+  // lstat: a symlink is not a directory here.
+  if (!st.isDirectory() || (uid >= 0 && st.uid !== uid)) return false;
+  if ((st.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+  return true;
+}
+
 /** An archive on the target's filesystem: a rename, never a copy. */
 function archiveRootFor(parent: string, archive: string): string | null {
   const dev = statSync(parent).dev;
   if (statSync(archive).dev === dev) return archive;
   const alt = join(mountpointOf(parent), ".bastra-archive");
   try {
-    mkdirSync(alt, { recursive: true });
-    return statSync(alt).dev === dev ? alt : null;
+    mkdirSync(alt, { recursive: true, mode: 0o700 });
+    return ownArchiveDir(alt) && statSync(alt).dev === dev ? alt : null;
   } catch (e) {
     // #695: a full volume is said as that, not as "no writable archive".
     if (isDiskFull(e)) throw e;
@@ -483,7 +500,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     while (!existsSync(dirname(top))) top = dirname(top);
     const fresh = !existsSync(top);
     try {
-      mkdirSync(dirname(dest), { recursive: true });
+      mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
       renameSync(real, dest);
     } catch (e) {
       // Only the empty directories this mkdir made; rmdir refuses anything else.
