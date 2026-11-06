@@ -296,8 +296,10 @@ async function evaluateStop(
   if (payload.session_id && hookClientEvidence(payload) !== "codex" && !envOff("BASTRA_STOP_SAME_TURN")) {
     suggestions = correctionReminderSuggestions(last30, suggestions);
   }
-  // #1376: a save in this round already did what the suggestion asks.
+  // #1376: a save after a suggestion's evidence already did what it asks.
+  const proposed = suggestions;
   suggestions = dropSuggestionsAfterSave(last30, suggestions);
+  const answered = proposed.filter((s) => !suggestions.includes(s));
 
   // Produkt-Doku (docs.mode): feature-completion ist auch der Trigger für
   // die Doku-Pflege — Hinweis an die Suggestion hängen, wenn eingeschaltet.
@@ -315,7 +317,7 @@ async function evaluateStop(
 
   let stdout = "{}";
   let delivery: SaveEvalDelivery | null = null;
-  if (suggestions.length > 0 || drift.length > 0) {
+  if (suggestions.length > 0 || answered.length > 0 || drift.length > 0) {
     // #48 Redesign: Stop-Hooks haben keinen stillen Output-Kanal — das
     // einzige sichtbare Feld (systemMessage) rendert Claude Code 1:1 in den
     // Chat (die „Zeichenflut", die den Hook deaktiviert hat). Stattdessen:
@@ -338,9 +340,11 @@ async function evaluateStop(
     // session (the windows re-fire on every Stop, and each delivery extends
     // the turn). Codex, a payload without a session id, or the off switch keep
     // the pending relay.
-    if (suggestions.length > 0) {
-      const sameTurn = await takeSameTurnSuggestions(payload, suggestions);
-      if (sameTurn === null) {
+    if (suggestions.length > 0 || answered.length > 0) {
+      const sameTurn = await takeSameTurnSuggestions(payload, suggestions, answered);
+      if (suggestions.length === 0) {
+        delivery = "already-saved";
+      } else if (sameTurn === null) {
         await writePendingFromHook(suggestions.map(formatSuggestion).join("\n"));
         delivery = "pending";
       } else if (sameTurn.length > 0) {
@@ -377,18 +381,21 @@ async function evaluateStop(
 }
 
 /** #662: where this Stop's save suggestions went. */
-type SaveEvalDelivery = "same-turn" | "pending" | "already-delivered";
+type SaveEvalDelivery = "same-turn" | "pending" | "already-delivered" | "already-saved";
 
 /**
  * #662: the suggestions this Stop may hand to the running Claude Code turn, or
  * `null` when the same-turn path does not apply (Codex, no session id,
  * `BASTRA_STOP_SAME_TURN=0`) and the pending relay takes them. Heuristics
  * already delivered to this session are filtered out and the rest are booked
- * as delivered in the session state before they are returned.
+ * as delivered in the session state before they are returned. #1376: the
+ * `answered` ones, which a save already covered, are booked the same way, so
+ * the window does not send them next round about the thing already saved.
  */
 async function takeSameTurnSuggestions(
   payload: ClaudeStopPayload,
   suggestions: SaveSuggestion[],
+  answered: SaveSuggestion[] = [],
 ): Promise<SaveSuggestion[] | null> {
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   if (!sessionId) return null;
@@ -398,7 +405,7 @@ async function takeSameTurnSuggestions(
   await mutateSessionState(sessionId, (s) => {
     const done = new Set(s.saveEvalDelivered ?? []);
     fresh = suggestions.filter((x) => !done.has(x.heuristic));
-    for (const x of fresh) done.add(x.heuristic);
+    for (const x of [...fresh, ...answered]) done.add(x.heuristic);
     s.saveEvalDelivered = [...done];
   });
   return fresh;

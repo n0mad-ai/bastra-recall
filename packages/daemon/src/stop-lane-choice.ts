@@ -96,7 +96,7 @@ export function optionPicks(turns: ChoiceTurn[], window: number): string[] {
   return picks;
 }
 
-const ASK_TOOL = "AskUserQuestion";
+export const ASK_TOOL = "AskUserQuestion";
 /** `"question"="answer"` — how Claude Code writes an AskUserQuestion result. */
 const ASK_ANSWER_RE = /"[^"\n]+"="[^"\n]+"/g;
 

@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
-import { askAnswers, optionPicks } from "./stop-lane-choice.js";
+import { ASK_TOOL, askAnswers, optionPicks } from "./stop-lane-choice.js";
 import type { DocsMode } from "./settings.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
 
@@ -154,15 +154,23 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
 
 const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory)$/u;
 
-/** #1376: a save or edit in this round already did what a save suggestion
- * asks. Tool evidence after the latest user turn, never a prose mention, drops
- * the suggestions so the Stop hook does not send the agent back for nothing. */
+/** #1376: a save or edit already did what a suggestion asks when it came after
+ * the newest turn the suggestion's heuristic reads: the latest user turn, plus
+ * the latest commit for feature-completion and the latest AskUserQuestion for
+ * architecture-decision. Tool evidence only, never a prose mention. A commit or
+ * an answer after the save is new evidence, so its suggestion stays. */
 export function dropSuggestionsAfterSave(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
   if (suggestions.length === 0) return suggestions;
-  let lastUser = -1;
-  turns.forEach((t, i) => { if (t.role === "user") lastUser = i; });
-  const saved = turns.slice(lastUser + 1).some((t) => t.tools?.some((name) => SAVE_TOOL_RE.test(name)));
-  return saved ? [] : suggestions;
+  let user = -1, commit = -1, ask = -1, save = -1;
+  turns.forEach((t, i) => {
+    if (t.role === "user") user = i;
+    if (isCommitTurn(t)) commit = i;
+    if (t.role === "assistant" && t.tools?.includes(ASK_TOOL)) ask = i;
+    if (t.tools?.some((name) => SAVE_TOOL_RE.test(name))) save = i;
+  });
+  const evidence = (h: string) =>
+    h === "feature-completion" ? Math.max(user, commit) : h === "architecture-decision" ? Math.max(user, ask) : user;
+  return suggestions.filter((s) => save <= evidence(s.heuristic));
 }
 
 /** #1307: reuse the repeated-correction signal, bounded to the latest user
@@ -219,13 +227,14 @@ const GIT_COMMIT_RE = /\bgit\s+commit\b/i;
 /** The commit signal, whoever typed it: the user says so, the agent RAN it
  *  (a command, never prose — assistant text talking about a commit does not
  *  count), or git reported one in a tool turn. */
+function isCommitTurn(t: TranscriptTurn): boolean {
+  if (t.role === "user" && GIT_COMMIT_RE.test(t.content)) return true;
+  if (t.commands?.some((c) => GIT_COMMIT_RE.test(c))) return true;
+  return t.role === "tool" && COMMIT_OUTPUT_RE.test(t.content);
+}
+
 function commitSignal(turns: TranscriptTurn[]): boolean {
-  for (const t of turns) {
-    if (t.role === "user" && GIT_COMMIT_RE.test(t.content)) return true;
-    if (t.commands?.some((c) => GIT_COMMIT_RE.test(c))) return true;
-    if (t.role === "tool" && COMMIT_OUTPUT_RE.test(t.content)) return true;
-  }
-  return false;
+  return turns.some(isCommitTurn);
 }
 
 export function detectFeatureCompletion(turns: TranscriptTurn[], deps: HeuristicDeps = {}): SaveSuggestion | null {
