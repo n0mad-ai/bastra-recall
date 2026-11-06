@@ -72,7 +72,7 @@ import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import { noteSessionForHarvest } from "./session-harvest.js";
 import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
-import { appendProductDocHint, correctionReminderSuggestions, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
+import { appendProductDocHint, correctionReminderSuggestions, dropSuggestionsAfterSave, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
 import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
 import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
 
@@ -296,6 +296,8 @@ async function evaluateStop(
   if (payload.session_id && hookClientEvidence(payload) !== "codex" && !envOff("BASTRA_STOP_SAME_TURN")) {
     suggestions = correctionReminderSuggestions(last30, suggestions);
   }
+  // #1376: a save in this round already did what the suggestion asks.
+  suggestions = dropSuggestionsAfterSave(last30, suggestions);
 
   // Produkt-Doku (docs.mode): feature-completion ist auch der Trigger für
   // die Doku-Pflege — Hinweis an die Suggestion hängen, wenn eingeschaltet.

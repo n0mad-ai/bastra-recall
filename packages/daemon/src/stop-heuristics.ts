@@ -152,6 +152,19 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
   };
 }
 
+const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory)$/u;
+
+/** #1376: a save or edit in this round already did what a save suggestion
+ * asks. Tool evidence after the latest user turn, never a prose mention, drops
+ * the suggestions so the Stop hook does not send the agent back for nothing. */
+export function dropSuggestionsAfterSave(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
+  if (suggestions.length === 0) return suggestions;
+  let lastUser = -1;
+  turns.forEach((t, i) => { if (t.role === "user") lastUser = i; });
+  const saved = turns.slice(lastUser + 1).some((t) => t.tools?.some((name) => SAVE_TOOL_RE.test(name)));
+  return saved ? [] : suggestions;
+}
+
 /** #1307: reuse the repeated-correction signal, bounded to the latest user
  * turn. Tool evidence after that correction, never a prose mention, clears it. */
 export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
@@ -164,7 +177,7 @@ export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestio
   // The existing frustration suggestion describes this same correction. A
   // save clears both; without one, replace it rather than reminding twice.
   const other = suggestions.filter((s) => s.heuristic !== "frustration-density");
-  if (turns.slice(correctionIndex + 1).some((t) => t.tools?.some((name) => /(?:^|__)save_memory$/u.test(name)))) return other;
+  if (turns.slice(correctionIndex + 1).some((t) => t.tools?.some((name) => SAVE_TOOL_RE.test(name)))) return other;
   return [...other, {
     ...correction,
     heuristic: "correction-without-save",
