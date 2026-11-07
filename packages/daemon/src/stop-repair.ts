@@ -125,7 +125,7 @@ function currentAssistantTexts(turns:readonly TranscriptTurn[],after=0):string[]
  let boundary=-1;
  for(let i=turns.length-1;i>=0;i--){
   const turn=turns[i]!;
-  const owner=!turn.isMeta&&!turn.stop_hook_active&&[turn.source,turn.origin].every(source=>{
+  const owner=!turn.isMeta&&!turn.isCompactSummary&&!turn.stop_hook_active&&[turn.source,turn.origin].every(source=>{
    if(source===undefined)return true;const kind=typeof source==="object"?source?.kind:source;return kind==="user"||kind==="human"||kind==="typed";
   });
   if(turn.ownerBoundary||(turn.role==="user"&&owner&&(ownerPromptText(turn.content)!==null||!turn.content.trim()))){boundary=i;break;}

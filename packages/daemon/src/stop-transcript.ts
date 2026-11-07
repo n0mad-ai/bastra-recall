@@ -37,6 +37,8 @@ export interface TranscriptTurn {
   origin?: string | {kind?:string};
   stop_hook_active?: boolean;
   isMeta?: boolean;
+  /** Harness-written replacement history, never a newly typed user turn. */
+  isCompactSummary?: boolean;
   content: string;
   /** Shell commands the agent ran from this turn (tool_use input.command /
    *  Codex function_call arguments). Kept apart from `content` so prose that
@@ -165,8 +167,8 @@ function isToolResultContent(content: unknown): boolean {
  * only check: the after-session harvest quoted hook feedback as the user's own
  * words.
  */
-function nonOwnerSource(row: {isMeta?:unknown;stop_hook_active?:unknown;source?:unknown;origin?:unknown}): boolean {
-  return row.isMeta === true || row.stop_hook_active === true ||
+function nonOwnerSource(row: {isMeta?:unknown;isCompactSummary?:unknown;stop_hook_active?:unknown;source?:unknown;origin?:unknown}): boolean {
+  return row.isMeta === true || row.isCompactSummary === true || row.stop_hook_active === true ||
     [row.source,row.origin].some(source=>{
       if(source===undefined)return false;
       const kind=source&&typeof source==="object" ? (source as {kind?:unknown}).kind : source;
