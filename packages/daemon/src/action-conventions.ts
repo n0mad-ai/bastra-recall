@@ -7,5 +7,7 @@ export async function indexedActionConventions(vault:Pick<Vault,'list'|'get'>,pr
   id:e.id,title:e.title,type:e.type,scope:e.scope??'all-projects',summary:e.summary??e.applies_when??'',
   revision:e.revision,write_origin:e.write_origin,rule_categories:e.rule_categories,
   score:164,matched_recall_when:true,anchor_strength:'strong',
- })),score_kind:'rrf'};
+ })),
+ // #1377: catalog membership lets the GitHub lane tell a rule from an ordinary search hit.
+ rule_ids:catalog.entries.map(e=>e.id),score_kind:'rrf'};
 }

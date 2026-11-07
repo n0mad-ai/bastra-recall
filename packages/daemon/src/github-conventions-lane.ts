@@ -17,7 +17,7 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   const remaining=deadline-Date.now();if(remaining<=0)return null;
   const caller={...hookCaller(payload),hook_source:"bash-pre"};
   const read=async(path:string,body:Record<string,unknown>)=>{
-   try{return JSON.parse(await postLane(selfBaseUrl,path,body,Math.max(1,deadline-Date.now()))) as HookRecallResponse;}catch{return {hits:[]} as unknown as HookRecallResponse;}
+   try{return JSON.parse(await postLane(selfBaseUrl,path,body,Math.max(1,deadline-Date.now()))) as HookRecallResponse&{rule_ids?:string[]};}catch{return {hits:[]} as unknown as HookRecallResponse&{rule_ids?:string[]};}
   };
   const [categorized,legacy]=await Promise.all([
    read("/hook/action-conventions",{category:"github-issues-prs",project,...caller}),
@@ -27,12 +27,19 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
     tool_name:"Bash",tool_input_excerpt:actions.join("; "),...caller}),
   ]);
   const typed=(categorized.hits??[]).filter(h=>h.rule_categories?.includes("github-issues-prs"));
-  const old=(legacy.hits??[]).filter(h=>!h.rule_categories?.length&&isGatedHint(h)&&h.matched_recall_when===true&&h.anchor_strength==="strong"&&
+  const matches=(legacy.hits??[]).filter(h=>!h.rule_categories?.length&&isGatedHint(h)&&h.matched_recall_when===true&&h.anchor_strength==="strong"&&
    (isUnfused(legacy)||h.score>=100)&&[project,"all-projects","user-preference"].includes(h.scope)).slice(0,5);
+  // #1377: only a current entry of this project's rulebook catalog can become an obligation;
+  // any other search hit stays an advisory pointer the agent weighs itself.
+  const rules=new Set(categorized.rule_ids??[]);
+  const old=matches.filter(h=>rules.has(h.id));
   const hits=[...new Map([...typed,...old].map(h=>[h.id,h])).values()];
-  if(!hits.length||Date.now()>=deadline)return null;
+  const advisory=matches.filter(h=>!hits.some(r=>r.id===h.id));
+  if((!hits.length&&!advisory.length)||Date.now()>=deadline)return null;
   const contextFor=(selected:typeof hits)=>actionConventionFrame(selected.map(h=>h.id),new Map(selected.map(h=>[h.id,h.summary])),new Map(selected.map(h=>[h.id,h.write_origin])));
-  const context=contextFor(hits);
+  const advice=advisory.length?contextFor(advisory).replace("MUST-LOAD — load the applicable saved issue/PR conventions before deciding:","Possibly relevant notes (not rulebook rules, no obligation; decide yourself):"):"";
+  if(!hits.length)return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:advice}});
+  const context=[contextFor(hits),advice].filter(Boolean).join("\n");
   if(!hookGateAvailable(payload))return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context.replace("MUST-LOAD","Relevant conventions (host cannot gate)")}});
   const subagent=hookAgent(payload)==="subagent";
   const part=subagent?PART+":"+createHash("sha256").update(payload.agent_id??"").digest("hex").slice(0,16):PART;
@@ -41,10 +48,10 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   // No pending hint may remain after a failed claim or leak to an unrelated tool.
   const result=JSON.parse(await runGateLane(payload,{reflexPool:()=>[],deadline,countTool:false,
    actionMustLoad:{ids:hits.map(h=>h.id),key:part,summaries:new Map(hits.map(h=>[h.id,h.summary])),origins:new Map(hits.map(h=>[h.id,h.write_origin])),revisions:new Map(hits.map(h=>[h.id,h.revision??null])),onClaim:selected=>{ids=selected;}}}));
-  if(result.hookSpecificOutput?.permissionDecision!=="deny")return null;
+  if(result.hookSpecificOutput?.permissionDecision!=="deny")return advice?JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:advice}}):null;
   if(ids.length){
    const selected=hits.filter(h=>ids.includes(h.id));
-   result.hookSpecificOutput.additionalContext=contextFor(selected);
+   result.hookSpecificOutput.additionalContext=[contextFor(selected),advice].filter(Boolean).join("\n");
   }
   return JSON.stringify(result);
  }catch{return null;} // retrieval/state failures preserve the lane's fail-open contract
