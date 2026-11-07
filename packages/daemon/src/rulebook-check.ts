@@ -222,11 +222,17 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
     context = state.context; round = state.round;
-    requiredIds=boundary==="action"?a.required.map(r=>r.id):catalog.entries.filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
+    // #1372: an action obligation answers only for the action that named it (requiredOnly
+    // carries exactly that action's rules); another tool's boundary never sees it.
+    requiredIds=boundary==="action"?(options.requiredOnly?a.required.filter(r=>catalog.entries.some(e=>e.id===r.id)).map(r=>r.id):[]):catalog.entries.filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
     if ((!options.requiredOnly&&!a.checked) || requiredIds.length) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }
-      else { state.unchecked++; unchecked = true; }
+      else {
+        state.unchecked++; unchecked = true;
+        // The bounded gate let the action pass; its obligation ends with it.
+        if (boundary === "action" && options.requiredOnly) a.required = a.required.filter(r => !requiredIds.includes(r.id));
+      }
     }
     put(s, state);
   }, { deadline: options.deadline });

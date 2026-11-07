@@ -150,7 +150,9 @@ export async function runProbe(): Promise<ProbeResult> {
           assert.equal(denied(out),true);
           for(const l of Object.keys(languages)) assert.ok(JSON.stringify(out).includes(`p5-${l}-github`));
           assert.equal((await check(sid,{applicable:[]})).ok,true);
-          assert.equal(denied(await gate(sid,client)),true,'empty applicability cannot discharge required IDs');
+          assert.equal(denied(parse((await githubConventionGate(p,server.url,Date.now()+3000))??'{}')),true,'empty applicability cannot discharge required IDs');
+          // #1372: the obligation belongs to the GitHub action, not to an unrelated tool.
+          assert.equal(denied(await gate(sid,client)),false,'action obligation does not block an unrelated tool');
           const actor=JSON.parse((await loadSessionState(sid)).rulebookCheck!).actors.find((a:any)=>a.key==='main');
           assert.equal(actor.required.length,5);
           // Verify real full loads remove each required ID, with a fresh denial budget.
