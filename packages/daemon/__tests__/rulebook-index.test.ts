@@ -71,7 +71,9 @@ test("fix7: a failed unknown-ID refresh returns the IDs answer rather than throw
  let calls=0;
  const vault={get:()=>undefined,list:()=>{if(++calls===1)return [];throw Error("refresh unavailable");}};
  const result=await rulebookCheckHandler({vault} as any,{applicable:["missing"],session_id:"refresh-failure"});
- assert.equal(result.ok,false);assert.match(result.reason??"",/Unknown rule IDs/);assert.equal(calls,2);
+ assert.equal(result.ok,false);assert.match(String(result.reason??""),/Unknown rule IDs/);
+ // #1374: the third read is the cause lookup; when it fails too, the cause stays unverified.
+ assert.equal(calls,3);assert.deepEqual("unknown_ids" in result?result.unknown_ids:undefined,[{id:"missing",cause:"unverified"}]);
 });
 test("fix7: startup fallback fits a small supplied budget",{timeout:1000},async()=>{
  const f=fixture(),start=performance.now();

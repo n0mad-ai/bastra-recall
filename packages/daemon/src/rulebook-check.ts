@@ -17,7 +17,8 @@ const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
 const RoundRule = RuleRef.extend({validator:ConventionValidatorSchema.optional()});
 const Actor = z.object({roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),repairProse:z.boolean().default(false),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
-const State = z.object({ copyViolations:z.number().default(0), blockedDismissals:z.array(z.string()).default([]), context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
+// #1374: the project the session's rule index was built for; rulebook_check answers from the same catalog.
+const State = z.object({ project:z.string().nullable().optional(), copyViolations:z.number().default(0), blockedDismissals:z.array(z.string()).default([]), context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
 type CheckState = z.infer<typeof State>;
 export interface RulebookPayload { session_id?: string; agent_id?: string; bastra_client?: string; bastra_codex_version?: string; cwd?: string; stop_hook_active?: boolean }
 function read(state: { readonly rulebookCheck?: string }): CheckState {
@@ -38,7 +39,7 @@ function identity(p: RulebookPayload): string {
 const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length).map(a => ({ ...a, dismissed:[], checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
-    const old = read(s); put(s, { context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });
+    const old = read(s); put(s, { project: old.project, context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });
   });
 }
 export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCandidates): Promise<string> {
@@ -49,7 +50,7 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const persisted = await mutateSessionState(p.session_id, s => {
     const old = read(s); unchecked += old.unchecked;
     exceptions = old.exceptions;blockedDismissals=old.blockedDismissals;copyViolations=old.copyViolations;
-    put(s, { context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0, copyViolations:0, blockedDismissals:[], exceptions: [] });
+    put(s, { project: catalog.project !== undefined ? catalog.project : old.project, context: old.context, round: old.round + 1, actors: deferredActors(old), unchecked: 0, copyViolations:0, blockedDismissals:[], exceptions: [] });
   });
   if (!persisted && unchecked) await spoolRulebookFailure(p.session_id, unchecked);
   const de = (await getPrimaryLanguage().catch(() => undefined)) === "de";
@@ -93,7 +94,11 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
   if (task !== undefined && input.agent_id) taskError = "Worker task reports cannot change the main session task.";
   if (taskError) task = undefined;
   const ids = new Set(catalog.entries.map(e => e.id));
-  if (input.applicable.some(id => !ids.has(id))) return { ok: false, reason: "Unknown rule IDs; read list_rules and retry." };
+  // One unknown ID no longer discards the call: the known declarations are recorded, the unknown ones named.
+  const unknown = [...new Set(input.applicable.filter(id => !ids.has(id)))];
+  if (unknown.length) input = { ...input, applicable: input.applicable.filter(id => ids.has(id)) };
+  const unknownPart = unknown.length ? { unknown_ids: unknown } : {};
+  const unknownReason = unknown.length ? `Unknown rule IDs: ${unknown.slice(0, 20).join(", ")}; read list_rules and retry them. ` : "";
   let context = "", round = 0, taskGeneration = 0, invalidDismissal = false, actionException=false;
   let acceptedTask: {kind:string;generation:number}|undefined;
   const skippedProtectedIds:string[]=[];
@@ -134,10 +139,11 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
     a.checked = true; a.ids = [...new Set(input.applicable)];
     context = state.context; round = state.round; put(s, state);
   });
-  if (persisted && invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,...(acceptedTask?{task:acceptedTask}:{}),skipped_protected_ids:skippedProtectedIds,reason:"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
+  if (persisted && invalidDismissal) { await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:true}); return {ok:false,...unknownPart,...(acceptedTask?{task:acceptedTask}:{}),skipped_protected_ids:skippedProtectedIds,reason:unknownReason+"Only an outstanding action ID or current correspondence ID can be dismissed. A rule loaded/declared applicable this round cannot be weakened. Valid remaining declarations were recorded."}; }
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
-  if (persisted && taskError) return { ok: false, reason: `${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
+  if (persisted && taskError) return { ok: false, ...unknownPart, reason: `${unknownReason}${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
+  if (persisted && unknown.length) return { ok: false, ...unknownPart, reason: `${unknownReason}Valid remaining declarations were recorded.`, context, round, applicable: input.applicable };
   return persisted ? { ok: true, context, round, applicable: input.applicable, ...(skippedProtectedIds.length?{skipped_protected_ids:skippedProtectedIds}:{}), ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
       conventions: catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };
@@ -148,14 +154,21 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   const sid = ctx.sessionId ?? callerSessionStore.getStore() ?? input.session_id;
   const snapshot = sid ? await loadSessionState(sid) : undefined;
   const deadline = Date.now() + RULEBOOK_TOOL_BUDGET_MS;
-  const opts = { project: ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
+  const indexed = snapshot?.rulebookCheck ? read(snapshot).project : undefined;
+  const opts = { project: indexed !== undefined ? indexed : ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
   let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: input.task !== undefined ? "content" : "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
   if (input.applicable.some(id => !catalog.entries.some(e => e.id === id))) {
     // Retry the index once before rejecting an unknown ID. An unavailable
     // refresh must still return the original IDs answer, not throw a tool error.
     catalog = await withRulebookDeadline(() => collectRulebookCatalog(deps.vault, { ...opts, mode: input.task !== undefined ? "content" : "ids" }), deadline).catch(() => catalog);
   }
-  return recordRulebookCheck(sid, input, catalog);
+  const result = await recordRulebookCheck(sid, input, catalog);
+  const unknown = "unknown_ids" in result ? result.unknown_ids ?? [] : [];
+  if (!unknown.length) return result;
+  // Name the reason: scoped to another project than the index, or not a current rulebook entry.
+  const everywhere = await cachedRulebookCatalog(deps.vault, { ...opts, allProjects: true, mode: "ids", budgetMs: Math.max(1, deadline - Date.now()) }).catch(() => undefined);
+  return { ...result, catalog_project: opts.project, unknown_ids: unknown.map(id => ({ id,
+    cause: !everywhere ? "unverified" : everywhere.entries.some(e => e.id === id) ? "other-project" : "not-in-rulebook" })) };
 }
 /** Only actual current full loads can answer binding/required IDs or retain validator metadata. */
 export async function recordRulebookLoad(sessionId: string, id: string, agentId?: string | null,
