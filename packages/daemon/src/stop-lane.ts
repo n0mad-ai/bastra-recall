@@ -110,7 +110,10 @@ export async function runStopLane(
   if (deps.kernel) {
     try {
       const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");
-      if (decision && JSON.parse(decision).decision === "block") return decision;
+      if (decision) {
+        const output = JSON.parse(decision);
+        if (output.decision === "block" || output.hookSpecificOutput?.additionalContext) return decision;
+      }
     } catch { void spoolRulebookFailure(payload.session_id ?? null).catch(() => {}); }
   }
   const deferredRulebookStop = await takeDeferredRulebookStop(payload).catch(() => false);

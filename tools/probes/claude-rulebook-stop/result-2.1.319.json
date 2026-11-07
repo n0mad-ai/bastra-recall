@@ -1,0 +1,24 @@
+{
+  "version": "2.1.319 (Claude Code)",
+  "cases": {
+    "block": {
+      "provider_requests": 3,
+      "stop_hook_active": [
+        false,
+        true
+      ],
+      "rulebook_check_calls": 1,
+      "error_notifications": 1
+    },
+    "context": {
+      "provider_requests": 3,
+      "stop_hook_active": [
+        false,
+        true
+      ],
+      "rulebook_check_calls": 1,
+      "error_notifications": 0
+    }
+  },
+  "limits": "Deterministic local provider, not semantic-model compliance or interactive TUI certification."
+}

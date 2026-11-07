@@ -1,3 +1,4 @@
+import {rulebookStopRequested} from '../rulebook-stop.js';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -163,7 +164,7 @@ export async function runProbe(): Promise<ProbeResult> {
           const actions=[];for(let i=0;i<5;i++)actions.push(await gate(sid,client));
           assert.deepEqual(actions.map(denied),[true,true,false,false,false]);
           const stops=[];for(let i=0;i<4;i++)stops.push(await stop(sid,client,'42',i>0));
-          assert.deepEqual(stops.map(s=>s.decision==='block'),[true,false,false,false]);
+          assert.deepEqual(stops.map(s=>rulebookStopRequested(s)),[true,false,false,false]);
           assert.match(context(await prompt(sid,client,t.ok)),/unchecked boundary|ungeprüft/);
           assert.doesNotMatch(context(await prompt(sid,client,t.ok)),/unchecked boundary|ungeprüft/);
           return 'Scripted noncompliant agent: exactly 2 action denials and 1 rulebook Stop block; next-prompt violation, delivered once';
@@ -171,22 +172,22 @@ export async function runProbe(): Promise<ProbeResult> {
         await attempt(lang,client,'correspondence-load-path',async()=>{
           const sid=`reply-load-${client}-${lang}`;
           assert.match(context(await prompt(sid,client,t.incoming)),/125.*index|125.*Index/);
-          assert.equal((await stop(sid,client,t.draft)).decision,'block');
+          assert.equal(rulebookStopRequested((await stop(sid,client,t.draft))),true);
           // A fresh round restores the full Stop budget. Removing the actual
           // load below must make the first Stop block, not pass a retry guard.
           await prompt(sid,client,t.incoming);
           await load(sid,`p5-${lang}-correspondence`);
           assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
-          assert.notEqual((await stop(sid,client,t.draft)).decision,'block');
+          assert.notEqual(rulebookStopRequested((await stop(sid,client,t.draft))),true);
         });
         await attempt(lang,client,'correspondence-empty-check-bypass',async()=>{
           const sid=`reply-bypass-${client}-${lang}`;await prompt(sid,client,t.incoming);
           assert.equal((await check(sid,{applicable:[]})).ok,true);
-          const out=await stop(sid,client,t.draft);assert.equal(out.decision,'block');
-          for(const id of correspondenceIds)assert.ok(out.reason.includes(id));
-          assert.notEqual((await stop(sid,client,t.draft,true)).decision,'block');
+          const out=await stop(sid,client,t.draft);assert.equal(rulebookStopRequested(out),true);
+          for(const id of correspondenceIds)assert.ok((out.reason??out.hookSpecificOutput?.additionalContext).includes(id));
+          assert.notEqual(rulebookStopRequested((await stop(sid,client,t.draft,true))),true);
           assert.equal((await declare(sid)).ok,true,'explicit per-ID non-applicability is allowed and audited');
-          assert.notEqual((await stop(sid,client,t.draft,true)).decision,'block');
+          assert.notEqual(rulebookStopRequested((await stop(sid,client,t.draft,true))),true);
           return 'Empty applicability cannot silently skip correspondence IDs: one block, then bounded unchecked passage; explicit per-ID exceptions remain possible, not semantic proof';
         });
         await attempt(lang,client,'task-omission',async()=>{
@@ -197,7 +198,7 @@ export async function runProbe(): Promise<ProbeResult> {
             assert.equal((await declare(sid,[`p5-${lang}-correspondence`])).ok,true);
             assert.equal((await loadSessionState(sid)).activeTask,undefined);
             const out=await stop(sid,client,text);
-            assert.notEqual(out.decision,'block');
+            assert.notEqual(rulebookStopRequested(out),true);
             assert.equal(JSON.stringify(out).includes('<copy-repair'),client==='claude-code'&&i>0);
             if(client==='codex')assert.equal(JSON.parse((await loadSessionState(sid)).rulebookCheck!).copyViolations,i>0?1:0);
             assert.equal((await loadSessionState(sid)).activeTask,undefined,'no invented task or approval');
@@ -221,8 +222,8 @@ export async function runProbe(): Promise<ProbeResult> {
             const input={applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This harmless round does not prepare correspondence.'}))};
             const response=await check(sid,input);costs.checks++;costs.payloadBytes+=Buffer.byteLength(JSON.stringify({...input,session_id:sid}));
             assert.equal(response.ok,true);const out=await stop(sid,client,'42');
-            costs.honestRounds++;if(out.decision==='block')costs.stopBlocks++;if(JSON.stringify(out).includes('<copy-repair'))costs.repairs++;
-            assert.notEqual(out.decision,'block');assert.ok(!JSON.stringify(out).includes('<copy-repair'));
+            costs.honestRounds++;if(rulebookStopRequested(out))costs.stopBlocks++;if(JSON.stringify(out).includes('<copy-repair'))costs.repairs++;
+            assert.notEqual(rulebookStopRequested(out),true);assert.ok(!JSON.stringify(out).includes('<copy-repair'));
             assert.notEqual((await loadSessionState(sid)).activeTask?.kind,'approved-copy');
           }
           return '5 harmless rounds including translation/code: one explicit check per round, no Stop blocks and no copy repairs';
@@ -231,10 +232,10 @@ export async function runProbe(): Promise<ProbeResult> {
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){
             const sid=`harmless-${client}-${lang}-${i}`;await prompt(sid,client,text);
             assert.equal(denied(await gate(sid,client,'Read')),false);
-            assert.equal((await stop(sid,client,'42')).decision,'block','one explicit correspondence check expected');costs.ignoredHarmlessBlocks++;
-            assert.notEqual((await stop(sid,client,'42',true)).decision,'block');
+            assert.equal(rulebookStopRequested((await stop(sid,client,'42'))),true,'one explicit correspondence check expected');costs.ignoredHarmlessBlocks++;
+            assert.notEqual(rulebookStopRequested((await stop(sid,client,'42',true))),true);
             assert.equal((await declare(sid)).ok,true);
-            assert.notEqual((await stop(sid,client,'42')).decision,'block');
+            assert.notEqual(rulebookStopRequested((await stop(sid,client,'42'))),true);
             const state=await loadSessionState(sid);assert.equal(state.activeTask,undefined);assert.equal(state.receipts,undefined);
             assert.equal(state.repairAttempts,undefined);
             assert.equal((await check(sid,{applicable:[],task:'approved-copy'})).ok,true,'stage reports are explicit agent self-reports');
@@ -268,7 +269,7 @@ export async function runProbe(): Promise<ProbeResult> {
           assert.equal((await live.post('/api/v1/rulebook_check',{applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This calculation round does not prepare correspondence.'})),session_id:sid},sid)).ok,true);
           assert.equal(denied(await live.post('/hook/gate',{payload:p})),false);
           const answer=await live.post('/hook/stop',{payload:{...common(sid,client),hook_event_name:'Stop',transcript:[{role:'assistant',content:'42'}]}});
-          assert.notEqual(answer.decision,'block');
+          assert.notEqual(rulebookStopRequested(answer),true);
         }
       }finally{await live.close();}
       return '6 scripted rounds, real thin-client failure exits 0, recovery notice, context reset, continued HTTP tools/answers without user input';
@@ -297,7 +298,7 @@ export async function measureLatency(vaultPath:string, rounds=20) {
   const responses:Record<string,Record<string,number>>={gate:{},prompt:{},stop:{}};
   const collect=async(name:string,path:string,payload:object,measured:boolean)=>{
     const start=performance.now();const out=await live.post(path,{payload});
-    if(measured){samples[name].push(performance.now()-start);const kind=denied(out)?'deny':out.decision==='block'?'block':'pass';responses[name][kind]=(responses[name][kind]??0)+1;}
+    if(measured){samples[name].push(performance.now()-start);const kind=denied(out)?'deny':rulebookStopRequested(out)?'block':'pass';responses[name][kind]=(responses[name][kind]??0)+1;}
   };
   try {
     // Four independent sessions concurrently; two warmup rounds excluded.

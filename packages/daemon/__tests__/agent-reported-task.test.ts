@@ -30,7 +30,7 @@ test('each new round needs its own rule decision; ending a task releases only ol
  const sid='round';const p={session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop'};
  await beginRulebookRound(p,catalog);await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'approved-copy'},catalog);
  await beginRulebookRound(p,catalog);
- assert.match((await rulebookBoundary(p,catalog,'stop'))??'',/decision.*block/);
+ assert.match(JSON.parse((await rulebookBoundary(p,catalog,'stop'))??'{}').hookSpecificOutput.additionalContext,/rulebook_check/);
  const out=await recordRulebookCheck(sid,{applicable:[],task:'none',not_applicable:[{id:'copy-rule',reason:'This round contains no copy artifact'}]},catalog);
  assert.equal(out.ok,true);assert.equal((await loadSessionState(sid)).activeTask?.kind,'none');
  assert.equal(await rulebookBoundary(p,catalog,'stop'),'{}');

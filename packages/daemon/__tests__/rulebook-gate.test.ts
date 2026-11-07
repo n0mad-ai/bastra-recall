@@ -1,3 +1,4 @@
+import {rulebookStopRequested} from './fixtures/rulebook-stop.js';
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
@@ -92,11 +93,11 @@ test("Stop checks pasted correspondence in EN/JA/RU/ES once, with no classificat
     assert.match(promptOutput.hookSpecificOutput.additionalContext, /1.*Index.*vor der Antwort prüfen/);
     const p = { ...common, hook_event_name: "Stop", transcript: [{ role: "user", content: text }], stop_hook_active: false };
     const first = JSON.parse(await runStopLane(p, "http://127.0.0.1:1", { kernel: deps.kernel }));
-    assert.equal(first.decision, "block"); assert.match(first.reason, /rulebook_check/);
+    assert.equal(rulebookStopRequested(first), true); assert.match(first.reason??first.hookSpecificOutput?.additionalContext, /rulebook_check/);
     const second = JSON.parse(await runStopLane({ ...p, stop_hook_active: true }, "http://127.0.0.1:1", { kernel: deps.kernel }));
-    assert.notEqual(second.decision, "block");
+    assert.notEqual(rulebookStopRequested(second), true);
     await checks.recordRulebookLoad(sid, "invented-correspondence", null);
-    assert.notEqual(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", { kernel: deps.kernel })).decision, "block");
+    assert.notEqual(rulebookStopRequested(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", { kernel: deps.kernel }))), true);
   }
 });
 
@@ -247,7 +248,7 @@ test("review: Stop continuation performs deferred harvest and save evaluation ex
   const env = { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logs, BASTRA_HARVEST_QUEUE_PATH: queue, BASTRA_SESSION_HARVEST: "on" };
   const old = new Map(Object.keys(env).map(k => [k, process.env[k]])); Object.assign(process.env, env);
   try {
-    assert.equal(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", { kernel: deps.kernel })).decision, "block");
+    assert.equal(rulebookStopRequested(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", { kernel: deps.kernel }))), true);
     await checks.recordRulebookCheck(sid, { applicable: [] }, catalog);
     await runStopLane({ ...p, stop_hook_active: true }, "http://127.0.0.1:1", { kernel: deps.kernel });
     const rows = JSON.parse(await readFile(queue, "utf8"));
@@ -262,9 +263,9 @@ test("review: Stop continuation performs deferred harvest and save evaluation ex
 test("review: a continued Stop cannot block again after context reset", async () => {
   const sid = "continued-compact";
   const p = { ...payload(sid), hook_event_name: "Stop", transcript: [] };
-  assert.equal(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", {kernel:deps.kernel})).decision, "block");
+  assert.equal(rulebookStopRequested(JSON.parse(await runStopLane(p, "http://127.0.0.1:1", {kernel:deps.kernel}))), true);
   await checks.resetRulebookContext(sid);
-  assert.notEqual(JSON.parse(await runStopLane({...p,stop_hook_active:true}, "http://127.0.0.1:1", {kernel:deps.kernel})).decision, "block");
+  assert.notEqual(rulebookStopRequested(JSON.parse(await runStopLane({...p,stop_hook_active:true}, "http://127.0.0.1:1", {kernel:deps.kernel}))), true);
 });
 
  test("fix2: prompt notice contains a ready-to-use session-bound check before Stop", async () => {

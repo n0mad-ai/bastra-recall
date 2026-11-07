@@ -1,3 +1,4 @@
+import {rulebookStopRequested} from './fixtures/rulebook-stop.js';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readdir,readFile} from 'node:fs/promises';
@@ -33,12 +34,12 @@ async function events(sid:string){const out:any[]=[];for(const name of await rea
 test('every structural correspondence ID needs a current-round declaration; empty check and unrelated load cannot discharge it',async()=>{
  const sid='missing';assert.match(await begin(sid),/copy-rule/);
  await live.post('/api/v1/load_memory',{id:'coding-rule',session_id:sid},sid);assert.equal((await check(sid,{applicable:[]})).ok,true);
- const first=await stop(sid);assert.equal(first.decision,'block');assert.match(first.reason,/copy-rule/);assert.match(first.reason,/correspondence-rule/);
- assert.notEqual((await stop(sid,'short','claude-code',true)).decision,'block');assert.match(await begin(sid),/unchecked|ungeprüft/);
+ const first=await stop(sid);assert.equal(rulebookStopRequested(first),true);assert.match(first.reason??first.hookSpecificOutput?.additionalContext,/copy-rule/);assert.match(first.reason??first.hookSpecificOutput?.additionalContext,/correspondence-rule/);
+ assert.notEqual(rulebookStopRequested((await stop(sid,'short','claude-code',true))),true);assert.match(await begin(sid),/unchecked|ungeprüft/);
 });
 test('one honest check resolves all correspondence IDs without a Stop block on harmless output',async()=>{
  const sid='honest';await begin(sid);assert.equal((await check(sid,{applicable:[],not_applicable:[skip('copy-rule'),skip('correspondence-rule')]})).ok,true);
- assert.notEqual((await stop(sid,'```ts\n'+ 'code'.repeat(30)+'\n```')).decision,'block');assert.doesNotMatch(JSON.stringify(await stop(sid,'prose'.repeat(30))),/copy-repair/);assert.doesNotMatch(await begin(sid),/unchecked|ungeprüft|violations|Verstoß/);
+ assert.notEqual(rulebookStopRequested((await stop(sid,'```ts\n'+ 'code'.repeat(30)+'\n```'))),true);assert.doesNotMatch(JSON.stringify(await stop(sid,'prose'.repeat(30))),/copy-repair/);assert.doesNotMatch(await begin(sid),/unchecked|ungeprüft|violations|Verstoß/);
 });
 test('applicable declaration without task enforces oversized copy, bounds repairs, and never infers approval',async()=>{
  const sid='no-task';await begin(sid);assert.equal((await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]})).ok,true);
@@ -67,7 +68,7 @@ test('each round declares applicability independently of retained task state',as
 });
 test('Codex observes oversized declared copy once without same-turn repair and reports the violation on the next prompt',async()=>{
  const sid='codex-observe';await begin(sid,'codex');await check(sid,{applicable:['copy-rule'],not_applicable:[skip('correspondence-rule')]});
- const out=await stop(sid,'x'.repeat(30),'codex');assert.notEqual(out.decision,'block');assert.doesNotMatch(JSON.stringify(out),/copy-repair/);
+ const out=await stop(sid,'x'.repeat(30),'codex');assert.notEqual(rulebookStopRequested(out),true);assert.doesNotMatch(JSON.stringify(out),/copy-repair/);
  await stop(sid,'x'.repeat(30),'codex',true);
  assert.equal((await events(sid)).filter(e=>e.kind==='non_conformance'&&e.reason==='copy_oversize_codex').length,1);
  assert.match(await begin(sid,'codex'),/violation|Verstoß/);
@@ -102,7 +103,7 @@ test('one check can explicitly dismiss a large correspondence category without S
  const p={session_id:sid,bastra_client:'claude-code'};await beginRulebookRound(p,large);
  const input=RulebookCheckArgs.parse({applicable:[],not_applicable:large.entries.map(e=>skip(e.id))});
  assert.equal((await recordRulebookCheck(sid,input,large)).ok,true);
- assert.notEqual(JSON.parse((await rulebookBoundary(p,large,'stop'))??'{}').decision,'block');
+ assert.notEqual(rulebookStopRequested(JSON.parse((await rulebookBoundary(p,large,'stop'))??'{}')),true);
  assert.doesNotMatch(await beginRulebookRound(p,large),/unchecked|ungeprüft|violations|Verstoß/);
  t.diagnostic(JSON.stringify({rules:65,checks:1,stop_blocks:0,payload_bytes:Buffer.byteLength(JSON.stringify(input))}));
 });
@@ -112,6 +113,6 @@ test('declared-but-unloaded validator refresh follows the index without reading 
  await editMemoryHandler(live.deps,{id:'copy-rule',frontmatter:{validator:{...validator,limit:50}}});
  const file=vault.get('copy-rule')!.filePath,original=fs.readFile;let reads=0;
  t.mock.method(fs,'readFile',(...args:any[])=>{if(args[0]===file){reads++;return new Promise(()=>{});}return (original as any)(...args);});syncBuiltinESMExports();
- try{const out=await stop(sid,'x'.repeat(30));assert.notEqual(out.decision,'block');assert.doesNotMatch(JSON.stringify(out),/copy-repair/);assert.equal(reads,0);}
+ try{const out=await stop(sid,'x'.repeat(30));assert.notEqual(rulebookStopRequested(out),true);assert.doesNotMatch(JSON.stringify(out),/copy-repair/);assert.equal(reads,0);}
  finally{t.mock.restoreAll();syncBuiltinESMExports();await editMemoryHandler(live.deps,{id:'copy-rule',frontmatter:{validator}});}
 });

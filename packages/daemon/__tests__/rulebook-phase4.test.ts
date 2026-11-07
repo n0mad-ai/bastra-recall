@@ -1,3 +1,4 @@
+import {rulebookStopRequested} from './fixtures/rulebook-stop.js';
 /** Phase 4 parity: deterministic delivery/boundaries, explicit model judgement.
  * These fixtures simulate semantic reports; they do not prove LLM judgement. */
 import {test, before, after} from 'node:test';
@@ -27,9 +28,9 @@ for(const [lang,incoming] of Object.entries({de:'Kannst du morgen kommen?',en:'C
  const prompt=JSON.parse(await runPromptLane({...common,hook_event_name:'UserPromptSubmit',prompt:incoming},null,'http://127.0.0.1:1',undefined,()=>[],{kernel:deps.kernel}));
  assert.match(prompt.hookSpecificOutput.additionalContext,/rulebook_check/);
  const stop={...common,hook_event_name:'Stop',transcript:[{role:'user',content:incoming},{role:'assistant',content:'```\nReview text\n```'}]};
- assert.equal(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel})).decision,'block');
+ assert.equal(rulebookStopRequested(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel}))),true);
  await report(sid,'draft-for-review');
- assert.notEqual(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel})).decision,'block');
+ assert.notEqual(rulebookStopRequested(JSON.parse(await runStopLane(stop,'http://127.0.0.1:1',{kernel:deps.kernel}))),true);
  let state=await loadSessionState(sid);assert.equal(state.activeTask?.kind,'draft-for-review');assert.deepEqual(state.activeConventions?.[0]?.validator,validator);
  await report(sid,'approved-copy');state=await loadSessionState(sid);assert.equal(state.activeTask?.kind,'approved-copy');
  for(const command of ['gh issue create --title fixture','gh pr edit 42 --title fixture']){

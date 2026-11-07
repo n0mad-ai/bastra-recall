@@ -255,7 +255,11 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const loadExample=JSON.stringify({id:requiredIds[0]??"rule-id",session_id:p.session_id,...(p.agent_id?{agent_id:p.agent_id}:{})});
   const reason = boundary==="stop"&&requiredIds.length ? `Correspondence declarations missing for this round: ${requiredIds.slice(0,40).join(", ")}${requiredIds.length>40?` (+${requiredIds.length-40}; list_rules contains all IDs)`:""}. In one rulebook_check, use not_applicable:[{category:"correspondence",reason}] for all unprotected correspondence IDs, or explicitly list every applicable ID and every remaining ID in not_applicable:[{id,reason}] (at least 10 substantive characters). Loading a rule declares it applicable. applicable:[] alone cannot discharge these IDs. Do not infer approval or permission to send.` : requiredIds.length ? `MUST-LOAD — concrete action rules: ${requiredIds.slice(0,20).join(", ")}${requiredIds.length>20?` (+${requiredIds.length-20}; read the complete category catalog with list_rules)`:""}. Load each with load_memory(${loadExample}) (replace id for each requirement). applicable:[] cannot discharge these IDs. An explicit rulebook_check({not_applicable:[{id,reason}],applicable:[]}) for each exact ID records a visible exception.` : (de ? `Prüfe den Regelbuch-Index gegen diese Runde. Lade passende Regeln und überarbeite die Antwort, oder rufe ${example} auf, wenn keine zutrifft.` : `Check the rulebook index against this round. Load applicable rules and revise the answer, or call ${example} if none applies.`) + attribution;
-  return boundary === "stop" ? JSON.stringify({ decision: "block", reason }) : JSON.stringify({ hookSpecificOutput: {
+  // Claude Stop feedback continues the same turn without an error notification.
+  // Keep Codex's runtime-certified block contract unchanged.
+  return boundary === "stop" ? JSON.stringify(hookClientEvidence(p) === "codex" ? { decision: "block", reason } : {
+    hookSpecificOutput: { hookEventName: "Stop", additionalContext: reason }
+  }) : JSON.stringify({ hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
 }
 

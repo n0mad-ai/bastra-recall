@@ -1,3 +1,4 @@
+import {rulebookStopRequested} from './fixtures/rulebook-stop.js';
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -44,7 +45,7 @@ async function fixture(id:string){const saved=await saveMemory(vault.root,input(
 const httpStop=async(sid:string)=>{
  await declareUnrelatedCorrespondence(live,sid);
  const out=await live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript:[{role:'assistant',content:'```\n'+'x'.repeat(3200)+'\n```'}]}});
- assert.notEqual(out.decision,'block','source regression has explicitly resolved correspondence IDs');
+ assert.notEqual(rulebookStopRequested(out),true,'source regression has explicitly resolved correspondence IDs');
  return JSON.stringify(out).includes('<copy-repair');
 };
 test('current indexed user limit applies at HTTP Stop without reading a blocked vault file',async t=>{
