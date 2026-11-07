@@ -34,7 +34,7 @@ test("busy hook writes return immediately and the deferred write persists after 
  const rows=JSON.parse(await readFile(path,"utf8"));assert.deepEqual(rows.map((r:{blocks:string})=>r.blocks),["Invented old relay observation","Invented new relay observation"]);assert.equal(warnings,"");
 }));
 test("the actual Stop response skips busy relay contention and writes later",()=>fixture(async path=>{
- const turns=[{role:"assistant",content:"We compared queue and polling."},{role:"user",content:"we compared both options. decided: we go with the queue, not polling"}];
+ const turns=[{role:"assistant",content:"Which architecture?\n1. Polling\n2. Queue"},{role:"user",content:"2"}];
  assert.ok(evaluateHeuristics(turns).length>0);await writeFile(path,"[]");await writeFile(pathLockFilePath(path),"held fixture lock");
  const start=performance.now();try{assert.equal(await runStopLane({hook_event_name:"Stop",cwd:"/tmp",transcript:turns},"http://127.0.0.1:1"),"{}");assert.ok(performance.now()-start<500);assert.equal(await readFile(path,"utf8"),"[]");}
  finally{await unlink(pathLockFilePath(path));}

@@ -184,6 +184,7 @@ export async function runProbe(): Promise<ProbeResult> {
         });
         await attempt(lang,client,'correspondence-empty-check-bypass',async()=>{
           const sid=`reply-bypass-${client}-${lang}`;await prompt(sid,client,t.incoming);
+          await check(sid,{applicable:[],task:'draft-for-review'});
           assert.equal((await check(sid,{applicable:[]})).ok,true);
           const out=await stop(sid,client,t.draft);assert.equal(rulebookStopRequested(out),true);
           for(const id of correspondenceIds)assert.ok((out.reason??out.hookSpecificOutput?.additionalContext).includes(id));
@@ -221,7 +222,7 @@ export async function runProbe(): Promise<ProbeResult> {
         await attempt(lang,client,'honest-single-check',async()=>{
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code,t.translation].entries()){
             const sid=`honest-${client}-${lang}-${i}`;await prompt(sid,client,text);
-            const input={applicable:[],not_applicable:correspondenceIds.map(id=>({id,reason:'This harmless round does not prepare correspondence.'}))};
+            const input={applicable:[]};
             const response=await check(sid,input);costs.checks++;costs.payloadBytes+=Buffer.byteLength(JSON.stringify({...input,session_id:sid}));
             assert.equal(response.ok,true);const out=await stop(sid,client,'42');
             costs.honestRounds++;if(rulebookStopRequested(out))costs.stopBlocks++;if(JSON.stringify(out).includes('<copy-repair'))costs.repairs++;
@@ -234,7 +235,7 @@ export async function runProbe(): Promise<ProbeResult> {
           for(const [i,text]of [t.question,t.calculation,t.ok,t.code].entries()){
             const sid=`harmless-${client}-${lang}-${i}`;await prompt(sid,client,text);
             assert.equal(denied(await gate(sid,client,'Read')),false);
-            assert.equal(rulebookStopRequested((await stop(sid,client,'42'))),true,'one explicit correspondence check expected');costs.ignoredHarmlessBlocks++;
+            assert.equal(rulebookStopRequested((await stop(sid,client,'42'))),true,'one standing rulebook check expected, not a correspondence declaration');costs.ignoredHarmlessBlocks++;
             assert.notEqual(rulebookStopRequested((await stop(sid,client,'42',true))),true);
             assert.equal((await declare(sid)).ok,true);
             assert.notEqual(rulebookStopRequested((await stop(sid,client,'42'))),true);

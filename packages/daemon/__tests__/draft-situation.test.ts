@@ -116,7 +116,7 @@ test("B2 keeps Codex parser output unchanged and captures without situation when
     { type: "response_item", payload: { type: "function_call", name: "shell", arguments: JSON.stringify({ command: "ssh fixture-host.invalid" }) } },
     message("user", quote),
   ]);
-  assert.deepEqual(turns, [{ role: "assistant", content: "Working on the fixture.", commands: ["ssh fixture-host.invalid"], tools: ["shell"] }, { role: "user", content: quote }]);
+  assert.deepEqual(turns, [{ role: "assistant", content: "Working on the fixture.", commands: ["ssh fixture-host.invalid"], tools: ["shell"], calls:[{name:"shell",input:{command:"ssh fixture-host.invalid"}}] }, { role: "user", content: quote }]);
   await captureTypedDrafts(turns, { session_id: "codex", client: "codex" }, now, []);
   const drafts = await listDrafts(now);
   assert.equal(drafts.length, 1);

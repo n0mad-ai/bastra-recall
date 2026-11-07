@@ -38,6 +38,8 @@ export interface ChoiceTurn {
   content: string;
   /** Tool names the turn called (Claude `tool_use.name`). */
   tools?: string[];
+  calls?: Array<{id?:string;name:string}>;
+  results?: Array<{id?:string;content:string;failed?:boolean}>;
 }
 
 /**
@@ -99,6 +101,20 @@ export function optionPicks(turns: ChoiceTurn[], window: number): string[] {
 export const ASK_TOOL = "AskUserQuestion";
 /** `"question"="answer"` — how Claude Code writes an AskUserQuestion result. */
 const ASK_ANSWER_RE = /"[^"\n]+"="[^"\n]+"/g;
+
+/** Current native question/answer events only, matched by call ID and success.
+ * Other tools' quoted data and a canceled question are not user decisions. */
+export function nativeAskAnswers(turns:readonly ChoiceTurn[]):string[]{
+ const pending=new Set<string>(),answers:string[]=[];
+ for(const turn of turns){
+  if(turn.role==='assistant')for(const call of turn.calls??[])if(call.id&&call.name===ASK_TOOL)pending.add(call.id);
+  if(turn.role==='tool')for(const result of turn.results??[]){
+   if(!result.id||!pending.delete(result.id)||result.failed)continue;
+   answers.push(...(result.content.match(ASK_ANSWER_RE)??[]));
+  }
+ }
+ return answers;
+}
 
 /**
  * #701: the answers the user gave through Claude Code's `AskUserQuestion`

@@ -48,6 +48,11 @@ export interface TranscriptTurn {
   reads?: ProvenRead[];
   /** #675: tool names the turn called — the after-session relay skips what was saved. */
   tools?: string[];
+  /** Native call/result linkage; Stop never infers a call from prose or JS source. */
+  calls?: Array<{id?:string;name:string;input?:Record<string,unknown>}>;
+  results?: Array<{id?:string;content:string;failed?:boolean}>;
+  /** Nested custom-exec source is not a native record of subcommand execution. */
+  opaqueCommands?: boolean;
   /** Claude tool_result.is_error, when explicitly present. */
   failed?: boolean;
   cwd?: string;
@@ -234,7 +239,23 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       // feeds file-token scanning.
       if (p.type === "function_call") {
         attachCommands(out, codexFunctionCallCommands(p));
-        if (typeof p.name === "string") attachTools(out, [p.name]);
+        if (typeof p.name === "string") {
+          attachTools(out, [p.name]);
+          let input:Record<string,unknown>|undefined;
+          try { const value=JSON.parse(String(p.arguments)); if(value&&typeof value==='object'&&!Array.isArray(value))input=value; } catch {}
+          const turn=out[out.length-1];
+          (turn.calls??=[]).push({name:p.name,...(typeof p.call_id==='string'?{id:p.call_id}:{}),...(input?{input}:{})});
+        }
+        continue;
+      }
+      if(p.type==='function_call_output'||p.type==='custom_tool_call_output'){
+        let content=typeof p.output==='string'?p.output:stringifyContent(p.output),failed=p.is_error===true;
+        try {const value=JSON.parse(content);if(value&&typeof value==='object'){
+          if(typeof value.output==='string')content=value.output;
+          else if(typeof value.stdout==='string')content=value.stdout;
+          if(typeof value.exit_code==='number')failed=value.exit_code!==0;
+        }}catch{}
+        out.push({role:'tool',content,failed,results:[{...(typeof p.call_id==='string'?{id:p.call_id}:{}),content,failed}]});
         continue;
       }
       // Current Codex desktop rollouts use a free-form `custom_tool_call`
@@ -243,6 +264,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       // is explicitly unstable and older function_call rows still exist.
       if (p.type === "custom_tool_call") {
         attachCommands(out, codexCustomExecCommands(p));
+        if(out[out.length-1]?.role==='assistant')out[out.length-1].opaqueCommands=true;
         continue;
       }
     }
@@ -272,6 +294,12 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       if (commands.length > 0) turn.commands = commands;
       const tools = claudeToolUseNames(m.content);
       if (tools.length > 0) turn.tools = tools;
+      if(Array.isArray(m.content)){
+        const calls=m.content.filter((b):b is Record<string,unknown>=>!!b&&typeof b==='object'&&b.type==='tool_use'&&typeof b.name==='string');
+        if(calls.length)turn.calls=calls.map(b=>({name:String(b.name),...(typeof b.id==='string'?{id:b.id}:{}),...(b.input&&typeof b.input==='object'?{input:b.input as Record<string,unknown>}:{})}));
+        const results=m.content.filter((b):b is Record<string,unknown>=>!!b&&typeof b==='object'&&b.type==='tool_result');
+        if(results.length)turn.results=results.map(b=>({...(typeof b.tool_use_id==='string'?{id:b.tool_use_id}:{}),content:stringifyContent(b.content),...(typeof b.is_error==='boolean'?{failed:b.is_error}:{})}));
+      }
       const reads = claudeToolUseReads(m.content);
       if (reads.length > 0) {
         // A row without a parseable timestamp cannot be placed after an edit,

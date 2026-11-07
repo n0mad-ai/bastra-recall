@@ -12,15 +12,17 @@ import { collectRulebookCatalog, cachedRulebookCatalog, withRulebookDeadline, RU
 import { projectForLane } from "./scope-filter.js";
 import type { ToolDeps } from "./tool-deps.js";
 import { drainRulebookFailures, spoolRulebookFailure } from "./rulebook-spool.js";
+import {hasCorrespondenceEvidence,isCorrespondenceTool} from "./stop-evidence.js";
+import type {TranscriptTurn} from "./stop-transcript.js";
 
 const RuleRef = z.object({id:z.string(),revision:z.string().nullable()});
 const RoundRule = RuleRef.extend({validator:ConventionValidatorSchema.optional()});
-const Actor = z.object({roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),repairProse:z.boolean().default(false),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
+const Actor = z.object({correspondenceEvidence:z.boolean().default(false),roundApplied:z.array(RoundRule).default([]),roundDismissed:z.array(RuleRef).default([]),repairs:z.number().default(0),repairProse:z.boolean().default(false),required:z.array(RuleRef).default([]), loaded:z.array(RuleRef).default([]), dismissed:z.array(RuleRef).default([]), key: z.string(), checked: z.boolean().default(false), ids: z.array(z.string()).default([]),
   denies: z.number().default(0), stops: z.number().default(0), deferredStop: z.boolean().default(false) });
 // #1374: the project the session's rule index was built for; rulebook_check answers from the same catalog.
 const State = z.object({ project:z.string().nullable().optional(), copyViolations:z.number().default(0), blockedDismissals:z.array(z.string()).default([]), context: z.string(), round: z.number(), actors: z.array(Actor), unchecked: z.number(), exceptions: z.array(z.string()).default([]) });
 type CheckState = z.infer<typeof State>;
-export interface RulebookPayload { session_id?: string; agent_id?: string; bastra_client?: string; bastra_codex_version?: string; cwd?: string; stop_hook_active?: boolean }
+export interface RulebookPayload { session_id?: string; agent_id?: string; bastra_client?: string; bastra_codex_version?: string; cwd?: string; stop_hook_active?: boolean; tool_name?: string; tool_input?: unknown }
 function read(state: { readonly rulebookCheck?: string }): CheckState {
   try { return State.parse(JSON.parse(state.rulebookCheck ?? "")); }
   catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0, copyViolations:0, blockedDismissals:[], exceptions: [] }; }
@@ -28,7 +30,7 @@ function read(state: { readonly rulebookCheck?: string }): CheckState {
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
   let found = state.actors.find(a => a.key === key);
-  if (!found) { found = { key, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false,checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
+  if (!found) { found = { key, correspondenceEvidence:false, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false,checked: false, ids: [], denies: 0, stops: 0, deferredStop: false, required:[],loaded:[],dismissed:[] }; state.actors.push(found); }
   return found;
 }
 function identity(p: RulebookPayload): string {
@@ -36,7 +38,7 @@ function identity(p: RulebookPayload): string {
   return hookAgent(p) === "main" ? "main" : "unattributed";
 }
 // Pending work and actual loads survive a round reset; non-applicability is round-only.
-const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length).map(a => ({ ...a, dismissed:[], checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
+const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length).map(a => ({ ...a, correspondenceEvidence:false, dismissed:[], checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
     const old = read(s); put(s, { project: old.project, context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });
@@ -58,8 +60,8 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const example = `rulebook_check(${JSON.stringify({ applicable: [], session_id: p.session_id, ...(p.agent_id ? { agent_id: p.agent_id } : {}) })})`;
   const correspondence=catalog.entries.filter(isCorrespondenceRule).map(e=>e.id);
   const taskNote = correspondence.length ? (de ?
-    `Korrespondenz: Jede ID in dieser Runde ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. In dieser Runde geladene oder als anwendbar erklärte Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Die Aufgabenstufe ist eine Selbstauskunft des Agenten, kein Nachweis einer Nutzerfreigabe oder Versandberechtigung.` :
-    `Correspondence: explicitly decide every ID this round: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. The workflow stage is an agent self-report, not evidence of user approval or sending permission.`) : "";
+    `Korrespondenz: Nur wenn diese Runde tatsächlich eine Nachricht bearbeitet (gemeldete Aufgabenstufe, Kopierstruktur unter geltendem Validator oder externer Nachrichten-Toolaufruf), jede ID ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. In dieser Runde geladene oder als anwendbar erklärte Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Die Aufgabenstufe ist eine Selbstauskunft des Agenten, kein Nachweis einer Nutzerfreigabe oder Versandberechtigung.` :
+    `Correspondence: only when this round actually handles a message (reported task stage, copy structure under an applied validator, or external messaging tool call), explicitly decide every ID: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. The workflow stage is an agent self-report, not evidence of user approval or sending permission.`) : "";
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
     taskNote, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
@@ -230,7 +232,7 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
  * Legacy denials retain their own once-per-claim/session contract. */
 export type RulebookDenialReceipt = (delivered: boolean) => Promise<void>;
 export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop", options: {
-  requiredOnly?: boolean; deadline?: number; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
+  requiredOnly?: boolean; deadline?: number; stopTurns?: readonly TranscriptTurn[]; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
 } = {}): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
   if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand" || isCorrespondenceRule(e))) return undefined;
@@ -240,9 +242,14 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
   const persisted = await mutateSessionState(p.session_id, s => {
     const state = read(s), a = actor(state, identity(p));
     context = state.context; round = state.round;
+    // The catch-all native PreToolUse payload proves a real requested operation,
+    // including subtools whose execution is opaque in a custom-exec transcript.
+    if(boundary==='action'&&typeof p.tool_name==='string'&&isCorrespondenceTool(p.tool_name,
+      p.tool_input&&typeof p.tool_input==='object'&&!Array.isArray(p.tool_input)?p.tool_input as Record<string,unknown>:undefined))a.correspondenceEvidence=true;
+    const correspondence=boundary==="stop"&&(a.correspondenceEvidence||hasCorrespondenceEvidence(options.stopTurns??[],!p.agent_id&&hasReportedTask(s),a.roundApplied.some(r=>!!r.validator)));
     // #1372: an action obligation answers only for the action that named it (requiredOnly
     // carries exactly that action's rules); another tool's boundary never sees it.
-    requiredIds=boundary==="action"?(options.requiredOnly?a.required.filter(r=>catalog.entries.some(e=>e.id===r.id)).map(r=>r.id):[]):catalog.entries.filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
+    requiredIds=boundary==="action"?(options.requiredOnly?a.required.filter(r=>catalog.entries.some(e=>e.id===r.id)).map(r=>r.id):[]):(correspondence?catalog.entries:[]).filter(isCorrespondenceRule).filter(e=>!a.roundApplied.some(r=>r.id===e.id)&&!a.roundDismissed.some(r=>r.id===e.id)).map(e=>e.id);
     if ((!options.requiredOnly&&!a.checked) || requiredIds.length) {
       const field = boundary === "action" ? "denies" : "stops", cap = boundary === "action" ? 2 : 1;
       if (a[field] < cap && !(boundary === "stop" && p.stop_hook_active === true)) { a[field]++; deny = true; if (boundary === "stop") a.deferredStop = true; }

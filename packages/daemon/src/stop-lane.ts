@@ -14,43 +14,9 @@ import { spoolRulebookFailure } from "./rulebook-spool.js";
  * three heuristics fires. Never calls save_memory itself — only suggests
  * (the agent decides in the next turn whether to act).
  *
- * Heuristics:
- *   1. Frustration-Density   — >=4 cues AND >=2 explicit frustration words
- *      (German, English and Russian cue lists, #476) in the last 10 user
- *      turns. The bare word for "again" is no cue, only its frustration
- *      constructions are (#756). CAPS words count as cues only when they are >=5 chars or
- *      repeated in a turn AND not a technical acronym (SKILL/JSON/…); CAPS
- *      alone never triggers. Case and word boundaries are Unicode-aware, so
- *      Cyrillic counts the same way Latin does. Languages without a cue list
- *      (#678): >=2 user turns restating an earlier one, one of them with
- *      emphasis (`!` or CAPS) — see stop-lane-repeat.ts.
- *   2. Feature-Completion    — a commit signal + >=5 distinct repo-relative
- *      source-file tokens, at least one of which exists under the session
- *      cwd. Three things count as the signal, whoever typed the commit:
- *      `git commit` in a USER turn, `git commit` in a shell command the
- *      agent ran (Claude tool_use / Codex function_call or custom_tool_call), or git's own
- *      "[branch sha] subject" line in a TOOL turn. Until 05.09.2026 only the
- *      first counted — for every user whose agent commits, the heuristic
- *      could structurally never fire (the #476 pattern, scope-bound instead
- *      of language-bound).
- *   3. Architecture-Decision — a decision cue from the German, English or
- *      Russian list in the last 5 user turns. Languages without a cue list
- *      (#707): the user picks one of the numbered options the agent offered
- *      with a question — see stop-lane-choice.ts. An answer given through
- *      Claude Code's AskUserQuestion tool counts the same way (#701).
- *
- * Output: `{}`, or — #662 — a `hookSpecificOutput.additionalContext` document
- * that hands a Claude Code session its save suggestions in the running turn
- * (once per heuristic per session), with a one-line `systemMessage` that
- * tells the user what it is (#757). Codex and payloads without a session id
- * keep the #48 route: suggestions go to the pending file, which the next
- * SessionStart injects silently. The client writes the daemon's answer
- * verbatim like every other lane.
- *
- * Discipline:
- *   - Budget 1000 ms. Any failure path returns `{}`.
- *   - Never blocks the workflow.
- *   - Telemetry best-effort.
+ * Productive save candidates use current structural correction/choice events
+ * or matched successful native commit results (#1390). Historical lexical
+ * detector APIs are not Stop triggers. See docs/rulebook.md's evidence inventory.
  *
  * The transcript is read HERE now, from the path the payload names — same
  * untrusted-input handling as before (extension check, size cap, fstat on the
@@ -72,9 +38,10 @@ import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import { noteSessionForHarvest } from "./session-harvest.js";
 import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
-import { appendProductDocHint, correctionReminderSuggestions, dropSuggestionsAfterSave, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
+import { appendProductDocHint, currentCorrectionReminderSuggestions, dropSuggestionsAfterSave, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
 import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
 import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
+import {currentVaultWriteIds} from "./stop-evidence.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -106,10 +73,13 @@ export async function runStopLane(
     return "{}";
   }
   if (payload.hook_event_name !== "Stop") return "{}";
+  // Read once: the rulebook boundary must see current-round structural evidence.
+  let turns: TranscriptTurn[] | null = null;
+  try { turns = await loadTranscript(payload); } catch { turns = null; }
   if(deps.conventionOf&&payload.session_id)await refreshStopValidators(payload.session_id,deps.conventionOf,startedAt+150,payload);
   if (deps.kernel) {
     try {
-      const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop");
+      const decision = await rulebookBoundary(payload, await catalogFor(payload, deps.kernel), "stop", {stopTurns:turns??[]});
       if (decision) {
         const output = JSON.parse(decision);
         if (output.decision === "block" || output.hookSpecificOutput?.additionalContext) return decision;
@@ -122,12 +92,6 @@ export async function runStopLane(
   // `stop_hook_active` — and bounds itself: two requests per round, then one
   // non-conformance row. An ordinary Stop must still book harvest, park its
   // boundary and evaluate saves; only hook-active follow-ups skip that work.
-  let turns: TranscriptTurn[] | null = null;
-  try {
-    turns = await loadTranscript(payload);
-  } catch {
-    turns = null;
-  }
   const repair = await checkStopRepair(payload, turns ?? []).catch(() => null);
   let repairOutput: { systemMessage: string; hookSpecificOutput: { hookEventName: string; additionalContext: string } } | null = null;
   if (repair?.action === "request") {
@@ -297,7 +261,7 @@ async function evaluateStop(
   let suggestions = evaluateHeuristics(last30, { cwd: payload.cwd });
   // #1307 changes only the supported same-turn delivery path.
   if (payload.session_id && hookClientEvidence(payload) !== "codex" && !envOff("BASTRA_STOP_SAME_TURN")) {
-    suggestions = correctionReminderSuggestions(last30, suggestions);
+    suggestions = currentCorrectionReminderSuggestions(last30, suggestions);
   }
   // #1376: a save after a suggestion's evidence already did what it asks.
   const proposed = suggestions;
@@ -316,7 +280,11 @@ async function evaluateStop(
   // Drift-Detektor (#67): unabhängig vom Transcript — der Daemon prüft, ob
   // jüngste Memories ein wiederkehrendes Cluster ohne Taxonomie-Konvention
   // bilden. Best-effort mit hartem Budget; Daemon weg → still.
-  const drift = await fetchDrift(selfBaseUrl, 250);
+  const observedDrift = await fetchDrift(selfBaseUrl, 250);
+  const writtenIds=currentVaultWriteIds(turns);
+  // Global monitoring remains available; Stop requests only cluster work
+  // directly connected to a successfully written memory in this round.
+  const drift=observedDrift.filter(cluster=>cluster.examples.some(id=>writtenIds.has(id)));
 
   let stdout = "{}";
   let delivery: SaveEvalDelivery | null = null;

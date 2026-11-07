@@ -13,7 +13,8 @@ import { loadSessionState, mutateSessionState, recordTouched, taskIdFor } from "
 import { setRepoEnabled } from "../src/code-graph/enabled-repos.js";
 
 const TRANSCRIPT = [
-  { role: "user", content: "we compared both options. decided: we go with the queue, not polling" },
+  { role: "assistant", content: "Which architecture?\n1. Polling\n2. Queue" },
+  { role: "user", content: "2" },
   { role: "assistant", content: "noted" },
 ];
 

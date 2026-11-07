@@ -413,6 +413,20 @@ function commandWordAt(texts: string[]): number {
   }
 }
 
+/** Candidate command identity only. A successful matching tool result is still
+ * required before Stop may call a commit completed. Reuses the existing scanner. */
+export function hasGitCommitCommand(source:string):boolean{
+ const commands=simpleCommands(source);
+ // A successful compound shell result cannot say which branch executed.
+ if(commands?.length!==1)return false;
+ const {words,piped,background}=commands[0];
+ if(piped||background)return false;
+ const texts=words.map(w=>unquote(w.text));
+ if(texts[0]?.split('/').pop()!=='git')return false;
+ const command=parseGit(texts.slice(1));
+ return command?.sub==='commit'&&!command.rest.some(a=>a==='--dry-run');
+}
+
 /**
  * The names a `hash -p <path> name…` points at the path: every operand after
  * the path, not just the last — `hash -p /x rm python` sets both (#657).

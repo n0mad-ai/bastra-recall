@@ -124,12 +124,19 @@ describe("stop-lane: who says it vs. what happened", () => {
     // Eine neue Heuristik ohne Eintrag hier hat ihre Bindung nicht erklärt.
     // Ein Transkript, das alle drei bekannten Signale trägt, liefert alle
     // Heuristik-Namen; jeder muss in BINDING stehen.
-    const turns = normalizeTurns([
-      { type: "user", message: { role: "user", content: "wieder kaputt, schon wieder, wie oft denn noch, wieder!" } },
-      { type: "user", message: { role: "user", content: "wieder und wieder — ok dann, entschieden: git commit" } },
-      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: EDITED }] } },
-    ]);
-    const names = evaluateHeuristics(turns, ALL_EXIST).map((s) => s.heuristic);
+    const correction = [
+      {role:"user",content:"Please keep the response short and simple"},
+      {role:"assistant",content:"An attempted response"},
+      {role:"user",content:"Please keep the response short and simple!"},
+      {role:"tool",content:"Fixture failed",failed:true},
+      {role:"user",content:"Please keep the response short and simple!!"},
+    ];
+    const choiceAndCommit = [
+      {role:"assistant",content:"Which?\n1. Polling\n2. Queue"}, {role:"user",content:"2"},
+      {role:"assistant",content:EDITED,commands:["git commit -m fixture"]},
+      {role:"tool",content:"[main abc1234] fixture",failed:false},
+    ];
+    const names=[...new Set([...evaluateHeuristics(correction,ALL_EXIST),...evaluateHeuristics(choiceAndCommit,ALL_EXIST)].map(s=>s.heuristic))];
     assert.deepEqual([...names].sort(), Object.keys(BINDING).sort(), "every heuristic must declare its binding in BINDING");
   });
 });

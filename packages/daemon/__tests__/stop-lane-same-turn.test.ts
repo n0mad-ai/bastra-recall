@@ -20,7 +20,8 @@ import { formatSameTurnBlock } from "../src/stop-lane-same-turn.js";
 import { mutateSessionState, taskIdFor } from "../src/session-state.js";
 
 const DECISION_TRANSCRIPT = [
-  { role: "user", content: "we compared both options. decided: we go with the queue, not polling" },
+  { role: "assistant", content: "Which architecture?\n1. Polling\n2. Queue" },
+  { role: "user", content: "2" },
   { role: "assistant", content: "noted" },
 ];
 
@@ -101,7 +102,7 @@ test("#757 — the user gets one line in their language, the agent a minimal blo
     assert.equal(lines.length, 4, "open tag, one instruction, one suggestion, close tag");
     assert.equal(lines[0], '<save-eval-now source="stop-hook">');
     assert.match(lines[1], /save_memory/);
-    assert.match(lines[2], /^- architecture-decision: .*we go with the queue/);
+    assert.match(lines[2], /^- architecture-decision: .*offered options.*2/);
     assert.equal(lines[3], "</save-eval-now>");
     assert.equal(lines.filter((l) => /save_memory/.test(l)).length, 1, "save_memory is named once");
 
@@ -173,6 +174,8 @@ const CORRECTION_TRANSCRIPT = [
   { role: "assistant", content: "Here is a lengthy answer" },
   { role: "user", content: "Please keep the answer short and simple!" },
   { role: "assistant", content: "Here is another lengthy answer" },
+  {type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:"failed-attempt",name:"Bash",input:{command:"node fixture-fails.mjs"}}]}},
+  {type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"failed-attempt",is_error:true,content:"Fixture failed"}]}},
   { role: "user", content: "Please keep the answer short and simple!!" },
   { role: "assistant", content: "understood" },
 ];

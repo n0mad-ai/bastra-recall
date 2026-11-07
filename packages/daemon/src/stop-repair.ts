@@ -7,7 +7,7 @@ import {hookClientEvidence} from "./hook-surface.js";
 import {loadTranscript,type TranscriptTurn,type ClaudeStopPayload} from "./stop-transcript.js";
 import {loadSessionState,mutateSessionState,type ReadonlySessionState} from "./session-state.js";
 import {repairCutoff,repairWindow} from "./stop-repair-window.js";
-import {ownerPromptText} from "./system-turn.js";
+import {deliveredCopy,lastOwnerBoundary} from "./stop-evidence.js";
 
 /** Agent-reported tasks never establish user approval. Receipts remain bound to
  * task/generation, not the bytes of later edits (#1325). */
@@ -81,30 +81,6 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
  return persisted?decision:null;
 }
 
-/** Explicit fences and quotes count at every stage. Only the last text's prose
- * additionally counts when the agent reports approved-copy. */
-function deliveredCopy(text:string,unit:Parameters<typeof countCopyUnits>[1],proseIsCopy=false):string{
- const blocks:string[]=[],prose:string[]=[];
- let fence="",body:string[]=[],quote:string[]=[];
- const flushQuote=()=>{if(quote.length)blocks.push(quote.join("\n"));quote=[];};
- for(const line of text.split("\n")){
-  if(fence){
-   if(new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`,"u").test(line)){if(body.join("\n").trim())blocks.push(body.join("\n"));fence="";body=[];}
-   else body.push(line);
-   continue;
-  }
-  const open=/^\s*(`{3,}|~{3,})[^\n]*$/u.exec(line);
-  if(open){flushQuote();fence=open[1];continue;}
-  const quoted=/^\s*> ?(.*)$/u.exec(line);
-  if(quoted)quote.push(quoted[1]);else{flushQuote();prose.push(line);}
- }
- flushQuote();
- if(proseIsCopy&&prose.join("\n").trim())blocks.push(prose.join("\n").trim());
- if(fence)blocks.push(body.join("\n"));
- let largest="",size=-1;
- for(const block of blocks){const count=countCopyUnits(block,unit);if(count>size){largest=block;size=count;}}
- return largest;
-}
 function validatorSources(state:ReadonlySessionState,p:RulebookPayload){
  const round=roundCorrespondence(state,p),dismissed=new Set(round.dismissed);
  const inherited={...state,activeConventions:state.activeConventions?.filter(c=>!dismissed.has(c.id)),loadedConventions:state.loadedConventions?.filter(c=>!dismissed.has(c.id))};
@@ -127,13 +103,6 @@ function taskReceiptSatisfied(state:ReadonlySessionState,payload:RulebookPayload
 }
 /** Tool results and harness-written user rows do not end the owner's round. */
 function currentAssistantTexts(turns:readonly TranscriptTurn[],after=0):string[]{
- let boundary=-1;
- for(let i=turns.length-1;i>=0;i--){
-  const turn=turns[i]!;
-  const owner=!turn.isMeta&&!turn.isCompactSummary&&!turn.stop_hook_active&&[turn.source,turn.origin].every(source=>{
-   if(source===undefined)return true;const kind=typeof source==="object"?source?.kind:source;return kind==="user"||kind==="human"||kind==="typed";
-  });
-  if(turn.ownerBoundary||(turn.role==="user"&&owner&&(ownerPromptText(turn.content)!==null||!turn.content.trim()))){boundary=i;break;}
- }
+ const boundary=lastOwnerBoundary(turns);
  return turns.slice(Math.max(boundary+1,after)).filter(turn=>turn.role==="assistant"&&turn.content.trim()).map(turn=>turn.content);
 }

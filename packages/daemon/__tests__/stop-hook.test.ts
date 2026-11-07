@@ -549,20 +549,13 @@ describe("stop-hook: evaluateHeuristics", () => {
 
   it("can fire multiple heuristics at once", () => {
     const turns: TranscriptTurn[] = [
-      userTurn("wieder kaputt"),
-      userTurn("schon wieder"),
-      userTurn("wie oft noch"),
-      userTurn("immer wieder"), // #756: a bare "und wieder" no longer counts
-      assistantTurn(FIVE_SOURCE_FILES),
-      userTurn("ok dann nehmen wir das, git commit ist durch"),
+      assistantTurn("Which?\n1. Polling\n2. Queue"), userTurn("2"),
+      {role:"assistant",content:FIVE_SOURCE_FILES,commands:["git commit -m fixture"]},
+      {role:"tool",content:"[main abc1234] fixture",failed:false},
     ];
-    const out = evaluateHeuristics(turns, ALL_EXIST);
-    const kinds = out.map((s) => s.heuristic).sort();
-    assert.deepEqual(kinds, [
-      "architecture-decision",
-      "feature-completion",
-      "frustration-density",
-    ]);
+    const kinds = evaluateHeuristics(turns, ALL_EXIST).map(s=>s.heuristic).sort();
+    assert.deepEqual(kinds,["architecture-decision","feature-completion"]);
+    assert.ok(!kinds.includes("frustration-density"),"mere old words cannot add a third assignment");
   });
 });
 

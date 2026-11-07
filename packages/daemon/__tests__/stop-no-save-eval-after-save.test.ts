@@ -89,7 +89,8 @@ describe("#1376: the correction reminder counts edit_memory as a save", () => {
 
 // ── call site: runStopLane ──────────────────────────────────────────────────
 
-const DECIDED = { role: "user", content: "we compared both options. decided: we go with the queue, not polling" };
+const OFFER = {role:"assistant",content:"Which architecture?\n1. Polling\n2. Queue"};
+const DECIDED = { role: "user", content: "2" };
 const SAVE_ROW = {
   type: "assistant",
   message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__bastra-recall__save_memory", input: { title: "queue over polling" } }] },
@@ -120,7 +121,7 @@ async function withSandbox<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 }
 
 const stop = (transcript: unknown[], extra: Partial<ClaudeStopPayload> = {}) =>
-  runStopLane({ hook_event_name: "Stop", cwd: process.cwd(), transcript, ...extra } as ClaudeStopPayload, "http://127.0.0.1:1");
+  runStopLane({ hook_event_name: "Stop", cwd: process.cwd(), transcript:[OFFER,...transcript], ...extra } as ClaudeStopPayload, "http://127.0.0.1:1");
 
 async function deliveries(dir: string): Promise<unknown[]> {
   const logDir = join(dir, "logs");
@@ -145,7 +146,7 @@ describe("#1376: runStopLane", () => {
       assert.equal(await stop(round1, { session_id: "cc-1376-b" }), "{}");
       const round2 = [...round1, { role: "user", content: "thanks, now rename the file" }, { role: "assistant", content: "renamed" }];
       assert.equal(await stop(round2, { session_id: "cc-1376-b" }), "{}", "the decision cue is still in the window");
-      assert.deepEqual(await deliveries(dir), ["already-saved", "already-delivered"]);
+      assert.deepEqual(await deliveries(dir), ["already-saved", undefined]);
     });
   });
 

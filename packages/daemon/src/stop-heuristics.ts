@@ -8,9 +8,12 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
-import { ASK_TOOL, askAnswers, optionPicks } from "./stop-lane-choice.js";
+import { ASK_TOOL, askAnswers, nativeAskAnswers, optionPicks } from "./stop-lane-choice.js";
 import type { DocsMode } from "./settings.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
+import {normalizeOwnerTurn} from './stop-transcript.js';
+import {currentRoundTurns,lastOwnerBoundary} from './stop-evidence.js';
+import {hasGitCommitCommand} from './bash-pre-analysis.js';
 
 const FRUSTRATION_WINDOW_TURNS = 10;
 const FRUSTRATION_CUE_THRESHOLD = 4;
@@ -34,14 +37,52 @@ interface HeuristicDeps {
 }
 
 export function evaluateHeuristics(turns: TranscriptTurn[], deps: HeuristicDeps = {}): SaveSuggestion[] {
+  // #1390: Stop is driven by current, structural events. The old exported
+  // lexical detectors below remain legacy APIs, not production Stop triggers.
+  turns=turns.map(normalizeOwnerTurn);
   const suggestions: SaveSuggestion[] = [];
-  const fr = detectFrustration(turns);
+  const fr = currentCorrection(turns);
   if (fr) suggestions.push(fr);
-  const fc = detectFeatureCompletion(turns, deps);
+  const current=currentRoundTurns(turns);
+  const fc = successfulCommitIndices(current).length?detectFeatureCompletion(current, deps):null;
   if (fc) suggestions.push(fc);
-  const ad = detectArchitectureDecision(turns);
+  // Keep the question before the latest owner answer; only that answer counts.
+  const ad = turns[lastOwnerBoundary(turns)]?.role==='user'&&optionPicks(turns,1).length?detectOptionPick(turns,1):detectAskAnswer(current,true);
   if (ad) suggestions.push(ad);
   return suggestions;
+}
+
+/** Repetition alone is not a durable correction. Require a real failed tool
+ * in the attempted work and a current emphatic repeated owner request. */
+function currentCorrection(turns:TranscriptTurn[]):SaveSuggestion|null{
+ const boundary=lastOwnerBoundary(turns),latest=turns[boundary];
+ if(!latest||latest.role!=='user'||!(EMPHASIS_BANG_RE.test(latest.content)||countQualifyingCaps(latest.content)>0))return null;
+ const userTurns=turns.filter(t=>t.role==='user').slice(-FRUSTRATION_WINDOW_TURNS);
+ if(!restatementIndices(userTurns.map(t=>t.content)).includes(userTurns.length-1))return null;
+ let previous=boundary-1;while(previous>=0&&turns[previous].role!=='user')previous--;
+ if(previous<0||!turns.slice(previous+1,boundary).some(t=>t.role==='tool'&&t.failed===true))return null;
+ return detectRepeatedCorrection(userTurns);
+}
+
+/** A command candidate plus git's success record from its tool execution.
+ * Quoted/echoed command prose and unreachable/failed commands have no record. */
+function successfulCommitIndices(turns:readonly TranscriptTurn[]):number[]{
+ const commits:number[]=[],pending=new Set<string>();let candidate=false;
+ turns.forEach((t,i)=>{
+  if(t.role==='assistant'){
+   candidate=!t.opaqueCommands&&!t.calls?.length&&(t.commands??[]).some(hasGitCommitCommand);
+   if(!t.opaqueCommands)for(const call of t.calls??[]){
+    const command=call.input?.command??call.input?.cmd;
+    if(call.id&&['Bash','shell','exec_command','functions.exec_command'].includes(call.name)&&typeof command==='string'&&hasGitCommitCommand(command))pending.add(call.id);
+   }
+  }else if(t.role==='tool'){
+   if(t.results?.length){
+    for(const result of t.results)if(result.id&&pending.delete(result.id)&&result.failed!==true&&COMMIT_OUTPUT_RE.test(result.content))commits.push(i);
+   }else if(candidate&&t.failed!==true&&COMMIT_OUTPUT_RE.test(t.content))commits.push(i);
+   candidate=false;
+  }
+ });
+ return commits;
 }
 
 // Explicit frustration words, per language (#476) — the list is DATA now, in
@@ -194,6 +235,12 @@ export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestio
   }];
 }
 
+/** Productive wrapper: unlike the legacy helper, a real failed attempt must
+ * support the current correction before a reminder can request more work. */
+export function currentCorrectionReminderSuggestions(turns:TranscriptTurn[],suggestions:SaveSuggestion[]):SaveSuggestion[]{
+ return currentCorrection(turns.map(normalizeOwnerTurn))?correctionReminderSuggestions(turns,suggestions):suggestions;
+}
+
 // Source extensions that signal a real edit. `.md` only counts under docs/.
 // json/yaml/css/html are deliberately excluded — they produced the bulk of the
 // false-positive noise (settings.json, .claude.json, …).
@@ -307,8 +354,8 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
 /** #707 language-neutral fallback: the user picked one of the numbered
  *  options the agent offered with a question (stop-lane-choice.ts). No word
  *  list, so any language fires. */
-function detectOptionPick(turns: TranscriptTurn[]): SaveSuggestion | null {
-  const picks = optionPicks(turns, DECISION_WINDOW_TURNS);
+function detectOptionPick(turns: TranscriptTurn[],window=DECISION_WINDOW_TURNS): SaveSuggestion | null {
+  const picks = optionPicks(turns, window);
   if (picks.length === 0) return null;
   return {
     heuristic: "architecture-decision",
@@ -323,8 +370,8 @@ function detectOptionPick(turns: TranscriptTurn[]): SaveSuggestion | null {
 /** #701 structural signal: the user answered the agent's `AskUserQuestion`
  *  (stop-lane-choice.ts). The answer is a tool result, which the cue check
  *  above never reads. */
-function detectAskAnswer(turns: TranscriptTurn[]): SaveSuggestion | null {
-  const answers = askAnswers(turns, DECISION_WINDOW_TURNS);
+function detectAskAnswer(turns: TranscriptTurn[],native=false): SaveSuggestion | null {
+  const answers = native?nativeAskAnswers(turns):askAnswers(turns, DECISION_WINDOW_TURNS);
   if (answers.length === 0) return null;
   return {
     heuristic: "architecture-decision",

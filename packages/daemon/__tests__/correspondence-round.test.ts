@@ -31,9 +31,9 @@ const repeatedOutput=(sid:string)=>{
  return (text:string,active=false)=>{transcript.push({role:'assistant',content:text.includes('```')?text:'```\n'+text+'\n```'});return live.post('/hook/stop',{payload:{session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',stop_hook_active:active,transcript:[...transcript]}});};
 };
 async function events(sid:string){const out:any[]=[];for(const name of await readdir(join(root,'logs')).catch(()=>[]))if(name.startsWith('events-'))for(const line of (await readFile(join(root,'logs',name),'utf8')).trim().split('\n').filter(Boolean)){const row=JSON.parse(line);if(row.session_id===sid)out.push(row);}return out;}
-test('every structural correspondence ID needs a current-round declaration; empty check and unrelated load cannot discharge it',async()=>{
+test('a reported correspondence task needs current-round declarations; empty check and unrelated load cannot discharge it',async()=>{
  const sid='missing';assert.match(await begin(sid),/copy-rule/);
- await live.post('/api/v1/load_memory',{id:'coding-rule',session_id:sid},sid);assert.equal((await check(sid,{applicable:[]})).ok,true);
+ await live.post('/api/v1/load_memory',{id:'coding-rule',session_id:sid},sid);assert.equal((await check(sid,{applicable:[],task:'draft-for-review'})).ok,true);
  const first=await stop(sid);assert.equal(rulebookStopRequested(first),true);assert.match(first.reason??first.hookSpecificOutput?.additionalContext,/copy-rule/);assert.match(first.reason??first.hookSpecificOutput?.additionalContext,/correspondence-rule/);
  assert.notEqual(rulebookStopRequested((await stop(sid,'short','claude-code',true))),true);assert.match(await begin(sid),/unchecked|ungeprüft/);
 });
