@@ -21,6 +21,7 @@ import type { ToolDeps } from "./tool-deps.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
+import { rulebookDelivery } from "./rulebook-status.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
 import {
   callCorruptionMessage,
@@ -38,6 +39,9 @@ export interface SaveMemoryResult {
   /** Advisory save-time quality signal for the agent; not persisted.
    *  Absent on a #205 conflict diversion — nothing was saved to score. */
   save_quality?: SaveQualityResult;
+  /** #1384: rule state of the written memory — rule, proposal or note only.
+   *  Absent when nothing was written (#205 conflict diversion). */
+  delivery?: string;
   /** #205: set when the save was diverted into a conflict mark on the
    *  existing memory (`id` then names THAT memory, nothing was created). */
   conflict_marked?: true;
@@ -429,5 +433,7 @@ async function saveMemoryInner(
   // `sensitivity: private`) und würden über den Spread still an jeden Client
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
-  return { ...payload, save_quality: saveQuality, ...(warning ? { warning } : {}) };
+  const written = deps.vault.get(result.id)?.fm;
+  return { ...payload, save_quality: saveQuality, ...(written ? { delivery: rulebookDelivery(written) } : {}),
+    ...(warning ? { warning } : {}) };
 }

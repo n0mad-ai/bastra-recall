@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { computeStaleness, resolveRulebook, stripAutoRelatedSection,
-  type Memory, type Vault, type StaleStatus } from "@bastra-recall/core";
+  type Memory, type Vault, type StaleStatus, type RulebookDeclaration, type RulebookLegacyContext } from "@bastra-recall/core";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-recall/core/scope";
 import { listFloors, type FloorEntry } from "./floors.js";
@@ -41,6 +41,11 @@ export interface RulebookCatalogOptions {
   floors?: (project: string | null) => Promise<FloorEntry[]>; allProjects?: boolean;
   mode?: RulebookCatalogMode; budgetMs?: number;
 }
+/** The declaration under which a memory enters the catalog, or undefined for a recall-only note. */
+export function catalogDeclaration(fm: Memory["fm"], context: RulebookLegacyContext = {}): RulebookDeclaration | undefined {
+  return resolveRulebook(fm, context) ??
+    (fm.validator || fm.rule_categories?.includes("correspondence") ? {rulebook:"on-demand" as const,applies_when:fm.applies_when??fm.summary,...(fm.applies_when===undefined?{applies_when_derived:true as const}:{})} : undefined);
+}
 async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): Promise<KernelCandidates> {
   const active = new Set(opts.active.map(a => a.id));
   const floors = await (opts.floors ? opts.floors(opts.project) : listFloors(opts.project ?? undefined)).catch(() => []);
@@ -53,8 +58,7 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     if (!servable(m)) continue;
     if (possibleLegacy(m)) unconfirmed++;
     if (!inScope(m)) continue;
-    const declaration = resolveRulebook(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) }) ??
-      (m.fm.validator || m.fm.rule_categories?.includes("correspondence") ? {rulebook:"on-demand" as const,applies_when:m.fm.applies_when??m.fm.summary,...(m.fm.applies_when===undefined?{applies_when_derived:true as const}:{})} : undefined);
+    const declaration = catalogDeclaration(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
     if (!declaration) continue;
     if (opts.mode === "ids") {
       entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
