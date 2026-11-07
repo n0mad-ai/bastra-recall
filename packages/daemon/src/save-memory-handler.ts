@@ -10,6 +10,7 @@ import {
   SaveMemoryInput,
   assertBodyTail,
   BodySentinelError,
+  type Memory,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import type { SaveHoldEvent } from "./telemetry-events.js";
@@ -433,7 +434,7 @@ async function saveMemoryInner(
   // `sensitivity: private`) und würden über den Spread still an jeden Client
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
-  const written = deps.vault.get(result.id)?.fm;
-  return { ...payload, save_quality: saveQuality, ...(written ? { delivery: rulebookDelivery(written) } : {}),
+  // #1395: from the frontmatter this save wrote, not from the index a later writer may have changed.
+  return { ...payload, save_quality: saveQuality, delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
     ...(warning ? { warning } : {}) };
 }

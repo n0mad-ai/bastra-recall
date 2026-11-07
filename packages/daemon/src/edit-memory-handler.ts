@@ -488,8 +488,6 @@ export async function editMemoryHandler(
     ? `summary was auto-truncated to ${SUMMARY_MAX} chars; the full text belongs in the body.`
     : undefined;
   const warning = [droppedWarning, truncatedWarning, auditWarning].filter(Boolean).join(" ");
-  const written = deps.vault.get(mem.fm.id)?.fm;
-
   return {
     id: mem.fm.id,
     file_path: mem.filePath,
@@ -499,7 +497,9 @@ export async function editMemoryHandler(
     operations,
     save_quality: saveQuality,
     ...(dropped ? { dropped } : {}),
-    ...(written ? { delivery: rulebookDelivery(written) } : {}),
+    // #1395: from the frontmatter this write committed, the same outcome as `revision` —
+    // the index may already hold a later writer's state.
+    delivery: rulebookDelivery(outcome.after as Memory["fm"]),
     note: "Edit complete — do not repeat this edit_memory call.",
     ...(warning ? { warning } : {}),
   };

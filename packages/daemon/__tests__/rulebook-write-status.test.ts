@@ -156,3 +156,38 @@ test("#1394: a validator bound after its rule leaves no stale validator proposal
   await editMemoryHandler(deps, { id: "tier-pending", frontmatter: { validator } });
   assert.deepEqual(deps.vault.get("tier-pending")!.fm.rulebook_proposed, { rulebook: "on-demand", applies_when: "When revising fixtures" });
 });
+
+test("#1395: delivery describes the same write as the returned revision, even when a second writer lands in between", async (t) => {
+  const deps = await fixture(t);
+  const declaration = { rulebook: "always", applies_when: "When writing fixtures" };
+  await saveMemoryHandler(deps, { ...base, id: "raced", type: "lesson", recall_when: ["invented raced"], write_origin: "user-directed", ...declaration });
+  // Pause only writer A's post-write tail (the first reindex after its write); writer B runs to completion meanwhile.
+  const reindex = deps.vault.reindexFile.bind(deps.vault);
+  let gate: { paused: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined;
+  const pauseNextReindex = () => (gate = { paused: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() });
+  deps.vault.reindexFile = async (path: string) => {
+    const current = gate; gate = undefined;
+    if (current) { current.paused.resolve(); await current.release.promise; }
+    return reindex(path);
+  };
+  const onDemand = { rulebook: "on-demand", applies_when: "When revising fixtures" };
+
+  let g = pauseNextReindex();
+  const a = editMemoryHandler(deps, { id: "raced", frontmatter: onDemand }) as Promise<EditMemoryResult>;
+  await g.paused.promise;
+  const b = (await editMemoryHandler(deps, { id: "raced", frontmatter: declaration })) as EditMemoryResult;
+  g.release.resolve();
+  const resultA = await a;
+  assert.notEqual(resultA.revision, b.revision);
+  assert.match(b.delivery ?? "", /^rule \(always\)/);
+  assert.match(resultA.delivery ?? "", /^rule \(on-demand\)/);
+
+  // The same holds for save_memory.
+  g = pauseNextReindex();
+  const saveA = saveMemoryHandler(deps, { ...base, id: "raced", type: "lesson", recall_when: ["invented raced"],
+    write_origin: "user-directed", overwrite: true, ...onDemand }) as Promise<SaveMemoryResult>;
+  await g.paused.promise;
+  await editMemoryHandler(deps, { id: "raced", frontmatter: declaration });
+  g.release.resolve();
+  assert.match((await saveA).delivery ?? "", /^rule \(on-demand\)/);
+});
