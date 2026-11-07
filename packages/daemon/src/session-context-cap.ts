@@ -68,18 +68,60 @@ export function capSessionContext(context: string, protectedSections: readonly s
     add(context.slice(frame.start, frame.end), frame.name); offset = frame.end;
   }
   add(context.slice(offset), "session text");
+  // Sort once and index net savings. Every eviction updates only the entries
+  // sharing its name; finding the smallest sufficient section is O(log n).
+  const candidates = parts.filter(p => !p.required).sort((a, b) => a.text.length - b.text.length);
+  const groups = new Map<string, number[]>();
+  let size = 1;
+  while (size < candidates.length) size *= 2;
+  const savings = new Array<number>(size * 2).fill(-Infinity);
+  candidates.forEach((part, i) => {
+    const group = groups.get(part.name) ?? [];
+    group.push(i); groups.set(part.name, group);
+    savings[size + i] = part.text.length - part.name.length - 2;
+  });
+  for (let i = size - 1; i > 0; i--) savings[i] = Math.max(savings[2 * i], savings[2 * i + 1]);
+  const update = (index: number, value: number) => {
+    let at = size + index;
+    savings[at] = value;
+    while ((at = Math.floor(at / 2)) > 0) savings[at] = Math.max(savings[2 * at], savings[2 * at + 1]);
+  };
+  const firstSufficient = (needed: number) => {
+    if (savings[1] < needed) return -1;
+    let at = 1;
+    while (at < size) at = savings[2 * at] >= needed ? 2 * at : 2 * at + 1;
+    return at - size;
+  };
   const deferred: string[] = [];
-  const suffix = (names: string[]) => names.length ? `\nDeferred session sections: ${[...new Set(names)].join(", ")}.` : "";
-  const keptText = () => parts.filter(p => p.kept).map(p => p.text).join("");
-  while (keptText().length + suffix(deferred).length > limit) {
-    const candidates = parts.filter(p => p.kept && !p.required);
-    if (!candidates.length) throw new Error("Protected session sections exceed the context budget");
-    const current = keptText().length;
-    const sufficient = candidates.filter(p => current - p.text.length + suffix([...deferred, p.name]).length <= limit);
-    const chosen = sufficient.length
-      ? sufficient.sort((a, b) => a.text.length - b.text.length)[0]
-      : candidates.sort((a, b) => b.text.length - a.text.length)[0];
-    chosen.kept = false; deferred.push(chosen.name);
+  const names = new Set<string>();
+  const prefix = "\nDeferred session sections: ";
+  let keptLength = context.length;
+  let suffixLength = 0;
+  let largest = candidates.length - 1;
+  while (keptLength + suffixLength > limit && largest >= 0) {
+    // The first deferred name also pays for the prefix and final period.
+    const sufficient = firstSufficient(keptLength + suffixLength - limit + (names.size ? 0 : prefix.length - 1));
+    const index = sufficient >= 0 ? sufficient : largest;
+    const chosen = candidates[index];
+    chosen.kept = false;
+    keptLength -= chosen.text.length;
+    update(index, -Infinity);
+    if (!names.has(chosen.name)) {
+      suffixLength += chosen.name.length + (names.size ? 2 : prefix.length + 1);
+      names.add(chosen.name); deferred.push(chosen.name);
+      for (const sameName of groups.get(chosen.name)!) {
+        if (candidates[sameName].kept) update(sameName, candidates[sameName].text.length);
+      }
+    }
+    while (largest >= 0 && !candidates[largest].kept) largest--;
   }
-  return { text: keptText() + suffix(deferred), deferred: [...new Set(deferred)] };
+  const keptText = parts.filter(p => p.kept).map(p => p.text).join("");
+  let suffix = names.size ? `${prefix}${deferred.join(", ")}.` : "";
+  if (keptText.length + suffix.length > limit) {
+    // Names are metadata, never a reason to throw or truncate mandatory text.
+    // Required rule/language sections take precedence over the soft cap.
+    suffix = `${prefix}${names.size} sections (names in deferred metadata).`;
+    if (keptText.length + suffix.length > limit) suffix = "";
+  }
+  return { text: keptText + suffix, deferred };
 }

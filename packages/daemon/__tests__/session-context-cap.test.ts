@@ -25,6 +25,29 @@ test("a fitting context remains byte-identical", () => {
   const text = "\n<rule-kernel>Whole text.</rule-kernel>\n<update>Some text.</update>\n";
   assert.deepEqual(capSessionContext(text, []), { text, deferred: [] });
 });
+test("#1363: eviction stays bounded with thousands of small sections", () => {
+  const started = performance.now();
+  const result = capSessionContext("<a>x</a>".repeat(4000), []);
+  assert.ok(performance.now() - started < 2000, "small-section eviction must finish within 2 seconds");
+  assert.ok(result.text.length <= 9900);
+  assert.deepEqual(result.deferred, ["a"]);
+});
+test("#1363: many distinct deferred names cannot exhaust the context budget", () => {
+  const input = Array.from({ length: 2000 }, (_, i) => `<a${i}>x</a${i}>`).join("");
+  const result = capSessionContext(input, []);
+  assert.ok(result.text.length <= 9900);
+  assert.ok(result.deferred.length > 0);
+  for (const name of result.deferred) assert.ok(!result.text.includes(`<${name}>`));
+});
+test("#1363: protected overflow preserves whole required sections without throwing", () => {
+  const kernel = `<rule-kernel>${"k".repeat(11000)}</rule-kernel>`;
+  const language = "<memory-language>de</memory-language>";
+  const result = capSessionContext(kernel + "<optional>note</optional>" + language, [kernel, language]);
+  assert.ok(result.text.includes(kernel));
+  assert.ok(result.text.includes(language));
+  assert.ok(!result.text.includes("<optional>"));
+  assert.deepEqual(result.deferred, ["optional"]);
+});
 test("framing keeps sections, order and unmatched text exactly as protocol tags define them", () => {
   const cases: Array<[string, Array<[string, string]>]> = [
     ["plain text", []],
