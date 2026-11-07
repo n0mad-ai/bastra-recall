@@ -511,5 +511,15 @@ it("release E: completed GitHub attempts are compact and agent histories stay bo
  }
  const state=await loadSessionState(sid),keys=Object.keys(state.constants??{});
  assert.equal(keys.filter(k=>k.includes(":attempt:")).length,0,"delivered attempts must not accumulate");
- assert.ok(keys.length<=200,"at most 100 completed agent histories plus revision maps");
+ const histories=keys.filter(k=>!k.endsWith(":revisions")&&!k.endsWith(":scope"));
+ assert.equal(histories.length,100,"205 completed agents retain at most 100 delivery histories");
+ assert.equal(keys.filter(k=>k.endsWith(":revisions")).length,histories.length,"one revision map per retained history, no orphan maps");
+ assert.equal(keys.filter(k=>k.endsWith(":scope")).length,histories.length,"one epoch per retained history, no orphan scopes");
+ assert.equal(keys.length,histories.length*3,"only the bounded histories and their two metadata records remain");
+ const epoch=JSON.parse(state.rulebookCheck!);
+ for(const key of histories){
+  assert.deepEqual(JSON.parse(state.constants![key]),[id]);
+  assert.deepEqual(JSON.parse(state.constants![`${key}:revisions`]),{[id]:"sha256:A"});
+  assert.deepEqual(JSON.parse(state.constants![`${key}:scope`]),[epoch.context,epoch.round]);
+ }
 });

@@ -1,4 +1,4 @@
-import {requireActionRules} from "./rulebook-check.js";
+import {requireActionRules,actionRulebookScope} from "./rulebook-check.js";
 import { catalogFor, rulebookBoundary, type RulebookDenialReceipt, type CatalogProvider } from "./rulebook-check.js";
 import { rulebookMutates, bastraReadTool } from "./rulebook-effects.js";
 import { withRulebookDeadline, RULEBOOK_CATALOG_BUDGET_MS } from "./rulebook-catalog.js";
@@ -210,12 +210,12 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const mutates = await rulebookMutates(toolName, input);
   // Readers skip C and catalog I/O; legacy must-load/reflex behavior remains
   // until Phase 4. Collect both reasons before emitting one denial; legacy claims keep their original finite contract.
-  let rulebookDecision:string|undefined;
+  let rulebookDecision:string|undefined,requiredActionIds:readonly string[]=[],actionScope="";
   if(deps.actionMustLoad){
     const refs=deps.actionMustLoad.ids.map(id=>({id,revision:deps.actionMustLoad?.revisions?.get(id)??null}));
     await requireActionRules(payload,refs,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity));
     const catalog:import("./rulebook-catalog.js").KernelCandidates={entries:refs.map(r=>({...r,title:"",body:"",group:"explicit",updated:null,stale_status:"unknown",rulebook:"on-demand"})),omitted:0};
-    rulebookDecision=await rulebookBoundary(payload,catalog,"action",{requiredOnly:true,deadline:deps.deadline,onDenial});
+    rulebookDecision=await rulebookBoundary(payload,catalog,"action",{requiredOnly:true,deadline:deps.deadline,onRequired:(ids,scope)=>{requiredActionIds=ids;actionScope=scope;},onDenial});
   }else rulebookDecision=deps.kernel&&mutates?await boundedRulebookAction(payload,deps,startedAt,onDenial):undefined;
   const rulebookDenied = rulebookDecision !== undefined && rulebookDecision !== "{}";
   if (!sessionId) return "{}";
@@ -268,11 +268,13 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const finishAction=async(delivered:boolean)=>{
    const action=deps.actionMustLoad;if(!action||!actionIds.length)return;
    await mutateSessionState(sessionId,state=>{
+    if(state.constants?.[`${action.key}:scope`]!==actionScope)return;
+    const confirmed=delivered&&actionRulebookScope(state)===actionScope;
     const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
     for(const id of actionIds){
      const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];let marker;try{marker=raw?JSON.parse(raw):null;}catch{continue;}
      if(marker?.token!==actionToken)continue;
-     if(delivered){
+     if(confirmed){
       const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");revisions[id]=marker.revision??null;
       state.constants![`${action.key}:revisions`]=JSON.stringify(Object.fromEntries([...seen].slice(-200).map(id=>[id,revisions[id]??null])));
       delete state.constants![key];
@@ -282,8 +284,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
     if(state.constants){
      state.constants[action.key]=JSON.stringify([...seen].slice(-200));
      // Retain only bounded completed agent histories; never evict an in-flight claim.
-     const keys=Object.keys(state.constants),histories=keys.filter(k=>k.startsWith("github-action-conventions-v2")&&!k.includes(":attempt:")&&!k.endsWith(":revisions")&&!keys.some(at=>at.startsWith(k+":attempt:")));
-     for(const old of histories.slice(0,-100)){delete state.constants[old];delete state.constants[old+":revisions"];}
+     const keys=Object.keys(state.constants),histories=keys.filter(k=>k.startsWith("github-action-conventions-v2")&&!k.includes(":attempt:")&&!k.endsWith(":revisions")&&!k.endsWith(":scope")&&!keys.some(at=>at.startsWith(k+":attempt:")));
+     for(const old of histories.slice(0,-100)){delete state.constants[old];delete state.constants[old+":revisions"];delete state.constants[old+":scope"];}
     }
    });
   };
@@ -309,18 +311,30 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
       delete state.pendingMustLoad;
     }
     const action=deps.actionMustLoad;
-    if(action&&rulebookDenied&&!expired()){
+    if(action&&requiredActionIds.length&&actionScope===actionRulebookScope(state)&&!expired()){
+      if(state.constants?.[`${action.key}:scope`]!==actionScope){
+       const prefix=`${action.key}:attempt:`;
+       for(const key of Object.keys(state.constants??{}))if(key.startsWith(prefix)){
+        try{if(JSON.parse(state.constants![key]).newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(id=>id!==key.slice(prefix.length));}catch{}
+        delete state.constants![key];
+       }
+       (state.constants??={})[action.key]="[]";
+       state.constants[`${action.key}:revisions`]="{}";
+       state.constants[`${action.key}:scope`]=actionScope;
+      }
       const seen=new Set<string>(JSON.parse(state.constants?.[action.key]??"[]"));
       const revisions=JSON.parse(state.constants?.[`${action.key}:revisions`]??"{}");
       for(const id of seen)if(Object.hasOwn(revisions,id)&&action.revisions?.has(id)&&revisions[id]!==action.revisions.get(id)){seen.delete(id);delete revisions[id];}
       if(state.constants?.[`${action.key}:revisions`])state.constants[`${action.key}:revisions`]=JSON.stringify(revisions);
       // A process crash or dropped response leaves a reservation, not a spent delivery.
       for(const id of seen){const key=`${action.key}:attempt:${id}`,raw=state.constants?.[key];if(!raw)continue;try{const marker=JSON.parse(raw);if((!marker.delivered&&Date.now()>=marker.deadline)||(action.revisions?.has(id)&&marker.revision!==action.revisions.get(id))){seen.delete(id);delete state.constants![key];if(marker.newClaim)state.claimedMustLoad=state.claimedMustLoad?.filter(value=>value!==id);}}catch{/* legacy marker */}}
-      const loaded=new Map(subagent?[]:(state.loadedConventions??[]).map(c=>[c.id,c.revision]));
-      const ids=action.ids.filter(id=>!seen.has(id)&&!(loaded.has(id)&&(!action.revisions||(typeof action.revisions.get(id)==="string"&&loaded.get(id)===action.revisions.get(id))))).slice(0,20);
-      actionIds=ids;newActionClaims=ids.filter(id=>!state.claimedMustLoad?.includes(id)&&!claimedMustLoad.some(e=>e.id===id));
+      // C has already resolved actual full loads and accepted exceptions for
+      // this actor/revision. Applicability alone never answers an action rule.
+      const pending=new Set(requiredActionIds);
+      const ids=action.ids.filter(id=>pending.has(id)&&!seen.has(id)).slice(0,20);
+      actionIds=ids;newActionClaims=rulebookDenied?ids.filter(id=>!state.claimedMustLoad?.includes(id)&&!claimedMustLoad.some(e=>e.id===id)):[];
       const alreadyClaimed=new Set(claimedMustLoad.map(e=>e.id));
-      for(const id of ids){seen.add(id);if(!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
+      for(const id of ids){seen.add(id);if(rulebookDenied&&!alreadyClaimed.has(id))claimedMustLoad.push({id,block:action.key,at:Date.now()});}
       if(ids.length){
        (state.constants??={})[action.key]=JSON.stringify([...seen].slice(-200));
        for(const old of [...seen].slice(0,-200))delete state.constants[`${action.key}:attempt:${old}`];
@@ -338,8 +352,8 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
       }
     }
     if (claimedMustLoad.length > 0) recordClaimedMustLoad(state, claimedMustLoad.map((e) => e.id));
-    // #1305: a deny carries its own message; the kernel waits for the next call.
-    if (deps.kernel && !rulebookDenied && claimedMustLoad.length === 0 && claimedReflex.length === 0 && !delivery && Date.now() >= Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
+    // A deny or action context carries its own message; the kernel waits.
+    if (deps.kernel && !rulebookDenied && actionIds.length === 0 && claimedMustLoad.length === 0 && claimedReflex.length === 0 && !delivery && Date.now() >= Number(state.constants?.[KERNEL_RETRY_AT] ?? 0) && (state.toolCalls??0) >= RULE_KERNEL_TOOL_CALLS) {
       kernelActive = [...(state.activeConventions ?? [])];
       const calls = state.toolCalls ?? 0;
       state.toolCalls = 0;
@@ -368,6 +382,11 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   }
   if (claimedMustLoad.length === 0 && claimedReflex.length === 0) {
     if (rulebookDenied) return rulebookDecision!;
+    if(actionIds.length){
+      const context=actionConventionFrame(actionIds,deps.actionMustLoad?.summaries,deps.actionMustLoad?.origins);
+      await confirmLaneDelivery(finishAction,Math.min(startedAt+HOOK_TIMEOUT_MS,deps.deadline??Infinity),"context");
+      return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context}});
+    }
     const active = kernelActive as ActiveConvention[] | null;
     return active === null || !deps.kernel ? "{}" : redeliverKernel(payload, deps.kernel, active, startedAt, finishKernel, deps.deadline);
   }

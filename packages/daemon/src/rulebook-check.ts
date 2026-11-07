@@ -219,6 +219,10 @@ export async function requireActionRules(p:RulebookPayload,refs:readonly {id:str
  },{deadline});
  if(!persisted)void spoolRulebookFailure(p.session_id).catch(()=>{});
 }
+/** Context-only delivery history is never a full load and cannot outlive its round. */
+export function actionRulebookScope(state:{readonly rulebookCheck?:string}):string{
+ const current=read(state);return JSON.stringify([current.context,current.round]);
+}
 export type CatalogProvider = (active: readonly import("./session-state.js").ActiveConvention[], project: string | null, mode?: RulebookCatalogMode) => Promise<KernelCandidates>;
 const catalogRetry = new Map<string, number>();
 export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
@@ -236,7 +240,7 @@ export async function catalogFor(p: RulebookPayload, kernel: CatalogProvider) {
  * Legacy denials retain their own once-per-claim/session contract. */
 export type RulebookDenialReceipt = (delivered: boolean) => Promise<void>;
 export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandidates, boundary: "action" | "stop", options: {
-  requiredOnly?: boolean; deadline?: number; stopTurns?: readonly TranscriptTurn[]; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
+  requiredOnly?: boolean; deadline?: number; stopTurns?: readonly TranscriptTurn[]; onRequired?: (ids:readonly string[],scope:string) => void; onDenial?: (settle: RulebookDenialReceipt) => void | Promise<void>;
 } = {}): Promise<string | undefined> {
   if (!hookGateAvailable(p)) return undefined;
   if (!catalog.entries.some(e => boundary === "action" || e.rulebook === "on-demand" || isCorrespondenceRule(e))) return undefined;
@@ -265,6 +269,9 @@ export async function rulebookBoundary(p: RulebookPayload, catalog: KernelCandid
     }
     put(s, state);
   }, { deadline: options.deadline });
+  // Delivery may continue after the denial budget ends. Report the same
+  // actor/revision-specific obligations before the passed action clears them.
+  if (persisted && boundary === "action" && options.requiredOnly) options.onRequired?.(requiredIds,JSON.stringify([context,round]));
   if (persisted && deny && boundary === "action" && options.onDenial) {
     let settled = false;
     await options.onDenial(async delivered => {

@@ -41,14 +41,17 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   if(!hits.length)return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:advice}});
   const context=[contextFor(hits),advice].filter(Boolean).join("\n");
   if(!hookGateAvailable(payload))return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context.replace("MUST-LOAD","Relevant conventions (host cannot gate)")}});
-  const subagent=hookAgent(payload)==="subagent";
-  const part=subagent?PART+":"+createHash("sha256").update(payload.agent_id??"").digest("hex").slice(0,16):PART;
+  const agent=hookAgent(payload);
+  const part=agent==="subagent"?PART+":"+createHash("sha256").update(payload.agent_id??"").digest("hex").slice(0,16):agent==="main"?PART:PART+":unattributed";
   let ids:readonly string[]=[];
   // Selection, once-only claim and persistence happen in the same gate mutation.
   // No pending hint may remain after a failed claim or leak to an unrelated tool.
   const result=JSON.parse(await runGateLane(payload,{reflexPool:()=>[],deadline,countTool:false,
    actionMustLoad:{ids:hits.map(h=>h.id),key:part,summaries:new Map(hits.map(h=>[h.id,h.summary])),origins:new Map(hits.map(h=>[h.id,h.write_origin])),revisions:new Map(hits.map(h=>[h.id,h.revision??null])),onClaim:selected=>{ids=selected;}}}));
-  if(result.hookSpecificOutput?.permissionDecision!=="deny")return advice?JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:advice}}):null;
+  if(result.hookSpecificOutput?.permissionDecision!=="deny"){
+   const delivered=[result.hookSpecificOutput?.additionalContext,advice].filter(Boolean).join("\n");
+   return delivered?JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:delivered}}):null;
+  }
   if(ids.length){
    const selected=hits.filter(h=>ids.includes(h.id));
    result.hookSpecificOutput.additionalContext=[contextFor(selected),advice].filter(Boolean).join("\n");

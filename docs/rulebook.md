@@ -109,6 +109,8 @@ Hook recall hints (including candidatePool), action-time reflex revisions and pr
 
 ## Structural action categories and transitional correspondence
 
+Exhausting the two-denial budget does not suppress a newly required GitHub rule's context (#1396). Outstanding actor/revision-specific IDs can be delivered as non-blocking PreToolUse context, without a new denial or a legacy must-load claim. A confirmed hint is deduplicated only within that actor/context/round; it is not a full load. Failed or disconnected context delivery releases its reservation, and an old receipt cannot confirm a later epoch. Actual current full loads and accepted exact-ID exceptions remain answered.
+
 Rules may declare optional `rule_categories: [github-issues-prs]` or `[correspondence]` (both values are fixed across users; no migration). Categories are metadata, never inferred from titles, `topic_path` or `applies_when`. User-directed categorized rules enter the catalog even with no matching search words. Category changes to existing rules through MCP apply directly, including category removal. Current values are visible in `list_rules` and loads.
 
 The Bash AST identifies GitHub issue/PR mutations, including existing wrapper/API forms. The hook obtains every scoped, nonprivate binding rule of `github-issues-prs` from the in-memory index. **Uncategorized legacy rules keep the previous GitHub query until categorized.** The old GitHub query is deliberately retained as a transition. Correspondence stage classification and its cue lexicon have been removed; unrelated retrieval/capture matching remains outside this workflow. Unsupported Codex hosts retain the concrete advisory `Relevant conventions (host cannot gate)` context.
