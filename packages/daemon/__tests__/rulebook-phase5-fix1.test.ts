@@ -62,7 +62,7 @@ test('without a user channel the conservative multichannel alarm exhausts after 
   results.push(repair(JSON.parse(await runStopLane({session_id:sid,hook_event_name:'Stop',transcript},'http://127.0.0.1:1'))));
  }
  assert.deepEqual(results,[true,true,false,false]);
- assert.equal(roundCorrespondence(await loadSessionState(sid),{}).repairs,3);
+ assert.equal(roundCorrespondence(await loadSessionState(sid),{bastra_client:"claude-code"}).repairs,3);
 });
 test('explicit stage reports do not select a channel',async()=>{
  const sid='quoted-channel';await load(sid,'dc',discord);await load(sid,'mail',email);

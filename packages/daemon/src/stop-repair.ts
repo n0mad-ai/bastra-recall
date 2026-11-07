@@ -26,34 +26,39 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
  const turns=suppliedTurns??await loadTranscript(payload).catch(()=>[]);
  const snapshot=await loadSessionState(sessionId),task=snapshot.activeTask;
  const actor=payload.agent_id||"main";
+ // Stop repair already binds an id-less call to the main task/window. Use the
+ // same actor for its rule declarations, including legacy unmarked Stops.
+ // This is local rulebook attribution, not evidence of the calling client;
+ // explicit workers and the original payload's client mode stay unchanged.
+ const rulebookPayload:RulebookPayload={bastra_client:"claude-code",...payload};
  const taskBound=!payload.agent_id&&task&&task.kind!=="none"&&taskValidators(snapshot).length>0;
  // An unpersisted rulebook context gets a random key on every read; legacy
  // tasks still require a stable repair watermark across Stops.
- const scope=snapshot.rulebookCheck?roundCorrespondence(snapshot,payload).key:`legacy:${task?.id??"none"}:${task?.generation??0}:${actor}`;
+ const scope=snapshot.rulebookCheck?roundCorrespondence(snapshot,rulebookPayload).key:`legacy:${task?.id??"none"}:${task?.generation??0}:${actor}`;
  const responsesFor=(state:ReadonlySessionState)=>currentAssistantTexts(turns,repairCutoff(state.repairWindows?.[actor],scope,turns));
  const oversizedRules=(state:ReadonlySessionState)=>{
   const responses=responsesFor(state),prose=!payload.agent_id&&state.activeTask?.kind==="approved-copy";
-  return validatorsFor(state,payload).filter(v=>{
+  return validatorsFor(state,rulebookPayload).filter(v=>{
    const contract=validateCopyBlocks({text:"",channel:v.channel,limit:v.limit,unit:v.unit,normalize:"none"});
    return responses.some((response,i)=>countCopyUnits(deliveredCopy(response,contract.unit_applied,prose&&i===responses.length-1),contract.unit_applied)>contract.limit);
   });
  };
  const oversized=(state:ReadonlySessionState)=>oversizedRules(state).length>0;
  const repairDetails=(state:ReadonlySessionState)=>{
-  const over=oversizedRules(state),rules=over.length?over:validatorsFor(state,payload);
-  const {sources}=validatorSources(state,payload);
+  const over=oversizedRules(state),rules=over.length?over:validatorsFor(state,rulebookPayload);
+  const {sources}=validatorSources(state,rulebookPayload);
   const ruleIds=[...new Set(sources.filter(r=>r.validator&&rules.some(v=>v.channel===r.validator!.channel&&v.unit===r.validator!.unit&&v.limit===r.validator!.limit)).map(r=>r.id))];
   return {reason:over.length?'overlength' as const:'missing-receipt' as const,ruleIds};
  };
- const needsRepair=(state:ReadonlySessionState)=>oversized(state)||(!payload.agent_id&&state.activeTask?.kind==="approved-copy"&&!taskReceiptSatisfied(state,payload));
- if(!validatorsFor(snapshot,payload).length||!(codex?oversized(snapshot):needsRepair(snapshot)))return null;
- const round=roundCorrespondence(snapshot,payload);
+ const needsRepair=(state:ReadonlySessionState)=>oversized(state)||(!payload.agent_id&&state.activeTask?.kind==="approved-copy"&&!taskReceiptSatisfied(state,rulebookPayload));
+ if(!validatorsFor(snapshot,rulebookPayload).length||!(codex?oversized(snapshot):needsRepair(snapshot)))return null;
+ const round=roundCorrespondence(snapshot,rulebookPayload);
  if(codex||snapshot.rulebookCheck||!taskBound){
   if(round.repairs>REPAIR_MAX_ATTEMPTS)return null;
   let decision:RepairDecision|null=null;
   const persisted=await mutateSessionState(sessionId,s=>{
    if(!(codex?oversized(s):needsRepair(s)))return;
-   const count=claimRoundRepair(s,payload,round.key,codex);if(count===null)return;
+   const count=claimRoundRepair(s,rulebookPayload,round.key,codex);if(count===null)return;
    const details=repairDetails(s);
    (s.repairWindows??={})[actor]=repairWindow(scope,turns);
    decision=codex?{action:"observed",roundId:round.key}:count<REPAIR_MAX_ATTEMPTS?{action:"request",attempt:count+1,...details}:{action:"exhausted",taskId:round.key,generation:round.round,attempts:count,roundId:round.key};
@@ -64,7 +69,7 @@ export async function checkStopRepair(payload:ClaudeStopPayload,suppliedTurns?:r
  let decision:RepairDecision|null=null;
  const persisted=await mutateSessionState(sessionId,s=>{
   const t=s.activeTask;
-  if(!t||t.kind==="none"||t.id!==task.id||t.generation!==task.generation||!validatorsFor(s,payload).length||!needsRepair(s))return;
+  if(!t||t.kind==="none"||t.id!==task.id||t.generation!==task.generation||!validatorsFor(s,rulebookPayload).length||!needsRepair(s))return;
   const old=s.repairAttempts;
   let count=old&&old.taskId===t.id&&old.generation===t.generation?old.count:0;
   if(count>REPAIR_MAX_ATTEMPTS)return;
