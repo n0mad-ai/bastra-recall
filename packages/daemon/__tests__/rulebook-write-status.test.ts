@@ -80,3 +80,15 @@ test("#1385: edit_memory binds a declaration on a user-directed note, keeps it a
   const bodyOnly = await edit({ id: "agent-note", append: "More invented text." });
   assert.match(bodyOnly.delivery ?? "", /^proposal \(not active\)/);
 });
+
+test("#1386: binding a proposal through edit_memory removes the superseded rulebook_proposed", async (t) => {
+  const deps = await fixture(t);
+  const declaration = { rulebook: "always", applies_when: "When writing fixtures" };
+  await saveMemoryHandler(deps, { ...base, id: "user-proposed", type: "lesson", recall_when: ["invented user-proposed"],
+    write_origin: "user-directed", rulebook_proposed: declaration });
+  assert.deepEqual(deps.vault.get("user-proposed")!.fm.rulebook_proposed, declaration);
+  const bound = (await editMemoryHandler(deps, { id: "user-proposed", frontmatter: declaration })) as EditMemoryResult;
+  assert.match(bound.delivery ?? "", /^rule \(always\): active now/);
+  assert.equal(deps.vault.get("user-proposed")!.fm.rulebook, "always");
+  assert.equal(deps.vault.get("user-proposed")!.fm.rulebook_proposed, undefined);
+});

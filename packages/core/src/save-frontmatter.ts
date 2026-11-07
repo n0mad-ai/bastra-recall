@@ -14,7 +14,7 @@
  * der Text serialisiert wird (der Aufrufer).
  */
 import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, FrontmatterSchema } from "./schema.js";
-import { resolveRulebook } from "./rulebook.js";
+import { remainingProposal, resolveRulebook } from "./rulebook.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -309,6 +309,12 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
     const declaration = { rulebook: input.rulebook, applies_when: input.applies_when.trim() };
     if (existingRule || input.write_origin === "user-directed") {
       Object.assign(out, declaration);
+      // #1386: binding supersedes the pending proposal it answers.
+      if (!existing.success) {
+        const rest = remainingProposal(out.rulebook_proposed as Record<string, unknown> | undefined, declaration,
+          input.validator != null ? ["validator"] : []);
+        if (rest) out.rulebook_proposed = rest; else delete out.rulebook_proposed;
+      }
     } else out.rulebook_proposed = { ...(out.rulebook_proposed as object ?? {}), ...declaration };
   } else if (input.applies_when !== undefined) {
     out.applies_when = input.applies_when;

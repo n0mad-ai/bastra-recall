@@ -53,7 +53,7 @@ import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
   RuleCategoriesSchema, RulebookSchema,
-  resolveRulebook,
+  resolveRulebook, remainingProposal,
   FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
@@ -388,8 +388,15 @@ export async function editMemoryHandler(
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
-          if (bindsDirectly) Object.assign(next, proposal.data);
-          else {
+          if (bindsDirectly) {
+            Object.assign(next, proposal.data);
+            // #1386: binding supersedes the pending proposal it answers.
+            if (fm.rulebook === undefined) {
+              const rest = remainingProposal(next.rulebook_proposed as Record<string, unknown> | undefined, proposal.data,
+                [...(proposal.data.rule_categories !== undefined ? ["rule_categories"] : []), ...(patch.validator ? ["validator"] : [])]);
+              if (rest) next.rulebook_proposed = rest; else delete next.rulebook_proposed;
+            }
+          } else {
             if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
             if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
             if (fm.rule_categories === undefined) delete next.rule_categories; else next.rule_categories = fm.rule_categories;

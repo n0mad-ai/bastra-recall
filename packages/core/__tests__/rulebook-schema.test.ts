@@ -100,3 +100,26 @@ test('category proposals merge with the requested tier and preserve pending vali
     assert.deepEqual(fm.rulebook_proposed,{rulebook:'always',applies_when:'When replying',rule_categories:['correspondence'],validator});
   } finally {await rm(root,{recursive:true,force:true});}
 });
+
+test("#1386: binding a proposal later removes the superseded rulebook_proposed, keeps what the binding does not cover", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rulebook-bind-proposal-"));
+  const validator = { tool: "validate_artifact", channel: "fixture", limit: 100, unit: "utf16" } as const;
+  try {
+    const plain = { ...input, type: "lesson" as const };
+    const saved = await saveMemory(root, SaveMemoryInput.parse({ ...plain, rulebook: "always", applies_when: "When writing" }));
+    const load = async (path = saved.file_path) => parseMemoryWith(matter, await readFile(path, "utf8"), path, 0).fm;
+    assert.deepEqual((await load()).rulebook_proposed, { rulebook: "always", applies_when: "When writing" });
+    await saveMemory(root, SaveMemoryInput.parse({ ...plain, overwrite: true, write_origin: "user-directed", rulebook: "always", applies_when: "When writing" }));
+    let fm = await load();
+    assert.equal(fm.rulebook, "always"); assert.equal(fm.applies_when, "When writing");
+    assert.equal(fm.rulebook_proposed, undefined);
+    assert.doesNotMatch(await readFile(saved.file_path, "utf8"), /rulebook_proposed/);
+
+    // A pending validator the binding does not cover stays proposed, aligned to the bound tier.
+    const other = await saveMemory(root, SaveMemoryInput.parse({ ...plain, id: "invented-rule-validator", rulebook: "always", applies_when: "When writing", validator }));
+    await saveMemory(root, SaveMemoryInput.parse({ ...plain, id: "invented-rule-validator", overwrite: true, write_origin: "user-directed", rulebook: "on-demand", applies_when: "When replying" }));
+    fm = await load(other.file_path);
+    assert.equal(fm.rulebook, "on-demand"); assert.equal(fm.validator, undefined);
+    assert.deepEqual(fm.rulebook_proposed, { rulebook: "on-demand", applies_when: "When replying", validator });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
