@@ -113,3 +113,15 @@ test("#1392: a user-directed category change binds the same way through save_mem
     assert.deepEqual(catalog.entries.find(e => e.id === id)?.rule_categories, ["correspondence"], id);
   }
 });
+
+test("#1393: a private declaration is reported as bound but not delivered, matching the catalog that excludes it", async (t) => {
+  const deps = await fixture(t);
+  const saved = (await saveMemoryHandler(deps, { ...base, id: "private-rule", type: "lesson", recall_when: ["invented private-rule"],
+    write_origin: "user-directed", rulebook: "always", applies_when: "When writing fixtures", sensitivity: "private" })) as SaveMemoryResult;
+  const catalog = await collectRulebookCatalog(deps.vault, { project: null, active: [], floors: async () => [], allProjects: true });
+  assert.equal(deps.vault.get("private-rule")!.fm.rulebook, "always");
+  assert.equal(catalog.entries.some(e => e.id === "private-rule"), false);
+  assert.doesNotMatch(saved.delivery ?? "", /active now|loaded in every session|listed in the rule catalog/);
+  assert.match(saved.delivery ?? "", /^rule \(always\): bound, not delivered/);
+  assert.match(saved.delivery ?? "", /private/);
+});

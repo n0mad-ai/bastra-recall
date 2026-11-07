@@ -13,8 +13,10 @@ const BEHAVIOURAL_TYPES: ReadonlySet<string> = new Set(["lesson", "meta-working"
 export function rulebookDelivery(fm: Memory["fm"]): string {
   const declaration = catalogDeclaration(fm);
   if (declaration) {
-    return `rule (${declaration.rulebook}): active now` +
-      (declaration.rulebook === "always" ? " — its text is loaded in every session." : " — listed in the rule catalog, loaded when it applies.") +
+    // #1393: the catalog does not serve private memories, so a private declaration is bound but never delivered.
+    return `rule (${declaration.rulebook}): ` +
+      (fm.sensitivity === "private" ? "bound, not delivered — sensitivity private keeps it out of the rule catalog and the session hooks."
+        : declaration.rulebook === "always" ? "active now — its text is loaded in every session." : "active now — listed in the rule catalog, loaded when it applies.") +
       (declaration.applies_when_derived ? " applies_when is derived from the summary; set applies_when to say when it applies." : "");
   }
   if (fm.rulebook_proposed) {
