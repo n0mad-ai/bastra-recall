@@ -34,7 +34,9 @@ test('edit cannot launder a non-rule through a validator or combine validator wi
  }
 });
 for(const withValidator of [true,false])test(`session-derived active status cannot authorize binding edits (validator=${withValidator})`,async()=>{
- const id='active-non-rule-'+withValidator;const first=await saveMemory(vault.root,{...base(id),write_origin:'user-directed'});await vault.reindexFile(first.file_path);
+ // #1385: a user-directed note binds an edit by itself (Owner decision 2026-11-04), so the
+ // session-only case uses an agent note; the validator case stays a user-directed legacy rule.
+ const id='active-non-rule-'+withValidator;const first=await saveMemory(vault.root,{...base(id),write_origin:withValidator?'user-directed':'agent-session'});await vault.reindexFile(first.file_path);
  if(withValidator){await mutateMemoryFile(first.file_path,id,{frontmatter:fm=>({...fm,validator})},{vaultRoot:vault.root});await vault.reindexFile(first.file_path);}
  await mutateSessionState(id,s=>recordActiveConventions(s,[{id,revision:null}]));
  await callerSessionStore.run(id,()=>editMemoryHandler(live.deps,{id,frontmatter:{rulebook:'always',applies_when:'When changing fixtures'}}));

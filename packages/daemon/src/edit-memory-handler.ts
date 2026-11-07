@@ -67,6 +67,7 @@ import { recordAudit } from "./audit-trail.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
+import { rulebookDelivery } from "./rulebook-status.js";
 import type { ToolDeps } from "./tool-deps.js";
 
 /**
@@ -150,6 +151,8 @@ export interface EditMemoryResult {
    *  schickt, löscht die alten. Das muss in der Antwort stehen, nicht erst
    *  Wochen später auffallen, wenn die Regel nicht mehr feuert. */
   dropped?: Partial<Record<(typeof LIST_FIELDS)[number], string[]>>;
+  /** #1385: rule state after the edit — rule, proposal or note only. */
+  delivery?: string;
   note: string;
   warning?: string;
 }
@@ -372,17 +375,20 @@ export async function editMemoryHandler(
         dropped = droppedListEntries(fm, args.frontmatter);
         const next: Record<string, unknown> = { ...fm, ...(args.frontmatter ?? {}), updated: today };
         // Existing rules may be edited directly (Owner decision #1336).
-        // New agent declarations on ordinary memories remain proposals.
+        // #1385: a note the user directed binds a new declaration directly,
+        // the same way save_memory does (Owner decision 2026-11-04). New agent
+        // declarations on the agent's own notes remain proposals.
         const patch = args.frontmatter;
         const previous = FrontmatterSchema.safeParse(fm);
         const legacy = previous.success ? resolveRulebook(previous.data) : undefined;
-        const existingRule = RulebookSchema.safeParse(fm.rulebook).success || !!legacy;
+        const bindsDirectly = RulebookSchema.safeParse(fm.rulebook).success || !!legacy ||
+          fm.write_origin === "user-directed";
         if (patch?.rulebook !== undefined || patch?.applies_when !== undefined || patch?.rule_categories !== undefined) {
           const rulebook = patch.rulebook ?? fm.rulebook ?? legacy?.rulebook ?? "on-demand";
           const applies_when = patch.applies_when ?? fm.applies_when ?? fm.summary;
           const proposal = RulebookProposalSchema.safeParse({ rulebook, applies_when, ...(patch.rule_categories !== undefined ? {rule_categories:patch.rule_categories} : fm.rule_categories !== undefined ? {rule_categories:fm.rule_categories} : {}) });
           if (!proposal.success) throw new Error("rulebook edits require rulebook and applies_when (or existing values)");
-          if (existingRule) Object.assign(next, proposal.data);
+          if (bindsDirectly) Object.assign(next, proposal.data);
           else {
             if (fm.rulebook === undefined) delete next.rulebook; else next.rulebook = fm.rulebook;
             if (fm.applies_when === undefined) delete next.applies_when; else next.applies_when = fm.applies_when;
@@ -390,7 +396,7 @@ export async function editMemoryHandler(
             next.rulebook_proposed = { ...(fm.rulebook_proposed as object ?? {}), ...proposal.data };
           }
         }
-        if (patch?.validator && !existingRule) {
+        if (patch?.validator && !bindsDirectly) {
           if (fm.validator === undefined) delete next.validator; else next.validator = fm.validator;
           next.rulebook_proposed = {
             rulebook: "on-demand", applies_when: patch.applies_when ?? fm.applies_when ?? fm.summary,
@@ -468,6 +474,7 @@ export async function editMemoryHandler(
     ? `summary was auto-truncated to ${SUMMARY_MAX} chars; the full text belongs in the body.`
     : undefined;
   const warning = [droppedWarning, truncatedWarning, auditWarning].filter(Boolean).join(" ");
+  const written = deps.vault.get(mem.fm.id)?.fm;
 
   return {
     id: mem.fm.id,
@@ -478,6 +485,7 @@ export async function editMemoryHandler(
     operations,
     save_quality: saveQuality,
     ...(dropped ? { dropped } : {}),
+    ...(written ? { delivery: rulebookDelivery(written) } : {}),
     note: "Edit complete — do not repeat this edit_memory call.",
     ...(warning ? { warning } : {}),
   };

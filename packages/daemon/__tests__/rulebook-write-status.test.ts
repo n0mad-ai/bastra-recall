@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
+import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
 import type { ToolDeps } from "../src/tool-deps.js";
 
 const base = { title: "Invented write status", summary: "Invented fixture summary", body: "Keep invented artifacts complete.",
@@ -48,4 +49,34 @@ test("#1384: every save_memory response names the delivery tier; a user-directed
   const legacy = await save({ id: "user-workflow", type: "workflow", write_origin: "user-directed" });
   assert.match(legacy.delivery ?? "", /^rule \(on-demand\): active now/);
   assert.match(legacy.delivery ?? "", /applies_when/);
+});
+
+test("#1385: edit_memory binds a declaration on a user-directed note, keeps it a proposal on an agent note, and says which", async (t) => {
+  const deps = await fixture(t);
+  const save = (args: Record<string, unknown>) => saveMemoryHandler(deps, { ...base, recall_when: [`invented ${args.id}`], ...args });
+  const edit = async (args: Record<string, unknown>) => (await editMemoryHandler(deps, args)) as EditMemoryResult;
+  const declaration = { rulebook: "always", applies_when: "When writing fixtures" };
+
+  await save({ id: "user-note", type: "lesson", write_origin: "user-directed" });
+  const bound = await edit({ id: "user-note", frontmatter: declaration });
+  assert.match(bound.delivery ?? "", /^rule \(always\): active now/);
+  const boundFm = deps.vault.get("user-note")!.fm;
+  assert.equal(boundFm.rulebook, "always");
+  assert.equal(boundFm.applies_when, "When writing fixtures");
+  assert.equal(boundFm.rulebook_proposed, undefined);
+
+  await save({ id: "agent-note", type: "lesson" });
+  const proposed = await edit({ id: "agent-note", frontmatter: declaration });
+  assert.match(proposed.delivery ?? "", /^proposal \(not active\)/);
+  const proposedFm = deps.vault.get("agent-note")!.fm;
+  assert.equal(proposedFm.rulebook, undefined);
+  assert.deepEqual(proposedFm.rulebook_proposed, declaration);
+
+  // Existing rules stay directly editable by an agent (Owner decision #1336).
+  const changed = await edit({ id: "user-note", frontmatter: { rulebook: "on-demand", applies_when: "When revising fixtures" } });
+  assert.match(changed.delivery ?? "", /^rule \(on-demand\): active now/);
+  assert.equal(deps.vault.get("user-note")!.fm.rulebook, "on-demand");
+
+  const bodyOnly = await edit({ id: "agent-note", append: "More invented text." });
+  assert.match(bodyOnly.delivery ?? "", /^proposal \(not active\)/);
 });
