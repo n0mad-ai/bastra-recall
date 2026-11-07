@@ -63,9 +63,11 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
     taskNote, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
+// #1364: an over-long exception ID is reported by recordRulebookCheck instead of failing the whole parse.
+const RULE_ID_MAX = 200;
 const ExceptionReason = z.string().trim().min(10).max(500).regex(/[\p{L}\p{N}]/u, "Explain non-applicability with substantive text.");
 export const RulebookCheckArgs = z.object({ applicable: z.array(z.string().min(1)).max(10000),
-  not_applicable: z.array(z.union([z.object({id:z.string().min(1).max(200),reason:ExceptionReason}).strict(), z.object({category:z.literal("correspondence"),reason:ExceptionReason}).strict()])).max(10000).optional(),
+  not_applicable: z.array(z.union([z.object({id:z.string().min(1).max(2048),reason:ExceptionReason}).strict(), z.object({category:z.literal("correspondence"),reason:ExceptionReason}).strict()])).max(10000).optional(),
   task: z.enum(["translate-only", "draft-for-review", "approved-copy", "none"]).optional(),
   agent_id: z.string().min(1).max(200).optional(),
   session_id: z.string().min(1).max(200).optional() }).strict();
@@ -97,8 +99,11 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
   // One unknown ID no longer discards the call: the known declarations are recorded, the unknown ones named.
   const unknown = [...new Set(input.applicable.filter(id => !ids.has(id)))];
   if (unknown.length) input = { ...input, applicable: input.applicable.filter(id => ids.has(id)) };
-  const unknownPart = unknown.length ? { unknown_ids: unknown } : {};
-  const unknownReason = unknown.length ? `Unknown rule IDs: ${unknown.slice(0, 20).join(", ")}; read list_rules and retry them. ` : "";
+  const overlong = (input.not_applicable ?? []).flatMap(e => "id" in e && e.id.length > RULE_ID_MAX ? [e.id.slice(0, RULE_ID_MAX) + "…"] : []);
+  if (overlong.length) input = { ...input, not_applicable: input.not_applicable!.filter(e => !("id" in e) || e.id.length <= RULE_ID_MAX) };
+  const unknownPart = { ...(unknown.length ? { unknown_ids: unknown } : {}), ...(overlong.length ? { invalid_ids: overlong } : {}) };
+  const unknownReason = (unknown.length ? `Unknown rule IDs: ${unknown.slice(0, 20).join(", ")}; read list_rules and retry them. ` : "") +
+    (overlong.length ? `Ignored not_applicable IDs longer than ${RULE_ID_MAX} characters: ${overlong.slice(0, 5).join(", ")}. ` : "");
   let context = "", round = 0, taskGeneration = 0, invalidDismissal = false, actionException=false;
   let acceptedTask: {kind:string;generation:number}|undefined;
   const skippedProtectedIds:string[]=[];
@@ -143,7 +148,7 @@ export async function recordRulebookCheck(sessionId: string | null | undefined, 
   if (persisted&&input.not_applicable?.length) await recordRulebookEvent(sessionId,{outcome:"not-applicable",exceptions:input.not_applicable,violation:actionException});
   await recordRulebookEvent(sessionId, { outcome: persisted ? "checked" : "fail-open", context, round, ids: input.applicable });
   if (persisted && taskError) return { ok: false, ...unknownPart, reason: `${unknownReason}${taskError} Task unchanged; valid rule declarations were recorded.`, context, round };
-  if (persisted && unknown.length) return { ok: false, ...unknownPart, reason: `${unknownReason}Valid remaining declarations were recorded.`, context, round, applicable: input.applicable };
+  if (persisted && (unknown.length || overlong.length)) return { ok: false, ...unknownPart, reason: `${unknownReason}Valid remaining declarations were recorded.`, context, round, applicable: input.applicable };
   return persisted ? { ok: true, context, round, applicable: input.applicable, ...(skippedProtectedIds.length?{skipped_protected_ids:skippedProtectedIds}:{}), ...(input.task !== undefined ? { task: { kind: input.task, generation: taskGeneration },
       conventions: catalog.entries.filter(e => input.applicable.includes(e.id)).map(e => ({id: e.id, revision: e.revision, validator: e.validator})) } : {}),
     contract: "Self-report for this session/context/round. Not action-bound; no guarantee of semantic application." } : { ok: false, reason: "State unavailable; gate remains bounded and fail-open." };

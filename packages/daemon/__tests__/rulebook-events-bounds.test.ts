@@ -9,7 +9,10 @@ import { recordRulebookEvent } from "../src/rulebook-events.js";
 test("a dismissal ID is bounded like the other caller-supplied identifiers", () => {
   const entry = (id: string) => ({ applicable: [], not_applicable: [{ id, reason: "does not apply to this round" }] });
   assert.equal(RulebookCheckArgs.safeParse(entry("x".repeat(200))).success, true);
-  assert.equal(RulebookCheckArgs.safeParse(entry("x".repeat(201))).success, false);
+  // #1364: 201-2048 characters parse so the rest of the call survives; recordRulebookCheck
+  // ignores and names them (rulebook-overlong-exception.test.ts). The parse stays bounded.
+  assert.equal(RulebookCheckArgs.safeParse(entry("x".repeat(2048))).success, true);
+  assert.equal(RulebookCheckArgs.safeParse(entry("x".repeat(2049))).success, false);
 });
 
 test("an audit row stays one line and bounds a session ID from a request header", async () => {
