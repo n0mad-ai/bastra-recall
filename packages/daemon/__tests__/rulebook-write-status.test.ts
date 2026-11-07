@@ -125,3 +125,34 @@ test("#1393: a private declaration is reported as bound but not delivered, match
   assert.match(saved.delivery ?? "", /^rule \(always\): bound, not delivered/);
   assert.match(saved.delivery ?? "", /private/);
 });
+
+test("#1394: a validator bound after its rule leaves no stale validator proposal (save and edit)", async (t) => {
+  const deps = await fixture(t);
+  const validator = { tool: "validate_artifact", channel: "fixture", limit: 100, unit: "utf16" };
+  const declaration = { rulebook: "always", applies_when: "When writing fixtures" };
+  const save = (args: Record<string, unknown>) => saveMemoryHandler(deps, { ...base, id: "via-save", type: "lesson", recall_when: ["invented via-save"], ...args });
+
+  await save({ ...declaration, validator });
+  await save({ overwrite: true, write_origin: "user-directed", ...declaration });
+  assert.deepEqual(deps.vault.get("via-save")!.fm.rulebook_proposed, { ...declaration, validator });
+  await save({ overwrite: true, write_origin: "user-directed", validator });
+  let fm = deps.vault.get("via-save")!.fm;
+  assert.equal(fm.rulebook, "always"); assert.deepEqual(fm.validator, validator);
+  assert.equal(fm.rulebook_proposed, undefined);
+
+  await saveMemoryHandler(deps, { ...base, id: "via-edit", type: "lesson", recall_when: ["invented via-edit"],
+    write_origin: "user-directed", rulebook_proposed: { ...declaration, validator } });
+  await editMemoryHandler(deps, { id: "via-edit", frontmatter: declaration });
+  assert.deepEqual(deps.vault.get("via-edit")!.fm.rulebook_proposed, { ...declaration, validator });
+  await editMemoryHandler(deps, { id: "via-edit", frontmatter: { validator } });
+  fm = deps.vault.get("via-edit")!.fm;
+  assert.equal(fm.rulebook, "always"); assert.deepEqual(fm.validator, validator);
+  assert.equal(fm.rulebook_proposed, undefined);
+
+  // An unrelated pending part stays: binding only the validator keeps a proposed tier change.
+  await saveMemoryHandler(deps, { ...base, id: "tier-pending", type: "lesson", recall_when: ["invented tier-pending"],
+    write_origin: "user-directed", ...declaration });
+  await editMemoryHandler(deps, { id: "tier-pending", frontmatter: { rulebook_proposed: { rulebook: "on-demand", applies_when: "When revising fixtures", validator } } });
+  await editMemoryHandler(deps, { id: "tier-pending", frontmatter: { validator } });
+  assert.deepEqual(deps.vault.get("tier-pending")!.fm.rulebook_proposed, { rulebook: "on-demand", applies_when: "When revising fixtures" });
+});

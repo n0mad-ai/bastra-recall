@@ -14,7 +14,7 @@
  * der Text serialisiert wird (der Aufrufer).
  */
 import { coerceAliases, ConventionValidatorSchema, DerivedClaimSchema, RuleCategoriesSchema, RulebookSchema, RulebookProposalSchema, FrontmatterSchema } from "./schema.js";
-import { remainingProposal, resolveRulebook } from "./rulebook.js";
+import { remainingProposal, resolveRulebook, unboundProposal } from "./rulebook.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -338,6 +338,13 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
       rulebook: "on-demand", applies_when: input.applies_when ?? prev.applies_when ?? input.summary,
       ...(out.rulebook_proposed as object ?? {}), validator: input.validator,
     };
+  }
+  // #1394: parts this write bound directly are no longer pending, also on an existing rule.
+  const covered = existingRule || input.write_origin === "user-directed"
+    ? [...(input.rule_categories !== undefined ? ["rule_categories"] : []), ...(input.validator != null ? ["validator"] : [])] : [];
+  if (covered.length > 0 && out.rulebook_proposed) {
+    const rest = unboundProposal(out.rulebook_proposed as Record<string, unknown>, out, covered);
+    if (rest) out.rulebook_proposed = rest; else delete out.rulebook_proposed;
   }
   return out;
 }

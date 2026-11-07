@@ -53,7 +53,7 @@ import {
   AUTO_RELATED_START,
   ConventionValidatorSchema,
   RuleCategoriesSchema, RulebookSchema,
-  resolveRulebook, remainingProposal,
+  resolveRulebook, remainingProposal, unboundProposal,
   FrontmatterSchema,
   RulebookProposalSchema,
   memoryRevision,
@@ -409,6 +409,13 @@ export async function editMemoryHandler(
             rulebook: "on-demand", applies_when: patch.applies_when ?? fm.applies_when ?? fm.summary,
             ...(next.rulebook_proposed as object ?? {}), validator: patch.validator,
           };
+        }
+        // #1394: parts this edit bound directly are no longer pending, also on an existing rule.
+        const covered = bindsDirectly
+          ? [...(patch?.rule_categories !== undefined ? ["rule_categories"] : []), ...(patch?.validator ? ["validator"] : [])] : [];
+        if (covered.length > 0 && next.rulebook_proposed) {
+          const rest = unboundProposal(next.rulebook_proposed as Record<string, unknown>, next, covered);
+          if (rest) next.rulebook_proposed = rest; else delete next.rulebook_proposed;
         }
         if (next.validator === null) delete next.validator;
         return next;
