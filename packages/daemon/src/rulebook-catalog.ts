@@ -8,6 +8,7 @@ import { GLOBAL_SCOPES, isScopeCompatible, normalizeScopeKey } from "@bastra-rec
 import { listFloors, type FloorEntry } from "./floors.js";
 import { loadSessionState, type ActiveConvention } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
+import { sessionRulebookProject } from "./rulebook-check.js";
 import type { ToolDeps } from "./tool-deps.js";
 
 export type KernelGroup = "active-convention" | "floor" | "reflex" | "user-directed" | "explicit";
@@ -191,7 +192,8 @@ export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { ses
   const input = ListRulesArgs.parse(args ?? {});
   const sid = ctx.sessionId ?? callerSessionStore.getStore();
   const state = sid ? await loadSessionState(sid) : undefined;
-  let project = ctx.project ?? null;
+  const indexed = sessionRulebookProject(state);
+  let project = indexed !== undefined ? indexed : ctx.project ?? null;
   if (input.cursor) {
     try {
       // Scope is caller-selectable, including through the cursor. It is a

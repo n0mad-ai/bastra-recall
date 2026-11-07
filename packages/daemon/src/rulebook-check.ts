@@ -27,6 +27,10 @@ function read(state: { readonly rulebookCheck?: string }): CheckState {
   try { return State.parse(JSON.parse(state.rulebookCheck ?? "")); }
   catch { return { context: randomUUID(), round: 0, actors: [], unchecked: 0, copyViolations:0, blockedDismissals:[], exceptions: [] }; }
 }
+/** Indexed null is global scope; undefined retains the legacy caller-project fallback. */
+export function sessionRulebookProject(state: { readonly rulebookCheck?: string } | undefined): string | null | undefined {
+  return state?.rulebookCheck ? read(state).project : undefined;
+}
 function put(state: SessionState, value: CheckState) { state.rulebookCheck = JSON.stringify(value); }
 function actor(state: CheckState, key: string) {
   let found = state.actors.find(a => a.key === key);
@@ -161,7 +165,7 @@ export async function rulebookCheckHandler(deps: ToolDeps, args: unknown, ctx: {
   const sid = ctx.sessionId ?? callerSessionStore.getStore() ?? input.session_id;
   const snapshot = sid ? await loadSessionState(sid) : undefined;
   const deadline = Date.now() + RULEBOOK_TOOL_BUDGET_MS;
-  const indexed = snapshot?.rulebookCheck ? read(snapshot).project : undefined;
+  const indexed = sessionRulebookProject(snapshot);
   const opts = { project: indexed !== undefined ? indexed : ctx.project ?? null, active: snapshot?.activeConventions ?? [] };
   let catalog = await cachedRulebookCatalog(deps.vault, { ...opts, mode: input.task !== undefined ? "content" : "ids", budgetMs: RULEBOOK_TOOL_BUDGET_MS });
   if (input.applicable.some(id => !catalog.entries.some(e => e.id === id))) {
