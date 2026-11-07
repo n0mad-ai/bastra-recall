@@ -322,7 +322,8 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   const categories = RuleCategoriesSchema.safeParse(prev.rule_categories);
   if (categories.success) out.rule_categories = categories.data;
   if (input.rule_categories !== undefined) {
-    if (existingRule || (input.write_origin === "user-directed" && !prev.id)) out.rule_categories = input.rule_categories;
+    // #1392: same binding as rulebook and validator — a user-directed overwrite binds like edit_memory does.
+    if (existingRule || input.write_origin === "user-directed") out.rule_categories = input.rule_categories;
     else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
       const proposed = out.rulebook_proposed as Record<string, unknown> | undefined;
       out.rulebook_proposed = { ...proposed, rulebook: proposed?.rulebook ?? "on-demand",

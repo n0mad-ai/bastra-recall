@@ -7,6 +7,7 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
 import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
+import { collectRulebookCatalog } from "../src/rulebook-catalog.js";
 import type { ToolDeps } from "../src/tool-deps.js";
 
 const base = { title: "Invented write status", summary: "Invented fixture summary", body: "Keep invented artifacts complete.",
@@ -91,4 +92,24 @@ test("#1386: binding a proposal through edit_memory removes the superseded ruleb
   assert.match(bound.delivery ?? "", /^rule \(always\): active now/);
   assert.equal(deps.vault.get("user-proposed")!.fm.rulebook, "always");
   assert.equal(deps.vault.get("user-proposed")!.fm.rulebook_proposed, undefined);
+});
+
+test("#1392: a user-directed category change binds the same way through save_memory overwrite and edit_memory", async (t) => {
+  const deps = await fixture(t);
+  const declaration = { rulebook: "on-demand", applies_when: "When replying to invented fixtures", rule_categories: ["correspondence"] };
+  for (const id of ["via-save", "via-edit"]) {
+    await saveMemoryHandler(deps, { ...base, id, type: "lesson", recall_when: [`invented ${id}`], write_origin: "user-directed" });
+  }
+  const saved = (await saveMemoryHandler(deps, { ...base, id: "via-save", type: "lesson", recall_when: ["invented via-save"],
+    write_origin: "user-directed", overwrite: true, ...declaration })) as SaveMemoryResult;
+  const edited = (await editMemoryHandler(deps, { id: "via-edit", frontmatter: declaration })) as EditMemoryResult;
+  const catalog = await collectRulebookCatalog(deps.vault, { project: null, active: [], floors: async () => [], allProjects: true });
+  for (const [id, result] of [["via-save", saved], ["via-edit", edited]] as const) {
+    const fm = deps.vault.get(id)!.fm;
+    assert.equal(fm.rulebook, "on-demand", id);
+    assert.deepEqual(fm.rule_categories, ["correspondence"], id);
+    assert.equal(fm.rulebook_proposed, undefined, id);
+    assert.match(result.delivery ?? "", /^rule \(on-demand\): active now/, id);
+    assert.deepEqual(catalog.entries.find(e => e.id === id)?.rule_categories, ["correspondence"], id);
+  }
 });
