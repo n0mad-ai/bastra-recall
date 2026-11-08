@@ -36,7 +36,7 @@ async function staleDeps() {
 const hidden = async (deps: ToolDeps) => {
   await assert.rejects(loadMemoryHandler(deps, { id: ID }), /memory not found/);
   const res = await recallHandler(deps, { query: "lantern quarry routes" });
-  assert.equal(res.hits.some(h => h.id === ID), false, "recall must not project the stale public hit");
+  assert.equal(res.hits.some((h: { id: string }) => h.id === ID), false, "recall must not project the stale public hit");
 };
 
 test("#1334: public in the index, private on disk -> hidden from untrusted recall and load_memory", async () => {
