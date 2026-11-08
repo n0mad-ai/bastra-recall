@@ -19,6 +19,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { dirname, join } from "node:path";
 import { bastraDataDir } from "./platform-paths.js";
 import { sendJson } from "./http-util.js";
+import { tasksEnabled } from "./tasks-enabled.js";
 
 export const UI_COOKIE = "bastra_ui";
 export const UI_CODE_PARAM = "bastra_ui_code";
@@ -146,6 +147,8 @@ export function gateUiAccess(req: IncomingMessage, res: ServerResponse, method: 
   if (!ui(raw) && !ui(path)) return false;
   if (method === "POST" && raw === "/ui/bootstrap") { issueCode(req, res); return true; }
   if (openUiPath(raw)) return false;
+  // A disabled Tasks preview keeps its routes hidden (404 from dispatchTaskUi).
+  if (raw.startsWith("/ui/tasks/") && !tasksEnabled()) return false;
   // The CLI's address refresh nudge returns the address status: owner only.
   if (raw === "/ui/assistant-address/refresh" && presentsProof(req, raw)) return false;
   const code = parsed.searchParams.get(UI_CODE_PARAM);
