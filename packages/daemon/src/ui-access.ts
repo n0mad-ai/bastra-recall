@@ -62,41 +62,61 @@ export function ensureUiSecret(path = uiSecretPath()): string | undefined {
   return readUiSecret(path);
 }
 
-const sessionValue = (secret: string) => createHmac("sha256", secret).update("bastra-ui-session-v1").digest("base64url");
+// Each sign-in gets its own random session id, bound to the secret by an HMAC:
+// the cookie is never derivable from the secret alone, needs no daemon state
+// (survives restarts) and every session dies with the secret file.
+const mac = (secret: string, sid: string) => createHmac("sha256", secret).update(`bastra-ui-session-v2:${sid}`).digest("base64url");
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** The Cookie header value an authorised browser carries. */
-export function uiSessionCookie(secret: string): string {
-  return `${UI_COOKIE}=${sessionValue(secret)}`;
+/** The Cookie header value of one signed-in browser session. */
+export function uiSessionCookie(secret: string, sid = randomBytes(32).toString("base64url")): string {
+  return `${UI_COOKIE}=${sid}.${mac(secret, sid)}`;
 }
 
 export function hasUiSession(req: IncomingMessage): boolean {
   const secret = readUiSecret();
   if (!secret) return false;
   const value = req.headers.cookie?.split(";").map(c => c.trim()).find(c => c.startsWith(`${UI_COOKIE}=`))?.slice(UI_COOKIE.length + 1);
-  return typeof value === "string" && same(value, sessionValue(secret));
+  const [sid, proof, extra] = value?.split(".") ?? [];
+  return extra === undefined && typeof sid === "string" && TOKEN.test(sid) && typeof proof === "string" && same(proof, mac(secret, sid));
+}
+
+/** A same-user local tool (no browser) authenticating with the secret itself. */
+function presentsSecret(req: IncomingMessage): boolean {
+  const secret = readUiSecret(), presented = req.headers[UI_SECRET_HEADER];
+  return !!secret && typeof presented === "string" && same(presented, secret);
 }
 
 /** Routes under /ui that answer without a UI session. */
 function openUiPath(path: string): boolean {
-  // refresh: the CLI's secret-free nudge to re-read the owner's saved address
-  // settings (empty body, no data returned).
-  return path === "/ui/health" || path === "/ui/bootstrap" || path === "/ui/assistant-address/refresh";
+  return path === "/ui/health" || path === "/ui/bootstrap";
 }
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 /**
  * Gate for every /ui request after the host gate. Returns true when the request
  * was answered here (bootstrap, code exchange or refusal).
  */
 export function gateUiAccess(req: IncomingMessage, res: ServerResponse, method: string, url: string): boolean {
-  const parsed = new URL(url, "http://127.0.0.1");
+  const raw = url.split("?", 1)[0];
+  const ui = (p: string) => p === "/ui" || p.startsWith("/ui/");
+  // Only origin-form targets ("/...", not "//host/..." or absolute) may reach /ui;
+  // an unparsable target is refused instead of throwing in the request handler.
+  let parsed: URL | undefined;
+  try { parsed = new URL(url, "http://127.0.0.1"); } catch { /* refused below when /ui-shaped */ }
+  if (!parsed || !raw.startsWith("/") || raw.startsWith("//")) {
+    if (!url.includes("/ui")) return false;
+    refuse(res); return true;
+  }
   // Routes match the RAW path by prefix; decide on it as well as on the
   // normalized one, so "/ui/search/../../" cannot slip past the gate.
-  const raw = url.split("?", 1)[0], path = parsed.pathname;
-  const ui = (p: string) => p === "/ui" || p.startsWith("/ui/");
+  const path = parsed.pathname;
   if (!ui(raw) && !ui(path)) return false;
   if (method === "POST" && raw === "/ui/bootstrap") { issueCode(req, res); return true; }
   if (openUiPath(raw)) return false;
+  // The CLI's address refresh nudge returns the address status: owner only.
+  if (raw === "/ui/assistant-address/refresh" && presentsSecret(req)) return false;
   const code = parsed.searchParams.get(UI_CODE_PARAM);
   if (code !== null && (method === "GET" || method === "HEAD")) {
     const secret = readUiSecret(), expires = codes.get(code);
@@ -122,8 +142,7 @@ function refuse(res: ServerResponse): void {
 
 function issueCode(req: IncomingMessage, res: ServerResponse): void {
   req.resume();
-  const secret = readUiSecret(), presented = req.headers[UI_SECRET_HEADER];
-  if (!secret || typeof presented !== "string" || !same(presented, secret)) { refuse(res); return; }
+  if (!presentsSecret(req)) { refuse(res); return; }
   const code = mintUiCode();
   if (!code) { sendJson(res, 429, { error: "too many pending UI codes" }); return; }
   sendJson(res, 200, { code, expires_in: CODE_TTL_MS / 1000 });
@@ -152,10 +171,15 @@ export function uiUrlWithCode(url: string, code: string | undefined): string {
 
 /** Same-user caller (CLI, daemon): turn `url` into a one-time browser login link. */
 export async function withUiCode(url: string, daemonBaseUrl: string): Promise<string> {
+  // The secret goes to a loopback http daemon only, never to an overridden
+  // remote BASTRA_DAEMON_URL; there the map opens without a code.
+  let base: URL;
+  try { base = new URL(daemonBaseUrl); } catch { return url; }
+  if (base.protocol !== "http:" || !LOOPBACK_HOSTS.has(base.hostname)) return url;
   const secret = ensureUiSecret();
   if (!secret) return url;
   try {
-    const response = await fetch(`${daemonBaseUrl}/ui/bootstrap`, {
+    const response = await fetch(new URL("/ui/bootstrap", base), {
       method: "POST",
       headers: { "Content-Type": "application/json", [UI_SECRET_HEADER]: secret },
       body: "{}",

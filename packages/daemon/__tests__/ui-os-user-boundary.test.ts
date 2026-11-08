@@ -11,6 +11,7 @@ import { mkdtemp, mkdir, writeFile, chmod, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { request } from "node:http";
+import { connect } from "node:net";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -99,4 +100,42 @@ test("#1198: the owner reaches /ui and the Tasks session without typing a token"
       assert.equal((await raw(base, "/ui/annotations", { headers: { Cookie: cookie } })).status, 401);
     } finally { await chmod(uiSecretPath(), 0o600); }
   }
+});
+
+test("#1198 review: the secret only ever travels to a loopback daemon", async () => {
+  const { withUiCode } = await import("../src/ui-access.js");
+  const original = globalThis.fetch; const sent: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => { sent.push(String(input)); throw new Error("no network in this test"); }) as typeof fetch;
+  try {
+    for (const base of ["http://192.0.2.10:6723", "https://daemon.example", "http://127.0.0.1.example:6723"]) {
+      assert.equal(await withUiCode(`${base}/ui`, base), `${base}/ui`);
+    }
+    assert.deepEqual(sent, [], "a non-loopback BASTRA_DAEMON_URL never receives the UI secret");
+  } finally { globalThis.fetch = original; }
+});
+
+test("#1198 review: sessions are distinct per sign-in; refresh needs the owner; malformed targets are refused", async t => {
+  const base = await daemon(t);
+  const { ensureUiSecret, withUiCode } = await import("../src/ui-access.js");
+  const secret = ensureUiSecret()!;
+  const signIn = async () => {
+    const link = new URL(await withUiCode(`${base}/ui/annotations`, base));
+    return String((await raw(base, link.pathname + link.search)).headers["set-cookie"]).split(";")[0];
+  };
+  const a = await signIn(), b = await signIn();
+  assert.notEqual(a, b, "the cookie is not a static function of the secret");
+  for (const cookie of [a, b]) assert.equal((await raw(base, "/ui/annotations", { headers: { Cookie: cookie } })).status, 200);
+  assert.ok(!a.includes(secret));
+  // The refresh nudge answers with the assistant address status: owner only.
+  const refresh = (headers: Record<string, string>) => raw(base, "/ui/assistant-address/refresh", { method: "POST", headers: { ...json, ...headers }, body: "{}" });
+  assert.equal((await refresh({})).status, 401);
+  assert.notEqual((await refresh({ "x-bastra-ui-secret": secret })).status, 401);
+  // A request target the URL parser rejects must not take the daemon down.
+  const status = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(new URL(base).port), "127.0.0.1", () => socket.write("GET http://[/ui HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"));
+    let data = ""; socket.on("data", c => { data += c; }); socket.on("end", () => resolve(data.split("\r\n")[0])); socket.on("error", reject);
+  });
+  assert.doesNotMatch(status, / 200 /);
+  assert.equal((await raw(base, "//evil/ui/annotations")).status, 401);
+  assert.equal((await raw(base, "/ui/health")).status, 200, "the daemon still answers");
 });
