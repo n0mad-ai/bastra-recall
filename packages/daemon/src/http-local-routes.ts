@@ -152,8 +152,9 @@ export function dispatchLocalRoutes(
   // would only translate back into `{}` anyway. Loopback-only like
   // /hook/recall. Logic lives in prompt-lane.ts; this stays a route.
   if (method === "POST" && url === "/hook/prompt") {
+    const delivery = createLaneDelivery(res);
     readJsonBody(req, MAX_BODY_BYTES)
-      .then(async (body) => {
+      .then(body => delivery.run(async () => {
         const payload = (body.payload ?? {}) as ClaudeHookPayload;
         const ppid = typeof body.client_ppid === "number" ? body.client_ppid : null;
         const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
@@ -194,12 +195,10 @@ export function dispatchLocalRoutes(
             additionalContext: [parsed.hookSpecificOutput?.additionalContext, due.text].filter(Boolean).join("\n") };
           result = JSON.stringify(parsed); res.once("finish", due.record);
         }
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(result);
-      })
+        delivery.answer(result);
+      }))
       .catch(() => {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end("{}");
+        delivery.answer("{}");
       });
     return true;
   }

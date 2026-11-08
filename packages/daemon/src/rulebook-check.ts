@@ -4,6 +4,7 @@ import { expireReceipts } from "./receipt-store.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { recordRulebookEvent } from "./rulebook-events.js";
 import { randomUUID } from "node:crypto";
+import { compactContextNotice, resetContextNotices } from "./context-notice.js";
 import { z } from "zod";
 import { loadSessionState, mutateSessionState, type SessionState, ACTIVE_CONVENTIONS_CAP, recordActiveConventions, taskIdFor } from "./session-state.js";
 import { callerSessionStore } from "./caller-session.js";
@@ -45,6 +46,7 @@ function identity(p: RulebookPayload): string {
 const deferredActors = (s: CheckState) => s.actors.filter(a => a.deferredStop || a.required.length || a.loaded.length).map(a => ({ ...a, correspondenceEvidence:false, dismissed:[], checked: false, ids: [], denies: 0, stops: 0, roundApplied:[],roundDismissed:[],repairs:0,repairProse:false }));
 export async function resetRulebookContext(sessionId: string): Promise<void> {
   if (sessionId) await mutateSessionState(sessionId, s => {
+    resetContextNotices(s);
     const old = read(s); put(s, { project: old.project, context: randomUUID(), round: old.round, actors: deferredActors(old).map(a=>({...a,loaded:[],dismissed:[]})), unchecked: old.unchecked, copyViolations:old.copyViolations, blockedDismissals:old.blockedDismissals, exceptions: old.exceptions });
   });
 }
@@ -66,8 +68,18 @@ export async function beginRulebookRound(p: RulebookPayload, catalog: KernelCand
   const taskNote = correspondence.length ? (de ?
     `Korrespondenz: Nur wenn diese Runde tatsächlich eine Nachricht bearbeitet (gemeldete Aufgabenstufe, Kopierstruktur unter geltendem Validator oder externer Nachrichten-Toolaufruf), jede ID ausdrücklich erklären: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; vollständige IDs mit list_rules)`:""}. Alternativ alle ungeschützten Korrespondenzregeln mit not_applicable:[{category:"correspondence",reason}] erklären. In dieser Runde geladene oder als anwendbar erklärte Regeln bleiben verbindlich. Ein rulebook_check genügt: anwendbare IDs in applicable, jede übrige ID in not_applicable:[{id,reason}] mit mindestens 10 Zeichen Begründung. applicable:[] allein genügt nicht. Laden zählt als anwendbar; erklärte Validatoren prüfen die Antwort auch ohne Task. Die Aufgabenstufe ist eine Selbstauskunft des Agenten, kein Nachweis einer Nutzerfreigabe oder Versandberechtigung.` :
     `Correspondence: only when this round actually handles a message (reported task stage, copy structure under an applied validator, or external messaging tool call), explicitly decide every ID: ${correspondence.slice(0,40).join(", ")}${correspondence.length>40?` (+${correspondence.length-40}; get all IDs with list_rules)`:""}. Alternatively cover all unprotected correspondence rules with not_applicable:[{category:"correspondence",reason}]. Rules loaded/applied this round remain binding. One rulebook_check suffices: applicable IDs plus every remaining ID in not_applicable:[{id,reason}], at least 10 substantive characters. applicable:[] alone is insufficient. Loading counts as applicable; declared validators check the answer even without task. The workflow stage is an agent self-report, not evidence of user approval or sending permission.`) : "";
-  return [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
-    taskNote, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
+  const fullProcedure = [count ? (de ? `Regelbuch: ${count} Regeln im Index; vor der Antwort prüfen (load_memory oder ${example}, wenn keine zutrifft).` : `Rulebook: ${count} rules in the index; check before answering (load_memory or ${example} if none applies).`) : "",
+    taskNote].filter(Boolean).join("\n");
+  const reminder = count ? (de ?
+    `Regelbuch unverändert: vor dieser Antwort prüfen; keine passende Regel: ${example}.` :
+    `Rulebook unchanged: check before this answer; no applicable rule: ${example}.`) : "";
+  const correspondenceReminder = correspondence.length ? (de ?
+    " Korrespondenzpflicht nur bei tatsächlicher Nachrichtenarbeit; ungeschützte Regeln dürfen begründet abgemeldet werden, geladene/angewandte bleiben bindend; Stage erlaubt keinen Versand." :
+    " Correspondence duty only for actual message work; unprotected rules may be dismissed with reasons, loaded/applied rules remain binding; stage grants no sending permission.") : "";
+  const procedure = fullProcedure.length > 8800 ? fullProcedure : await compactContextNotice(p.session_id, `procedure:${hookClientEvidence(p)}:${identity(p)}`,
+    JSON.stringify([fullProcedure, catalog.entries.map(e => [e.id,e.revision,e.binding_hash,e.validator,e.rule_categories]), catalog.omitted]),
+    fullProcedure, reminder + correspondenceReminder);
+  return [procedure, blockedDismissals.length ? (de ? `Regelbuch-Abmeldung ignoriert; diese Aufgabenregeln oder in dieser Runde geladenen/angewandten Regeln bleiben verbindlich: ${blockedDismissals.join(", ")}.` : `Rulebook dismissal ignored; these task rules or rules loaded/applied this round remain binding: ${blockedDismissals.join(", ")}.`) : "", copyViolations ? (de ? `Korrespondenz: ${copyViolations} Verstöße gegen Kopiertext-Prüfgrenzen protokolliert.` : `Correspondence: ${copyViolations} copy-validator violations recorded.`) : "", exceptions.length ? (de ? `Regelbuch-Ausnahmen (nicht anwendbar): ${exceptions.join(", ")}.` : `Rulebook exceptions (not applicable): ${exceptions.join(", ")}.`) : "", unchecked ? (de ? `Regelbuch: ${unchecked} Prüfgrenzen blieben ungeprüft (Begrenzung oder Ausfall).` : `Rulebook: ${unchecked} unchecked boundary observations (retry cap or outage).`) : ""].filter(Boolean).join("\n");
 }
 // #1364: an over-long exception ID is reported by recordRulebookCheck instead of failing the whole parse.
 const RULE_ID_MAX = 200;

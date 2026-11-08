@@ -1,4 +1,4 @@
-import { beginRulebookRound, catalogFor, type CatalogProvider } from "./rulebook-check.js";
+import { beginRulebookRound, catalogFor, type CatalogProvider, type RulebookPayload } from "./rulebook-check.js";
 /**
  * UserPromptSubmit lane, daemon-side (#343/#15 — stage A of #305 direction 2).
  *
@@ -380,6 +380,8 @@ async function runPromptLaneInner(
       revisionOf: opts.revisionOf,
       conventionOf: opts.conventionOf,
       surface: client,
+      maxChars: remainingContext,
+      actorKey: (payload as RulebookPayload).agent_id ?? (hookAgent(payload) === "main" ? "main" : "unattributed"),
     });
     const trivialBlocks = [parkedForTrivial?.note ?? null, taskBlock].map(fitBlock).filter((b): b is string => b !== null);
     if (trivialBlocks.length > 0) {
@@ -773,6 +775,8 @@ async function runPromptLaneInner(
     revisionOf: opts.revisionOf,
     conventionOf: opts.conventionOf,
     surface: client,
+    maxChars: remainingContext,
+    actorKey: (payload as RulebookPayload).agent_id ?? (hookAgent(payload) === "main" ? "main" : "unattributed"),
   });
 
   // The impact block goes FIRST: it is the answer to what the user just asked,

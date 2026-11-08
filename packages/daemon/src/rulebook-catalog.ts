@@ -64,7 +64,7 @@ async function projectIndex(memories: Memory[], opts: RulebookCatalogOptions): P
     const declaration = catalogDeclaration(m.fm, { activeConvention: active.has(m.fm.id), floor: pinned.has(m.fm.id) });
     if (!declaration) continue;
     if (opts.mode === "ids") {
-      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
+      entries.push({ id: m.fm.id, rulebook: declaration.rulebook, title: "", body: "", group: "explicit", binding_hash: hash([m.revision ?? [m.fm, m.body], declaration]), revision: null, updated: null, stale_status: "unknown", rule_categories:m.fm.rule_categories, validator:m.fm.validator });
       continue;
     }
     const body = cleanRuleText(stripAutoRelatedSection(m.body ?? "")).trim();

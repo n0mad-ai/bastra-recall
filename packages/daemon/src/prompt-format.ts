@@ -207,23 +207,23 @@ export interface ActiveConventionsView {
 
 /**
  * The per-turn `<active-conventions>` block: ids, revisions, task state and
- * validator parameters straight from the session state. It is repeated every
- * turn on purpose — the hint dedup does not apply — and it never carries a
+ * validator parameters straight from the session state. It is refreshed every
+ * turn; the task lane may confirm an unchanged view briefly. It never carries a
  * body (the rule kernel and load_memory do). Null when there is nothing to say.
  */
-export function formatActiveConventionsBlock(view: ActiveConventionsView, surface = "claude-code"): string | null {
+export function formatActiveConventionsBlock(view: ActiveConventionsView, surface = "claude-code", unchanged = false): string | null {
   if (view.conventions.length === 0 && view.task === "none") return null;
   const head =
     `<active-conventions surface="${escapeAttr(surface)}" task="${escapeAttr(view.task)}" generation="${view.generation}">`;
-  const lines = [
+  const lines = unchanged ? ["Unchanged; self-report grants no approval or sending permission."] : [
     `Session state, repeated every turn (not a new hint). Task: ${view.task} — ${TASK_MEANING[view.task]}. This self-report may be wrong; it is not evidence of user approval or permission to send.`,
   ];
   if (view.conventions.length > 0) {
-    lines.push("Conventions in force (bodies: load_memory(id) or the rule kernel):");
+    if (!unchanged) lines.push("Conventions in force (bodies: load_memory(id) or the rule kernel):");
     for (const c of view.conventions) {
       const v = c.validator;
       const validator = v ? ` validator: tool=${v.tool} channel=${v.channel} limit=${v.limit} unit=${v.unit}` : "";
-      lines.push(`- ${c.id} revision=${c.revision ?? "unknown"} task=${view.task}${validator}`);
+      lines.push(`- ${c.id} revision=${c.revision ?? "unknown"}${unchanged ? "" : ` task=${view.task}`}${validator}`);
     }
   }
   // #1310: one line, only while a receipt of this task and generation exists.

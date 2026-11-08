@@ -4,6 +4,7 @@
 import type {Vault} from '@bastra-recall/core';
 import {vaultConventionOf,type ConventionSource} from './convention-source.js';
 import {formatActiveConventionsBlock,type ActiveConventionsView} from './prompt-format.js';
+import {compactContextNotice} from './context-notice.js';
 import {currentReceipt} from './receipt-store.js';
 import {mutateSessionState,type ReadonlySessionState} from './session-state.js';
 
@@ -14,6 +15,8 @@ export interface TaskStepInput {
  conventionOf?:(id:string)=>Promise<ConventionSource>;
  surface:string;
  now?:number;
+ maxChars?:number;
+ actorKey?:string;
 }
 export function vaultRevisionOf(vault:Pick<Vault,'get'>):(id:string)=>Promise<string|null>{
  const source=vaultConventionOf(vault);
@@ -31,7 +34,7 @@ async function step(input:TaskStepInput):Promise<string|null>{
  if(!sessionId)return null;
  const active=snapshot.activeConventions??[];
  if(!active.length&&(!snapshot.activeTask||snapshot.activeTask.kind==='none'))return null;
- if(!input.conventionOf&&!input.revisionOf)return formatActiveConventionsBlock(view(snapshot),input.surface);
+ if(!input.conventionOf&&!input.revisionOf)return render(view(snapshot),input);
  // Authoritative indexed metadata only; no matching against the user's text.
  const entries=await Promise.all(active.map(async(c):Promise<[string,ConventionSource]>=>{
   const source:ConventionSource=input.conventionOf?
@@ -42,7 +45,7 @@ async function step(input:TaskStepInput):Promise<string|null>{
  const sources=new Map<string,ConventionSource>(entries);
  const drift=active.some(c=>{const source=sources.get(c.id)!;return c.revision!==source.revision||
   (input.conventionOf!==undefined&&JSON.stringify(c.validator)!==JSON.stringify(source.validator));});
- if(!drift)return formatActiveConventionsBlock(view(snapshot),input.surface);
+ if(!drift)return render(view(snapshot),input);
  let updated:ActiveConventionsView|null=null;
  const persisted=await mutateSessionState(sessionId,s=>{
   const changed:string[]=[];
@@ -56,5 +59,13 @@ async function step(input:TaskStepInput):Promise<string|null>{
   delete s.receipts;
   updated=view(s,changed);
  });
- return formatActiveConventionsBlock(persisted&&updated?updated:view(snapshot),input.surface);
+ return render(persisted&&updated?updated:view(snapshot),input);
+}
+
+async function render(current:ActiveConventionsView,input:TaskStepInput):Promise<string|null>{
+ const full=formatActiveConventionsBlock(current,input.surface);
+ if(!full || full.length+1>(input.maxChars??Infinity))return null;
+ const unchanged=formatActiveConventionsBlock(current,input.surface,true)!;
+ return compactContextNotice(input.sessionId,`active:${input.surface}:${input.actorKey??"main"}`,
+  JSON.stringify([full,input.snapshot.activeTask?.id,current.conventions.map(c=>[c.id,c.scope])]),full,unchanged);
 }
