@@ -18,7 +18,7 @@ const descendants=(n:Node):Node[]=>[n,...n.children.flatMap(descendants)];
 async function ui(snapshot:any,due:any={cards:[]},overrides:any={}){
  const nodes=new Map<string,Node>(),get=(id:string)=>{if(!nodes.has(id)){const n=new Node();n.id=id;if(id==="task-message")n.hidden=true;nodes.set(id,n);}return nodes.get(id)!;};
  const document={hidden:false,activeElement:null as Node|null,handlers:{} as Record<string,Function>,addEventListener(name:string,fn:Function){this.handlers[name]=fn;},body:get("body"),getElementById:get,createElement:()=>{const n=new Node();n.focus=()=>{document.activeElement=n;};return n;},querySelectorAll:(selector:string)=>selector==="[data-task-column]"?get("task-tasks").children:[]};
- const source=(await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8")).replace("export function createTasksView() {", "").replace(/return \{ open, close \};\s*\}\s*$/, ""),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,setTimeout,clearTimeout,setInterval:()=>0,clearInterval:()=>{},crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
+ const source=(await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8")).replace("export function createTasksView() {", "").replace(/return \{ open, close \};\s*\}\s*$/, ""),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,AbortController,setTimeout,clearTimeout,setInterval:()=>0,clearInterval:()=>{},crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
  runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get:(id:string)=>get(`task-${id}`),ctx};
 }
 test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
@@ -271,4 +271,18 @@ test('#1219: a drag whose card is replaced by a foreground redraw does not keep 
  u.change({...liveBase,tasks:[{...liveTask,goal:'Foreground'}]});await runInContext('refresh()',u.ctx); // replaces the dragged card; its dragend never fires
  u.change({...liveBase,tasks:[{...liveTask,goal:'Later external change'}]});await u.tick();
  assert.ok(descendants(u.get('tasks')).some(n=>n.textContent==='Later external change'));
+});
+
+
+test('#1402: repeated status deadlines abort each fetch before the next poll starts',async()=>{
+ const timers:Function[]=[];let hanging=false,pending=0,aborted=0,peak=0;const signals:AbortSignal[]=[];
+ const u=await ui(liveBase,undefined,{setTimeout:(fn:Function)=>{timers.push(fn);return timers.length;},clearTimeout:()=>{},fetch:async(_url:string,options:any)=>{
+  if(!hanging)return {ok:true,json:async()=>liveBase};
+  pending++;peak=Math.max(peak,pending);if(options.signal)signals.push(options.signal);
+  return new Promise((_resolve,reject)=>{options.signal?.addEventListener('abort',()=>{pending--;aborted++;reject(new DOMException('Aborted','AbortError'));},{once:true});});
+ }});
+ await runInContext("visible=true;token='fixture'",u.ctx);hanging=true;
+ for(let i=0;i<8;i++){const poll=runInContext('poll()',u.ctx);await new Promise(r=>setImmediate(r));timers.splice(0).forEach(fn=>fn());await poll;}
+ assert.equal(aborted,8);assert.equal(pending,0);assert.equal(peak,1);assert.equal(signals.length,8);assert.ok(signals.every(signal=>signal.aborted));
+ hanging=false;await runInContext('poll()',u.ctx);assert.equal(await runInContext('polling',u.ctx),false);
 });

@@ -7,10 +7,10 @@ const active=()=>visible&&!document.hidden;
 const busy=()=>dragTask||['detail','compose','settings','cards-dialog','proposal'].some(name=>$(name).open);
 async function poll(){
  if(!active()||signedOut||busy()||polling||accessExpired||(!token&&!localSession))return;
- polling=true;const epoch=connection;let timer;
- // A status request that never answers is abandoned; the next tick polls again.
- const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Zeitüberschreitung')),10000);});
- try{await Promise.race([refresh(true),timeout]);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){if(localSession)await recoverLocal();else{accessExpired=true;message(e.message,true);}}}
+ polling=true;const epoch=connection,controller=new AbortController();let timer;
+ // Cancel the network request at its deadline before allowing another poll.
+ const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Zeitüberschreitung'));},10000);});
+ try{await Promise.race([refresh(true,false,controller.signal),timeout]);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){if(localSession)await recoverLocal();else{accessExpired=true;message(e.message,true);}}}
  finally{clearTimeout(timer);polling=false;}
 }
 function armPolling(){clearInterval(pollTimer);pollTimer=active()?setInterval(poll,1500):0;}
@@ -24,7 +24,7 @@ const verification=t=>{const v=t.verification;const names={verified:"bestätigt"
 const whyNow=c=>c.why_now?.startsWith("Registered condition") ? "Der Auslöser ist fällig. Ein Ergebnis oder bestandenes Messkriterium wird damit nicht behauptet." : c.why_now;
 const message=(value,error=false)=>{$("message").textContent=value;$("message").hidden=!value;$("message").dataset.kind=error?"error":"success";};
 const time=(at,tz)=>at===undefined?"noch keine":new Intl.DateTimeFormat("de-DE",{weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:tz||"Europe/Madrid"}).format(new Date(at));
-async function api(name,input={}){const r=await fetch(localSession?`/ui/tasks/api/task_${name}`:`/api/v1/task_${name}`,{method:"POST",headers:{"Content-Type":"application/json",...(localSession?{"x-bastra-task-csrf":csrf}:{Authorization:`Bearer ${token}`})},body:JSON.stringify(input)});const b=await r.json();if(!r.ok){const e=new Error(errors[b.code]||"Vorgang nicht möglich; Daemon/Status prüfen.");e.code=b.code;throw e;}return b;}
+async function api(name,input={},signal){const r=await fetch(localSession?`/ui/tasks/api/task_${name}`:`/api/v1/task_${name}`,{method:"POST",headers:{"Content-Type":"application/json",...(localSession?{"x-bastra-task-csrf":csrf}:{Authorization:`Bearer ${token}`})},body:JSON.stringify(input),signal});const b=await r.json();if(!r.ok){const e=new Error(errors[b.code]||"Vorgang nicht möglich; Daemon/Status prüfen.");e.code=b.code;throw e;}return b;}
 async function recoverLocal(ownAction=false){
  if(!localSession||signedOut||!active()||accessExpired)return false;
  try{
@@ -43,7 +43,7 @@ async function action(fn,ownAction=true){const epoch=connection;try{await fn();}
 }}
 function button(label,fn,owner=false,unavailable=false){const b=text("button",label,"skill-declare");b.disabled=unavailable||(owner&&snapshot.role!=="owner");b.addEventListener("click",()=>action(fn));return b;}
 async function mutate(task,op,extra={}){const current=await api("get",{id:task.id});await api(op,{id:task.id,expected_revision:current.expected_revision,...extra});await refresh();message(op==="rearm"?"Erneut vorgelegt. Die Aufgabe wartet auf deine Freigabe.":"Aufgabe aktualisiert.");}
-async function refresh(background=false,preserveCards=false){const seq=++request,epoch=connection,next=await api("status");
+async function refresh(background=false,preserveCards=false,signal){const seq=++request,epoch=connection,next=await api("status",{},signal);
  if(seq!==request||epoch!==connection||(background&&(!active()||busy())))return;
  const changed=JSON.stringify(next)!==JSON.stringify(snapshot);if(background&&!changed)return;
  snapshot=next;if(!background&&!preserveCards)$("cards").replaceChildren();$("workspace").hidden=false;$("status").replaceChildren(text("h2",`Funktion ${snapshot.controls.enabled?"an":"aus"} · ${snapshot.controls.muted?"stumm":"hörbar"}`),text("p",`Automatik ${!snapshot.controls.enabled?"aus":snapshot.runtime.running?"läuft":"nicht aktiv"}; nächste Prüfung ${snapshot.controls.enabled?time(snapshot.runtime.next_tick||undefined):"keine"}; letzter Fehler ${snapshot.runtime.last_error||"keiner"}; Backoff ${snapshot.runtime.backoff_ms||0} ms. Ausführung ${snapshot.controls.execution_stopped?"gestoppt (sicherer Standard)":"aktiv"}.`));
