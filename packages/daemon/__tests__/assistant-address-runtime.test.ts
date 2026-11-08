@@ -211,3 +211,20 @@ test("#1335: migration completion follows retirement and existing protocol-2 ins
  const modern=await fixture(t);await ensureAssistantAddressRuntime(modern);const path=join(modern.runtimeDir,"current.json"),before=await readFile(path,"utf8");
  await migrateAssistantAddressRuntime(modern);assert.equal(await readFile(path,"utf8"),before);assert.equal(existsSync(join(modern.runtimeDir,"protocol-1-backup.json")),false);assert.equal(existsSync(join(modern.runtimeDir,"protocol-2-migrated")),false);
 });
+
+test("#1401: overload replies never wait for complete or trickling request headers",{skip:!["/usr/bin/lockf","/usr/bin/flock"].some(p=>existsSync(p))?"no lockf/flock":false},async t=>{
+ const o=await fixture(t);await ensureAssistantAddressRuntime(o);const holders:ReturnType<typeof spawn>[]=[];
+ t.after(()=>{for(const child of holders)try{process.kill(-child.pid!);}catch{}});
+ for(let i=0;i<16;i++){
+  const ready=join(o.home,`slot-ready-${i}`),lock=join(o.runtimeDir,"slots",String(i)),bin=existsSync("/usr/bin/lockf")?"/usr/bin/lockf":"/usr/bin/flock";
+  const args=bin.endsWith("lockf")?["-s","-k","-t","0",lock]:["-n","-E","75",lock];
+  holders.push(spawn(bin,[...args,"/bin/sh","-c",'echo ready > "$1"; exec sleep 15',"fixture",ready],{detached:true,stdio:"ignore"}));
+  for(const until=Date.now()+3000;!existsSync(ready);){if(Date.now()>until)throw Error("fixture failed to acquire slot");await new Promise(r=>setTimeout(r,10));}
+ }
+ const port=await accepted(t,o),{connect}=await import("node:net");
+ const response=await new Promise<string>((resolve,reject)=>{
+  const socket=connect(port,"127.0.0.1");let body="";const timer=setTimeout(()=>{socket.destroy();reject(Error("overload shell waited for client headers outside its slots"));},1500);
+  const trickle=setInterval(()=>socket.write("X-Slow: 1\r\n"),100);socket.on("error",reject);socket.on("data",chunk=>{body+=chunk;if(body.includes("ausgelastet")){clearTimeout(timer);clearInterval(trickle);socket.destroy();resolve(body);}});socket.on("close",()=>{clearTimeout(timer);clearInterval(trickle);});
+  socket.once("connect",()=>socket.write("GET /ui/ HTTP/1.1\r\n"));
+ });assert.match(response,/HTTP\/1.1 503/);assert.match(response,/Retry-After: 1/);
+});
