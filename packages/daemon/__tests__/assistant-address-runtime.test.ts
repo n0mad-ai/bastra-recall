@@ -148,3 +148,15 @@ test("#1335: a PID whose identity changed after inspection is never signalled",a
   assert.deepEqual(retired,expected,`identity at the signal boundary: ${JSON.stringify(now)}`);
  }
 });
+
+
+test("#1335: test limits cannot extend production helper deadlines",async t=>{
+ const o=await fixture(t);await ensureAssistantAddressRuntime(o);
+ const preload=join(o.home,"capture-timers.mjs"),record=join(o.home,"timer-delays");
+ await writeFile(preload,`import {appendFileSync} from 'node:fs';const original=globalThis.setTimeout;globalThis.setTimeout=(fn,delay,...args)=>{appendFileSync(${JSON.stringify(record)},String(delay)+'\\n');return original(fn,delay,...args);};`);
+ const port=await accepted(t,o,"127.0.0.1",0,{BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS:"30000,600000",NODE_OPTIONS:`${process.env.NODE_OPTIONS??""} --import=${preload}`});
+ const {connect}=await import("node:net"),socket=connect(port,"127.0.0.1");socket.on("error",()=>{});socket.resume();t.after(()=>socket.destroy());
+ let delays:number[]=[];
+ for(const until=Date.now()+5000;Date.now()<until;){try{delays=(await readFile(record,"utf8")).trim().split("\n").map(Number);}catch{}if(delays.length>=2)break;await new Promise(r=>setTimeout(r,25));}
+ assert.deepEqual(delays.slice(0,2),[10000,230000],"test-only overrides must be capped at each production deadline");
+});

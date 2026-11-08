@@ -113,7 +113,7 @@ export async function startAssistantSocket(opts:AssistantGatewayOptions,listenin
   // headers get 10 s, and no connection outlives the longest forwarded request,
   // whatever its activity. The variable only shortens both for tests.
   const [headersMs,lifetimeMs]=(process.env.BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS??"").split(",").map(Number);
-  const headers=setTimeout(()=>socket.destroy(),headersMs||10000);setTimeout(()=>socket.destroy(),lifetimeMs||230000).unref();
+  const headers=setTimeout(()=>socket.destroy(),Math.min(headersMs||10000,10000));setTimeout(()=>socket.destroy(),Math.min(lifetimeMs||230000,230000)).unref();
   server.once("request",()=>clearTimeout(headers));
   server.emit("connection",socket);socket.resume();
  }
