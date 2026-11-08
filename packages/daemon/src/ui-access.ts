@@ -29,7 +29,7 @@ const CODE_TTL_MS = 60_000;
 const COOKIE_MAX_AGE_S = 400 * 24 * 60 * 60;
 const codes = new Map<string, number>();
 const usedProofs = new Map<string, number>();
-const PROOF_WINDOW_MS = 60_000;
+const PROOF_WINDOW_MS = 30_000;
 
 export function uiSecretPath(): string {
   return join(bastraDataDir(), "ui-secret");
@@ -84,14 +84,15 @@ export function hasUiSession(req: IncomingMessage): boolean {
   return extra === undefined && typeof sid === "string" && TOKEN.test(sid) && typeof proof === "string" && same(proof, mac(secret, sid));
 }
 
-const proofMac = (secret: string, path: string, nonce: string, ts: string) =>
-  createHmac("sha256", secret).update(`bastra-ui-proof-v1:${path}:${nonce}:${ts}`).digest("base64url");
+// Bound to the target host:port and path, single-use (nonce set), 30 s window.
+const proofMac = (secret: string, host: string, path: string, nonce: string, ts: string) =>
+  createHmac("sha256", secret).update(`bastra-ui-proof-v1:${host.toLowerCase()}:${path}:${nonce}:${ts}`).digest("base64url");
 
-/** Header for a same-user local tool calling `path`: nonce, time and HMAC, never the secret. */
-export function uiProofHeaders(path: string, secret = readUiSecret()): Record<string, string> {
+/** Header for a same-user local tool calling `path` on `host` (host:port): nonce, time and HMAC, never the secret. */
+export function uiProofHeaders(path: string, host: string, secret = readUiSecret()): Record<string, string> {
   if (!secret) return {};
   const nonce = randomBytes(32).toString("base64url"), ts = String(Date.now());
-  return { [UI_PROOF_HEADER]: `${nonce}.${ts}.${proofMac(secret, path, nonce, ts)}` };
+  return { [UI_PROOF_HEADER]: `${nonce}.${ts}.${proofMac(secret, host, path, nonce, ts)}` };
 }
 
 /** A same-user local tool (no browser): fresh, unused proof bound to this path. */
@@ -101,7 +102,7 @@ function presentsProof(req: IncomingMessage, path: string): boolean {
   const [nonce, ts, proof, extra] = presented.split(".");
   const now = Date.now(), at = Number(ts);
   if (extra !== undefined || !nonce || !TOKEN.test(nonce) || !proof || !/^\d{1,16}$/.test(ts ?? "") || Math.abs(now - at) > PROOF_WINDOW_MS) return false;
-  if (!same(proof, proofMac(secret, path, nonce, ts!))) return false;
+  if (!same(proof, proofMac(secret, req.headers.host ?? "", path, nonce, ts!))) return false;
   for (const [n, expires] of usedProofs) if (expires <= now) usedProofs.delete(n);
   if (usedProofs.has(nonce) || usedProofs.size >= 1000) return false;
   usedProofs.set(nonce, now + 2 * PROOF_WINDOW_MS);
@@ -210,7 +211,7 @@ export async function withUiCode(url: string, daemonBaseUrl: string): Promise<st
   try {
     const response = await fetch(new URL("/ui/bootstrap", base), {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...uiProofHeaders("/ui/bootstrap", secret) },
+      headers: { "Content-Type": "application/json", ...uiProofHeaders("/ui/bootstrap", base.host, secret) },
       body: "{}",
     });
     if (!response.ok) return url;

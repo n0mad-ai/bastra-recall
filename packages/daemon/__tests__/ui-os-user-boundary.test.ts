@@ -151,10 +151,12 @@ test("#1198 review: sessions are distinct per sign-in; refresh needs the owner; 
   const refresh = (headers: Record<string, string>) => raw(base, "/ui/assistant-address/refresh", { method: "POST", headers: { ...json, ...headers }, body: "{}" });
   assert.equal((await refresh({})).status, 401);
   const { uiProofHeaders } = await import("../src/ui-access.js");
-  const proof = uiProofHeaders("/ui/assistant-address/refresh");
+  const host = new URL(base).host;
+  const proof = uiProofHeaders("/ui/assistant-address/refresh", host);
   assert.notEqual((await refresh(proof)).status, 401);
   assert.equal((await refresh(proof)).status, 401, "a proof is single-use");
-  assert.equal((await refresh(uiProofHeaders("/ui/bootstrap"))).status, 401, "a proof is bound to its path");
+  assert.equal((await refresh(uiProofHeaders("/ui/bootstrap", host))).status, 401, "a proof is bound to its path");
+  assert.equal((await refresh(uiProofHeaders("/ui/assistant-address/refresh", "127.0.0.1:1"))).status, 401, "a proof is bound to its target host:port");
   // A request target the URL parser rejects must not take the daemon down.
   const status = await new Promise<string>((resolve, reject) => {
     const socket = connect(Number(new URL(base).port), "127.0.0.1", () => socket.write("GET http://[/ui HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"));

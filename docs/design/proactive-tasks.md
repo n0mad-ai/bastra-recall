@@ -720,8 +720,11 @@ loopback peer + localhost Host prove no OS-user identity, so every /ui route
 cookie: a random per-sign-in session id plus its HMAC under a per-user secret
 (`<data dir>/ui-secret`, 0600, refused when another user owns it or can read it).
 The secret never leaves the owner's processes: local tools send a single-use,
-path-bound HMAC proof (nonce + time, 60 s window) and only to an http loopback
-daemon URL. `bastra ui` and the assistant address
+HMAC proof bound to the target host:port and path (nonce + time, 30 s window,
+reused nonces refused) and only to an http loopback daemon URL. Open owner
+decision: a proof captured by a listener squatting the daemon port can still be
+relayed within that window; a server-issued challenge or daemon identity proof
+would close it. `bastra ui` and the assistant address
 setup trade the secret for a single-use code (60 s) in the opened URL; the daemon
 exchanges it for an HttpOnly/SameSite=Strict cookie and redirects the code out of
 the URL. No manual token entry. Another OS user, or a local proxy/tunnel that
