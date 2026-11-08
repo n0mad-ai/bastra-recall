@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   move, every directory between the archive root and the destination must be
   a real directory of this user, never a symlink; otherwise the target stays
   where it is. A symlinked archive path the user set keeps working (#1383).
+- The local UI and its Tasks session are bound to the OS user that runs the
+  daemon. A loopback connection with a localhost Host is no longer enough:
+  another account on the same machine, or a local proxy that rewrites Host,
+  gets 401. `bastra ui` signs the browser in with a one-time code backed by a
+  0600 secret in `~/.bastra/ui-secret`; nothing to type. A browser that has
+  not been signed in yet needs `bastra ui` once (#1198).
 
 ### Fixed
 

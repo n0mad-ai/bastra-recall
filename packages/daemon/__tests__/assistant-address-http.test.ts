@@ -7,6 +7,7 @@ import { Vault,SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { settingsFilePath } from "../src/settings.js";
+import { ensureUiSecret, uiSessionCookie } from "../src/ui-access.js";
 
 test("#1332: actual settings route preserves local CSRF and performs no system change without consent",async t=>{
  assert.ok(process.env.BASTRA_TEST_RUN_ROOT,"requires isolated test profile");
@@ -15,16 +16,16 @@ test("#1332: actual settings route preserves local CSRF and performs no system c
  const hostsPath=join(root,"hosts"),helperPath=join(root,"helper.plist"),runtimeDir=join(root,"runtime"),firefoxRoot=join(root,"firefox");await writeFile(hostsPath,"127.0.0.1 localhost\n");await mkdir(firefoxRoot);
  await mkdir(runtimeDir);await writeFile(join(runtimeDir,"managed"),`bastra-assistant-address:${process.getuid?.()??0}\n`);await writeFile(join(runtimeDir,"current.json"),JSON.stringify({protocol:2,version:"a".repeat(64),daemonUrl:"http://127.0.0.1:9"}));
  const vaultDir=join(root,"vault");await mkdir(vaultDir);const vault=new Vault(vaultDir);await vault.init();const search=new SearchIndex(vault);search.start();
- let admins=0;
- const handle=await startHttpServer({port:0,vault,search,telemetry:new Telemetry(),version:"test",toolDeps:{vault,search,telemetry:new Telemetry(),vaultPath:vaultDir},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"},assistantAddress:{port:0,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot,home:root,uid:String(process.getuid?.()??0),username:"fixture",platform:"darwin",ensureRuntime:async()=>{},openBrowser:async()=>{},runAdmin:async plan=>{admins++;await writeFile(hostsPath,plan.hostsAfter);if(plan.helperAfter)await writeFile(helperPath,plan.helperAfter);}}});
+ let admins=0;const opened:string[]=[];
+ const handle=await startHttpServer({port:0,vault,search,telemetry:new Telemetry(),version:"test",toolDeps:{vault,search,telemetry:new Telemetry(),vaultPath:vaultDir},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"},assistantAddress:{port:0,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot,home:root,uid:String(process.getuid?.()??0),username:"fixture",platform:"darwin",ensureRuntime:async()=>{},openBrowser:async(url:string)=>{opened.push(url);},runAdmin:async plan=>{admins++;await writeFile(hostsPath,plan.hostsAfter);if(plan.helperAfter)await writeFile(helperPath,plan.helperAfter);}}});
  t.after(async()=>{await handle.close();search.stop();await vault.stop?.();});const base=`http://127.0.0.1:${handle.port}`;
  assert.equal(JSON.parse(await readFile(join(runtimeDir,"current.json"),"utf8")).daemonUrl,base,"HTTP startup publishes its actual bound port without replacing helper code");
- const post=(path:string,body:unknown,origin=base)=>fetch(base+path,{method:"POST",headers:{Origin:origin,"Content-Type":"application/json"},body:JSON.stringify(body)});
+ const post=(path:string,body:unknown,origin=base)=>fetch(base+path,{method:"POST",headers:{Origin:origin,"Content-Type":"application/json",Cookie:uiSessionCookie(ensureUiSecret()!)},body:JSON.stringify(body)});
  assert.equal((await post("/ui/assistant-address",{name:"jarvis"},"https://evil.example")).status,403);
  const saved=await post("/ui/assistant-address",{name:"Jarvis"});assert.equal(saved.status,200);assert.equal((await saved.json()as any).name,"jarvis");assert.equal(admins,0);
  assert.equal((await post("/ui/assistant-address/setup",{systemConsent:false})).status,409);assert.equal(admins,0);
  const setup=await post("/ui/assistant-address/setup",{systemConsent:true});assert.equal(setup.status,200,await setup.text());assert.equal(admins,1);
- assert.match(await readFile(hostsPath,"utf8"),/jarvis/);
+ assert.match(await readFile(hostsPath,"utf8"),/jarvis/);assert.match(opened[0]??"",/^http:\/\/jarvis\/ui\/\?bastra_ui_code=[A-Za-z0-9_-]{43}$/,"#1198: the opened address carries a one-time UI code");
  assert.equal((await post("/ui/assistant-address",{name:"ruby"})).status,409);
  assert.equal((await post("/ui/assistant-address",{name:"ruby",systemConsent:true})).status,200);
  assert.doesNotMatch(await readFile(hostsPath,"utf8"),/jarvis/);

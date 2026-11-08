@@ -1,4 +1,5 @@
 /** Same-origin UI setting and explicitly consented system setup. */
+import { mintUiCode, uiUrlWithCode } from "./ui-access.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { getUiEnabled } from "./settings.js";
@@ -13,9 +14,9 @@ export async function handleAssistantAddressUi(req:IncomingMessage,res:ServerRes
   if(method==="POST"){
    const body=await readJsonBody(req,4096);
    if(path==="/ui/assistant-address/setup"){
-    const input=consent.parse(body);const result=await setupAssistantAddress({...options,systemConsent:input.systemConsent,openBrowser:options.openBrowser??openAssistantAddress});warning=result.warning;
+    const input=consent.parse(body);const result=await setupAssistantAddress({...options,systemConsent:input.systemConsent,openBrowser:url=>(options.openBrowser??openAssistantAddress)(uiUrlWithCode(url,mintUiCode()))});warning=result.warning;
    }else if(path==="/ui/assistant-address"){
-    const input=change.parse(body);await changeAssistantName(input.name,{...options,systemConsent:input.systemConsent,openBrowser:options.openBrowser??openAssistantAddress});
+    const input=change.parse(body);await changeAssistantName(input.name,{...options,systemConsent:input.systemConsent,openBrowser:url=>(options.openBrowser??openAssistantAddress)(uiUrlWithCode(url,mintUiCode()))});
    }else if(path==="/ui/assistant-address/refresh"){z.strictObject({}).parse(body);}
    else{sendJson(res,404,{error:"not found"});return;}
   }else if(method!=="GET"||path!=="/ui/assistant-address"){sendJson(res,405,{error:"method not allowed"});return;}

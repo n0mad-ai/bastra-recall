@@ -1,3 +1,4 @@
+import { gateUiAccess } from "./ui-access.js";
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
 import { assistantAddressOptions, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
 import { handleAssistantAddressUi } from "./http-assistant-address.js";
@@ -253,6 +254,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         return;
       }
     }
+
+    // #1198: every /ui route (pages, APIs, Tasks session) needs this OS
+    // user's UI session; loopback and a localhost Host prove no identity.
+    if (gateUiAccess(req, res, method, url)) return;
 
     if (url.split("?",1)[0].startsWith("/ui/assistant-address")) {
       void handleAssistantAddressUi(req,res,method,url.split("?",1)[0],{...addressOptions,daemonUrl:`http://127.0.0.1:${req.socket.localPort}`},()=>addressListener?.refresh()??Promise.resolve({}));

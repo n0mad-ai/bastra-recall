@@ -10,6 +10,7 @@ import { getUiEnabled, setUiEnabled } from "../settings.js";
 import { ensureDaemonRunning, type DaemonStartOutcome } from "./daemon-start.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+import { withUiCode } from "../ui-access.js";
 
 /** The map's URL on this machine — THE endpoint, resolved once (#531). */
 export function mapUrl(): string {
@@ -32,6 +33,7 @@ export interface CmdMapIO {
   ensureDaemon(opts: { onStarting?: () => void }): Promise<DaemonStartOutcome>;
   open(url: string): void;
   settingsPath: string | undefined;
+  withCode(url: string, daemonBaseUrl: string): Promise<string>;
 }
 
 export async function cmdMap(io: Partial<CmdMapIO> = {}): Promise<number> {
@@ -65,6 +67,7 @@ export async function cmdMap(io: Partial<CmdMapIO> = {}): Promise<number> {
     return 1;
   }
   process.stdout.write(`vault map: ${url}\n`);
-  open(url);
+  // #1198: the browser gets a one-time code for this OS user's UI session.
+  open(await (io.withCode ?? withUiCode)(url, resolveDaemonEndpoint().baseUrl));
   return 0;
 }

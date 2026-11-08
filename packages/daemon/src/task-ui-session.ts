@@ -5,6 +5,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { getUiEnabled } from "./settings.js";
 import { isLoopback, isLoopbackHost, gateLocalPost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
+import { hasUiSession } from "./ui-access.js";
 import { authenticateTask } from "./task-auth.js";
 import { callTaskCrud, type TaskServiceContext } from "./task-service.js";
 import { defaultTaskContext, isTaskTool, taskFailure } from "./task-transport.js";
@@ -21,6 +22,7 @@ export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method
     try {
       res.setHeader("Cache-Control", "no-store");
       if (!isLoopback(req) || !isLoopbackHost(req.headers.host, []) || !await getUiEnabled()) reject("forbidden");
+      if (!hasUiSession(req)) reject("unauthorized"); // #1198: owner's UI session only
       if (method !== "POST") reject("forbidden");
       const gate = gateLocalPost({ origin: req.headers.origin, host: req.headers.host, contentType: req.headers["content-type"], path: url });
       if (gate !== 200) reject("forbidden");

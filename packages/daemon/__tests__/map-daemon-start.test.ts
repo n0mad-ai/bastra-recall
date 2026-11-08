@@ -270,11 +270,12 @@ test("map: the browser opens only after the daemon answers", async () => {
         settingsPath,
         ensureDaemon: outcome({ ok: true, state: "started", detail: "daemon started" }),
         open: (url) => opened.push(url),
+        withCode: async (url) => `${url}?bastra_ui_code=fixture`,
       }),
     );
 
     assert.equal(result, 0);
-    assert.deepEqual(opened, [mapUrl()]);
+    assert.deepEqual(opened, [`${mapUrl()}?bastra_ui_code=fixture`], "#1198: the page opens with a one-time UI code");
     assert.match(out, /starting the daemon/, "the wait is explained while it happens");
   });
 });
@@ -287,11 +288,12 @@ test("map: a daemon that was already running is not announced, page opens as bef
         settingsPath,
         ensureDaemon: outcome({ ok: true, state: "already-running", detail: "daemon already running" }),
         open: (url) => opened.push(url),
+        withCode: async (url) => `${url}?bastra_ui_code=fixture`,
       }),
     );
 
     assert.equal(result, 0);
-    assert.deepEqual(opened, [mapUrl()]);
+    assert.deepEqual(opened, [`${mapUrl()}?bastra_ui_code=fixture`], "#1198: the page opens with a one-time UI code");
     assert.ok(!out.includes("starting the daemon"));
   });
 });

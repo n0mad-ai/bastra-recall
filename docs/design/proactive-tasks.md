@@ -714,13 +714,19 @@ Doctor and the once-per-start warning report unavailable cards with the remedy. 
 an automatic token file disappeared, its formerly managed local-agent credentials
 are revoked in the same registry transaction that issues the replacement.
 
-P11c review boundary: ui.enabled exposes Agent session bootstrap to **every local
-process**, including another OS user who cannot read the credential file. A local
-proxy/tunnel that rewrites/removes Host/Origin to localhost may expose the same
-surface. This is the existing /ui loopback model, not proof of OS-user identity.
-Recommend ui.enabled=false on multi-user hosts. The actual access-boundary fix
-is deferred to [#1198](https://github.com/n0mad-ai/bastra-recall/issues/1198),
-not implemented in this stack. Owner/signature/execution checks remain unchanged.
+P11c review boundary, closed by [#1198](https://github.com/n0mad-ai/bastra-recall/issues/1198):
+loopback peer + localhost Host prove no OS-user identity, so every /ui route
+(pages, UI APIs, the Tasks session) now also requires the owner's UI session
+cookie. It is an HMAC of a per-user secret (`<data dir>/ui-secret`, 0600, refused
+when another user owns it or can read it). `bastra ui` and the assistant address
+setup trade the secret for a single-use code (60 s) in the opened URL; the daemon
+exchanges it for an HttpOnly/SameSite=Strict cookie and redirects the code out of
+the URL. No manual token entry. Another OS user, or a local proxy/tunnel that
+rewrites Host to localhost, gets 401 without the secret. Remaining boundary:
+processes of the **same** OS user can read the secret, as with the task token.
+Not covered here: the token-free loopback `/hook/*` and `/api/v1/*` surfaces
+(loopback skip) keep their existing model. Owner/signature/execution checks remain
+unchanged.
 R5 integration corrections: conversational duplicate identity is a SHA-256 of
 canonical pre-scrub reminder definition (request/goal/resolution/cause and schedule,
 recurrence/domain/scope/evidence), excluding session/client/idempotency key. Persist

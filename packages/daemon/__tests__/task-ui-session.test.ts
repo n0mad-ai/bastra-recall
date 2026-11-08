@@ -7,6 +7,7 @@ import {join} from "node:path";
 import {createServer, request} from "node:http";
 import {once} from "node:events";
 import {dispatchTaskUi} from "../src/task-ui-session.js";
+import {ensureUiSecret, uiSessionCookie} from "../src/ui-access.js";
 import {ensureLocalTaskAgent} from "../src/task-auto-setup.js";
 import {taskClientToken} from "../src/task-client-auth.js";
 import {authenticateTask, mintTaskCredential, revokeTaskCredential} from "../src/task-auth.js";
@@ -17,7 +18,9 @@ import {dispatchTaskHttp} from "../src/task-transport.js";
 test("tokenless task UI session is local/CSRF-protected Agent access, never Owner authority",async()=>{
  const root=await mkdtemp(join(tmpdir(),"task-ui-session-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")};const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;await setUiEnabled(true);await ensureLocalTaskAgent();
  const agent=await authenticateTask(`Bearer ${taskClientToken()}`,ctx.authPath);const server=createServer((req,res)=>{if(!dispatchTaskUi(req,res,req.method!,req.url!,ctx)&&!dispatchTaskHttp(req,res,req.method!,req.url!,ctx)){res.writeHead(404);res.end();}});server.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${(server.address() as any).port}`;
- const post=async(path:string,body:unknown={},extra:Record<string,string>={})=>fetch(base+path,{method:"POST",headers:{"Content-Type":"application/json",...extra},body:JSON.stringify(body)});
+ // #1198: the owner's browser carries its UI session; task cookies ride alongside it.
+ const ui=uiSessionCookie(ensureUiSecret()!);
+ const post=async(path:string,body:unknown={},extra:Record<string,string>={})=>fetch(base+path,{method:"POST",headers:{"Content-Type":"application/json",...extra,Cookie:[ui,extra.Cookie].filter(Boolean).join("; ")},body:JSON.stringify(body)});
  try{
   assert.equal((await post("/ui/tasks/session",{}, {Origin:"https://foreign.invalid"})).status,403);
   const foreignHost = await new Promise<number>((resolve,reject)=>{const r=request(base+"/ui/tasks/session",{method:"POST",headers:{Host:"foreign.invalid","Content-Type":"application/json"}},res=>{res.resume();res.on("end",()=>resolve(res.statusCode!));});r.on("error",reject);r.end("{}");});assert.equal(foreignHost,403);
