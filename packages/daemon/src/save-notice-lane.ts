@@ -76,6 +76,13 @@ export interface SaveNoticePayload {
 /** Title and type of the vault entry with this id, if it is indexed. */
 export type EntryLookup = (id: string) => { title?: unknown; type?: unknown } | undefined;
 
+/** Notice delivery never waits for telemetry. A lifecycle owner can join the
+ * outstanding writes before removing or switching their storage directory. */
+const pendingTelemetry = new Set<Promise<void>>();
+export async function flushSaveNoticeTelemetry(): Promise<void> {
+  while (pendingTelemetry.size) await Promise.all([...pendingTelemetry]);
+}
+
 /**
  * Run the lane; return the exact stdout document for the thin client — `{}`
  * or `{"systemMessage": …}`.
@@ -107,7 +114,7 @@ export async function runSaveNoticeLane(
   }
   if (tool !== null) {
     // Observability cannot consume the client deadline and discard a valid line.
-    void Promise.resolve().then(() => (opts.telemetry ?? writeTelemetry)({
+    const writing = Promise.resolve().then(() => (opts.telemetry ?? writeTelemetry)({
       session_id: typeof payload.session_id === "string" ? payload.session_id : null,
       client: hookClientEvidence(payload),
       agent: hookAgent(payload),
@@ -116,6 +123,8 @@ export async function runSaveNoticeLane(
       shown: stdout !== "{}",
       latency_ms_total: Date.now() - startedAt,
     })).catch(() => undefined);
+    pendingTelemetry.add(writing);
+    void writing.then(() => pendingTelemetry.delete(writing));
   }
   return stdout;
 }

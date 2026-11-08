@@ -11,6 +11,9 @@ import type {KernelCandidates} from "../src/rulebook-catalog.js";
 const catalog:KernelCandidates={entries:[{id:"fixture-rule",title:"Fixture",group:"explicit",revision:"r",updated:null,stale_status:"unknown",body:"",rulebook:"on-demand",applies_when:"Fixture"}],omitted:0};
 const reflex={fm:{id:"fixture-reflex",title:"Fixture",summary:"Fixture",type:"workflow",scope:"all-projects",recall_mode:"reflex",write_origin:"user-directed",salience:0.9,recall_when:["fixture_send_message"]},body:"Fixture body"} as Memory;
 test("fix4: actual /hook/gate disconnect releases C and legacy; finished deny remains spent",{timeout:6000},async t=>{
+ // Exercise transport settlement independently of runner load. The dedicated
+ // hook-budget tests advance time and still assert fail-open on expiry.
+ t.mock.timers.enable({apis:["Date","setTimeout"],now:Date.now()});
  const root=await mkdtemp(join(tmpdir(),"gate-http-delivery-"));process.env.BASTRA_HOOK_STATE_DIR=root;process.env.BASTRA_TELEMETRY="off";
  const sid="http-gate",payload={payload:{session_id:sid,bastra_client:"claude-code",hook_event_name:"PreToolUse",tool_name:"fixture_send_message",tool_input:{}}};
  await mutateSessionState(sid,s=>bookPendingMustLoad(s,["fixture-pending"],"fixture"));
@@ -28,7 +31,7 @@ test("fix4: actual /hook/gate disconnect releases C and legacy; finished deny re
  const interrupted=request({host:"127.0.0.1",port,path:"/hook/gate",method:"POST",headers:{"Content-Type":"application/json"}});interrupted.on("error",()=>{});interrupted.end(JSON.stringify(payload));
  await ready;interrupted.destroy();await gone;release();holdResponse=false;
  let restored=false;
- for(let i=0;i<80;i++){const s=await loadSessionState(sid);const denies=JSON.parse(s.rulebookCheck??"{}").actors?.[0]?.denies;restored=denies===0&&s.pendingMustLoad?.some(e=>e.id==="fixture-pending")===true&&!s.deniedReflex?.includes("fixture-reflex");if(restored)break;await new Promise(r=>setTimeout(r,5));}
+ while(!restored){t.signal.throwIfAborted();const s=await loadSessionState(sid);const denies=JSON.parse(s.rulebookCheck??"{}").actors?.[0]?.denies;restored=denies===0&&s.pendingMustLoad?.some(e=>e.id==="fixture-pending")===true&&!s.deniedReflex?.includes("fixture-reflex");if(!restored)await new Promise<void>(r=>setImmediate(r));}
  assert.equal(restored,true,"undelivered C, pending and reflex claims must all recover");
  const get=async()=>{const r=await fetch(`http://127.0.0.1:${port}/hook/gate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});return r.json() as Promise<any>;};
  const first=await get();assert.equal(first.hookSpecificOutput?.permissionDecision,"deny");assert.match(first.hookSpecificOutput.permissionDecisionReason,/fixture-pending/);assert.match(first.hookSpecificOutput.permissionDecisionReason,/fixture-reflex/);
@@ -40,9 +43,8 @@ test("fix4: actual /hook/gate disconnect releases C and legacy; finished deny re
  ready=new Promise<void>(r=>produced=r);hold=new Promise<void>(r=>release=r);gone=new Promise<void>(r=>closed=r);holdResponse=true;
  const contextCall=request({host:"127.0.0.1",port,path:"/hook/gate",method:"POST",headers:{"Content-Type":"application/json"}});contextCall.on("error",()=>{});contextCall.end(JSON.stringify(payload));
  await ready;contextCall.destroy();await gone;release();holdResponse=false;
- for(let i=0;i<80 && (await loadSessionState(sid)).toolCalls!<25;i++)await new Promise(r=>setTimeout(r,5));
+ while((await loadSessionState(sid)).toolCalls!<25){t.signal.throwIfAborted();await new Promise<void>(r=>setImmediate(r));}
  assert.ok((await loadSessionState(sid)).toolCalls!>=25,"a disconnected context remains due");
  assert.match((await get()).hookSpecificOutput?.additionalContext??"",/rule-kernel/);
- for(let i=0;i<80;i++){const s=await loadSessionState(sid);if(s.toolCalls===0&&!s.constants?.["rule-kernel-delivery"])return;await new Promise(r=>setTimeout(r,5));}
- assert.fail("confirmed context did not reset the cadence");
+ while(true){t.signal.throwIfAborted();const s=await loadSessionState(sid);if(s.toolCalls===0&&!s.constants?.["rule-kernel-delivery"])return;await new Promise<void>(r=>setImmediate(r));}
 });

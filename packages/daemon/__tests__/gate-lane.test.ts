@@ -503,7 +503,10 @@ it("#1330 final review: deny details are framed, single-line and provenance-limi
  const text=reason(out);assert.match(text,/<recall-hints/);assert.match(text,/reference-only/);assert.doesNotMatch(text,/UNTRUSTED IGNORE/);assert.doesNotMatch(text,/\u0000/);assert.equal((text.match(/<\/recall-hints>/g)??[]).length,1);assert.match(text,/- fixture-owner-rule: Milestone labels English first Deutsch/);assert.match(text,/fixture-untrusted-rule.*load_memory/);
 });
 
-it("release E: completed GitHub attempts are compact and agent histories stay bounded",async()=>{
+it("release E: completed GitHub attempts are compact and agent histories stay bounded",async t=>{
+ // This checks retained state, not elapsed time. Slow CI I/O must not turn
+ // an otherwise valid claim into the separate, deliberately fail-open path.
+ const now=Date.now();t.mock.method(Date,"now",()=>now);
  const sid=session("action-history-bound"),id="fixture-history-rule";
  for(let i=0;i<205;i++){
   const key=`github-action-conventions-v2:agent-${i}`;

@@ -32,6 +32,7 @@ import {
   readToolResult,
   recallWriteTool,
   runSaveNoticeLane,
+  flushSaveNoticeTelemetry,
   type EntryLookup,
   type SaveNoticePayload,
 } from "../src/save-notice-lane.js";
@@ -77,6 +78,9 @@ async function withSandbox<T>(
   try {
     return await fn(dir);
   } finally {
+    // The notice intentionally returns before its telemetry. Join those
+    // writes while their sandbox env still points here, then remove it.
+    await flushSaveNoticeTelemetry();
     for (const [k, v] of before) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -288,15 +292,11 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
       { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}edit_memory`, tool_response: "boom" },
       VAULT,
     );
+    await flushSaveNoticeTelemetry();
     const logDir = join(dir, "logs");
-    let rows: Array<Record<string, unknown>> = [];
-    for (let attempt = 0; attempt < 100; attempt++) {
-      rows = [];
-      for (const f of await readdir(logDir).catch(() => [] as string[])) {
-        for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l));
-      }
-      if (rows.length === 2) break;
-      await delay(5);
+    const rows: Array<Record<string, unknown>> = [];
+    for (const f of await readdir(logDir)) {
+      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l));
     }
     const calls = rows.filter((r) => r.kind === "save_notice_call").sort((a, b) => String(b.tool).localeCompare(String(a.tool)));
     assert.deepEqual(
@@ -399,6 +399,33 @@ test("slow telemetry never holds back a valid notice", async () => {
     finally { release(); await run; }
     assert.notEqual(out, "timeout", "telemetry cannot consume the client deadline and erase the notice");
     assert.match(plain(JSON.parse(out).systemMessage), /gespeichert/);
+  });
+});
+
+test("#1400: lifecycle drain joins a pending notice write before sandbox teardown", async () => {
+  await german(async (dir) => {
+    let entered!: () => void, release!: () => void;
+    const writing = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let persisted = false, drained = false;
+    await runSaveNoticeLane(
+      { hook_event_name: "PostToolUse", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+      VAULT,
+      { language: async () => "de", telemetry: async () => {
+        entered(); await held;
+        await mkdir(join(dir, "logs"), { recursive: true });
+        await writeFile(join(dir, "logs", "held.jsonl"), "fixture\n");
+        persisted = true;
+      } },
+    );
+    await writing;
+    const drain = flushSaveNoticeTelemetry().then(() => { drained = true; });
+    try {
+      await Promise.resolve();
+      assert.equal(drained, false, "cleanup must wait for the pending write");
+      assert.equal(persisted, false);
+    } finally { release(); await drain; }
+    assert.equal(persisted, true, "the write completed before teardown can remove its directory");
   });
 });
 
