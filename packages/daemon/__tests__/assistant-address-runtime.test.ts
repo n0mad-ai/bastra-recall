@@ -21,9 +21,9 @@ async function fixture(t:test.TestContext){
  await writeFile(o.settingsPath,JSON.stringify({ui:{enabled:true},assistant:{name:"jarvis"}}));await writeFile(o.hostsPath,"");return o;
 }
 async function call(port:number,host="127.0.0.1"){return new Promise<{status:number;body:string}>((resolve,reject)=>{const q=request({host,port,path:"/ui/",headers:{Host:`jarvis.localhost:${port}`,Connection:"close"}},r=>{let body="";r.on("data",c=>body+=c);r.on("end",()=>resolve({status:r.statusCode!,body}));});q.on("error",reject);q.setTimeout(8000,()=>q.destroy(Error("fixture timeout")));q.end();});}
-async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,host="127.0.0.1",port=0){
+async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,host="127.0.0.1",port=0,env:Record<string,string>={}){
  const children:ReturnType<typeof spawn>[]=[],sockets:any[]=[];
- const server=createNetServer({pauseOnConnect:true},socket=>{sockets.push(socket);const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[socket,socket,"pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2"}});child.stderr?.resume();children.push(child);child.on("exit",()=>socket.destroy());});
+ const server=createNetServer({pauseOnConnect:true},socket=>{sockets.push(socket);const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[socket,socket,"pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2",...env}});child.stderr?.resume();children.push(child);child.on("exit",()=>socket.destroy());});
  await new Promise<void>(r=>server.listen(port,host,r));t.after(async()=>{for(const child of children)child.kill();for(const socket of sockets)socket.destroy();await new Promise<void>(r=>server.close(()=>r()));});return (server.address()as any).port as number;
 }
 async function listening(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,port=0){
@@ -113,6 +113,23 @@ test("#1335: a connection burst starts at most 16 helpers and answers the rest w
  const all=await Promise.all(pending);assert.equal(all.filter(r=>r.status===200&&r.body==="burst-ui").length,16);
  const after=call(port);for(const until=Date.now()+7000;Date.now()<until&&!release.length;)await new Promise(r=>setTimeout(r,50));
  release.splice(0).forEach(done=>done());assert.equal((await after).status,200,"slots are released when helpers exit");
+});
+
+test("#1335: idle and trickling clients cannot hold every helper slot",{skip:!["/usr/bin/lockf","/usr/bin/flock"].some(p=>existsSync(p))?"no lockf/flock":false},async t=>{
+ const o=await fixture(t),backend=createServer((_q,r)=>r.end("slot-ui"));await new Promise<void>(r=>backend.listen(0,"127.0.0.1",r));t.after(()=>new Promise<void>(r=>backend.close(()=>r())));
+ await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});
+ const port=await accepted(t,o,"127.0.0.1",0,{BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS:"1000,2500"});
+ const {connect}=await import("node:net"),closed:Array<Promise<unknown>>=[],timers:NodeJS.Timeout[]=[];t.after(()=>timers.forEach(clearInterval));
+ for(let i=0;i<16;i++){
+  const s=connect(port,"127.0.0.1");s.on("error",()=>{});s.resume();t.after(()=>s.destroy());closed.push(new Promise(r=>s.on("close",r)));
+  // Half send nothing; half complete one keep-alive request, then trickle the next headers forever.
+  if(i%2)s.once("connect",()=>{s.write(`GET /ui/ HTTP/1.1\r\nHost: jarvis.localhost:${port}\r\n\r\nGET /ui/ HTTP/1.1\r\n`);timers.push(setInterval(()=>s.write("X-Slow: 1\r\n"),200));});
+ }
+ const start=Date.now();let status=0;
+ while(Date.now()-start<9000&&status!==200){status=(await call(port).catch(()=>({status:0}))).status;if(status!==200)await new Promise(r=>setTimeout(r,200));}
+ assert.equal(status,200,"the owner must get a slot once slow clients reach their deadline");
+ // Below Node's 5 s keep-alive timeout: the trickling sockets end by the absolute lifetime.
+ await Promise.all(closed);assert.ok(Date.now()-start<4500,"every slow connection is closed by its deadline");
 });
 
 test("#1335: a PID whose identity changed after inspection is never signalled",async t=>{

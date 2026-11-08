@@ -31,6 +31,6 @@ if(process.argv.includes("--assistant-address-bootstrap")){
   // earlier Wait=true installs drains queued requests with a persistent error page.
   server=createServer((_req,res)=>{res.writeHead(503,{"Content-Type":"text/plain; charset=utf-8",Connection:"close","Cache-Control":"no-store"});res.end("Bastra-Adresse derzeit nicht verfügbar. Bitte bastra address setup --yes ausführen.\n");});
   if(listening){server.on("error",()=>{process.stderr.write("Bastra socket unavailable; run bastra address setup --yes\n");process.exitCode=1;});server.listen({fd:0});monitor();}
-  else try{const socket=new Socket({fd:0,readable:true,writable:true});socket.setTimeout(5000,()=>socket.destroy());socket.on("error",()=>socket.destroy());socket.on("close",()=>process.exit(0));server.emit("connection",socket);socket.resume();}catch{process.exitCode=1;}
+  else try{const socket=new Socket({fd:0,readable:true,writable:true});socket.setTimeout(5000,()=>socket.destroy());setTimeout(()=>socket.destroy(),10000).unref();/* holds a helper slot (#1335) */socket.on("error",()=>socket.destroy());socket.on("close",()=>process.exit(0));server.emit("connection",socket);socket.resume();}catch{process.exitCode=1;}
  }
 }

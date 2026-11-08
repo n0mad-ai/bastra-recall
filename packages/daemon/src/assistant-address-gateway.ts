@@ -108,6 +108,13 @@ export async function startAssistantSocket(opts:AssistantGatewayOptions,listenin
  else{
   const socket=new Socket({fd:0,readable:true,writable:true});
   socket.on("error",()=>socket.destroy());socket.on("close",()=>process.exit(0));socket.setTimeout(230000,()=>socket.destroy());
+  // This process holds one of the launcher's helper slots (#1335). The server never
+  // listens, so Node's headersTimeout is not enforced here: the first request's
+  // headers get 10 s, and no connection outlives the longest forwarded request,
+  // whatever its activity. The variable only shortens both for tests.
+  const [headersMs,lifetimeMs]=(process.env.BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS??"").split(",").map(Number);
+  const headers=setTimeout(()=>socket.destroy(),headersMs||10000);setTimeout(()=>socket.destroy(),lifetimeMs||230000).unref();
+  server.once("request",()=>clearTimeout(headers));
   server.emit("connection",socket);socket.resume();
  }
  return server;
