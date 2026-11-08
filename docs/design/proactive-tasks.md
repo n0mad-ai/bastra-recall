@@ -717,8 +717,9 @@ are revoked in the same registry transaction that issues the replacement.
 P11c review boundary, closed by [#1198](https://github.com/n0mad-ai/bastra-recall/issues/1198):
 loopback peer + localhost Host prove no OS-user identity, so every /ui route
 (pages, UI APIs, the Tasks session) now also requires the owner's UI session
-cookie. It is an HMAC of a per-user secret (`<data dir>/ui-secret`, 0600, refused
-when another user owns it or can read it). `bastra ui` and the assistant address
+cookie: a random per-sign-in session id plus its HMAC under a per-user secret
+(`<data dir>/ui-secret`, 0600, refused when another user owns it or can read it).
+The secret is only sent to a loopback http daemon URL. `bastra ui` and the assistant address
 setup trade the secret for a single-use code (60 s) in the opened URL; the daemon
 exchanges it for an HttpOnly/SameSite=Strict cookie and redirects the code out of
 the URL. No manual token entry. Another OS user, or a local proxy/tunnel that
