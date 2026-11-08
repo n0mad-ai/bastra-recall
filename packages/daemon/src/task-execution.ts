@@ -3,7 +3,8 @@ import { archivedIntent } from "./task-archive.js";
 /** Reviewed local execution: one lock, durable spend, exact UTF-8 CAS, receipts. */
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { constants, openSync, fstatSync, closeSync, lstatSync, realpathSync, readFileSync, renameSync } from "node:fs";
+import { fstatSync, closeSync, lstatSync, realpathSync, readFileSync, renameSync } from "node:fs";
+import { openTaskSourceFileSync } from "./task-source-file.js";
 import { lstat, mkdir, open, unlink, realpath } from "node:fs/promises";
 import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
@@ -72,13 +73,14 @@ async function cleanupIntentTemp(registry: Awaited<ReturnType<typeof taskActionR
   try { const info = await lstat(tmp); if (info.isSymbolicLink() || !info.isFile() || info.size > 16384 * 4 || bytesHash(await boundedTaskRead(tmp, 16384 * 4)) !== intent.after_hash) fail("approval_stale", "Cleanup file differs; owner review required"); await unlink(tmp); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
-/** No awaits between final CAS/ownership/expiry admission and the rename. */
-function finalTargetCommit(ctx: TaskServiceContext, store: TaskStore, intent: Intent, holder: { token: string; fence: number }, path: string, tmp: string, assertOwnership: () => void) {
+/** No awaits between final CAS/ownership/expiry admission and the rename. Exported for the #1213 FIFO probe. */
+export function finalTargetCommit(ctx: TaskServiceContext, store: TaskStore, intent: Intent, holder: { token: string; fence: number }, path: string, tmp: string, assertOwnership: () => void) {
   requireTaskActionEnabled(store); const lease = store.leases.find(l => l.id === intent.lease_id);
   if (!lease || lease.state !== "active" || lease.actor !== intent.actor || lease.fence !== holder.fence || lease.holder_token_hash !== bytesHash(holder.token) || !liveActionDeadline(ctx, lease)) fail("lease_expired", "Lease admission expired");
   if (!intent.approval_ids.every(id => { const a = store.approvals.find(a => a.id === id); return a && a.revoked_at === undefined && liveActionDeadline(ctx, a); })) fail("approval_expired", "Reserved approvals expired or revoked");
   if (realpathSync(path) !== path || lstatSync(path).isSymbolicLink() || lstatSync(path).size > 1024 * 1024) fail("approval_stale", "Target boundary changed");
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  // Descriptor-bound and non-blocking: a FIFO swapped in here must not wedge the event loop (#1213).
+  let fd: number; try { fd = openTaskSourceFileSync(path); } catch { fail("approval_stale", "Target boundary changed"); }
   try { if (fstatSync(fd).size > 1024 * 1024 || bytesHash(readFileSync(fd, "utf8")) !== intent.before_hash) fail("approval_stale", "Target changed before CAS"); }
   finally { closeSync(fd); }
   assertOwnership(); renameSync(tmp, path);
