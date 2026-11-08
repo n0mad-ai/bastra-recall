@@ -22,11 +22,14 @@ import { sendJson } from "./http-util.js";
 
 export const UI_COOKIE = "bastra_ui";
 export const UI_CODE_PARAM = "bastra_ui_code";
-export const UI_SECRET_HEADER = "x-bastra-ui-secret";
+/** Local tools prove the secret with a single-use HMAC; the secret never travels. */
+export const UI_PROOF_HEADER = "x-bastra-ui-proof";
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const CODE_TTL_MS = 60_000;
 const COOKIE_MAX_AGE_S = 400 * 24 * 60 * 60;
 const codes = new Map<string, number>();
+const usedProofs = new Map<string, number>();
+const PROOF_WINDOW_MS = 60_000;
 
 export function uiSecretPath(): string {
   return join(bastraDataDir(), "ui-secret");
@@ -81,10 +84,28 @@ export function hasUiSession(req: IncomingMessage): boolean {
   return extra === undefined && typeof sid === "string" && TOKEN.test(sid) && typeof proof === "string" && same(proof, mac(secret, sid));
 }
 
-/** A same-user local tool (no browser) authenticating with the secret itself. */
-function presentsSecret(req: IncomingMessage): boolean {
-  const secret = readUiSecret(), presented = req.headers[UI_SECRET_HEADER];
-  return !!secret && typeof presented === "string" && same(presented, secret);
+const proofMac = (secret: string, path: string, nonce: string, ts: string) =>
+  createHmac("sha256", secret).update(`bastra-ui-proof-v1:${path}:${nonce}:${ts}`).digest("base64url");
+
+/** Header for a same-user local tool calling `path`: nonce, time and HMAC, never the secret. */
+export function uiProofHeaders(path: string, secret = readUiSecret()): Record<string, string> {
+  if (!secret) return {};
+  const nonce = randomBytes(32).toString("base64url"), ts = String(Date.now());
+  return { [UI_PROOF_HEADER]: `${nonce}.${ts}.${proofMac(secret, path, nonce, ts)}` };
+}
+
+/** A same-user local tool (no browser): fresh, unused proof bound to this path. */
+function presentsProof(req: IncomingMessage, path: string): boolean {
+  const secret = readUiSecret(), presented = req.headers[UI_PROOF_HEADER];
+  if (!secret || typeof presented !== "string") return false;
+  const [nonce, ts, proof, extra] = presented.split(".");
+  const now = Date.now(), at = Number(ts);
+  if (extra !== undefined || !nonce || !TOKEN.test(nonce) || !proof || !/^\d{1,16}$/.test(ts ?? "") || Math.abs(now - at) > PROOF_WINDOW_MS) return false;
+  if (!same(proof, proofMac(secret, path, nonce, ts!))) return false;
+  for (const [n, expires] of usedProofs) if (expires <= now) usedProofs.delete(n);
+  if (usedProofs.has(nonce) || usedProofs.size >= 1000) return false;
+  usedProofs.set(nonce, now + 2 * PROOF_WINDOW_MS);
+  return true;
 }
 
 /** Routes under /ui that answer without a UI session. */
@@ -93,6 +114,15 @@ function openUiPath(path: string): boolean {
 }
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** The one rule for every same-user call carrying a UI proof: an http loopback
+ *  daemon URL only, never an overridden remote BASTRA_DAEMON_URL. */
+export function loopbackDaemonBase(daemonBaseUrl: string): URL | undefined {
+  try {
+    const base = new URL(daemonBaseUrl);
+    return base.protocol === "http:" && LOOPBACK_HOSTS.has(base.hostname) ? base : undefined;
+  } catch { return undefined; }
+}
 
 /**
  * Gate for every /ui request after the host gate. Returns true when the request
@@ -116,7 +146,7 @@ export function gateUiAccess(req: IncomingMessage, res: ServerResponse, method: 
   if (method === "POST" && raw === "/ui/bootstrap") { issueCode(req, res); return true; }
   if (openUiPath(raw)) return false;
   // The CLI's address refresh nudge returns the address status: owner only.
-  if (raw === "/ui/assistant-address/refresh" && presentsSecret(req)) return false;
+  if (raw === "/ui/assistant-address/refresh" && presentsProof(req, raw)) return false;
   const code = parsed.searchParams.get(UI_CODE_PARAM);
   if (code !== null && (method === "GET" || method === "HEAD")) {
     const secret = readUiSecret(), expires = codes.get(code);
@@ -142,7 +172,7 @@ function refuse(res: ServerResponse): void {
 
 function issueCode(req: IncomingMessage, res: ServerResponse): void {
   req.resume();
-  if (!presentsSecret(req)) { refuse(res); return; }
+  if (!presentsProof(req, "/ui/bootstrap")) { refuse(res); return; }
   const code = mintUiCode();
   if (!code) { sendJson(res, 429, { error: "too many pending UI codes" }); return; }
   sendJson(res, 200, { code, expires_in: CODE_TTL_MS / 1000 });
@@ -173,15 +203,14 @@ export function uiUrlWithCode(url: string, code: string | undefined): string {
 export async function withUiCode(url: string, daemonBaseUrl: string): Promise<string> {
   // The secret goes to a loopback http daemon only, never to an overridden
   // remote BASTRA_DAEMON_URL; there the map opens without a code.
-  let base: URL;
-  try { base = new URL(daemonBaseUrl); } catch { return url; }
-  if (base.protocol !== "http:" || !LOOPBACK_HOSTS.has(base.hostname)) return url;
+  const base = loopbackDaemonBase(daemonBaseUrl);
+  if (!base) return url;
   const secret = ensureUiSecret();
   if (!secret) return url;
   try {
     const response = await fetch(new URL("/ui/bootstrap", base), {
       method: "POST",
-      headers: { "Content-Type": "application/json", [UI_SECRET_HEADER]: secret },
+      headers: { "Content-Type": "application/json", ...uiProofHeaders("/ui/bootstrap", secret) },
       body: "{}",
     });
     if (!response.ok) return url;

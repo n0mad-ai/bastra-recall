@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, chmod, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { request } from "node:http";
+import { request, createServer } from "node:http";
 import { connect } from "node:net";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
@@ -68,7 +68,7 @@ test("#1198: a loopback caller without the owner's UI secret gets neither /ui no
   assert.equal((await raw(base, "/ui/search/../../?q=fixture")).status, 401);
   // A guessed code or secret is no way in either.
   assert.equal((await raw(base, `/ui/annotations?bastra_ui_code=${"A".repeat(43)}`)).status, 401);
-  assert.equal((await raw(base, "/ui/bootstrap", { method: "POST", headers: { ...json, "x-bastra-ui-secret": "B".repeat(43) }, body: "{}" })).status, 401);
+  assert.equal((await raw(base, "/ui/bootstrap", { method: "POST", headers: { ...json, "x-bastra-ui-proof": `${"B".repeat(43)}.${Date.now()}.${"C".repeat(43)}` }, body: "{}" })).status, 401);
   // Liveness stays open, like /health.
   assert.equal((await raw(base, "/ui/health")).status, 200);
 });
@@ -114,6 +114,27 @@ test("#1198 review: the secret only ever travels to a loopback daemon", async ()
   } finally { globalThis.fetch = original; }
 });
 
+test("#1198 review: a loopback listener that is not the daemon never sees the secret itself", async t => {
+  const { ensureUiSecret, withUiCode } = await import("../src/ui-access.js");
+  const { notifyAssistantAddressDaemon } = await import("../src/assistant-address.js");
+  const secret = ensureUiSecret()!;
+  // A port squatter (e.g. another OS user) answering on the daemon's address.
+  const seen: string[] = [];
+  const squatter = createServer((req, res) => { seen.push(JSON.stringify(req.headers)); req.resume(); res.writeHead(200, json); res.end('{"code":"x"}'); });
+  await new Promise<void>(r => squatter.listen(0, "127.0.0.1", r));
+  const fake = `http://127.0.0.1:${(squatter.address() as { port: number }).port}`;
+  const previous = process.env.BASTRA_DAEMON_URL;
+  process.env.BASTRA_DAEMON_URL = fake;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = previous;
+    await new Promise<void>(r => squatter.close(() => r()));
+  });
+  await withUiCode(`${fake}/ui`, fake);
+  await notifyAssistantAddressDaemon();
+  assert.equal(seen.length, 2, "both callers reached the listener");
+  for (const headers of seen) assert.ok(!headers.includes(secret), "only a single-use proof travels, never the secret");
+});
+
 test("#1198 review: sessions are distinct per sign-in; refresh needs the owner; malformed targets are refused", async t => {
   const base = await daemon(t);
   const { ensureUiSecret, withUiCode } = await import("../src/ui-access.js");
@@ -129,7 +150,11 @@ test("#1198 review: sessions are distinct per sign-in; refresh needs the owner; 
   // The refresh nudge answers with the assistant address status: owner only.
   const refresh = (headers: Record<string, string>) => raw(base, "/ui/assistant-address/refresh", { method: "POST", headers: { ...json, ...headers }, body: "{}" });
   assert.equal((await refresh({})).status, 401);
-  assert.notEqual((await refresh({ "x-bastra-ui-secret": secret })).status, 401);
+  const { uiProofHeaders } = await import("../src/ui-access.js");
+  const proof = uiProofHeaders("/ui/assistant-address/refresh");
+  assert.notEqual((await refresh(proof)).status, 401);
+  assert.equal((await refresh(proof)).status, 401, "a proof is single-use");
+  assert.equal((await refresh(uiProofHeaders("/ui/bootstrap"))).status, 401, "a proof is bound to its path");
   // A request target the URL parser rejects must not take the daemon down.
   const status = await new Promise<string>((resolve, reject) => {
     const socket = connect(Number(new URL(base).port), "127.0.0.1", () => socket.write("GET http://[/ui HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"));

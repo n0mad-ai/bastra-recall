@@ -1,5 +1,5 @@
 /** Assistant-address lifecycle. Defaults are real paths; tests supply isolated paths/IO. */
-import { readUiSecret, UI_SECRET_HEADER } from "./ui-access.js";
+import { loopbackDaemonBase, uiProofHeaders } from "./ui-access.js";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { userInfo, homedir, hostname } from "node:os";
@@ -313,7 +313,7 @@ export async function openAssistantAddress(url:string):Promise<void>{
 }
 export async function hasManagedAssistantAddress(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(await getAssistantName(o.settingsPath)||await state(o))return true;const hosts=await optional(o.hostsPath)??"";if(managedAssistantHostsName(hosts,o.uid))return true;return (await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false;}
 export async function addressRemovalNeedsConsent(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid))return true;return (await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false;}
-export async function notifyAssistantAddressDaemon():Promise<void>{const base=resolveDaemonEndpoint().baseUrl;const u=new URL(base);if(!["127.0.0.1","localhost","[::1]"].includes(u.hostname))return;try{const secret=readUiSecret();await fetch(`${base}/ui/assistant-address/refresh`,{method:"POST",headers:{"Content-Type":"application/json",...(secret?{[UI_SECRET_HEADER]:secret}:{})},body:"{}",signal:AbortSignal.timeout(1000)});}catch{/* saved configuration takes effect when daemon starts */}}
+export async function notifyAssistantAddressDaemon():Promise<void>{const base=loopbackDaemonBase(resolveDaemonEndpoint().baseUrl);if(!base)return;try{await fetch(new URL("/ui/assistant-address/refresh",base),{method:"POST",headers:{"Content-Type":"application/json",...uiProofHeaders("/ui/assistant-address/refresh")},body:"{}",signal:AbortSignal.timeout(1000)});}catch{/* saved configuration takes effect when daemon starts */}}
 
 // A separate strict lock serializes UI/CLI lifecycles, including long admin prompts,
 // without holding the settings-file lock or displacing a living process.
