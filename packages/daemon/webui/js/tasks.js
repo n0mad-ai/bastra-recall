@@ -7,9 +7,11 @@ const active=()=>visible&&!document.hidden;
 const busy=()=>dragTask||['detail','compose','settings','cards-dialog','proposal'].some(name=>$(name).open);
 async function poll(){
  if(!active()||signedOut||busy()||polling||accessExpired||(!token&&!localSession))return;
- polling=true;const epoch=connection;
- try{await refresh(true);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){if(localSession)await recoverLocal();else{accessExpired=true;message(e.message,true);}}}
- finally{polling=false;}
+ polling=true;const epoch=connection;let timer;
+ // A status request that never answers is abandoned; the next tick polls again.
+ const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Zeitüberschreitung')),10000);});
+ try{await Promise.race([refresh(true),timeout]);}catch(e){if(epoch===connection&&active()&&e.code==='unauthorized'){if(localSession)await recoverLocal();else{accessExpired=true;message(e.message,true);}}}
+ finally{clearTimeout(timer);polling=false;}
 }
 function armPolling(){clearInterval(pollTimer);pollTimer=active()?setInterval(poll,1500):0;}
 document.addEventListener('visibilitychange',async()=>{armPolling();if(active()&&!signedOut){if(localSession)accessExpired=false;if(!token&&!localSession)await action(connectLocal,false);else await poll();}});
@@ -111,6 +113,8 @@ function boardFingerprint(){const tasks=boardTasks();return JSON.stringify([
  ['done','snoozed','failed','planned'].map(target=>canMove(t,target))])];}),
  (snapshot.archives||[]).map(entry=>[entry.id,time(entry.at),entry.task_count])]);}
 function renderBoard(){const board=$("tasks"),focus=document.activeElement;
+ // Replacing the cards ends any drag: the old card's dragend may never fire.
+ if(dragTask){dragTask=null;setDropTargets(null);}
  const positions=Array.from(board.children,col=>[col.dataset.taskColumn,col.children[1].scrollTop,col.children[1].scrollLeft]);
  let focused;
  for(const col of board.children)for(const card of col.children[1].children){const controls=Array.from(card.children).flatMap(n=>n.children.length?Array.from(n.children):[n]);if(card===focus||controls.includes(focus))focused={key:card.dataset.taskKey,column:col.dataset.taskColumn,label:focus.textContent,title:card.children[0]===focus};}

@@ -18,7 +18,7 @@ const descendants=(n:Node):Node[]=>[n,...n.children.flatMap(descendants)];
 async function ui(snapshot:any,due:any={cards:[]},overrides:any={}){
  const nodes=new Map<string,Node>(),get=(id:string)=>{if(!nodes.has(id)){const n=new Node();n.id=id;if(id==="task-message")n.hidden=true;nodes.set(id,n);}return nodes.get(id)!;};
  const document={hidden:false,activeElement:null as Node|null,handlers:{} as Record<string,Function>,addEventListener(name:string,fn:Function){this.handlers[name]=fn;},body:get("body"),getElementById:get,createElement:()=>{const n=new Node();n.focus=()=>{document.activeElement=n;};return n;},querySelectorAll:(selector:string)=>selector==="[data-task-column]"?get("task-tasks").children:[]};
- const source=(await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8")).replace("export function createTasksView() {", "").replace(/return \{ open, close \};\s*\}\s*$/, ""),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,setTimeout,setInterval:()=>0,clearInterval:()=>{},crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
+ const source=(await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8")).replace("export function createTasksView() {", "").replace(/return \{ open, close \};\s*\}\s*$/, ""),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,setTimeout,clearTimeout,setInterval:()=>0,clearInterval:()=>{},crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
  runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get:(id:string)=>get(`task-${id}`),ctx};
 }
 test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
@@ -256,4 +256,19 @@ test('expired user action renews access without retrying the mutation or closing
  const u=await renewalUI();u.change({...liveBase,tasks:[liveTask]});await runInContext('refresh()',u.ctx);await runInContext('selectTask(snapshot.tasks[0])',u.ctx);
  u.expire();const before=u.sessions();u.change({...liveBase,tasks:[{...liveTask,goal:'Current external state'}]});await descendants(u.get('detail-body')).find(n=>n.textContent==='Erledigt')!.handlers.click();
  assert.equal(u.sessions(),before+1);assert.ok(!u.calls.some(c=>c.url.endsWith('task_resolve')));assert.equal(u.get('detail').open,true);assert.ok(descendants(u.get('detail-body')).some(n=>n.textContent==='Current external state'));assert.match(u.get('message').textContent,/erneut/);
+});
+test('#1219: a hanging background status request is abandoned and the next tick polls again',async()=>{
+ let tick:Function|undefined,calls=0,hang=false;const timers:Function[]=[];
+ const u=await ui(liveBase,undefined,{setTimeout:(fn:Function)=>{timers.push(fn);return timers.length;},clearTimeout:()=>{},setInterval:(fn:Function)=>{tick=fn;return 1;},clearInterval:()=>{},fetch:async()=>{calls++;if(hang)return new Promise(()=>{});return{ok:true,json:async()=>liveBase};}});
+ await runInContext("token='fixture';open()",u.ctx);await new Promise(r=>setImmediate(r));
+ hang=true;const before=calls;void tick?.();await new Promise(r=>setImmediate(r));assert.equal(calls,before+1);
+ hang=false;for(const fn of timers.splice(0))fn();await new Promise(r=>setImmediate(r));
+ await tick?.();assert.equal(calls,before+2,'a request that never answers must not stop background refresh');
+});
+test('#1219: a drag whose card is replaced by a foreground redraw does not keep background refresh paused',async()=>{
+ const u=await liveUI();u.change({...liveBase,tasks:[liveTask]});await runInContext('refresh()',u.ctx);
+ const card=u.get('tasks').children[0].children[1].children[0];await card.handlers.dragstart({dataTransfer:{setData(){}}});
+ u.change({...liveBase,tasks:[{...liveTask,goal:'Foreground'}]});await runInContext('refresh()',u.ctx); // replaces the dragged card; its dragend never fires
+ u.change({...liveBase,tasks:[{...liveTask,goal:'Later external change'}]});await u.tick();
+ assert.ok(descendants(u.get('tasks')).some(n=>n.textContent==='Later external change'));
 });
