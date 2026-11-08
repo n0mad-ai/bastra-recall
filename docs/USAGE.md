@@ -276,6 +276,23 @@ client daemon's idle exit. `BASTRA_FORWARDER_SPAWN=0` remains a workaround when
 you want only your service to start the daemon. `bastra doctor` explains when a
 client daemon owns the port despite an installed managed macOS service.
 
+### Assistant link: first upgrade from an older launcher
+
+On macOS, an already configured assistant link (for example `jarvis.localhost`)
+updates its user-owned launcher automatically when the new daemon first starts,
+even when the update was run by an older updater. A staged update takes effect
+at the next daemon start. The existing system socket job, hosts entries and
+browser settings are retained; this migration needs no administrator dialog and
+changes no vault files. Interrupted work resumes on a later daemon start.
+
+The original launcher and runtime state are kept in
+`~/.bastra/assistant-address/protocol-1-backup.json`; pinned old code is retained.
+For a deliberate downgrade, restore the old installation first, then restore the
+backup's `launcher` text to `launch.sh`. The old launcher ignores the new runtime
+state. This backup covers only the launcher/runtime state, not later setup,
+removal, hosts or browser changes. Use `bastra address status` to diagnose an
+incomplete installation and `bastra address setup --yes` for an explicit repair.
+
 ### Vault care — flag it now, groom it later
 
 Memories age: titles go stale, duplicates creep in, ghosts point at notes you never wrote. bastra-recall turns tending the vault into a two-step loop instead of a chore. From any node's inspector on the vault map you flag a memory — *delete*, *edit*, *write* (for ghosts), or *note* — and the flags land as checkbox lines in an open `vault-care.md` at the vault root. Your **next AI session sees the open flags automatically** (session hook) and offers to work the list off with you: one guided cleanup pass, your call on every item. No hidden state, no separate app — a markdown checklist any editor can open.
@@ -919,6 +936,26 @@ Leerlauf-Ende des Client-Daemons. `BASTRA_FORWARDER_SPAWN=0` bleibt eine
 Notlösung, wenn ausschließlich dein Dienst den Daemon starten soll.
 `bastra doctor` erklärt, wenn ein Client-Daemon den Port hält, obwohl auf macOS
 ein verwalteter Dienst eingerichtet ist.
+
+### Assistenten-Link: erstes Upgrade von einem älteren Launcher
+
+Unter macOS wird ein bereits eingerichteter Assistenten-Link (etwa
+`jarvis.localhost`) beim ersten Start des neuen Daemons automatisch umgestellt,
+auch wenn noch ein alter Updater das Update ausgeführt hat. Bei einem gestuften
+Update geschieht das beim nächsten Daemon-Start. Der bestehende Systemdienst,
+Hosts-Einträge und Browser-Einstellungen bleiben erhalten; die Umstellung braucht
+keinen Admin-Dialog und ändert keine Vault-Dateien. Ein abgebrochener Lauf wird
+bei einem späteren Daemon-Start fortgesetzt.
+
+Der alte Launcher und Laufzeitstand stehen in
+`~/.bastra/assistant-address/protocol-1-backup.json`; der alte Programmstand
+bleibt erhalten. Für eine bewusste Rückkehr zuerst die alte Installation
+wiederherstellen, dann den Text aus `launcher` in der Sicherung nach `launch.sh`
+zurückschreiben. Der alte Launcher ignoriert den neuen Laufzeitstand. Diese
+Sicherung deckt nur Launcher und Laufzeitstand ab, keine späteren Einrichtungs-,
+Entfernungs-, Hosts- oder Browser-Änderungen. `bastra address status` zeigt
+unvollständige Einrichtungen; `bastra address setup --yes` repariert sie auf
+ausdrücklichen Aufruf.
 
 ### Vault-Pflege — jetzt markieren, später aufräumen
 

@@ -1,5 +1,5 @@
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
-import { assistantAddressOptions, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
+import { assistantAddressOptions, migrateAssistantAddressRuntime, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
 import { handleAssistantAddressUi } from "./http-assistant-address.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 /**
@@ -330,6 +330,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 
   const handle = await listenHttp(server, port);
   if (handle.port !== null) {
+    await migrateAssistantAddressRuntime({...addressOptions,daemonUrl:`http://127.0.0.1:${handle.port}`}).catch(()=>{/* status diagnoses a damaged owned runtime; boot retries unfinished migration */});
     await publishAssistantAddressEndpoint({...addressOptions,daemonUrl:`http://127.0.0.1:${handle.port}`}).catch(()=>{/* status diagnoses a damaged owned runtime */});
     addressListener = createAssistantAddressListener({ settingsPath: addressOptions.settingsPath, hostsPath: addressOptions.hostsPath, owner: addressOptions.uid, helperPath: addressOptions.helperPath, daemonUrl: `http://127.0.0.1:${handle.port}` },opts.assistantAddress?.port??80);
     await addressListener.refresh();

@@ -20,7 +20,7 @@ async function fixture(t:test.TestContext){
  const o={runtimeDir:join(root,"runtime"),runtimeSourceDir:source,runtimeNode:process.execPath,home:root,uid:String(process.getuid?.()??501),username:"fixture",settingsPath:join(root,"settings"),hostsPath:join(root,"hosts"),helperPath:join(root,"helper"),firefoxRoot:join(root,"firefox"),daemonUrl:"http://127.0.0.1:9"};
  await writeFile(o.settingsPath,JSON.stringify({ui:{enabled:true},assistant:{name:"jarvis"}}));await writeFile(o.hostsPath,"");return o;
 }
-async function call(port:number,host="127.0.0.1"){return new Promise<{status:number;body:string}>((resolve,reject)=>{const q=request({host,port,path:"/ui/",headers:{Host:`jarvis.localhost:${port}`,Connection:"close"}},r=>{let body="";r.on("data",c=>body+=c);r.on("end",()=>resolve({status:r.statusCode!,body}));});q.on("error",reject);q.setTimeout(8000,()=>q.destroy(Error("fixture timeout")));q.end();});}
+async function call(port:number,host="127.0.0.1",path="/ui/"){return new Promise<{status:number;body:string}>((resolve,reject)=>{const q=request({host,port,path,headers:{Host:`jarvis.localhost:${port}`,Connection:"close"}},r=>{let body="";r.on("data",c=>body+=c);r.on("end",()=>resolve({status:r.statusCode!,body}));});q.on("error",reject);q.setTimeout(8000,()=>q.destroy(Error("fixture timeout")));q.end();});}
 async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,host="127.0.0.1",port=0,env:Record<string,string>={}){
  const children:ReturnType<typeof spawn>[]=[],sockets:any[]=[];
  const server=createNetServer({pauseOnConnect:true},socket=>{sockets.push(socket);const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[socket,socket,"pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2",...env}});child.stderr?.resume();children.push(child);child.on("exit",()=>socket.destroy());});
@@ -28,7 +28,7 @@ async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>
 }
 async function listening(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,port=0){
  const server=createNetServer();await new Promise<void>(r=>server.listen(port,"127.0.0.1",r));port=(server.address()as any).port;
- const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[(server as any)._handle.fd,"ignore","pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_LISTEN:"1",BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2"}});child.stderr?.resume();t.after(()=>child.kill());await new Promise<void>(r=>server.close(()=>r()));return {child,port};
+ const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[(server as any)._handle.fd,"ignore","pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_LISTEN:"1",BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2"},detached:true});child.stderr?.resume();t.after(()=>{try{process.kill(-child.pid!);}catch{}});await new Promise<void>(r=>server.close(()=>r()));return {child,port};
 }
 test("final helper review: pinned bootstrap returns 503 for missing node, deleted version or mixed protocol",async t=>{
  const o=await fixture(t);await ensureAssistantAddressRuntime(o);
@@ -159,4 +159,55 @@ test("#1335: test limits cannot extend production helper deadlines",async t=>{
  let delays:number[]=[];
  for(const until=Date.now()+5000;Date.now()<until;){try{delays=(await readFile(record,"utf8")).trim().split("\n").map(Number);}catch{}if(delays.length>=2)break;await new Promise(r=>setTimeout(r,25));}
  assert.deepEqual(delays.slice(0,2),[10000,230000],"test-only overrides must be capped at each production deadline");
+});
+
+
+async function legacyFixture(t:test.TestContext){
+ const o=await fixture(t),version=join(o.runtimeDir,"versions","1".repeat(64));await mkdir(version,{recursive:true});
+ for(const name of ["assistant-address-name.js","assistant-address-files.js","http-auth.js"])await writeFile(join(version,name),await readFile(join(o.runtimeSourceDir,name)));
+ await writeFile(join(version,"package.json"),'{"type":"module"}');
+ await writeFile(join(version,"assistant-address-gateway.js"),await readFile(new URL("../__fixtures__/assistant-address-v1/gateway.js",import.meta.url)));
+ const q=(s:string)=>"'"+s.replaceAll("'","'\"'\"'")+"'";
+ const launcher=`#!/bin/sh\nexec ${[process.execPath,join(version,"assistant-address-gateway.js"),"--assistant-address-inetd","--settings-path",o.settingsPath,"--hosts-path",o.hostsPath,"--daemon-url",o.daemonUrl].map(q).join(" ")}\n`;
+ await writeFile(join(o.runtimeDir,"managed"),`bastra-assistant-address:${o.uid}\n`);await writeFile(join(o.runtimeDir,"launch.sh"),launcher);
+ const helper=`<plist><dict><key>ProgramArguments</key><array><string>/bin/sh</string><string>${join(o.runtimeDir,"launch.sh")}</string></array><key>inetdCompatibility</key><dict><key>Wait</key><true/></dict><key>EnvironmentVariables</key><dict><key>BASTRA_ASSISTANT_ADDRESS_LISTEN</key><string>1</string><key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string></dict></dict></plist>\n`;
+ await writeFile(o.helperPath,helper);return {o,launcher,helper};
+}
+
+test("#1335: first boot from a legacy updater migrates the Wait=true launcher without admin and repeats unchanged",async t=>{
+ const {o,launcher,helper}=await legacyFixture(t),old=await listening(t,o);assert.equal((await call(old.port,"127.0.0.1","/.well-known/bastra-assistant-address")).status,200);
+ const {Vault,SearchIndex}=await import("@bastra-recall/core"),{Telemetry}=await import("../src/telemetry.js"),{startHttpServer}=await import("../src/http.js");
+ const vaultPath=join(o.home,"vault");await mkdir(vaultPath);const vault=new Vault(vaultPath);await vault.init();const search=new SearchIndex(vault);search.start();t.after(async()=>{search.stop();await vault.stop?.();});
+ const retired:number[]=[];let admins=0;
+ const address={...o,platform:"darwin" as const,port:0,runtimeProcesses:async()=>[],retireRuntime:(pid:number)=>{retired.push(pid);},runAdmin:async()=>{admins++;throw Error("no admin allowed");}};
+ // Old updater fixture: new files are installed, but there is no call to the new updater's refresh hook.
+ const handle=await startHttpServer({port:0,vault,search,telemetry:new Telemetry(),version:"new",toolDeps:{vault,search,telemetry:new Telemetry(),vaultPath},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"},assistantAddress:address});t.after(()=>handle.close());
+ const path=join(o.runtimeDir,"current.json"),current=JSON.parse(await readFile(path,"utf8"));assert.equal(current.protocol,2);assert.equal(current.daemonUrl,`http://127.0.0.1:${handle.port}`);
+ const migrated=await readFile(join(o.runtimeDir,"launch.sh"),"utf8");assert.match(migrated,/# Socket protocol 2/);assert.equal(await readFile(o.helperPath,"utf8"),helper);assert.equal(admins,0);
+ const backup=JSON.parse(await readFile(join(o.runtimeDir,"protocol-1-backup.json"),"utf8"));assert.equal(backup.launcher,launcher);assert.equal(backup.current,null);
+ old.child.kill();await once(old.child,"exit");const next=await listening(t,o);assert.equal((await call(next.port,"127.0.0.1","/.well-known/bastra-assistant-address")).status,200);
+ const before=await readFile(path,"utf8"),{migrateAssistantAddressRuntime}=await import("../src/assistant-address.js");await migrateAssistantAddressRuntime({...address,daemonUrl:current.daemonUrl});assert.equal(await readFile(path,"utf8"),before);assert.equal(await readFile(join(o.runtimeDir,"launch.sh"),"utf8"),migrated);
+ // Rollback only changes the launcher: its old pinned version and the untouched Wait=true job still work.
+ await writeFile(join(o.runtimeDir,"launch.sh"),backup.launcher);process.kill(-next.child.pid!);await once(next.child,"exit");const rollback=await listening(t,o);assert.equal((await call(rollback.port,"127.0.0.1","/.well-known/bastra-assistant-address")).status,200);
+});
+
+test("#1335: interrupted migration leaves the legacy launcher usable and resumes with its original backup",async t=>{
+ const {o,launcher}=await legacyFixture(t),fs=(await import("node:fs/promises")).default,{syncBuiltinESMExports}=await import("node:module"),rename=fs.rename;
+ const {migrateAssistantAddressRuntime}=await import("../src/assistant-address.js");
+ t.mock.method(fs,"rename",async(from:any,to:any)=>{if(to===join(o.runtimeDir,"launch.sh"))throw Error("interrupted before publication");return rename(from,to);});syncBuiltinESMExports();
+ try{await assert.rejects(migrateAssistantAddressRuntime({...o,runtimeProcesses:async()=>[]}),/interrupted/);}finally{t.mock.restoreAll();syncBuiltinESMExports();}
+ assert.equal(await readFile(join(o.runtimeDir,"launch.sh"),"utf8"),launcher);const old=await listening(t,o);assert.equal((await call(old.port,"127.0.0.1","/.well-known/bastra-assistant-address")).status,200);
+ const backup=await readFile(join(o.runtimeDir,"protocol-1-backup.json"),"utf8");await migrateAssistantAddressRuntime({...o,runtimeProcesses:async()=>[]});assert.equal(await readFile(join(o.runtimeDir,"protocol-1-backup.json"),"utf8"),backup);assert.match(await readFile(join(o.runtimeDir,"launch.sh"),"utf8"),/# Socket protocol 2/);
+});
+
+
+test("#1335: migration completion follows retirement and existing protocol-2 installs stay unchanged",async t=>{
+ const {migrateAssistantAddressRuntime}=await import("../src/assistant-address.js"),late=await legacyFixture(t);let attempts=0;
+ await assert.rejects(migrateAssistantAddressRuntime({...late.o,runtimeProcesses:async()=>{attempts++;throw Error("interrupted before retirement");}}),/interrupted before retirement/);
+ assert.match(await readFile(join(late.o.runtimeDir,"launch.sh"),"utf8"),/# Socket protocol 2/);
+ assert.equal(existsSync(join(late.o.runtimeDir,"protocol-2-migrated")),false);
+ const usable=await listening(t,late.o);assert.equal((await call(usable.port,"127.0.0.1","/.well-known/bastra-assistant-address")).status,200);
+ await migrateAssistantAddressRuntime({...late.o,runtimeProcesses:async()=>{attempts++;return [];}});assert.equal(attempts,2,"a published launcher must not skip unfinished retirement");assert.equal(await readFile(join(late.o.runtimeDir,"protocol-2-migrated"),"utf8"),"2\n");
+ const modern=await fixture(t);await ensureAssistantAddressRuntime(modern);const path=join(modern.runtimeDir,"current.json"),before=await readFile(path,"utf8");
+ await migrateAssistantAddressRuntime(modern);assert.equal(await readFile(path,"utf8"),before);assert.equal(existsSync(join(modern.runtimeDir,"protocol-1-backup.json")),false);assert.equal(existsSync(join(modern.runtimeDir,"protocol-2-migrated")),false);
 });

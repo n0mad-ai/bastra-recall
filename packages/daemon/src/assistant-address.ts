@@ -141,6 +141,28 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
+/** Old updaters cannot call new update hooks. The first new daemon boot repairs
+ * their user-owned launcher before publishing its endpoint. The root-owned
+ * Wait=true job remains valid through bootstrap's listening-socket compatibility. */
+export async function migrateAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{
+ const o=assistantAddressOptions(options);
+ if(await optional(join(o.runtimeDir,"managed"))!==`bastra-assistant-address:${o.uid}\n`)return;
+ await withPathLock(join(o.runtimeDir,"protocol-migration"),async()=>{
+  const launcher=await optional(join(o.runtimeDir,"launch.sh"));
+  if(launcher===null)return; // Missing installations are repaired explicitly by address setup.
+  const current=await optional(join(o.runtimeDir,"current.json"));
+  const backup=join(o.runtimeDir,"protocol-1-backup.json"),complete=join(o.runtimeDir,"protocol-2-migrated");
+  const previousBackup=await optional(backup);
+  let protocol:unknown;try{protocol=current?JSON.parse(current).protocol:undefined;}catch{/* incomplete old publication */}
+  if(protocol===2&&launcher.includes("# Socket protocol 2:")&&(previousBackup===null||await optional(complete)==="2\n"))return;
+  await ownHelper(o); // Never migrate a runtime associated with a foreign service.
+  if(previousBackup===null)await atomic(backup,JSON.stringify({launcher,current})+"\n");
+  // Code and state become durable before the launcher rename. An interruption
+  // before that rename leaves the old pinned launcher usable; a retry resumes.
+  await ensureAssistantAddressRuntime(o);
+  await atomic(complete,"2\n"); // Retirement must complete before a retry may skip migration.
+ },{strictLocal:true});
+}
 /** Publish only the endpoint of an already managed runtime; never recopy code from an old daemon. */
 export async function publishAssistantAddressEndpoint(options:AssistantAddressOptions={}):Promise<void>{
  const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))!==`bastra-assistant-address:${o.uid}\n`)return;
