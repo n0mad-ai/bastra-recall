@@ -11,6 +11,10 @@ import { catalogDeclaration } from "./rulebook-catalog.js";
 const BEHAVIOURAL_TYPES: ReadonlySet<string> = new Set(["lesson", "meta-working", "preference", "user-preference", "workflow"]);
 
 export function rulebookDelivery(fm: Memory["fm"]): string {
+  if (fm.obsolete || fm.superseded_by) {
+    return "inactive (not delivered): " + (fm.obsolete ? "obsolete" : "superseded") +
+      " memories are excluded from the rule catalog and the session hooks.";
+  }
   const declaration = catalogDeclaration(fm);
   if (declaration) {
     // #1393: the catalog does not serve private memories, so a private declaration is bound but never delivered.

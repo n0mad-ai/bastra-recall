@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import matter from "gray-matter";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type SaveMemoryResult } from "../src/save-memory-handler.js";
 import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
-import { collectRulebookCatalog } from "../src/rulebook-catalog.js";
+import { catalogDeclaration, collectRulebookCatalog } from "../src/rulebook-catalog.js";
 import type { ToolDeps } from "../src/tool-deps.js";
 
 const base = { title: "Invented write status", summary: "Invented fixture summary", body: "Keep invented artifacts complete.",
@@ -138,6 +139,33 @@ test("#1399: overwrite without an origin binds stored user notes and reports the
     const catalog = await collectRulebookCatalog(deps.vault, { project: null, active: [], floors: async () => [], allProjects: true });
     assert.equal(catalog.entries.find(e => e.id === id)?.rulebook, categoryOnly ? "on-demand" : "always");
     assert.equal(deps.vault.get(id)!.fm.rulebook_proposed, undefined);
+  }
+});
+
+test("#1398: obsolete and superseded validator/category declarations stay out of save/edit delivery and the catalog", async (t) => {
+  const deps = await fixture(t);
+  for (const status of [{ obsolete: true }, { superseded_by: "fixture-successor" }]) {
+    const validator = { tool: "validate_artifact", channel: "fixture", limit: 100, unit: "utf16" };
+    const explicit = { rulebook: "always", applies_when: "When writing fixtures" };
+    const declarations = [{ rule_categories: ["correspondence"] }, { validator }, explicit,
+      { ...explicit, validator }, { ...explicit, rule_categories: ["correspondence"] }];
+    for (const [index, declaration] of declarations.entries()) {
+      const id = `unservable-${Object.keys(status)[0]}-${index}`;
+      const note = { ...base, id, type: "lesson", recall_when: [`invented ${id}`], write_origin: "user-directed" };
+      const saved = await saveMemoryHandler(deps, { ...note, ...declaration }) as SaveMemoryResult;
+      // Lifecycle metadata belongs to the on-disk source, not save/edit's input schema.
+      const raw = matter(await readFile(saved.file_path, "utf8"));
+      await writeFile(saved.file_path, matter.stringify(raw.content, { ...raw.data, ...status }));
+      await deps.vault.reindexFile(saved.file_path);
+      assert.equal(catalogDeclaration(deps.vault.get(id)!.fm), undefined);
+      for (const result of [await saveMemoryHandler(deps, { ...note, overwrite: true }),
+        await editMemoryHandler(deps, { id, append: "More fixture details." })]) {
+        assert.doesNotMatch((result as SaveMemoryResult).delivery ?? "", /active now|loaded in every session|listed in the rule catalog/);
+        assert.match((result as SaveMemoryResult).delivery ?? "", /^inactive \(not delivered\)/);
+      }
+      const catalog = await collectRulebookCatalog(deps.vault, { project: null, active: [], floors: async () => [], allProjects: true });
+      assert.equal(catalog.entries.some(e => e.id === id), false);
+    }
   }
 });
 

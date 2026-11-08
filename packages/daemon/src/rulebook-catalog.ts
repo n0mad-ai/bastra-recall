@@ -44,6 +44,8 @@ export interface RulebookCatalogOptions {
 }
 /** The declaration under which a memory enters the catalog, or undefined for a recall-only note. */
 export function catalogDeclaration(fm: Memory["fm"], context: RulebookLegacyContext = {}): RulebookDeclaration | undefined {
+  // #1398: fallback membership must respect the same lifecycle as resolveRulebook.
+  if (fm.obsolete || fm.superseded_by) return undefined;
   return resolveRulebook(fm, context) ??
     (fm.validator || fm.rule_categories?.includes("correspondence") ? {rulebook:"on-demand" as const,applies_when:fm.applies_when??fm.summary,...(fm.applies_when===undefined?{applies_when_derived:true as const}:{})} : undefined);
 }
