@@ -163,8 +163,10 @@ test("#1395: delivery describes the same write as the returned revision, even wh
   await saveMemoryHandler(deps, { ...base, id: "raced", type: "lesson", recall_when: ["invented raced"], write_origin: "user-directed", ...declaration });
   // Pause only writer A's post-write tail (the first reindex after its write); writer B runs to completion meanwhile.
   const reindex = deps.vault.reindexFile.bind(deps.vault);
-  let gate: { paused: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined;
-  const pauseNextReindex = () => (gate = { paused: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() });
+  // Promise.withResolvers is ES2024; the test tsconfig targets an older lib.
+  const deferred = () => { let resolve!: () => void; const promise = new Promise<void>((r) => { resolve = r; }); return { promise, resolve }; };
+  let gate: { paused: ReturnType<typeof deferred>; release: ReturnType<typeof deferred> } | undefined;
+  const pauseNextReindex = () => (gate = { paused: deferred(), release: deferred() });
   deps.vault.reindexFile = async (path: string) => {
     const current = gate; gate = undefined;
     if (current) { current.paused.resolve(); await current.release.promise; }

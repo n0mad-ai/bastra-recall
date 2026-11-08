@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {parseMemory, memoryRevision, type Memory, type VaultEvent} from '@bastra-recall/core';
+import {parseMemory, memoryRevision, type VaultEvent} from '@bastra-recall/core';
 import {beginRulebookRound} from '../src/rulebook-check.js';
 import {cachedRulebookCatalog, listRulesHandler, rulebookCursor} from '../src/rulebook-catalog.js';
 import {callerSessionStore} from '../src/caller-session.js';
@@ -17,7 +17,7 @@ function fixture() {
  let all=[memory('global-rule','all-projects'),memory('project-a-rule','project-a'),memory('project-b-rule','project-b')];
  const listeners=new Set<(event:VaultEvent)=>void>();
  const vault={list:()=>all,get:(id:string)=>all.find(m=>m.fm.id===id),on:(fn:(event:VaultEvent)=>void)=>{listeners.add(fn);return()=>listeners.delete(fn);}};
- return {vault,deps:{vault} as never,update(next:Memory[]){all=next;for(const fn of listeners)fn({kind:'change',memory:all[0]});}};
+ return {vault,deps:{vault} as never,update(next:typeof all){all=next;for(const fn of listeners)fn({kind:'change',memory:all[0]});}};
 }
 let root:string;
 const oldState=process.env.BASTRA_HOOK_STATE_DIR;

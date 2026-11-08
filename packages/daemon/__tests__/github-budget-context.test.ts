@@ -23,7 +23,7 @@ async function fixture(run:(f:{payload:(sid:string,agent_id?:string)=>any;check:
  await new Promise<void>(r=>server.listen(0,"127.0.0.1",r));
  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
  const payload=(session_id:string,agent_id?:string)=>({session_id,bastra_client:"claude-code",hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:`gh issue create --title ${selected}`},...(agent_id?{agent_id}:{})});
- try{await run({payload,select:(id,rev="r1")=>{selected=id;revision=rev;},check:async(sid,agent,unattributed)=>{const input=payload(sid,agent);if(unattributed)delete input.bastra_client;return JSON.parse(await githubConventionGate(input,base,Date.now()+3000)??"{}").hookSpecificOutput;}});}
+ try{await run({payload,select:(id,rev="r1")=>{selected=id;revision=rev;},check:async(sid,agent,unattributed)=>{const input=payload(sid,agent);if(unattributed)delete (input as {bastra_client?:string}).bastra_client;return JSON.parse(await githubConventionGate(input,base,Date.now()+3000)??"{}").hookSpecificOutput;}});}
  finally{await new Promise<void>(r=>server.close(()=>r()));if(old===undefined)delete process.env.BASTRA_HOOK_STATE_DIR;else process.env.BASTRA_HOOK_STATE_DIR=old;await rm(root,{recursive:true,force:true});}
 }
 const denied=(value:any)=>value?.permissionDecision==="deny";

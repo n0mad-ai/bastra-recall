@@ -151,6 +151,9 @@ async function fixture(projection = false) {
           { scope: "all-projects", resp: recall("", true) },
         ], floors: [], conventions: [], care: { open: 0, queued: 0 }, imports: { open: 0, queued: 0 }, onboarding: false } }; break;
         case "/hook/recall": result = recall(String(body.query ?? "")); break;
+        // #1377: the GitHub fixture conventions are rulebook catalog entries (uncategorized,
+        // so they still arrive through the legacy discovery above), which makes them obligations.
+        case "/hook/action-conventions": result = { hits: [], rule_ids: vault.slice(4).map(memory => memory.id), score_kind: "rrf" }; break;
         case "/hook/reflex": result = { hits: /Nachricht|fixture_send_message/.test(String(body.context ?? ""))
           ? [{ ...vault[2], matched_phrase: String(body.context).includes("fixture_send_message") ? "fixture_send_message" : "eingegangene Nachricht" }]
           : [], recall_id: "fixture-reflex" }; break;
