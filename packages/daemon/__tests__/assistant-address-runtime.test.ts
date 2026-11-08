@@ -7,6 +7,7 @@ import { createServer,request } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import ts from "typescript";
 import { ensureAssistantAddressRuntime } from "../src/assistant-address.js";
 
@@ -97,4 +98,36 @@ test("runtime publication: a first-time launcher already serves UI at its atomic
  syncBuiltinESMExports();
  try{await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});assert.equal(checked,true);}
  finally{t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
+test("#1335: a connection burst starts at most 16 helpers and answers the rest with a clear overload page",{skip:!["/usr/bin/lockf","/usr/bin/flock"].some(p=>existsSync(p))?"no lockf/flock":false},async t=>{
+ const o=await fixture(t);let held=0;const release:Array<()=>void>=[];
+ const backend=createServer((_q,r)=>{held++;release.push(()=>r.end("burst-ui"));});await new Promise<void>(r=>backend.listen(0,"127.0.0.1",r));
+ t.after(()=>{for(const done of release)done();return new Promise<void>(r=>backend.close(()=>r()));});
+ await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});const port=await accepted(t,o);
+ const results:Array<{status:number;body:string}>=[],pending=Array.from({length:20},()=>call(port).then(r=>{results.push(r);return r;}));
+ for(const until=Date.now()+7000;Date.now()<until&&held+results.length<20;)await new Promise(r=>setTimeout(r,50));
+ assert.equal(held,16,"at most 16 concurrent helpers may forward");
+ assert.equal(results.length,4);for(const r of results){assert.equal(r.status,503);assert.match(r.body,/ausgelastet/);}
+ for(const done of release.splice(0))done();
+ const all=await Promise.all(pending);assert.equal(all.filter(r=>r.status===200&&r.body==="burst-ui").length,16);
+ const after=call(port);for(const until=Date.now()+7000;Date.now()<until&&!release.length;)await new Promise(r=>setTimeout(r,50));
+ release.splice(0).forEach(done=>done());assert.equal((await after).status,200,"slots are released when helpers exit");
+});
+
+test("#1335: a PID whose identity changed after inspection is never signalled",async t=>{
+ const o=await fixture(t);o.runtimeDir=join(o.home,"runtime.[owned]");await ensureAssistantAddressRuntime(o);await writeFile(o.helperPath,`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`);
+ const state=JSON.parse(await readFile(join(o.runtimeDir,"current.json"),"utf8")),command=`${process.execPath} ${join(o.runtimeDir,"versions",state.version,"assistant-address-gateway.js")} --assistant-address-inetd --settings-path fixture`;
+ const uid=Number(o.uid),candidate={pid:12345,uid,command,started:"Sun Nov  8 10:00:00 2026"};
+ for(const [now,expected] of [
+  [{...candidate},[12345]],
+  [{...candidate,command:"node unrelated-server.js"},[]],
+  [{...candidate,uid:uid+1},[]],
+  [{...candidate,started:"Sun Nov  8 10:00:01 2026"},[]],
+  [null,[]],
+ ] as const){
+  const retired:number[]=[];
+  await ensureAssistantAddressRuntime({...o,runtimeProcesses:async()=>[candidate],runtimeProcess:async()=>now,retireRuntime:(pid:number)=>{retired.push(pid);}} as any);
+  assert.deepEqual(retired,expected,`identity at the signal boundary: ${JSON.stringify(now)}`);
+ }
 });

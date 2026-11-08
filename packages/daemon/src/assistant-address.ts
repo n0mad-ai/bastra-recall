@@ -14,8 +14,11 @@ import { renderAssistantSocketPlist, runMacAddressAdmin, cleanupMacAddressAdminS
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
+/** Concurrent helpers: room for parallel UI loading on both loopbacks; beyond it a clear 503. */
+const HELPER_SLOTS=16;
+type RuntimeProcess={pid:number;uid:number;command:string;started?:string};
 export interface AssistantAddressOptions {
- runtimeProcesses?:()=>Promise<Array<{pid:number;uid:number;command:string}>>;retireRuntime?:(pid:number)=>void;runtimeSourceDir?:string;runtimeNode?:string;adminStagingRoot?:string;usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
+ runtimeProcesses?:()=>Promise<RuntimeProcess[]>;runtimeProcess?:(pid:number)=>Promise<RuntimeProcess|null>;retireRuntime?:(pid:number)=>void;runtimeSourceDir?:string;runtimeNode?:string;adminStagingRoot?:string;usernameLookup?:()=>string;machineNames?:readonly string[];helperLoaded?:()=>Promise<boolean|null>;settingsPath?:string;hostsPath?:string;runtimeDir?:string;firefoxRoot?:string;helperPath?:string;uid?:string;username?:string;home?:string;platform?:NodeJS.Platform;daemonUrl?:string;systemConsent?:boolean;gatewayPort?:number;firefoxRunning?:()=>Promise<boolean>;openBrowser?:(url:string)=>Promise<void>;
  runAdmin?:(plan:AddressAdminPlan)=>Promise<void>;ensureRuntime?:()=>Promise<void>;
 }
 export function assistantAddressOptions(o:AssistantAddressOptions={}) {
@@ -82,20 +85,28 @@ async function restoreProfiles(edits:Array<{path:string;before:string|null;after
 async function retireLegacyAssistantHelpers(o:ReturnType<typeof assistantAddressOptions>){
  if(!await ownHelper(o))return;
  if(o.platform!=="darwin"&&!o.runtimeProcesses)return;
- const capture=(bin:string,args:string[])=>new Promise<string>((resolve,reject)=>execFile(bin,args,{timeout:2000},(error,out)=>error?reject(error):resolve(out)));
- let processes:Array<{pid:number;uid:number;command:string}>;
+ const capture=(bin:string,args:string[])=>new Promise<string>((resolve,reject)=>execFile(bin,args,{timeout:2000,env:{...process.env,LC_ALL:"C"}},(error,out)=>error?reject(error):resolve(out)));
+ // Identity is uid, start time and exact command line, read in one ps call.
+ const inspect=async(pid:number):Promise<RuntimeProcess|null>=>{
+  try{const row=await capture("/bin/ps",["-ww","-p",String(pid),"-o","uid=","-o","lstart=","-o","args="]),match=/^\s*(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d+)\s+([^\n]+)/.exec(row);return match?{pid,uid:Number(match[1]),started:match[2],command:match[3]}:null;}
+  catch{return null;/* exited before inspection */}
+ };
+ let processes:RuntimeProcess[];
  if(o.runtimeProcesses)processes=await o.runtimeProcesses();
  else{
   let output:string;try{output=await capture("/usr/sbin/lsof",["-nP","-t","-a","-u",o.uid,"-iTCP:80","-sTCP:LISTEN"]);}catch(error){if((error as {code?:number|string}).code===1)return;throw error;}
   processes=[];
-  for(const pid of new Set(output.split(/\s+/).map(Number).filter(n=>Number.isSafeInteger(n)&&n>1))){
-   try{const row=await capture("/bin/ps",["-ww","-p",String(pid),"-o","uid=","-o","args="]),match=/^\s*(\d+)\s+([^\n]+)/.exec(row);if(match)processes.push({pid,uid:Number(match[1]),command:match[2]});}catch{/* exited before inspection */}
-  }
+  for(const pid of new Set(output.split(/\s+/).map(Number).filter(n=>Number.isSafeInteger(n)&&n>1))){const p=await inspect(pid);if(p)processes.push(p);}
  }
+ const reinspect=o.runtimeProcess??(o.runtimeProcesses?async(pid:number)=>(await o.runtimeProcesses!()).find(p=>p.pid===pid)??null:inspect);
  const node=o.runtimeNode??stableNodeBin(),prefix=join(o.runtimeDir,"versions")+sep;
  const prefixes=[node+" "+prefix,process.execPath+" "+prefix];
+ const owned=(p:RuntimeProcess)=>Number.isSafeInteger(p.pid)&&p.pid>1&&p.pid!==process.pid&&p.uid===Number(o.uid)&&p.uid===(process.getuid?.()??p.uid)&&prefixes.some(prefix=>p.command.startsWith(prefix)&&/^[a-f0-9]{64}[\/\\]assistant-address-gateway\.js --assistant-address-inetd(?: |$)/.test(p.command.slice(prefix.length)));
  for(const p of processes){
-  if(!Number.isSafeInteger(p.pid)||p.pid<=1||p.pid===process.pid||p.uid!==Number(o.uid)||p.uid!==(process.getuid?.()??p.uid)||!prefixes.some(prefix=>p.command.startsWith(prefix)&&/^[a-f0-9]{64}[\/\\]assistant-address-gateway\.js --assistant-address-inetd(?: |$)/.test(p.command.slice(prefix.length))))continue;
+  if(!owned(p))continue;
+  // Revalidate right before the signal: the PID may belong to another process by now (#1335).
+  const now=await reinspect(p.pid);
+  if(!now||now.pid!==p.pid||!owned(now)||now.uid!==p.uid||now.command!==p.command||now.started!==p.started)continue;
   try{(o.retireRuntime??(pid=>{process.kill(pid,"SIGTERM");}))(p.pid);}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")throw error;}
  }
 }
@@ -120,7 +131,13 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
   const endpoint=options.daemonUrl||resolveDaemonEndpoint().configured?o.daemonUrl:previous?.protocol===2?previous.daemonUrl:o.daemonUrl;
   await atomic(path,JSON.stringify({protocol:2,generation:randomUUID(),version:digest,settingsPath:o.settingsPath,hostsPath:o.hostsPath,daemonUrl:endpoint,owner:o.uid})+"\n");
  },{strictLocal:true});
- await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nread_header() { if [ -n "\${BASH_VERSION:-}" ]; then IFS= read -r -t 2 line; else IFS= read -r line; fi; }\nfail() { while read_header; do [ -z "$line" ] || [ "$line" = "$(/usr/bin/printf '\\r')" ] && break; done; /usr/bin/printf %s ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${command}\nrc=$?\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
+ const busyBody="Bastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\n";
+ const busy=`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(busyBody)}\r\nRetry-After: 1\r\nConnection: close\r\n\r\n${busyBody}`;
+ const slots=join(o.runtimeDir,"slots");await mkdir(slots,{recursive:true,mode:0o700});
+ // Wait=false starts one helper per accepted connection. Each helper holds one of
+ // HELPER_SLOTS kernel file locks, released by the kernel when it exits (#1335).
+ const slot=`slot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 "$1" ${command}; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 "$1" ${command}; else ${command}; fi; }\ni=0; rc=75\nwhile [ "$rc" -eq 75 ] && [ "$i" -lt ${HELPER_SLOTS} ]; do slot ${shellQuote(slots)}/"$i"; rc=$?; i=$((i+1)); done\nif [ "$rc" -eq 75 ]; then respond ${shellQuote(busy)}; exit 1; fi`;
+ await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nread_header() { if [ -n "\${BASH_VERSION:-}" ]; then IFS= read -r -t 2 line; else IFS= read -r line; fi; }\nrespond() { while read_header; do [ -z "$line" ] || [ "$line" = "$(/usr/bin/printf '\\r')" ] && break; done; /usr/bin/printf %s "$1"; }\nfail() { respond ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${slot}\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
  await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
