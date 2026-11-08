@@ -28,13 +28,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import { connect, createServer as createTcpServer, type AddressInfo } from "node:net";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { gateApiRequest } from "../src/http-auth.js";
 import { gateLocalPost } from "../src/http-auth.js";
 import { Telemetry } from "../src/telemetry.js";
+import { assistantGatewayHandler } from "../src/assistant-address-gateway.js";
 
 const TOKEN = "rebinding-test-token";
 const FOREIGN = "evil.example";
@@ -190,6 +191,68 @@ async function withServer(
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
+
+test("#1264: forwarded loopback API, hook and UI requests require a token", async () => {
+  for (const token of ["set", "empty", "unset"] as const) {
+    await withServer({ token }, async (port) => {
+      const routes = [
+        { method: "GET", path: "/api/v1/graph/node?id=a1", body: undefined },
+        { method: "GET", path: "/api/v1/mcp", body: undefined },
+        { method: "POST", path: "/hook/hinted", body: "{}" },
+        { method: "GET", path: "/ui/health", body: undefined },
+        { method: "GET", path: "/ui", body: undefined },
+      ];
+      for (const route of routes) {
+        const headers = { ...JSON_HEADERS, host: `localhost:${port}` };
+        const direct = await call(port, route.method, route.path, headers, route.body);
+        // /ui itself is disabled in this fixture; preserve its normal 404 too.
+        const expected = route.path === "/ui" ? 404 : route.path === "/api/v1/mcp" ? 405 : 200;
+        assert.equal(direct.status, expected, `${route.path} direct local`);
+        for (const [name, value] of [
+          ["Forwarded", "for=203.0.113.7;host=localhost"],
+          ["X-Forwarded-For", "127.0.0.1"],
+          ["X-Forwarded-Host", "localhost"],
+          ["Forwarded", ""],
+          ["X-Forwarded-For", ""],
+          ["X-Forwarded-Host", ""],
+        ]) {
+          const proxyHeaders = { ...headers, [name!]: value! };
+          for (const authorization of [undefined, "Bearer wrong"]) {
+            const response = await call(port, route.method, route.path,
+              { ...proxyHeaders, ...(authorization ? { authorization } : {}) }, route.body);
+            assert.equal(response.status, 401, `${token} ${route.path} ${name}=${value} ${authorization}`);
+          }
+          const valid = await call(port, route.method, route.path,
+            { ...proxyHeaders, authorization: `Bearer ${TOKEN}` }, route.body);
+          assert.equal(valid.status, token === "set" ? direct.status : 401,
+            `${token} ${route.path} ${name}: valid token`);
+        }
+      }
+    });
+  }
+});
+
+test("#1264: assistant gateway preserves forwarding evidence and bearer authentication", async () => {
+  await withServer({ token: "set" }, async (daemonPort) => {
+    const dir = await mkdtemp(join(tmpdir(), "bastra-1264-gateway-"));
+    const settingsPath = join(dir, "settings.json");
+    await writeFile(settingsPath, JSON.stringify({ assistant: { name: "Jarvis" }, ui: { enabled: true } }));
+    const gateway = createServer(assistantGatewayHandler({ settingsPath, hostsPath: join(dir, "hosts"), daemonUrl: `http://127.0.0.1:${daemonPort}` }));
+    try {
+      await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+      const port = (gateway.address() as AddressInfo).port;
+      assert.equal((await call(port, "GET", "/ui/health", {})).status, 200);
+      for (const name of ["Forwarded", "X-Forwarded-For", "X-Forwarded-Host"]) {
+        assert.equal((await call(port, "GET", "/ui/health", { [name]: "localhost" })).status, 401, name);
+        assert.equal((await call(port, "GET", "/ui/health", { [name]: "localhost", authorization: `Bearer ${TOKEN}` })).status, 200, name);
+      }
+    } finally {
+      gateway.closeAllConnections();
+      await new Promise<void>((resolve) => gateway.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 test("local POST gate: foreign and opaque browser origins cannot reach local writes", async () => {
   await withServer({ token: "unset" }, async (port) => {

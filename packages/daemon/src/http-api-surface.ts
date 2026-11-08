@@ -23,7 +23,7 @@ import { listFloors } from "./floors.js";
 import { liveIntent, readActs } from "./floor-acts.js";
 import { computeHeat, computeReach, readUsage } from "./usage-sidecar.js";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
-import { isLoopback, isLoopbackHost, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
+import { isLoopback, isLoopbackHost, hasForwardingHeaders, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
 import { dispatchApi } from "./http-api-routes.js";
 import { handleMcpHttp } from "./http-mcp.js";
@@ -71,6 +71,7 @@ export function dispatchApiSurface(
     reqOrigin,
     allowedOrigin,
     isLoopback: isLoopback(req),
+    hasForwardingHeaders: hasForwardingHeaders(req),
     // #526: no `allowedHosts` escape hatch here — a host that a tunnel
     // operator exposes must still carry the token. Only a genuinely
     // loopback Host proves this is a direct local client.

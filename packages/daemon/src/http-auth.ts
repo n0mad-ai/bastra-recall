@@ -20,6 +20,15 @@ export function isLoopback(req: IncomingMessage): boolean {
   );
 }
 
+/** #1264: presence alone marks a forwarded request, even an empty header or
+ * a claimed localhost value. Never trust proxy-supplied addresses as proof
+ * that the original caller was local. Node lowercases incoming header names. */
+export function hasForwardingHeaders(req: IncomingMessage): boolean {
+  return ["forwarded", "x-forwarded-for", "x-forwarded-host"].some(
+    (name) => Object.hasOwn(req.headers, name),
+  );
+}
+
 /**
  * Constant-time string equality for the Bearer-token check. The early return
  * on length mismatch leaks only the length — not secret here, the token has
@@ -142,6 +151,8 @@ export function gateLocalPost(p: {
  * `attacker.example` — or a tunnel/reverse proxy fronting a public hostname —
  * would otherwise inherit the exemption from the loopback socket underneath.
  * A foreign Host stays usable for tunnels, but must carry the bearer token.
+ * #1264: Forwarded/X-Forwarded-For/X-Forwarded-Host also disable the skip,
+ * even when the proxy rewrites Host to localhost or supplies an empty value.
  *
  * #526 (reopened): the host rule does NOT hang on a configured token. The
  * tokenless dev mode is the DIRECT-LOCAL exemption, not a global open door —
@@ -158,6 +169,7 @@ export function gateApiRequest(p: {
   allowedOrigin: string | null;
   isLoopback: boolean;
   isLoopbackHost: boolean;
+  hasForwardingHeaders?: boolean;
   authHeader: string;
   apiToken: string;
   loopbackSkip: boolean;
@@ -168,7 +180,7 @@ export function gateApiRequest(p: {
     if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
     return 200;
   }
-  const directLocal = p.isLoopback && p.isLoopbackHost;
+  const directLocal = p.isLoopback && p.isLoopbackHost && !p.hasForwardingHeaders;
   if (p.loopbackSkip && directLocal) return 200;
   if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
   return 200;

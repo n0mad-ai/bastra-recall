@@ -173,7 +173,8 @@ for that.
 
 Local tools such as the MCP forwarder reach `/api/v1/*` without a token. The
 daemon allows that only when the connection comes from `127.0.0.1` **and** the
-`Host` header is `127.0.0.1`, `localhost` or `[::1]` (#526). A tunnel running
+`Host` header is `127.0.0.1`, `localhost` or `[::1]` (#526), and no `Forwarded`,
+`X-Forwarded-For` or `X-Forwarded-Host` header is present (#1264). A tunnel running
 on the same computer also connects from `127.0.0.1`, so the `Host` header is
 what tells a tunnelled request from a local tool: requests through the tunnel
 carry `Host: recall.example.com` and therefore need a token.
@@ -181,11 +182,21 @@ carry `Host: recall.example.com` and therefore need a token.
 That protection only holds if the tunnel passes the public `Host` through
 unchanged. **Do not** set cloudflared's `httpHostHeader` (or nginx's default
 upstream Host, or `ngrok --host-header=rewrite`). A rewritten
-`Host: 127.0.0.1` would make every request from the internet look like a local
-tool and skip the token check. The code-side hardening for this case is tracked
-in [#1264](https://github.com/n0mad-ai/bastra-recall/issues/1264). The required
-`401` check in [Step 4](#step-4-verify-from-outside) proves that your setup
-preserves the Host.
+`Host: 127.0.0.1` without forwarding headers would make requests from the
+internet look like a local tool and skip the token check. Forwarding headers
+disable that exception even with empty or localhost values; `/hook/*`, `/ui`
+and `/ui/*` also require a Bearer token when they are present. Keep hooks and
+the UI private. The required `401` check in
+[Step 4](#step-4-verify-from-outside) proves that unauthenticated requests are
+rejected by your actual tunnel setup.
+
+Deutsch: Die tokenlose Ausnahme gilt nur bei lokalem Peer und Loopback-Host
+ohne `Forwarded`, `X-Forwarded-For` oder `X-Forwarded-Host`. Jeder dieser Header
+erzwingt ein gültiges Bearer-Token, auch mit leerem Wert oder localhost-Angabe;
+das gilt ebenfalls für `/hook/*`, `/ui` und `/ui/*`. Öffentliche Proxys müssen
+den öffentlichen `Host` erhalten: Werden sowohl Host als auch Weiterleitungs-
+Header entfernt, sieht der Daemon einen direkten lokalen Aufruf. Hooks und UI
+bleiben privat. Der externe `401`-Test prüft den Schutz des tatsächlichen Tunnels.
 
 `BASTRA_AUTH_LOOPBACK_SKIP=0` in the daemon's environment is optional extra
 hardening: it requires the token from local callers too, so even a rewritten

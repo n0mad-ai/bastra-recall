@@ -25,6 +25,21 @@ currently have no shared response schemas. The generator does not invent
 complete response shapes from examples. Loopback-only hooks, UI routes, and
 internal administrative endpoints outside `/api/v1` are outside this contract.
 
+The tokenless loopback exception requires a loopback peer and `Host`, and no
+`Forwarded`, `X-Forwarded-For`, or `X-Forwarded-Host` header. Presence of any of
+these headers requires a valid Bearer token, even if its value is empty or
+claims localhost. This also applies to `/hook/*`, `/ui`, and `/ui/*`; do not
+publish hooks or the UI through a tunnel. Direct local hooks, MCP forwarders,
+CLI and Mac-app calls without forwarding headers keep their existing access.
+
+Die tokenlose Loopback-Ausnahme setzt einen lokalen Peer und `Host` voraus
+und gilt nur ohne `Forwarded`, `X-Forwarded-For` und `X-Forwarded-Host`.
+Sobald einer dieser Header vorhanden ist, ist ein gültiges Bearer-Token nötig,
+auch bei leerem Wert oder einer localhost-Angabe. Das gilt ebenso für
+`/hook/*`, `/ui` und `/ui/*`; Hooks und UI gehören nicht in einen öffentlichen
+Tunnel. Direkte lokale Aufrufe von Hooks, MCP-Forwarder, CLI und Mac-App ohne
+diese Header behalten ihren bisherigen Zugriff.
+
 ## Legacy: Custom GPT Action
 
 > **Deprecated.** OpenAI retires Custom GPTs on 2026-12-11, and custom actions

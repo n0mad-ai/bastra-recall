@@ -59,7 +59,9 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
       if (gate !== 200) return reply(res, gate, gate === 403 ? "origin not allowed" : "unsupported content type");
     }
     const headers: import("node:http").OutgoingHttpHeaders = { ...req.headers, host: target.host };
-    for (const key of ["connection", "upgrade", "proxy-authorization", "proxy-authenticate", "keep-alive", "transfer-encoding", "te", "trailer", "forwarded", "x-forwarded-host", "x-forwarded-for", "x-forwarded-proto"]) delete headers[key];
+    // #1264: preserve forwarding evidence and Authorization so the daemon
+    // cannot mistake a proxied caller for a tokenless direct-local request.
+    for (const key of ["connection", "upgrade", "proxy-authorization", "proxy-authenticate", "keep-alive", "transfer-encoding", "te", "trailer", "x-forwarded-proto"]) delete headers[key];
     if (headers.origin !== undefined) headers.origin = target.origin;
     if (headers.referer !== undefined) headers.referer = `${target.origin}/ui/`;
     const upstream = request(target, { method, path: url.pathname + url.search, headers }, response => {

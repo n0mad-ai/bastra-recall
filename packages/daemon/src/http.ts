@@ -91,7 +91,7 @@ import { type ChatFn } from "./webui-chat.js";
 import { type CuratorRunDeps } from "./curator-run.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { sendCors, sendJson } from "./http-util.js";
-import { isLoopbackHost, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
+import { isLoopbackHost, hasForwardingHeaders, safeEqual, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
 import { dispatchUiRoutes } from "./http-ui-routes.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
 import { codeGraphRefresher } from "./code-graph/service.js";
@@ -238,6 +238,16 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // Host-Header heißt, ein Browser wurde auf 127.0.0.1 umgebogen.
     if (!url.startsWith("/api/v1/") && !isLoopbackHost(req.headers.host, ctx.allowedHosts)) {
       sendJson(res, 403, { error: "host not allowed" });
+      return;
+    }
+
+    // #1264: a proxy may rewrite Host to localhost. Hooks and UI must then
+    // authenticate too, before any handler can read data or apply a write.
+    const pathname = url.split("?", 1)[0]!;
+    if ((pathname.startsWith("/hook/") || pathname === "/ui" || pathname.startsWith("/ui/")) &&
+        hasForwardingHeaders(req) &&
+        (!ctx.apiToken || !safeEqual(req.headers.authorization ?? "", `Bearer ${ctx.apiToken}`))) {
+      sendJson(res, 401, { error: "unauthorized" });
       return;
     }
 
