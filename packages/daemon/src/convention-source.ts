@@ -48,8 +48,9 @@ export async function readConventionSource(
         ...(parsed.fm.validator&&!parsed.fm.obsolete&&!parsed.fm.superseded_by ? { validator: parsed.fm.validator } : {}),
         ...(includeRuleMetadata ? { summary: parsed.fm.summary, write_origin: parsed.fm.write_origin } : {}),
       };
-    } catch { return { revision }; }
-  } catch { return { revision: null }; }
+    // #1334: a source that cannot be judged counts as hidden (as hiddenOnDisk).
+    } catch { return { revision, hiddenFromPublic: true }; }
+  } catch { return { revision: null, hiddenFromPublic: true }; }
 }
 
 /** One active/floor context per response, shared by index and current-source paths. */

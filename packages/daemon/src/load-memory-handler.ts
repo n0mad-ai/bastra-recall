@@ -8,7 +8,7 @@ import { z } from "zod";
 import { stripAutoRelatedSection, FUNCTION_WORDS } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { callerSessionStore } from "./caller-session.js"; // #1128-capture
-import { readCurrentRulebookSources } from "./convention-source.js";
+import { indexedConventionSource, readCurrentRulebookSources } from "./convention-source.js";
 import { clearPendingMustLoad, touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
@@ -194,12 +194,15 @@ export async function loadMemoryHandler(
   // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
   // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
   // wäre kein Vergleich, sondern eine Vermutung.
-  const revision = source.revision ?? undefined;
+  // #1334: when the disk moved past the index, the delivered body is the
+  // indexed one; pair it with ITS revision, never the newer disk bytes.
+  const delivered = source.matchesIndex === true ? source : indexedConventionSource(m);
+  const revision = delivered.revision ?? undefined;
   // #1305: a real load (not an explicit lean dismissal) that answers a
   // must-load puts the rule in force for the rule kernel, with this revision.
   await clearPendingMustLoad(
     parsed.data.id,
-    parsed.data.verbosity === "lean" || agentId != null ? undefined : source,
+    parsed.data.verbosity === "lean" || agentId != null ? undefined : delivered,
     source.matchesIndex===true && agentId == null ? sessionId : undefined,
   );
 
