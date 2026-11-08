@@ -14,6 +14,32 @@ const input = { id: "invented-rule", title: "Invented rule", type: "workflow" as
   topic_path: ["fixture"], tags: ["fixture"], scope: "all-projects", recall_when: ["invented artifact"] };
 const base = { ...input, created: "2026-10-30", updated: "2026-10-30" };
 
+test("#1399: overwrite binds declarations using the stored user origin; agent notes stay proposals", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rulebook-stored-origin-"));
+  try {
+    for (const origin of ["user-directed", "agent-session", "capture-review"] as const) {
+      for (const categoryOnly of [false, true]) {
+        const note = { ...input, id: `${origin}-${categoryOnly}`, type: "lesson" as const };
+        const saved = await saveMemory(root, SaveMemoryInput.parse({ ...note, write_origin: origin }));
+        const declaration = categoryOnly ? { rule_categories: ["correspondence"] } : { rulebook: "always" };
+        await saveMemory(root, SaveMemoryInput.parse({ ...note, overwrite: true, applies_when: "When testing fixtures", ...declaration }));
+        const fm = matter(await readFile(saved.file_path, "utf8")).data;
+        assert.equal(fm.write_origin, origin);
+        if (origin === "user-directed") {
+          assert.equal(fm.rulebook, categoryOnly ? "on-demand" : "always");
+          assert.equal(fm.applies_when, "When testing fixtures");
+          assert.equal(fm.rulebook_proposed, undefined);
+          if (categoryOnly) assert.deepEqual(fm.rule_categories, ["correspondence"]);
+        } else {
+          assert.equal(fm.rulebook, undefined);
+          assert.equal(fm.rule_categories, undefined);
+          assert.equal(fm.rulebook_proposed.rulebook, categoryOnly ? "on-demand" : "always");
+        }
+      }
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("additive rulebook fields load in any language; old notes need no migration", () => {
   assert.equal(FrontmatterSchema.parse(base).rulebook, undefined);
   for (const applies_when of ["Beim Schreiben", "When writing", "書くとき", "При записи", "Al escribir"]) {

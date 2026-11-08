@@ -299,6 +299,8 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   const previous = FrontmatterSchema.safeParse(prev);
   const existingRule = existing.success ||
     (previous.success && !!resolveRulebook(previous.data));
+  // #1399: overwrite keeps the stored origin, just like edit_memory.
+  const bindsDirectly = existingRule || prev.write_origin === "user-directed" || input.write_origin === "user-directed";
   if (existing.success) out.rulebook = existing.data;
   if (typeof prev.applies_when === "string") out.applies_when = prev.applies_when;
   const previousProposal = RulebookProposalSchema.safeParse(prev.rulebook_proposed);
@@ -307,7 +309,7 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   if (input.rulebook !== undefined) {
     if (!input.applies_when?.trim()) throw new Error("New rulebook declarations require applies_when");
     const declaration = { rulebook: input.rulebook, applies_when: input.applies_when.trim() };
-    if (existingRule || input.write_origin === "user-directed") {
+    if (bindsDirectly) {
       Object.assign(out, declaration);
       // #1386: binding supersedes the pending proposal it answers.
       if (!existing.success) {
@@ -323,7 +325,12 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   if (categories.success) out.rule_categories = categories.data;
   if (input.rule_categories !== undefined) {
     // #1392: same binding as rulebook and validator — a user-directed overwrite binds like edit_memory does.
-    if (existingRule || input.write_origin === "user-directed") out.rule_categories = input.rule_categories;
+    if (bindsDirectly) {
+      out.rule_categories = input.rule_categories;
+      // Category-only saves declare the same on-demand rule as edit_memory.
+      out.rulebook ??= "on-demand";
+      out.applies_when = input.applies_when ?? out.applies_when ?? input.summary;
+    }
     else if (JSON.stringify(input.rule_categories) !== JSON.stringify(categories.success ? categories.data : undefined)) {
       const proposed = out.rulebook_proposed as Record<string, unknown> | undefined;
       out.rulebook_proposed = { ...proposed, rulebook: proposed?.rulebook ?? "on-demand",
@@ -333,14 +340,14 @@ function rulebookFrontmatter(input: SaveMemoryInput, prev: Record<string, unknow
   const previousValidator = ConventionValidatorSchema.safeParse(prev.validator);
   if (input.validator !== null && previousValidator.success) out.validator = previousValidator.data;
   if (input.validator != null) {
-    if (existingRule || input.write_origin === "user-directed") out.validator = input.validator;
+    if (bindsDirectly) out.validator = input.validator;
     else out.rulebook_proposed = {
       rulebook: "on-demand", applies_when: input.applies_when ?? prev.applies_when ?? input.summary,
       ...(out.rulebook_proposed as object ?? {}), validator: input.validator,
     };
   }
   // #1394: parts this write bound directly are no longer pending, also on an existing rule.
-  const covered = existingRule || input.write_origin === "user-directed"
+  const covered = bindsDirectly
     ? [...(input.rule_categories !== undefined ? ["rule_categories"] : []), ...(input.validator != null ? ["validator"] : [])] : [];
   if (covered.length > 0 && out.rulebook_proposed) {
     const rest = unboundProposal(out.rulebook_proposed as Record<string, unknown>, out, covered);

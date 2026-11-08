@@ -126,6 +126,21 @@ test("#1393: a private declaration is reported as bound but not delivered, match
   assert.match(saved.delivery ?? "", /private/);
 });
 
+test("#1399: overwrite without an origin binds stored user notes and reports their catalog membership", async (t) => {
+  const deps = await fixture(t);
+  for (const categoryOnly of [false, true]) {
+    const id = `stored-origin-${categoryOnly}`;
+    const note = { ...base, id, type: "lesson", recall_when: [`invented ${id}`] };
+    await saveMemoryHandler(deps, { ...note, write_origin: "user-directed" });
+    const result = await saveMemoryHandler(deps, { ...note, overwrite: true, applies_when: "When writing fixtures",
+      ...(categoryOnly ? { rule_categories: ["correspondence"] } : { rulebook: "always" }) }) as SaveMemoryResult;
+    assert.match(result.delivery ?? "", /^rule \((always|on-demand)\): active now/);
+    const catalog = await collectRulebookCatalog(deps.vault, { project: null, active: [], floors: async () => [], allProjects: true });
+    assert.equal(catalog.entries.find(e => e.id === id)?.rulebook, categoryOnly ? "on-demand" : "always");
+    assert.equal(deps.vault.get(id)!.fm.rulebook_proposed, undefined);
+  }
+});
+
 test("#1394: a validator bound after its rule leaves no stale validator proposal (save and edit)", async (t) => {
   const deps = await fixture(t);
   const validator = { tool: "validate_artifact", channel: "fixture", limit: 100, unit: "utf16" };
