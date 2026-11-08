@@ -7,6 +7,7 @@ import {isGatedHint,isUnfused,type HookRecallResponse} from "./hook-recall-respo
 import {projectForLane} from "./scope-filter.js";
 import {postLane} from "./thin-client.js";
 import {runGateLane,actionConventionFrame,type GatePayload} from "./gate-lane.js";
+import {githubAdvisoryOnce} from "./github-advisory-delivery.js";
 const PART="github-action-conventions-v2";
 export async function githubConventionGate(payload:GatePayload,selfBaseUrl:string,deadline:number):Promise<string|null>{
  try{
@@ -38,9 +39,16 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   if((!hits.length&&!advisory.length)||Date.now()>=deadline)return null;
   const contextFor=(selected:typeof hits)=>actionConventionFrame(selected.map(h=>h.id),new Map(selected.map(h=>[h.id,h.summary])),new Map(selected.map(h=>[h.id,h.write_origin])));
   const advice=advisory.length?contextFor(advisory).replace("MUST-LOAD — load the applicable saved issue/PR conventions before deciding:","Possibly relevant notes (not rulebook rules, no obligation; decide yourself):"):"";
-  if(!hits.length)return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:advice}});
-  const context=[contextFor(hits),advice].filter(Boolean).join("\n");
-  if(!hookGateAvailable(payload))return JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context.replace("MUST-LOAD","Relevant conventions (host cannot gate)")}});
+  const finish=async(result:{hookSpecificOutput?:{hookEventName?:string;additionalContext?:string;permissionDecision?:string;permissionDecisionReason?:string}})=>{
+   const deliveredAdvice=await githubAdvisoryOnce(payload.session_id!,advice,deadline);
+   const out=result.hookSpecificOutput??{hookEventName:"PreToolUse"};
+   const context=[out.additionalContext,deliveredAdvice].filter(Boolean).join("\n");
+   if(!context&&!out.permissionDecision)return null;
+   return JSON.stringify({...result,hookSpecificOutput:{...out,...(context?{additionalContext:context}:{})}});
+  };
+  if(!hits.length)return finish({});
+  const context=contextFor(hits);
+  if(!hookGateAvailable(payload))return finish({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:context.replace("MUST-LOAD","Relevant conventions (host cannot gate)")}});
   const agent=hookAgent(payload);
   const part=agent==="subagent"?PART+":"+createHash("sha256").update(payload.agent_id??"").digest("hex").slice(0,16):agent==="main"?PART:PART+":unattributed";
   let ids:readonly string[]=[];
@@ -49,13 +57,12 @@ export async function githubConventionGate(payload:GatePayload,selfBaseUrl:strin
   const result=JSON.parse(await runGateLane(payload,{reflexPool:()=>[],deadline,countTool:false,
    actionMustLoad:{ids:hits.map(h=>h.id),key:part,summaries:new Map(hits.map(h=>[h.id,h.summary])),origins:new Map(hits.map(h=>[h.id,h.write_origin])),revisions:new Map(hits.map(h=>[h.id,h.revision??null])),onClaim:selected=>{ids=selected;}}}));
   if(result.hookSpecificOutput?.permissionDecision!=="deny"){
-   const delivered=[result.hookSpecificOutput?.additionalContext,advice].filter(Boolean).join("\n");
-   return delivered?JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:delivered}}):null;
+   return finish(result);
   }
   if(ids.length){
    const selected=hits.filter(h=>ids.includes(h.id));
-   result.hookSpecificOutput.additionalContext=[contextFor(selected),advice].filter(Boolean).join("\n");
+   result.hookSpecificOutput.additionalContext=contextFor(selected);
   }
-  return JSON.stringify(result);
+  return finish(result);
  }catch{return null;} // retrieval/state failures preserve the lane's fail-open contract
 }

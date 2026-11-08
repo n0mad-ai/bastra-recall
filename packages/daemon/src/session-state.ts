@@ -108,6 +108,8 @@ export interface TakenBoundary {
 
 export interface SessionState {
   shown: Record<string, ShownEntry>;
+  /** #1391: ordinary GitHub note advice is once per session, not per context/actor. */
+  githubAdvisory?: { delivered: true } | { token: string; deadline: number };
   /** Round rulebook self-report; parsed by rulebook-check.ts, independent of delivery cadence. */
   rulebookCheck?: string;
   draftShown?: string[];
@@ -271,6 +273,7 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 };
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
+  readonly githubAdvisory?: Readonly<NonNullable<SessionState["githubAdvisory"]>>;
   readonly rulebookCheck?: string;
   readonly draftShown?: readonly string[];
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
@@ -352,6 +355,11 @@ async function readSessionState(sessionId: string, dir = sessionStateDir()): Pro
       return { shown: {} };
     }
     const state: SessionState = { shown: parsed.shown as Record<string, ShownEntry> };
+    const advisory = parsed.githubAdvisory;
+    if (advisory && typeof advisory === "object" && "delivered" in advisory && advisory.delivered === true) state.githubAdvisory = { delivered: true };
+    else if (advisory && typeof advisory === "object" && "token" in advisory && typeof advisory.token === "string" && typeof advisory.deadline === "number") {
+      state.githubAdvisory = { token: advisory.token, deadline: advisory.deadline };
+    }
     if (typeof parsed.rulebookCheck === "string") state.rulebookCheck = parsed.rulebookCheck;
     if (Array.isArray(parsed.draftShown)) {
       state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
