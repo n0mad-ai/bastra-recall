@@ -1,4 +1,4 @@
-import { readAppRecord } from "../src/app-record-store.js";
+import { deleteAppRecord, readAppRecord } from "../src/app-record-store.js";
 /**
  * Integration test for the curator pass (#155/#156): usage sidecar → decision
  * → state/demotions → REPORT.md, against a temp vault root, a fake in-RAM
@@ -353,10 +353,10 @@ test("reflex promotion (#1308): proposals persist across curator passes without 
       assert.ok(blocks.includes('evidence="user-directed-frustration"'));
       assert.ok(blocks.includes("Never promote without user authorization."));
       assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, new Date(T_ACT).toISOString());
-      await rm(pendingPath);
+      deleteAppRecord("pending-suggestions", pendingPath);
       const again = await runCuratorPass(deps, { force: true, nowMs: T_ACT + 90 * 86_400_000 });
       assert.equal(again.error, undefined);
-      await assert.rejects(readFile(pendingPath), { code: "ENOENT" });
+      assert.throws(() => readAppRecord("pending-suggestions", pendingPath), { code: "ENOENT" });
       assert.equal(deps.vault.get("frustration")?.fm.recall_mode, undefined);
     });
   });
@@ -385,10 +385,10 @@ test("reflex promotion (#1308): disabled or failed relay can retry before perman
           assert.match(rows[0].blocks, /user-directed-frustration/);
           const suggestedAt = (await loadCuratorState(root)).reflex_suggested?.frustration;
           assert.equal(suggestedAt, new Date(T_ACT + 1000).toISOString());
-          await rm(pendingPath);
+          deleteAppRecord("pending-suggestions", pendingPath);
           await runCuratorPass(deps, { force: true, nowMs: T_ACT + 90 * 86_400_000 });
           assert.equal((await loadCuratorState(root)).reflex_suggested?.frustration, suggestedAt);
-          await assert.rejects(readFile(pendingPath), { code: "ENOENT" });
+          assert.throws(() => readAppRecord("pending-suggestions", pendingPath), { code: "ENOENT" });
           assert.equal(deps.vault.get("frustration")?.fm.recall_mode, undefined);
         });
       });

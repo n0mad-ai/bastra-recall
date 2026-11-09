@@ -20,6 +20,7 @@ import { Telemetry } from "../src/telemetry.js";
 import { recallHandler } from "../src/recall-handler.js";
 import { runHookRecall } from "../src/http-hook-routes.js";
 import { mergeBatchResults, projectRecallResult, type BatchSubResult } from "../src/recall-batch.js";
+import { writeAppRecord } from "../src/app-record-store.js";
 
 function draft(i: number, quote = "The amber cluster requires a tunnel before deploying builds"): Draft {
   const now = Date.now();
@@ -237,10 +238,10 @@ test("background loader observes another writer and expiry, retrieval remains me
   await captureDrafts([row]);
   assert.equal((await searchDrafts("amber tunnel")).length, 1);
   const old = { ...row, last_touched: 0, created: 0, evidence: [{ session_id: "old", turn: 0, ts: 0 }] };
-  await writeFile(process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows: [old] }));
+  writeAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows: [old] }));
   await listDrafts();
   assert.equal((await searchDrafts("amber tunnel")).length, 0);
-  await writeFile(process.env.BASTRA_DRAFTS_PATH!, "invalid json");
+  writeAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!, "invalid json");
   await listDrafts();
   assert.equal((await searchDrafts("amber tunnel")).length, 0);
 }));

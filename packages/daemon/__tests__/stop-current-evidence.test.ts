@@ -1,6 +1,7 @@
 import {test} from 'node:test';
+import {readAppRecord} from '../src/app-record-store.js';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -128,9 +129,9 @@ test('#1390 drift requests only clusters containing a successfully written curre
  try{
   const run=(transcript:unknown[])=>runStopLane({session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript},base);
   assert.equal(await run([user('Status'),assistant('Done')]),'{}');
-  await assert.rejects(readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!));
+  assert.throws(()=>readAppRecord('pending-suggestions',process.env.BASTRA_PENDING_SUGGESTIONS_PATH!),{code:'ENOENT'});
   await run([user('Work'),call('mcp__bastra_recall__save_memory'),result(JSON.stringify({id:'written-id'})),assistant('Saved')]);
-  const pending=await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,'utf8');
+  const pending=readAppRecord('pending-suggestions',process.env.BASTRA_PENDING_SUGGESTIONS_PATH!);
   assert.match(pending,/written-id/);assert.doesNotMatch(pending,/old-id/);
  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
 }));

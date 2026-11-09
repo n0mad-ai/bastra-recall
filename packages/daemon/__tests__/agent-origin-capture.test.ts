@@ -10,6 +10,7 @@ import { ownerPromptText } from "../src/system-turn.js";
 import { harvestCandidates, noteSessionForHarvest, runSessionHarvest } from "../src/session-harvest.js";
 import { listDrafts } from "../src/draft-store.js";
 import { captureTypedDrafts } from "../src/draft-capture.js";
+import { readAppRecord } from "../src/app-record-store.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const human = "Please use a separate staging database for every production deployment.";
@@ -54,10 +55,10 @@ test("Claude/Codex cmux loop is excluded from both persisted drafts and harvest 
     assert.equal(drafts.length, 1);
     assert.equal(drafts[0].quote, human);
     assert.equal(drafts[0].evidence.length, 2);
-    const store = await readFile(env.BASTRA_DRAFTS_PATH, "utf8");
+    const store = readAppRecord("drafts", env.BASTRA_DRAFTS_PATH);
     assert.ok(!store.includes("Codex:"));
     let pending = "";
-    try { pending = await readFile(env.BASTRA_PENDING_SUGGESTIONS_PATH, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    try { pending = readAppRecord("pending-suggestions", env.BASTRA_PENDING_SUGGESTIONS_PATH); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     assert.ok(!pending.includes("Codex:"));
     // Restart/replay: already-seen input neither repeats evidence nor creates relay credit.
     for (const client of ["claude", "codex"]) {
