@@ -258,8 +258,9 @@ test('#1219 follow-up 4: non-auth status failure after renewal keeps polling and
  (u.ctx as any).fetch=async(url:string,args:any)=>{if(url==='/ui/tasks/session'){const result=await fetch(url,args);failNext=true;return result;}if(url.endsWith('task_status')){statuses++;if(failNext){failNext=false;return{ok:false,json:async()=>({code:'unavailable'})};}}return fetch(url,args);};
  u.expire();await u.tick();const before=statuses;assert.equal(await runInContext('accessExpired',u.ctx),false);await u.tick();assert.equal(statuses,before+1);assert.equal(u.get('message').hidden,true);
 });
-test('#1219 follow-up 5 repro: repeatedly successful renewal has no cooldown (owner decision pending)', async()=>{
- const u=await renewalUI(),before=u.sessions();for(let i=0;i<6;i++){u.expire();await u.tick();}assert.equal(u.sessions(),before+6);
+test('#1219: ordinary local access has no logout control and keeps polling without renewing', async()=>{
+ const u=await renewalUI(),before=u.sessions();for(let i=0;i<6;i++)await u.tick();assert.equal(u.sessions(),before);assert.equal(u.get('disconnect').hidden,true);
+ u.get('token').value='entered-token';u.get('connect').handlers.submit({preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(u.get('disconnect').hidden,false);
 });
 test('expired local session renews silently and shows an external task with fresh CSRF',async()=>{
  const u=await renewalUI(),before=u.sessions();u.expire();u.change({...liveBase,tasks:[liveTask]});await u.tick();

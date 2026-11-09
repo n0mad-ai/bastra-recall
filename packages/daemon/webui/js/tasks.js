@@ -50,6 +50,7 @@ async function mutate(task,op,extra={}){const current=await api("get",{id:task.i
 async function refresh(background=false,preserveCards=false,signal){const seq=++request,epoch=connection;let next;try{next=await api("status",{},signal);}catch(e){e.refreshFailed=true;throw e;}
  if(seq!==request||epoch!==connection||(background&&(!active()||busy())))return;
  if(renewalError){if($("message").textContent===renewalError)message("");renewalError="";}
+ $("disconnect").hidden=!token;
  const changed=JSON.stringify(next)!==JSON.stringify(snapshot);if(background&&!changed)return;
  snapshot=next;if(!background&&!preserveCards)$("cards").replaceChildren();$("workspace").hidden=false;$("status").replaceChildren(text("h2",`Funktion ${snapshot.controls.enabled?"an":"aus"} · ${snapshot.controls.muted?"stumm":"hörbar"}`),text("p",`Automatik ${!snapshot.controls.enabled?"aus":snapshot.runtime.running?"läuft":"nicht aktiv"}; nächste Prüfung ${snapshot.controls.enabled?time(snapshot.runtime.next_tick||undefined):"keine"}; letzter Fehler ${snapshot.runtime.last_error||"keiner"}; Backoff ${snapshot.runtime.backoff_ms||0} ms. Ausführung ${snapshot.controls.execution_stopped?"gestoppt (sicherer Standard)":"aktiv"}.`));
  if(snapshot.budgets)$("status").append(text("p",`Globale Budgets: ${snapshot.budgets.max_assessments_per_turn} Prüfungen/${snapshot.budgets.source_turn_ms/1000}s je Lauf; Poll alle ${snapshot.budgets.poll_ms/1000}s; Speicher ${snapshot.budgets.snapshot_bytes/1048576} MiB (Normalbetrieb bis 75 %).`,"meta"));

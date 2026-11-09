@@ -24,6 +24,19 @@ test("tokenless task UI session is local/CSRF-protected Agent access, never Owne
   const foreignHost = await new Promise<number>((resolve,reject)=>{const r=request(base+"/ui/tasks/session",{method:"POST",headers:{Host:"foreign.invalid","Content-Type":"application/json"}},res=>{res.resume();res.on("end",()=>resolve(res.statusCode!));});r.on("error",reject);r.end("{}");});assert.equal(foreignHost,403);
   const bootstrap=await post("/ui/tasks/session",{}, {Origin:base});assert.equal(bootstrap.status,200);const data=await bootstrap.json() as any;const setCookie=bootstrap.headers.get("set-cookie")!;assert.match(setCookie,/HttpOnly/);assert.match(setCookie,/SameSite=Strict/);assert.ok(!JSON.stringify(data).includes(taskClientToken()!));assert.equal(data.role,"agent");const headers={Cookie:setCookie.split(";")[0],"x-bastra-task-csrf":data.csrf,Origin:base};
   assert.equal((await post("/ui/tasks/api/task_status",{}, {Cookie:headers.Cookie})).status,403);
+  assert.doesNotMatch(setCookie,/Max-Age|Expires=/i,"ordinary browser access uses a session cookie");
+  assert.equal(data.expires_in,null,"session lasts for the daemon lifetime");
+  for(let i=0;i<101;i++){
+   const reopened=await post("/ui/tasks/session",{},headers);assert.equal(reopened.status,200);
+   assert.equal((await reopened.json() as any).csrf,data.csrf,"reload reuses its scoped session instead of exhausting capacity");
+  }
+  const realNow=Date.now;
+  try{
+   Date.now=()=>realNow()+24*60*60*1000;
+   assert.equal((await post("/ui/tasks/api/task_status",{},headers)).status,200,"idle time never expires a running daemon's session");
+   assert.equal((await post("/ui/tasks/api/task_status",{}, {...headers,Origin:"https://foreign.invalid"})).status,403);
+   assert.equal((await post("/ui/tasks/api/task_status",{}, {...headers,"x-bastra-task-csrf":"x".repeat(43)})).status,403);
+  }finally{Date.now=realNow;}
   const input={idempotency_key:"ui",original_request:"Synthetic",goal:"Remind me",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()+100000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"],arm:true,origin:{kind:"user-request",client:"ui",session:"synthetic",context:"Synthetic request"}};
   const made=await post("/ui/tasks/api/task_create",input,headers);assert.equal(made.status,200);const task=await made.json() as any;assert.equal(task.armed,true);
   assert.equal((await post("/ui/tasks/api/task_controls",{execution_stopped:false},headers)).status,403);
