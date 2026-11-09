@@ -26,6 +26,11 @@ export class TaskAuthError extends Error {
     super(message); this.name = "TaskAuthError";
   }
 }
+export class TaskDomainError extends TaskAuthError {
+  constructor(public readonly rejected: string[], public readonly allowed: string[]) {
+    super("forbidden", "task ownership domain denied");
+  }
+}
 export function taskAuthPath(): string { return join(dirname(tasksPath()), "task-auth.json"); }
 function digest(token: string): string { return createHash("sha256").update(token).digest("hex"); }
 async function readRegistry(path: string): Promise<z.infer<typeof registrySchema>> {
@@ -57,8 +62,8 @@ export function requireTaskOwner(principal: TaskPrincipal): void {
   if (principal.role !== "owner") throw new TaskAuthError("forbidden", "owner command required");
 }
 export function requireTaskDomains(principal: TaskPrincipal, domains: readonly string[]): void {
-  if (!domains.every(d => principal.domains.includes(d)))
-    throw new TaskAuthError("forbidden", "task ownership domain denied");
+  const rejected = [...new Set(domains.filter(d => !principal.domains.includes(d)))];
+  if (rejected.length) throw new TaskDomainError(rejected, [...principal.domains]);
 }
 /** Only called by offline owner bootstrap; raw token goes to a private destination. */
 export async function mintTaskCredential(path: string, input: Pick<TaskPrincipal, "actor_id" | "domains" | "role">,

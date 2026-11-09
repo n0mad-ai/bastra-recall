@@ -25,6 +25,25 @@ async function fixture() {
     scope: { kind: "personal", name: "fixture" }, owner_domains: ["personal"] };
   return { ctx, owner, agent, base, input, close: () => new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) };
 }
+test('#1321: denied owner domains identify rejected and enrolled domains without granting access', async () => {
+  const f = await fixture();
+  try {
+    const auth = `Bearer ${f.agent.token}`, input = { ...f.input, owner_domains: ['personal', 'foo', 'bar'] };
+    const response = await fetch(`${f.base}/api/v1/task_create`, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    assert.equal(response.status, 403);
+    const denied = await response.json() as any;
+    assert.equal(denied.reason, 'owner_domain_not_enrolled');
+    assert.deepEqual(denied.rejected, ['foo', 'bar']); assert.deepEqual(denied.allowed, ['personal']);
+    assert.match(denied.hint, /owner_domains.*task_status/);
+    const mcp = await callTaskMcp('task_create', input, auth, f.ctx);
+    assert.deepEqual(JSON.parse(mcp.content[0].text), denied);
+    await assert.rejects(taskCliCall('create', input, auth, f.base), (e: any) => { assert.deepEqual(taskFailure(e).body, denied); return true; });
+    assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 0);
+    const created = await callTaskMcp('task_create', f.input, auth, f.ctx);
+    assert.notEqual(created.isError, true); assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 1);
+    assert.match(taskTools.find(t => t.name === 'task_create')!.description, /owner_domains.*subset.*task_status.*domains/);
+  } finally { await f.close(); }
+});
 test("HTTP canonical routes, MCP and CLI share creation, revision and lifecycle semantics", async () => {
   const f = await fixture(); try {
     const auth = `Bearer ${f.owner.token}`;
@@ -90,6 +109,8 @@ test("unknown errors never expose raw filesystem codes", () => {
   const failure = taskFailure(Object.assign(new Error("invented private path"), { code: "ENOENT" }));
   assert.equal(failure.body.code, "unavailable"); assert.ok(!JSON.stringify(failure).includes("ENOENT"));
   assert.ok(!JSON.stringify(failure).includes("private path"));
+  const spoofed = taskFailure(Object.assign(new Error('secret'), { code: 'forbidden', reason: 'owner_domain_not_enrolled', rejected: ['secret'], allowed: ['secret'] }));
+  assert.equal(spoofed.body.reason, undefined); assert.equal(spoofed.body.allowed, undefined); assert.ok(!JSON.stringify(spoofed).includes('secret'));
 });
 
 test("task routes enforce the same local Host gate even with a valid mapped token",async()=>{

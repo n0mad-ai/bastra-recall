@@ -9,7 +9,7 @@ import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
-import { authenticateTask, mintTaskCredential, revokeTaskCredential, taskAuthPath } from "../task-auth.js";
+import { authenticateTask, mintTaskCredential, revokeTaskCredential, taskAuthPath, TaskDomainError } from "../task-auth.js";
 import { isTaskTool, taskClientAuthorization, taskFailure } from "../task-transport.js";
 import { confirm } from "./prompt.js";
 
@@ -32,7 +32,11 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
     method: "POST", headers: { "Content-Type": "application/json", Authorization: authorization }, body: JSON.stringify(input),
     signal: AbortSignal.timeout(10000),
   });
-  const body = await resp.json() as { error?: string; code?: string;reason?:string };
+  const body = await resp.json() as { error?: string; code?: string;reason?:string; rejected?: string[]; allowed?: string[] };
+  if (resp.status === 403 && body.code === "forbidden" && body.reason === "owner_domain_not_enrolled"
+    && Array.isArray(body.rejected) && Array.isArray(body.allowed)
+    && [...body.rejected, ...body.allowed].every(d => typeof d === "string" && /^[a-z0-9][a-z0-9._:-]{0,95}$/.test(d)))
+    throw new TaskDomainError(body.rejected, body.allowed);
   if (!resp.ok) throw Object.assign(new Error(body.error), { code: body.code, reason:body.reason, status: resp.status });
   return body;
 }
