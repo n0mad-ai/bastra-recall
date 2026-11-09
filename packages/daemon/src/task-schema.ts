@@ -119,6 +119,7 @@ const occurrenceSchema = z.strictObject({
   event_key: id, new_premise: text.optional(), due_at: instant, why: text, missed_count: revision,
   attempts: z.array(z.strictObject({ attempt_id: id.optional(), count: revision.optional(), first_at: instant.optional(), actor: taskIdentitySchema.optional(), role: z.enum(["owner", "agent"]).optional(), last_session: taskIdentitySchema.optional(), last_action_key: hash.optional(), channel: id.optional(), at: instant, client: id, outcome: id })).max(100),
   compacted_attempts: revision.optional(),
+  notification: z.strictObject({ claimed_at: instant, submitted_at: instant.optional(), failed_at: instant.optional() }).optional(),
   acknowledgement: z.strictObject({ at: instant, actor: taskIdentitySchema, proof_id: id }).optional(),
   resolution: z.strictObject({ at: instant, actor: taskIdentitySchema, reason: text }).optional(),
 });

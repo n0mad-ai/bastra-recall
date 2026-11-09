@@ -86,7 +86,10 @@ export const SETTINGS_REGISTRY = {
   code: { repos: setting(nonemptyStrings, { area: "code", label: "Aktivierte Repositories", default: [], restartRequired: true }) },
   promptImpact: { enabled: setting(bool, { area: "code", label: "Änderungsfolgen im Prompt", default: false, env: "BASTRA_PROMPT_IMPACT" }) },
   coverageMap: { enabled: setting(bool, { area: "code", label: "Testabdeckung erfassen", default: false, env: "BASTRA_COVERAGE_MAP" }) },
-  tasks: { enabled: setting(bool, { area: "tasks", label: "Aufgaben (Vorschau)", default: TASKS_DEFAULT, env: "BASTRA_TASKS", restartRequired: true, required: true }) },
+  tasks: {
+    enabled: setting(bool, { area: "tasks", label: "Aufgaben (Vorschau)", default: TASKS_DEFAULT, env: "BASTRA_TASKS", restartRequired: true, required: true }),
+    notifications: setting(bool, { area: "tasks", label: "Mac-Mitteilungen bei fälligen Aufgaben", default: true }),
+  },
   telemetry: { enabled: setting(bool, { area: "general", label: "Lokale Telemetrie", default: TELEMETRY_DEFAULT, env: "BASTRA_TELEMETRY", restartRequired: true, required: true }) },
 } as const;
 

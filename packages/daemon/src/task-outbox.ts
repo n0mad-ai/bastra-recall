@@ -30,6 +30,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
   let bytes = 0; let retryBlocked = 0; let overflow = 0;
   for (const occurrence of candidates) {
     const task = store.tasks.find(t => t.id === occurrence.task_id)!; const attempts = attemptCount(occurrence.id);
+    if (passive && occurrence.notification && occurrence.notification.failed_at === undefined) { retryBlocked++; continue; }
     const action = store.intents.filter(i => i.task_id === task.id).at(-1);
     const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
     const unseenReview = action && ["pending", "unknown"].includes(action.state) && attempts.at(-1)?.last_action_key !== actionKey;
@@ -44,6 +45,8 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
       origin: task.origin ? { ...task.origin, context: task.origin.context.slice(0, 200), client: task.origin.client.slice(0, 80), session: task.origin.session.slice(0, 80) } : undefined,
       goal: task.goal.slice(0, 200), original_request: task.original_request.slice(0, 300), why_now: occurrence.why.slice(0, 200),
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
+      already_notified: occurrence.notification?.submitted_at !== undefined,
+      notification: occurrence.notification,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),
       presentation: ownerInspect && (!store.controls.enabled || store.controls.muted || task.notification_policy.muted) ? "owner-inspection-delivery-paused" : "active",
       controls: ["acknowledge", "snooze", "resolve", "cancel"],

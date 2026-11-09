@@ -1,4 +1,5 @@
 import { reconcilePendingTaskIntents } from "./task-execution.js";
+import { notifyDueTasks } from "./task-notification.js";
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
 import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
@@ -88,6 +89,7 @@ export class TaskRuntime {
           if (Date.now() - started < 5000) assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
+        if (this.ctx.executionHost) await notifyDueTasks(this.ctx);
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
           const task = this.snapshot.tasks.find(t => t.id === id); if (!task || !assessed.has(id)) continue;
