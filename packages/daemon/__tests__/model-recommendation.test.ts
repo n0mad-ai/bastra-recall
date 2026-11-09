@@ -1,3 +1,4 @@
+import { readSettingsFixture, writeSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * The model-recommendation notice for existing users (model-recommendation.ts):
  * when there is something to say, the one note of the answer, the texts, and
@@ -140,7 +141,7 @@ test("shipped: an existing install is told and asked — per tier, never below 1
     const hint = await captured(() => maybeEmitModelHint({ ...shipped(16), shownPath: join(dir, "shown.txt") }));
     assert.equal(hint.result, true);
     assert.match(hint.err, /bastra models switch 2026-10-tev1 tev1:4b/);
-    const before = await readFile(path, "utf8");
+    const before = await readSettingsFixture(path, "utf8");
     const { out } = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: shipped(16) }));
     const lines = out.split("\n");
     assert.equal(lines[0], "generation model: gemma3:4b (default)");
@@ -152,7 +153,7 @@ test("shipped: an existing install is told and asked — per tier, never below 1
 
     // Told, not switched: nothing was written, and without a stored choice the
     // daemon still resolves the runtime default — never a model nobody pulled.
-    assert.equal(await readFile(path, "utf8"), before);
+    assert.equal(await readSettingsFixture(path, "utf8"), before);
     assert.equal(await resolveGenerationModel(path), "gemma3:4b");
   });
 });
@@ -197,14 +198,14 @@ test("no recommendation (null, the off switch): nothing is offered and nothing i
     assert.equal(hint.result, false);
     assert.equal(hint.err, "");
     // `bastra models` shows the ladder's suggestion, and it only shows: nothing is written.
-    const before = await readFile(path, "utf8");
+    const before = await readSettingsFixture(path, "utf8");
     const status = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: off }));
     assert.doesNotMatch(status.out, /recommends a different/);
     const lines = status.out.split("\n");
     assert.equal(lines[0], "generation model: gemma3:4b (default)");
     assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
     assert.equal(lines[lines.length - 2], "to switch: bastra models set tev1:4b");
-    assert.equal(await readFile(path, "utf8"), before);
+    assert.equal(await readSettingsFixture(path, "utf8"), before);
     const neverAsk = async () => { throw new Error("must not ask"); };
     const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { ...off, interactive: true, ask: neverAsk } }));
     assert.equal(ask.out, "", "`bastra update` ends without a question");
@@ -316,7 +317,7 @@ test("later: silent for 7 days, then asked again", async () => {
     // A note from the future (clock set back) or with an unreadable time does
     // not silence the reminder for good.
     assert.equal((await pendingModelNotice(opts(path, { now: NOW - DAY })))?.model, "new:4b");
-    await writeFile(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "later", at: "bad-time" } }));
+    await writeSettingsFixture(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "later", at: "bad-time" } }));
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
 });
@@ -353,9 +354,9 @@ test("the note lives in cli-settings.json and survives other settings writes", a
     await recordModelAnswer(REC.id, "later", path, NOW);
     await setGenerationModel("my-own:7b", path);
     assert.deepEqual((await readSettings(path)).modelRecommendation, { id: REC.id, answer: "later", at: "2026-10-09T12:00:00.000Z" });
-    assert.match(await readFile(path, "utf8"), /"modelRecommendation"/);
+    assert.match(await readSettingsFixture(path, "utf8"), /"modelRecommendation"/);
     // An answer this build does not know is no answer: the user is asked.
-    await writeFile(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "maybe", at: "x" } }));
+    await writeSettingsFixture(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "maybe", at: "x" } }));
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });

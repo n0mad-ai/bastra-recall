@@ -1,3 +1,4 @@
+import { readSettingsFixture, writeSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * An answer to a model recommendation has to be the answer to THE
  * recommendation the user saw, and it has to land whole or not at all. These
@@ -20,10 +21,9 @@
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import fs from "node:fs/promises";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
-import { syncBuiltinESMExports } from "node:module";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,7 +102,7 @@ after(async () => {
 let n = 0;
 async function settingsFile(content: string = EXISTING): Promise<string> {
   const path = join(dir, `settings-${n++}.json`);
-  await writeFile(path, content);
+  await writeSettingsFixture(path, content);
   return path;
 }
 
@@ -110,9 +110,18 @@ async function settingsFile(content: string = EXISTING): Promise<string> {
 async function quiet<T>(fn: () => Promise<T>): Promise<{ result: T; out: string }> {
   const real = { out: process.stdout.write, err: process.stderr.write };
   let out = "";
-  const grab = ((c: unknown) => { out += String(c); return true; }) as typeof process.stdout.write;
-  process.stdout.write = grab;
-  process.stderr.write = grab;
+  const capture = (stream: NodeJS.WriteStream, write: typeof process.stdout.write): typeof process.stdout.write =>
+    function (chunk: string | Uint8Array, encoding?: BufferEncoding | ((error?: Error | null) => void), callback?: (error?: Error | null) => void) {
+      // The runner's serialized result frames share stdout with CLI strings.
+      // Preserve frames and write callbacks while capturing only display text.
+      if (typeof chunk !== "string") return Reflect.apply(write, stream, [chunk, encoding, callback]);
+      out += chunk;
+      const done = typeof encoding === "function" ? encoding : callback;
+      if (typeof done === "function") done(null);
+      return true;
+    };
+  process.stdout.write = capture(process.stdout, real.out);
+  process.stderr.write = capture(process.stderr, real.err);
   try {
     return { result: await fn(), out };
   } finally {
@@ -158,7 +167,7 @@ test("P1 stale consent: the command shown for recommendation A does not pull rec
   const { result, out, enabled } = await runShown("switch", REC_A, REC_B, path);
   assert.equal(result, 1);
   assert.deepEqual(enabled, [], "nothing is pulled, tested or stored");
-  assert.equal(await readFile(path, "utf8"), EXISTING, "the settings file is untouched");
+  assert.equal(await readSettingsFixture(path, "utf8"), EXISTING, "the settings file is untouched");
   assert.match(out, /release-A/);
   assert.match(out, /Nothing was changed/);
 });
@@ -168,12 +177,12 @@ test("P1 stale consent: `later` and `dismiss` are not booked onto a recommendati
     const path = await settingsFile();
     const { result } = await runShown(verb, REC_A, REC_B, path);
     assert.equal(result, 1);
-    assert.equal(await readFile(path, "utf8"), EXISTING);
+    assert.equal(await readSettingsFixture(path, "utf8"), EXISTING);
   }
   // …nor onto nothing: the CLI ships no recommendation any more.
   const path = await settingsFile();
   assert.equal((await runShown("dismiss", REC_A, null, path)).result, 1);
-  assert.equal(await readFile(path, "utf8"), EXISTING);
+  assert.equal(await readSettingsFixture(path, "utf8"), EXISTING);
 });
 
 test("P1 stale consent: a bare `bastra models switch` names no recommendation and is refused", async () => {
@@ -184,7 +193,7 @@ test("P1 stale consent: a bare `bastra models switch` names no recommendation an
     );
     assert.equal(result, 2);
     assert.match(out, new RegExp(`bastra models ${verb} release-B`), "the refusal names the full command for the current recommendation");
-    assert.equal(await readFile(path, "utf8"), EXISTING);
+    assert.equal(await readSettingsFixture(path, "utf8"), EXISTING);
   }
 });
 
@@ -206,19 +215,21 @@ test("P1: the same recommendation on both sides goes through, bound by id and mo
 
 test("P1 half switch: a full disk on the commit leaves the old model AND no answer", async () => {
   const path = await settingsFile();
-  const originalWrite = fs.writeFile;
-  fs.writeFile = (async (p: never, data: unknown, ...rest: never[]) => {
-    if (typeof data === "string" && data.includes('"switched"')) throw Object.assign(new Error("fixture: disk full"), { code: "ENOSPC" });
-    return (originalWrite as (...a: unknown[]) => Promise<void>)(p, data, ...rest);
-  }) as typeof fs.writeFile;
-  syncBuiltinESMExports();
+  const originalPrepare = DatabaseSync.prototype.prepare;
+  DatabaseSync.prototype.prepare = function(sql: string) {
+    const statement = originalPrepare.call(this,sql);
+    if(sql.startsWith("INSERT INTO app_records")) {
+      const originalRun=statement.run;
+      statement.run=function(...params:any[]) {
+        if(params[0] === "settings" && typeof params[2] === "string" && params[2].includes("switched")) throw Object.assign(new Error("fixture: disk full"),{code:"ENOSPC"});
+        return Reflect.apply(originalRun,this,params);
+      };
+    }
+    return statement;
+  };
   let run;
-  try {
-    run = await runShown("switch", REC_A, REC_A, path);
-  } finally {
-    fs.writeFile = originalWrite;
-    syncBuiltinESMExports();
-  }
+  try { run = await runShown("switch", REC_A, REC_A, path); }
+  finally { DatabaseSync.prototype.prepare = originalPrepare; }
   assert.equal(run.result, 1, "reported as a failure, not thrown");
   assert.match(run.out, /could not be saved \(ENOSPC\)/);
   assert.match(run.out, /Nothing was changed/);
@@ -267,7 +278,7 @@ test("P2 redirect: a redirected test call is a failed test call — nothing is s
     assert.equal(r.activated, false);
     assert.match(r.message, /did not answer a test call/);
     assert.equal(redirectedPosts, 0, "the redirect target never sees the request");
-    assert.equal(await readFile(path, "utf8"), EXISTING);
+    assert.equal(await readSettingsFixture(path, "utf8"), EXISTING);
   } finally {
     chatMode = "ok";
   }
@@ -362,12 +373,12 @@ test("corrupt settings: the safe switch and the answers refuse instead of overwr
   const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
   assert.equal(r.activated, false);
   assert.match(r.message, /not valid JSON/);
-  assert.equal(await readFile(path, "utf8"), CORRUPT);
+  assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
   for (const verb of ["switch", "later", "dismiss"] as const) {
     const { result, out } = await runShown(verb, REC_A, REC_A, path);
     assert.equal(result, 1);
     assert.match(out, /Nothing was changed/);
-    assert.equal(await readFile(path, "utf8"), CORRUPT);
+    assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
   }
 });
 

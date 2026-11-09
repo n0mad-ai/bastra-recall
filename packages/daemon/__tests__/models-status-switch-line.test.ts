@@ -1,3 +1,4 @@
+import { writeSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * `bastra models` prints the command for the model it recommends; the heavier
  * alternative gets a line of its own.
@@ -9,7 +10,6 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { writeFile } from "node:fs/promises";
 import { cmdModels } from "../src/cli/models-cmd.js";
 import { quiet, withDir } from "./fixtures/model-decision-helpers.js";
 // ── P2: the command under `recommended:` is for the recommended model ────────
@@ -26,11 +26,11 @@ test("bastra models: `to switch` names the recommended model; the alternative ha
     const at32 = await status(32);
     assert.equal(at32[at32.length - 1], "to switch: bastra models set gemma4:12b");
     // Already on the alternative: it is not offered as one.
-    await writeFile(path, JSON.stringify({ generation: { model: "gemma4:12b" } }));
+    await writeSettingsFixture(path, JSON.stringify({ generation: { model: "gemma4:12b" } }));
     const onAlt = await status(24);
     assert.equal(onAlt[onAlt.length - 1], "to switch: bastra models set tev1:4b");
     // Already on the recommended model: no command at all.
-    await writeFile(path, JSON.stringify({ generation: { model: "tev1:4b" } }));
+    await writeSettingsFixture(path, JSON.stringify({ generation: { model: "tev1:4b" } }));
     assert.ok(!(await status(24)).some((l) => l.startsWith("to switch") || l.startsWith("alternative")));
   });
 });

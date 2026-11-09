@@ -1,3 +1,5 @@
+import { withPathLock } from "../src/path-lock.js";
+import { readSettingsFixture, writeSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * "asked" is claimed inside the settings lock and never replaces a decision;
  * two commands finishing together ask once.
@@ -9,9 +11,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import fs from "node:fs/promises";
-import { readFile, utimes, writeFile } from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
+import { utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cmdModels, maybeAskModelCatchUp, modelNoticeAfterCommand } from "../src/cli/models-cmd.js";
 import { claimModelQuestion, pendingModelNotice, recordModelAnswer } from "../src/model-recommendation.js";
@@ -35,49 +35,21 @@ test("P2 claim: `asked` is only noted where there is no note for this recommenda
   });
 });
 
-test("P2 race: a decision that lands while the catch-up is starting is never turned back into `asked`", async () => {
-  // The counter-review paused the catch-up after its check and recorded
-  // "dismissed" in the gap. Here the pause is tried at every read of the
-  // settings file the catch-up makes: wherever the dismiss lands, it stands.
-  const realRead = fs.readFile;
-  for (let pauseAt = 1; pauseAt <= 14; pauseAt++) {
-    await withDir(async (dir, path) => {
-      let reads = 0;
-      let questions = 0;
-      let signal!: () => void;
-      let resume!: () => void;
-      const stopped = new Promise<void>((r) => (signal = r));
-      const gate = new Promise<void>((r) => (resume = r));
-      fs.readFile = (async (p: never, ...args: never[]) => {
-        const result = await (realRead as (...a: unknown[]) => Promise<unknown>)(p, ...args);
-        if (p === path && ++reads === pauseAt) { signal(); await gate; }
-        return result;
-      }) as typeof fs.readFile;
-      syncBuiltinESMExports();
-      try {
-        const asking = quiet(() =>
-          modelNoticeAfterCommand(ARGS, deps(path, { interactive: true, ask: async () => { questions++; return null; }, shownPath: join(dir, "shown.txt") })),
-        );
-        const reached = await Promise.race([stopped.then(() => true), asking.then(() => false)]);
-        // The explicit decision from elsewhere. Not awaited before the resume:
-        // if the pause sits inside the settings lock, it has to wait for it.
-        const dismissing = reached ? recordModelAnswer("fixture-rec", "dismissed", path) : Promise.resolve();
-        await new Promise((r) => setTimeout(r, 15));
-        resume();
-        await Promise.all([asking, dismissing]);
-        if (!reached) return; // the catch-up makes fewer reads than this
-        const stored = JSON.parse(await (realRead as (p: string, e: string) => Promise<string>)(path, "utf8"));
-        assert.equal(stored.modelRecommendation.answer, "dismissed", `pause at read ${pauseAt}: dismissed → ${stored.modelRecommendation.answer}`);
-        assert.ok(questions <= 1);
-        fs.readFile = realRead;
-        syncBuiltinESMExports();
-        assert.equal(await pendingModelNotice(deps(path)), null, `pause at read ${pauseAt}: nothing is pending after a dismiss`);
-      } finally {
-        fs.readFile = realRead;
-        syncBuiltinESMExports();
-      }
-    });
-  }
+test("P2 race: a decision racing the catch-up is never turned back into asked", async () => {
+  for(const dismissFirst of [true,false]) await withDir(async(dir,path)=>{
+    let enter!:()=>void,release!:()=>void,questions=0;
+    const entered=new Promise<void>(resolve=>enter=resolve),gate=new Promise<void>(resolve=>release=resolve);
+    const held=withPathLock(path,async()=>{enter();await gate;},{crossProcess:true,requireLock:true});
+    await entered;
+    const ask=()=>quiet(()=>modelNoticeAfterCommand(ARGS,deps(path,{interactive:true,ask:async()=>{questions++;return null;},shownPath:join(dir,"shown.txt")})));
+    let asking:Promise<unknown>,dismissing:Promise<unknown>;
+    if(dismissFirst){dismissing=recordModelAnswer("fixture-rec","dismissed",path);asking=ask();}
+    else {asking=ask();dismissing=recordModelAnswer("fixture-rec","dismissed",path);}
+    release();await Promise.all([held,asking,dismissing]);
+    const stored=JSON.parse(await readSettingsFixture(path));
+    assert.equal(stored.modelRecommendation.answer,"dismissed");assert.ok(questions<=1);
+    assert.equal(await pendingModelNotice(deps(path)),null);
+  });
 });
 
 test("P2 race: two commands finishing together put the question once", async () => {
@@ -108,9 +80,9 @@ test("P2: `bastra update` does not ask over a decision either, and still re-asks
 test("P2 claim: a settings file that is not valid JSON takes no note — and is not written over", async () => {
   await withDir(async (_dir, path) => {
     const CORRUPT = '{"api":{"token":"invented-token"},BROKEN';
-    await writeFile(path, CORRUPT);
+    await writeSettingsFixture(path, CORRUPT);
     await assert.rejects(quiet(() => claimModelQuestion("fixture-rec", path)), /not valid JSON/);
-    assert.equal(await readFile(path, "utf8"), CORRUPT);
+    assert.equal(await readSettingsFixture(path, "utf8"), CORRUPT);
     assert.equal(await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask: async () => "s" }))).then((r) => r.result), false);
   });
 });
@@ -138,13 +110,13 @@ test("P2 lock: while the settings lock cannot be had, the question is not put an
     const catchUp = await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })));
     assert.equal(catchUp.result, false, "no claim without the lock");
     assert.equal(questions, 0, "…so no question; it comes back with the next command");
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    assert.equal(await readSettingsFixture(path, "utf8"), ORIGINAL);
     await orphanedLock(path); // a fresh one: the first has aged towards takeover while the catch-up waited
     const later = await quiet(() => cmdModels({ sub: "later", positional: ["models", "later", "fixture-rec"], settingsPath: path, deps: deps(path) }));
     assert.equal(later.result, 1, "an answer is refused, not written unserialized");
     assert.match(later.out, /could not get the lock on the settings file/);
     assert.match(later.out, /Nothing was changed/);
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    assert.equal(await readSettingsFixture(path, "utf8"), ORIGINAL);
   });
 });
 

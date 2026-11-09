@@ -1,7 +1,10 @@
+import { EVIDENCE_GATE_DEFAULT } from "./settings-defaults.js";
+export { EVIDENCE_GATE_DEFAULT } from "./settings-defaults.js";
+import { SETTINGS_REGISTRY } from "./settings-registry.js";
 /**
  * bastra-recall local CLI settings (#39: auto-update; #79: embedding provider).
  *
- * A small, OSS-owned settings file at ~/.bastra/cli-settings.json — deliberately
+ * OSS-owned settings in the local app database (legacy key cli-settings.json) — deliberately
  * separate from ~/.bastra/config.json, which is owned by the Pro Mac-app and its
  * onboarding flow. We never touch that file; this one is ours.
  *
@@ -105,7 +108,7 @@ export async function setGenerationModel(model: string, path: string = settingsF
  *   2. cli-settings.json generation.model — the installer's / `bastra models` choice
  *   3. GENERATION_MODEL_DEFAULT — the 16 GB baseline pick
  *
- * Cross-platform by construction: the persisted choice lives in cli-settings.json,
+ * Cross-platform by construction: the persisted choice lives in the local app database,
  * not a LaunchAgent env var, so a Windows/Linux daemon reads the same value.
  */
 export async function resolveGenerationModel(path?: string): Promise<string> {
@@ -196,7 +199,7 @@ export async function setEmbeddingProvider(provider: EmbeddingProviderName, path
 
 /** Whether Ollama should be kept running at login. Default true (if you use ollama, you want it up). */
 export async function getOllamaAutostart(path?: string): Promise<boolean> {
-  return (await readSettings(path)).ollama?.autostart ?? true;
+  return (await readSettings(path)).ollama?.autostart ?? SETTINGS_REGISTRY.ollama.autostart.default;
 }
 
 /** Persists the Ollama autostart preference atomically. */
@@ -242,7 +245,7 @@ export async function addCorsOrigin(url: string, path: string = settingsFilePath
 /** Persists an explicit API token atomically (merging into existing settings). */
 /** Bastra Commons enabled? Default false (opt-in). */
 export async function getCommonsEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).commons?.enabled ?? false;
+  return (await readSettings(path)).commons?.enabled ?? SETTINGS_REGISTRY.commons.enabled.default;
 }
 
 export async function setCommonsEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
@@ -251,7 +254,7 @@ export async function setCommonsEnabled(on: boolean, path: string = settingsFile
 
 /** Vault map web UI (#207) enabled? Default false (opt-in). */
 export async function getUiEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).ui?.enabled ?? false;
+  return (await readSettings(path)).ui?.enabled ?? SETTINGS_REGISTRY.ui.enabled.default;
 }
 
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
@@ -260,7 +263,7 @@ export async function setUiEnabled(on: boolean, path: string = settingsFilePath(
 
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */
 export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).sharedRecall?.enabled ?? false;
+  return (await readSettings(path)).sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default;
 }
 
 /**
@@ -272,13 +275,13 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
  * Whoever has a bridge that passes verify can switch it on here.
  */
 export async function getSharedRecallLive(path?: string): Promise<boolean> {
-  return (await readSettings(path)).sharedRecall?.live ?? false;
+  return (await readSettings(path)).sharedRecall?.live ?? SETTINGS_REGISTRY.sharedRecall.live.default;
 }
 
 export async function setSharedRecallLive(on: boolean, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? false, live: on },
+    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default, live: on },
   }));
 }
 
@@ -296,7 +299,6 @@ export async function setSharedRecallLive(on: boolean, path: string = settingsFi
  * überstimmt deshalb die Einstellung, nicht umgekehrt; `evidenceGate.enabled:
  * false` in den Settings schaltet dauerhaft ab.
  */
-export const EVIDENCE_GATE_DEFAULT = true;
 
 export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
   // #443: Nur erkannte Schreibweisen zählen. Vorher schaltete JEDER Wert
@@ -372,7 +374,7 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? false, language: language.trim().toLowerCase() },
+    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default, language: language.trim().toLowerCase() },
   }));
 }
 
@@ -382,7 +384,7 @@ export async function clearSharedRecallLanguage(path: string = settingsFilePath(
   await mutateSettings(path, (current) => ({
     ...current,
     sharedRecall: {
-      enabled: current.sharedRecall?.enabled ?? false,
+      enabled: current.sharedRecall?.enabled ?? SETTINGS_REGISTRY.sharedRecall.enabled.default,
       ...(current.sharedRecall?.live !== undefined ? { live: current.sharedRecall.live } : {}),
     },
   }));
@@ -457,7 +459,7 @@ export async function setArchiveEnabled(on: boolean, path: string = settingsFile
 
 /** #634: reflex memories on/off in the file (default on; BASTRA_REFLEX wins at runtime). */
 export async function getReflexEnabled(path?: string): Promise<boolean> {
-  return (await readSettings(path)).reflex?.enabled ?? true;
+  return (await readSettings(path)).reflex?.enabled ?? SETTINGS_REGISTRY.reflex.enabled.default;
 }
 
 export async function setReflexEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {

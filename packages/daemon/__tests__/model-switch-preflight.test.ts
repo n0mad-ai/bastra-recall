@@ -1,3 +1,4 @@
+import { readSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * The safe switch makes no request to the raw configured Ollama URL: its probes
  * use the same local, token-free address as the test call. fetch is replaced
@@ -11,7 +12,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { localOllamaTarget } from "../src/cli/ollama.js";
 import { readSettings } from "../src/settings.js";
@@ -34,7 +34,7 @@ test("P2 preflight: a remote URL with a token gets no request at all from the sa
       result.message,
       "new:4b cannot be checked with a test call: the test call only runs against a local Ollama, not ollama.example.invalid:11434 — use 'bastra models set new:4b' to switch without it",
     );
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    assert.equal(await readSettingsFixture(path, "utf8"), ORIGINAL);
   });
 });
 
@@ -46,7 +46,7 @@ test("P2 preflight: credentials in the URL — refused before the first request,
       assert.equal(result.activated, false);
       assert.doesNotMatch(result.message, /alice|s3cretpw/, configured);
     }
-    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    assert.equal(await readSettingsFixture(path, "utf8"), ORIGINAL);
   });
 });
 

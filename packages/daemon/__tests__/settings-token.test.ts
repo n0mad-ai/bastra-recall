@@ -1,3 +1,5 @@
+import { readSettingsFixture } from "./fixtures/settings-db.js";
+import { appRecordDatabasePath } from "../src/app-record-store.js";
 /**
  * Tests für den API-Token-Lifecycle in cli-settings.json (ensureApiToken /
  * getApiToken / setApiToken). Alle gegen ein Temp-File, nie das echte
@@ -7,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -97,9 +99,9 @@ test("clearApiToken: other settings survive the clear", async () => {
 test("token file is written 0600 (owner-only)", async () => {
   await withTempSettings(async (path) => {
     await ensureApiToken({}, path);
-    const { mode } = await (await import("node:fs/promises")).stat(path);
+    const { mode } = await (await import("node:fs/promises")).stat(appRecordDatabasePath(path));
     assert.equal(mode & 0o777, 0o600);
     // sanity: it really contains the token
-    assert.match(await readFile(path, "utf8"), /"token":/);
+    assert.match(await readSettingsFixture(path, "utf8"), /"token":/);
   });
 });

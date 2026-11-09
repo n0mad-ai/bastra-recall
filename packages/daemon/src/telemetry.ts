@@ -1,3 +1,5 @@
+import { TELEMETRY_DEFAULT } from "./settings-defaults.js";
+import { runtimeFeatureSetting } from "./runtime-feature-settings.js";
 import { bastraDataDir } from "./platform-paths.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -126,7 +128,8 @@ export class Telemetry {
 
   constructor(opts: { onUsage?: UsageSink; logDir?: string } = {}) {
     this.enabled =
-      !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY");
+      envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") !== undefined
+        ? !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") : runtimeFeatureSetting("telemetry", TELEMETRY_DEFAULT);
     // Log-Pfad bleibt bei `~/.nexus-recall/logs` bis zur User-Data-Migration
     // (Daniel hat existing logs, die wir nicht orphanen wollen).
     this.logDir = opts.logDir ?? envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();

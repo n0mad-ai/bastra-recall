@@ -1,3 +1,4 @@
+import { readSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * #634 — reflex memories and the change-impact block are switched with
  * `bastra config set`, like every other feature in doctor's features block.
@@ -33,7 +34,7 @@ async function withHome(t: test.TestContext): Promise<string> {
 }
 
 const run = (...argv: string[]) => cmdConfig(parseArgs(["config", ...argv]));
-const stored = async (home: string) => JSON.parse(await readFile(join(home, ".bastra", "cli-settings.json"), "utf8"));
+const stored = async (home: string) => JSON.parse(await readSettingsFixture(join(home, ".bastra", "cli-settings.json"), "utf8"));
 
 test("reflex.enabled: set off/true lands in the file and keeps maxPerTurn", async (t) => {
   // Revert-check: drop "reflex.enabled" from KNOWN_KEYS → exit 2.

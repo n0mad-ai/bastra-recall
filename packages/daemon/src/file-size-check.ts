@@ -1,3 +1,4 @@
+import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
 import { bastraDataDir } from "./platform-paths.js";
 /**
  * Deterministischer Dateigrößen-Check im PreToolUse-Hook (Daniel, 19.07.2026).
@@ -132,13 +133,14 @@ function envNum(name: string, fallback: number): number {
 }
 
 /** Der User-Richtwert aus ~/.bastra/cli-settings.json — bewusst ein eigener
- *  Mini-Read (pure stdlib) statt settings.ts-Import: der Hook hat 250 ms
+ *  Mini-Read (pure stdlib, DB zuerst) statt settings.ts-Import: der Hook hat 250 ms
  *  Budget und braucht exakt zwei Zahlen. Fehler → leeres Objekt. */
 export async function readSizeSettings(
   settingsPath: string = join(bastraDataDir(), "cli-settings.json"),
 ): Promise<{ guide?: number; critical?: number; exemptPaths?: string[] }> {
   try {
-    const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as {
+    const fromDatabase = readRuntimeSettingsRecord(settingsPath);
+    const parsed = JSON.parse(fromDatabase === undefined ? await readFile(settingsPath, "utf8") : fromDatabase ?? "{}") as {
       size?: { guide?: unknown; critical?: unknown; exemptPaths?: unknown };
     };
     // Non-strings and blanks are dropped rather than rejected: a broken entry

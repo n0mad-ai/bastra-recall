@@ -1,3 +1,5 @@
+import { settingEntries, settingEntry, storedSetting, applySettingChanges } from "../settings-registry.js";
+import { readSettings, mutateSettings } from "../settings.js";
 import { notifyAssistantAddressDaemon } from "../assistant-address.js";
 import { configureAssistantName } from "./address-cmd.js";
 import { getAssistantName } from "../assistant-address-settings.js";
@@ -7,7 +9,7 @@ import { assistantUrls } from "../assistant-address-name.js";
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
  * docs.language, archive.retain, archive.enabled, archive.cap, archive.max-item, reflex.enabled,
- * promptImpact.enabled, battery.saver. The store is the OSS-owned ~/.bastra/cli-settings.json
+ * promptImpact.enabled, battery.saver. The store is the local app database (legacy key cli-settings.json)
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
  */
@@ -58,12 +60,9 @@ import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainD
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 
-const KNOWN_KEYS = ["assistant.name", "update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "coverageMap.enabled", "battery.saver"] as const;
-type KnownKey = (typeof KNOWN_KEYS)[number];
-
-function isKnownKey(k: string | null): k is KnownKey {
-  return k !== null && (KNOWN_KEYS as readonly string[]).includes(k);
-}
+const configKeys = settingEntries().filter(entry => !entry.readonly).map(entry => entry.key);
+type KnownKey = string;
+function isKnownKey(k: string | null): k is KnownKey { return k !== null && configKeys.includes(k); }
 
 export async function cmdConfig(args: ParsedArgs): Promise<number> {
   // positional: ["config", action, key, value?]
@@ -73,13 +72,13 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
 
   if (action !== "get" && action !== "set") {
     process.stderr.write("usage: bastra config get <key> | bastra config set <key> <value>\n");
-    process.stderr.write(`known keys: ${KNOWN_KEYS.join(", ")}\n`);
+    process.stderr.write(`known keys: ${configKeys.join(", ")}\n`);
     return 2;
   }
 
   if (!isKnownKey(key)) {
     process.stderr.write(`error: unknown config key '${key ?? ""}'\n`);
-    process.stderr.write(`known keys: ${KNOWN_KEYS.join(", ")}\n`);
+    process.stderr.write(`known keys: ${configKeys.join(", ")}\n`);
     return 2;
   }
 
@@ -177,6 +176,11 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       return 0;
     }
   }
+  const entry = settingEntry(key)!;
+  const value = storedSetting(await readSettings(), entry) ?? entry.default;
+  process.stdout.write(`${entry.secret && value ? "(configured — masked)" : typeof value === "object" ? JSON.stringify(value) : value ?? "(unset)"}\n`);
+  if (entry.env && process.env[entry.env] !== undefined) process.stdout.write(`  note: ${entry.env} overrides this setting at runtime\n`);
+  return 0;
 }
 
 async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number> {
@@ -422,6 +426,17 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       return 0;
     }
   }
+  const entry = settingEntry(key)!;
+  try {
+    if(value === null) throw new Error("Expected a value");
+    let parsed: unknown = value;
+    if (entry.kind === "boolean") { parsed = parseBool(value); if(parsed === null) throw new Error("Expected boolean"); }
+    else if (entry.kind === "number") parsed = value === null ? NaN : Number(value);
+    else if (entry.kind === "json") parsed = JSON.parse(value ?? "null");
+    await mutateSettings(settingsFilePath(), current => applySettingChanges(current, { [key]: parsed }));
+    process.stdout.write(`✓ ${key} updated${entry.restartRequired ? "; restart the daemon and clients to apply" : ""}\n`);
+    return 0;
+  } catch { process.stderr.write(`error: invalid value for ${key}\n`); return 2; }
 }
 
 function parseBool(v: string | null): boolean | null {

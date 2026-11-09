@@ -1,3 +1,4 @@
+import { readSettingsFixture, writeSettingsFixture } from "./fixtures/settings-db.js";
 /**
  * Tests for src/settings.ts — the OSS CLI settings store (update mode).
  *
@@ -8,7 +9,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -79,14 +80,14 @@ test("setUpdateMode → getUpdateMode round-trips every valid mode", async () =>
 
 test("readSettings: corrupt JSON → default mode (no throw)", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, "{ not valid json", "utf8");
+    await writeSettingsFixture(path, "{ not valid json", "utf8");
     assert.equal((await readSettings(path)).update.mode, DEFAULT_UPDATE_MODE);
   });
 });
 
 test("readSettings: unknown stored mode → falls back to default", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ update: { mode: "bogus" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "bogus" } }), "utf8");
     assert.equal((await readSettings(path)).update.mode, DEFAULT_UPDATE_MODE);
   });
 });
@@ -161,7 +162,7 @@ test("writes preserve sibling keys (update + embedding + ollama)", async () => {
 
 test("readSettings: malformed embedding.provider → undefined, update.mode preserved", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ update: { mode: "auto" }, embedding: { provider: "llama" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "auto" }, embedding: { provider: "llama" } }), "utf8");
     const s = await readSettings(path);
     assert.equal(s.update.mode, "auto");
     assert.equal(s.embedding, undefined);
@@ -175,7 +176,7 @@ test("concurrent writes leave valid JSON (atomic tmp+rename, random suffix)", as
       setUpdateMode("auto", path),
       setOllamaAutostart(true, path),
     ]);
-    const raw = await readFile(path, "utf8");
+    const raw = await readSettingsFixture(path, "utf8");
     assert.doesNotThrow(() => JSON.parse(raw), "file must never be a torn/garbage write");
   });
 });
@@ -207,7 +208,7 @@ test("docs: setting one key keeps the other (merge, not replace)", async () => {
 
 test("readSettings: invalid docs.mode/docs.language → dropped to defaults", async () => {
   await withTempFile(async (path) => {
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, docs: { mode: "loud", language: "deutsch!" } }),
       "utf8",
@@ -245,7 +246,7 @@ test("sharedRecall: language is lowercased and invalid values are dropped", asyn
   await withTempFile(async (path) => {
     await setSharedRecallLanguage("DE", path);
     assert.equal(await getSharedRecallLanguage(path), "de");
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, sharedRecall: { enabled: true, language: "klingon!" } }),
       "utf8",
@@ -259,7 +260,7 @@ test("sharedRecall: a regex-valid but UNSUPPORTED hand-edited language (fr) is d
   await withTempFile(async (path) => {
     // "fr" passes the loose docs-language regex but is not a supported pool language.
     // The file-read validator must agree with the boot gate and drop it.
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: true, language: "fr" } }),
       "utf8",
@@ -271,7 +272,7 @@ test("sharedRecall: a regex-valid but UNSUPPORTED hand-edited language (fr) is d
 
 test("sharedRecall: non-boolean enabled is ignored", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: "yes" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" }, sharedRecall: { enabled: "yes" } }), "utf8");
     assert.equal(await getSharedRecallEnabled(path), false);
   });
 });
@@ -291,7 +292,7 @@ test("sharedRecall: clearSharedRecallLanguage actually removes the override (not
 
 test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async () => {
   await withTempFile(async (path) => {
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, reflex: { enabled: false, maxPerTurn: 3 } }),
       "utf8",
@@ -299,7 +300,7 @@ test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async ()
     const s = await readSettings(path);
     assert.deepEqual(s.reflex, { enabled: false, maxPerTurn: 3 });
 
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, reflex: { enabled: true, maxPerTurn: 99 } }),
       "utf8",
@@ -307,28 +308,28 @@ test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async ()
     const invalid = await readSettings(path);
     assert.deepEqual(invalid.reflex, { enabled: true }, "out-of-range maxPerTurn must be dropped");
 
-    await writeFile(path, JSON.stringify({ update: { mode: "notify" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" } }), "utf8");
     assert.equal((await readSettings(path)).reflex, undefined, "absent block stays absent");
   });
 });
 
 test("promptImpact (#607): valid block persists, non-boolean dropped, absent stays absent", async () => {
   await withTempFile(async (path) => {
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: true } }),
       "utf8",
     );
     assert.deepEqual((await readSettings(path)).promptImpact, { enabled: true });
 
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: "yes" } }),
       "utf8",
     );
     assert.equal((await readSettings(path)).promptImpact, undefined, "non-boolean enabled must be dropped");
 
-    await writeFile(path, JSON.stringify({ update: { mode: "notify" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" } }), "utf8");
     assert.equal((await readSettings(path)).promptImpact, undefined, "absent block stays absent");
   });
 });
@@ -347,10 +348,10 @@ test("language.primary: set/get round-trips, normalized to lowercase, siblings p
 
 test("language.primary: invalid stored code is dropped on read, valid 2-letter survives", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ update: { mode: "notify" }, language: { primary: "english" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ update: { mode: "notify" }, language: { primary: "english" } }), "utf8");
     assert.equal(await getPrimaryLanguage(path), undefined, "non-2-letter code rejected by the sanitizer");
     assert.equal((await readSettings(path)).update.mode, "notify", "sibling preserved");
-    await writeFile(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
     assert.equal(await getPrimaryLanguage(path), "de", "valid 2-letter code survives, lowercased");
   });
 });
@@ -390,7 +391,7 @@ test("#425: a full settings file round-trips without losing a single supported b
       size: { guide: 500, critical: 800, exemptPaths: ["sandbox/"] },
       language: { primary: "de" },
     };
-    await writeFile(path, JSON.stringify(full, null, 2), "utf8");
+    await writeSettingsFixture(path, JSON.stringify(full, null, 2), "utf8");
     assert.deepEqual(await readSettings(path), full, "readSettings dropped a supported block");
 
     // Und nach einem Setter, der einen ANDEREN Block schreibt, steht noch alles da.
@@ -401,7 +402,7 @@ test("#425: a full settings file round-trips without losing a single supported b
 
 test("#425: getExperimentConfig returns the persisted arms for the registered experiment", async () => {
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
     assert.deepEqual(await getExperimentConfig(path), {
       experiment: REGISTERED_EXPERIMENT.name,
       arms: REGISTERED_EXPERIMENT.arms,
@@ -416,7 +417,7 @@ test("#439: getExperimentConfig hands on the registration reference, not just th
   // Revision noch der Konfiguration zuzuordnen, die sie erzeugt hat. Wird er
   // hier verworfen, kann ihn kein Produzent mehr ans Ereignis hängen.
   await withTempFile(async (path) => {
-    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    await writeSettingsFixture(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
     const cfg = await getExperimentConfig(path);
     assert.equal(cfg?.registration, REGISTERED_EXPERIMENT.registration);
     assert.equal(cfg?.registration_version, REGISTERED_EXPERIMENT.registration_version);
@@ -425,7 +426,7 @@ test("#439: getExperimentConfig hands on the registration reference, not just th
 
 test("#425: an experiment block without its registration reference is refused, siblings survive", async () => {
   await withTempFile(async (path) => {
-    await writeFile(
+    await writeSettingsFixture(
       path,
       JSON.stringify({ update: { mode: "auto" }, experiment: { name: "floating", arms: ["a", "b"] } }),
       "utf8",

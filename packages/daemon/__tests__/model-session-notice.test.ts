@@ -1,3 +1,4 @@
+import { writeSettingsFixture } from "./fixtures/settings-db.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -144,14 +145,14 @@ test("recommended models and tag variants never create a day marker", () => fixt
   const settingsPath=join(dir,"settings.json"),shownPath=join(dir,"days.txt");
   const recommendation={id:offer.id,models:{baseline:{model:offer.model,sizeGB:offer.sizeGB,improves:offer.improves}}};
   for(const model of ["new:4b","NEW:4B","new:4b-it-q4"]){
-    await writeFile(settingsPath,JSON.stringify({generation:{model}}));
+    await writeSettingsFixture(settingsPath,JSON.stringify({generation:{model}}));
     assert.equal((await appendModelSessionNotice("{}",()=>pendingModelNotice({recommendation,ramGB:16,settingsPath}),{shownPath})).block,"");
     await assert.rejects(stat(shownPath),{code:"ENOENT"});
   }
 }));
 
 test("CLI and agent day markers cannot suppress one another in either order", t => fixture(async dir => {
-  const settingsPath=join(dir,"settings.json"),cliPath=join(dir,"cli.txt"),shownPath=join(dir,"agent.txt");await writeFile(settingsPath,JSON.stringify({generation:{model:offer.current}}));
+  const settingsPath=join(dir,"settings.json"),cliPath=join(dir,"cli.txt"),shownPath=join(dir,"agent.txt");await writeSettingsFixture(settingsPath,JSON.stringify({generation:{model:offer.current}}));
   const recommendation={id:offer.id,models:{baseline:{model:offer.model,sizeGB:offer.sizeGB,improves:offer.improves}}};const opts={recommendation,ramGB:16,settingsPath,shownPath:cliPath};
   t.mock.method(process.stderr,"write",()=>true);
   assert.equal(await maybeEmitModelHint(opts),true);assert.ok((await appendModelSessionNotice("{}",notice,{shownPath})).block);assert.equal(await maybeEmitModelHint(opts),false);
