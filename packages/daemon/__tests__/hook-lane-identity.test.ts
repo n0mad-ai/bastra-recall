@@ -27,7 +27,7 @@ import { HOOK_SOURCES, TELEMETRY_CLIENTS } from "../src/telemetry-dimensions.js"
 import { runPromptLane } from "../src/prompt-lane.js";
 import { runWriteLane } from "../src/write-lane.js";
 import { runTodoLane } from "../src/todo-lane.js";
-import { runBashFailLane, throttleFile } from "../src/bash-fail-lane.js";
+import { runBashFailLane } from "../src/bash-fail-lane.js";
 
 const SESSION = "s-445";
 
@@ -161,20 +161,8 @@ test("die Todo-Lane weist sich aus", async () => {
   });
 });
 
-test("die Bash-Fail-Lane weist sich aus", async (t) => {
-  // Die Lane drosselt pro Session über eine Datei; ein Rest aus einem früheren
-  // Lauf würde den Recall überspringen und den Test grün lügen.
-  const { unlink } = await import("node:fs/promises");
-  const clear = async (): Promise<void> => {
-    try {
-      await unlink(throttleFile(SESSION));
-    } catch {
-      // gab es nicht — genau der gewünschte Zustand
-    }
-  };
-  await clear();
-  t.after(clear);
-
+test("die Bash-Fail-Lane weist sich aus", async () => {
+  // Root test isolation gives this process a fresh persisted hook namespace.
   await withRecallSink(async (baseUrl, seen) => {
     await runBashFailLane(
       {

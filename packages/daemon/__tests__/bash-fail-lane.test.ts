@@ -1,6 +1,6 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, readFile, readdir, rm, unlink } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import {
   invokesOwnBinary,
   readExitCode,
@@ -11,19 +11,10 @@ import {
   normalizeToolResponse,
   isThrottled,
   markThrottle,
-  throttleFile,
   runBashFailLane,
 } from "../src/bash-fail-lane.js";
 
 const SESSION = "test-session-fail-hook";
-
-async function clearThrottle(): Promise<void> {
-  try {
-    await unlink(throttleFile(SESSION));
-  } catch {
-    // ignore
-  }
-}
 
 describe("bash-fail-hook: readExitCode", () => {
   it("reads exit_code from numeric field", () => {
@@ -135,8 +126,14 @@ describe("bash-fail-hook: formatHintBlock", () => {
 });
 
 describe("bash-fail-hook: throttle", () => {
+  let previous: string | undefined;
   beforeEach(async () => {
-    await clearThrottle();
+    previous = process.env.BASTRA_HOOK_STATE_DIR;
+    process.env.BASTRA_HOOK_STATE_DIR = await mkdtemp(join(tmpdir(), "bastra-throttle-test-"));
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+    else process.env.BASTRA_HOOK_STATE_DIR = previous;
   });
 
   it("is not throttled before any markThrottle call", async () => {
@@ -267,8 +264,11 @@ describe("bash-fail-hook: #144 act-signal", () => {
     };
     try {
       assert.match(await runFailHook(fail, daemon.port), /same-lesson/, "first failure carries the memory");
-      await rm(throttleFile(sid), { force: true });
-      assert.doesNotMatch(await runFailHook(fail, daemon.port), /same-lesson/, "second failure: already shown");
+      const realNow = Date.now;
+      Date.now = () => realNow() + 31_000;
+      try {
+        assert.doesNotMatch(await runFailHook(fail, daemon.port), /same-lesson/, "second failure after throttle expiry: already shown");
+      } finally { Date.now = realNow; }
     } finally {
       await daemon.close();
       if (prev === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;

@@ -10,7 +10,7 @@
  */
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -323,13 +323,14 @@ test("a state file holding a __proto__ key loads it like any other entry", async
   // branch into an object literal instead of a Map and the first assertion
   // goes red — the entry lands on the prototype and is not in the table.
   const id = "boundary-proto-disk";
-  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "a.ts", null));
-  const file = join(testDir, `${id}.json`);
+  const legacyDir = await mkdtemp(join(tmpdir(), "hook-proto-legacy-"));
+  process.env.BASTRA_HOOK_STATE_DIR = legacyDir;
+  const file = join(legacyDir, `${id}.json`);
   // Written as text: `raw.touched["__proto__"] = …` on an ordinary object sets
   // that object's prototype and JSON.stringify never sees the key, so building
   // the fixture through assignment would write a perfectly clean file.
   const entry = '{"at":1,"last":1,"hits":[],"unplaced":true,"truncated":false}';
-  const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+  const raw = { shown: {}, touched: { "/r": { "a.ts": JSON.parse(entry) as unknown } } };
   const poisoned = JSON.stringify(raw).replace(
     '"touched":{',
     `"touched":{"__proto__":{"a.ts":${entry}},`,
@@ -342,6 +343,7 @@ test("a state file holding a __proto__ key loads it like any other entry", async
   assert.equal(state.touched?.get("/r")?.get("__proto__")?.unplaced, true, "so does a file named __proto__");
   assert.equal(Object.getPrototypeOf({}), Object.prototype, "and nothing was polluted on the way");
   assert.equal(state.touched?.get("/r")?.get("a.ts")?.unplaced, true, "the ordinary entry survives");
+  process.env.BASTRA_HOOK_STATE_DIR = testDir;
 });
 
 test("the character budget counts a file's own registration, not only its hits", async () => {

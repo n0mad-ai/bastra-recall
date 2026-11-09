@@ -1,36 +1,13 @@
 /**
- * session-state — per-session tmpfile dedup for the PreToolUse hook (#32).
- *
- * Problem: the hook is stateless across invocations within the SAME Claude
- * session, so the same memory can appear in the <recall-hints> block on
- * every Write/Edit. Telemetry showed one lesson dominating 67% of misses.
- *
- * Solution: store a small JSON state per `session_id` under
- * `/tmp/bastra-hook/<session_id>.json` with shape `{ shown: { [memId]:
- * { count, at } } }`. Each hook call:
- *   1. Loads the session state (best-effort, returns empty on any error).
- *   2. Filters hits: if a hit has been shown >= MAX_SHOW times, drop it.
- *   3. After emitting the hint block, bumps `count` for every hit that
- *      was actually shown and writes the state atomically (tmpfile + rename).
- *
- * Reset signal: the daemon writes a touch-file `/tmp/bastra-hook/loaded-
- * <memId>.touch` whenever `load_memory(id)` is invoked. The hook
- * consults the touch-file mtime — if `at < loaded.mtime`, the counter is
- * reset (the agent has now consumed that memory, so the dedup-clock starts
- * over).
- *
- * Race conditions (#539): tmpfile + rename gives an atomic FILE; it does not
- * give an atomic TRANSACTION. Five lanes (write, todo, bash-pre, bash-fail,
- * prompt) run load → own work → save against the same session id, so without
- * serialisation they all read the same old file and the last save wins —
- * measured at 5 concurrent lanes reporting success and 1 surviving. Every
- * mutation therefore goes through `mutateSessionState`, which re-reads inside
- * a per-session lock and applies only that lane's delta. The lock wraps the
- * mutation, NEVER the lane's own work: a hook lane must not queue behind
- * another lane's recall. Measured cost of the extra re-read: ~0.2ms on top of
- * the ~0.5ms the save already cost.
+ * Per-session hook dedup and gate bookkeeping (#32/#539/#1339).
+ * Session state and load timestamps persist in the local app database. Legacy
+ * /tmp/bastra-hook JSON and touch files are backed up, imported, then retained
+ * as .pre-sqlite originals. Warm lane reads use immutable in-memory snapshots.
+ * Mutations serialize per session and read the latest committed row inside a
+ * short SQLite writer transaction, never around a lane's recall work.
+ * Busy storage is best-effort; a gate only denies after a successful commit.
  */
-import { mkdir, readFile, rename, stat, writeFile, readdir, unlink } from "node:fs/promises";
+import { readHookState, updateHookState, listHookStates, cleanupHookState, writeHookMarker, readHookMarker } from "./hook-state-database.js";
 import * as path from "node:path";
 import * as os from "node:os";
 import { createHash } from "node:crypto";
@@ -348,8 +325,16 @@ export async function loadSessionState(sessionId: string): Promise<ReadonlySessi
  *  lane's early snapshot must not be mutable (see ReadonlySessionState). */
 async function readSessionState(sessionId: string, dir = sessionStateDir()): Promise<SessionState> {
   if (!sessionId) return { shown: {} };
+  try { return decodeSessionState(sessionId, await readHookState(dir, stateKey(sessionId, dir)) ?? "{}"); }
+  catch { return { shown: {} }; }
+}
+
+function stateKey(sessionId: string, dir = sessionStateDir()): string {
+  return path.basename(sessionFile(sessionId, dir), ".json");
+}
+
+function decodeSessionState(sessionId: string, raw: string): SessionState {
   try {
-    const raw = await readFile(sessionFile(sessionId, dir), "utf8");
     const parsed = JSON.parse(raw) as Partial<SessionState>;
     if (!parsed || typeof parsed !== "object" || !parsed.shown) {
       return { shown: {} };
@@ -504,12 +489,20 @@ export async function mutateSessionState(
   const expired = () => options.deadline !== undefined && Date.now() >= options.deadline;
   const apply = async () => {
     if (expired()) return false;
-    const state = await readSessionState(sessionId);
-    // Response-path claims must not start a late mutation after their budget.
-    if (expired()) return false;
-    mutate(state);
-    if (expired()) return false;
-    return writeSessionState(sessionId, state);
+    let callbackError: unknown;
+    try {
+      await updateHookState(sessionStateDir(), stateKey(sessionId), raw => {
+        if (expired()) throw new Error("hook_state_deadline");
+        const state = decodeSessionState(sessionId, raw ?? "{}");
+        try { mutate(state); } catch (error) { callbackError = error; throw error; }
+        if (expired()) throw new Error("hook_state_deadline");
+        return encodeSessionState(state);
+      });
+      return true;
+    } catch (error) {
+      if (callbackError === error) throw error;
+      return false;
+    }
   };
   // Busy means no claim, rather than a queued write after the hook returned.
   if (options.noQueue) {
@@ -522,27 +515,17 @@ export async function mutateSessionState(
  *  Never throws; `false` when the state did not reach the disk. */
 async function writeSessionState(sessionId: string, state: SessionState, dir = sessionStateDir()): Promise<boolean> {
   try {
-    // mode 0700/0600: on Linux os.tmpdir() is world-writable (/tmp), so a
-    // private dir + owner-only files block symlink/TOCTOU races from other
-    // local users. macOS already gives a per-user temp dir.
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    const target = sessionFile(sessionId, dir);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    // `touched` is a Map, and JSON.stringify writes a Map as `{}`. Converted
-    // here rather than held as an object, because an object keyed by a path
-    // out of tool input is a property write — the prototype-pollution shape
-    // CodeQL flags and a Map does not have.
-    const onDisk = { ...state } as unknown as Record<string, unknown>;
-    if (state.touched !== undefined) {
-      onDisk.touched = Object.fromEntries([...state.touched].map(([k, v]) => [k, Object.fromEntries(v)]));
-    }
-    await writeFile(tmp, JSON.stringify(onDisk), { encoding: "utf8", mode: 0o600 });
-    await rename(tmp, target);
+    await updateHookState(dir, stateKey(sessionId, dir), () => encodeSessionState(state));
     return true;
-  } catch {
-    // dedup state is non-essential — never break the hot path
-    return false;
+  } catch { return false; }
+}
+
+function encodeSessionState(state: SessionState): string {
+  const onDisk = { ...state } as unknown as Record<string, unknown>;
+  if (state.touched !== undefined) {
+    onDisk.touched = Object.fromEntries([...state.touched].map(([key, value]) => [key, Object.fromEntries(value)]));
   }
+  return JSON.stringify(onDisk);
 }
 
 /** #1303: bound on waiting must-load ids — a hint block carries at most a handful. */
@@ -676,12 +659,9 @@ export async function clearPendingMustLoad(
     });
     const dir = sessionStateDir();
     const needle = JSON.stringify(memId);
-    for (const name of await readdir(dir)) {
-      if (!name.endsWith(".json")) continue;
-      const raw = await readFile(path.join(dir, name), "utf8").catch(() => "");
+    for (const [sessionId, raw] of await listHookStates(dir)) {
       // Cheap pre-check before the lock: most sessions never held this id.
       if (!raw.includes(needle)) continue;
-      const sessionId = name.slice(0, -".json".length);
       await mutateSessionState(sessionId, (state) => {
         const pending = state.pendingMustLoad?.some((e) => e.id === memId) ?? false;
         const claimed = state.claimedMustLoad?.includes(memId) ?? false;
@@ -709,25 +689,8 @@ export async function clearPendingMustLoad(
  * pay for it on every cold call).
  */
 export async function cleanupOldStates(maxAgeMs: number = STATE_MAX_AGE_MS): Promise<void> {
-  try {
-    const dir = sessionStateDir();
-    const entries = await readdir(dir);
-    const now = Date.now();
-    await Promise.all(
-      entries.map(async (name) => {
-        if (!name.endsWith(".json") && !name.endsWith(".touch")) return;
-        const full = path.join(dir, name);
-        try {
-          const st = await stat(full);
-          if (now - st.mtimeMs > maxAgeMs) await unlink(full);
-        } catch {
-          // ignore — concurrent unlink or transient FS error
-        }
-      }),
-    );
-  } catch {
-    // missing dir is fine
-  }
+  try { await cleanupHookState(sessionStateDir(), maxAgeMs); }
+  catch { /* State cleanup is advisory. */ }
 }
 
 /**
@@ -738,14 +701,9 @@ export async function cleanupOldStates(maxAgeMs: number = STATE_MAX_AGE_MS): Pro
 export async function touchLoadedMarker(memId: string): Promise<void> {
   if (!memId) return;
   try {
-    const dir = sessionStateDir();
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    const file = loadedMarkerFile(memId, dir);
-    // open-write-close gives us a fresh mtime even if the file already exists
-    await writeFile(file, String(Date.now()), { encoding: "utf8", mode: 0o600 });
-  } catch {
-    // marker is advisory — never break load_memory if /tmp is unwritable
-  }
+    const key = path.basename(loadedMarkerFile(memId), ".touch").slice("loaded-".length);
+    await writeHookMarker(sessionStateDir(), key);
+  } catch { /* A busy state database must never break load_memory. */ }
 }
 
 /**
@@ -756,11 +714,9 @@ export async function touchLoadedMarker(memId: string): Promise<void> {
 export async function getLoadedMarkerMtime(memId: string): Promise<number | null> {
   if (!memId) return null;
   try {
-    const st = await stat(loadedMarkerFile(memId));
-    return st.mtimeMs;
-  } catch {
-    return null;
-  }
+    const key = path.basename(loadedMarkerFile(memId), ".touch").slice("loaded-".length);
+    return await readHookMarker(sessionStateDir(), key);
+  } catch { return null; }
 }
 
 /**
@@ -1176,8 +1132,12 @@ export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: 
 /** Delivery bookkeeping is advisory and never queues behind another lane. */
 export async function persistDraftHintClaims(sessionId: string, ids: string[], dir = sessionStateDir()): Promise<void> {
   await tryWithPathLock(sessionFile(sessionId, dir), async () => {
-    const state = await readSessionState(sessionId, dir);
-    state.draftShown = [...new Set([...(state.draftShown ?? []), ...ids])].slice(-500);
-    await writeSessionState(sessionId, state, dir);
+    try {
+      await updateHookState(dir, stateKey(sessionId, dir), raw => {
+        const state = decodeSessionState(sessionId, raw ?? "{}");
+        state.draftShown = [...new Set([...(state.draftShown ?? []), ...ids])].slice(-500);
+        return encodeSessionState(state);
+      });
+    } catch { /* Advisory feedback must not wait behind another writer. */ }
   });
 }

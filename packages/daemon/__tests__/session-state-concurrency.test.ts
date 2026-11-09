@@ -16,7 +16,8 @@
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { openAppDatabase } from "../src/app-database.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,7 +42,11 @@ const { pathLockFilePath, withPathLock } = await import("../src/path-lock.js");
 type SessionState = import("../src/session-state.js").SessionState;
 
 async function persisted(sessionId: string): Promise<SessionState> {
-  return JSON.parse(await readFile(join(testDir, `${sessionId}.json`), "utf8")) as SessionState;
+  const db = openAppDatabase({ path: join(testDir, "recall.db") });
+  try {
+    const row = db.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(sessionId);
+    return JSON.parse((JSON.parse(String(row?.value)) as { raw: string }).raw) as SessionState;
+  } finally { db.close(); }
 }
 
 test("#539: concurrent lane updates on one session id all survive", async () => {
@@ -134,8 +139,8 @@ test("#539: the mutation stays cheap enough for the hook path", async () => {
   assert.equal(Object.keys((await persisted(sid)).shown).length, rounds);
   assert.deepEqual(
     (await readdir(testDir)).filter((f) => f.startsWith(sid)),
-    [`${sid}.json`],
-    "one atomic write per call, no lock or tmp file left behind",
+    [],
+    "state lives in SQLite, no per-session JSON, lock or tmp file left behind",
   );
 
   // The lock is per session: while another session's lock is held (a gate this

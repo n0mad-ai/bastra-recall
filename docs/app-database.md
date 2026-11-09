@@ -54,6 +54,38 @@ migration time; export subsequent database changes before downgrading if they
 must also be retained. Each store's migration documents its exact suffix.
 Stage 0 itself does not import or rename any existing JSON files.
 
+### Hook state (stage 2)
+
+Session bookkeeping, loaded-memory timestamps and the Bash failure throttle
+use separate `hook-session:`, `hook-loaded:` and `hook-throttle:` namespaces.
+The configured hook-state directory identifies the namespace; explicitly
+configured fixture directories use their own `recall.db` unless
+`BASTRA_DB_PATH` selects the shared database. Production uses the installation's
+single app database.
+
+The first read hydrates an immutable process-local snapshot. Warm reads do no
+filesystem or SQLite work. Mutations read the latest committed row inside a
+short synchronous transaction, then publish their new snapshot only after
+commit. They never hold the lock around recall work. Database contention
+returns immediately; a failed gate claim does not deny a tool call. The daemon
+owns these hot read snapshots; external process writes become visible after a
+restart or a local mutation of that session.
+
+Legacy `<session>.json`, `loaded-<memory>.touch`, and
+`fail-throttle-<session>.ts` files are copied to owner-only
+`<original>.pre-sqlite.backup` files before import. A consistent database
+snapshot is saved as `recall.db.backups/before-hook-state-<UUID>.db` before new
+rows are imported. After commit the originals are renamed to
+`<original>.pre-sqlite`; an interrupted rename is completed on restart without
+overwriting newer database state. Corrupt files and symlinks are left intact.
+The original timestamps and 30-second throttle window are preserved.
+
+For a downgrade, stop the daemon, copy each `.pre-sqlite` original back to its
+exact former filename in the configured hook-state directory, then start the
+older version. Preserve the originals and database for returning to the new
+version. The rulebook failure spool remains a stdlib-only offline transport
+buffer: clients must be able to record failures while the daemon is unreachable.
+
 ## Tests
 
 Tests always choose temporary fixture paths; calls without an explicit path

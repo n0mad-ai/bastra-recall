@@ -34,6 +34,7 @@ import {
   mutateSessionState,
 } from "../src/session-state.js";
 import { runBashPreLane } from "../src/bash-pre-lane.js";
+import { openAppDatabase } from "../src/app-database.js";
 
 type Hook = { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string; updatedInput?: { command?: string } } };
 const parse = (out: string): Hook => JSON.parse(out) as Hook;
@@ -238,12 +239,13 @@ describe("#1303 gate lane: failed persistence fails open", () => {
     // The state stays READABLE (the pending id is visible), only the write
     // fails: exactly the case where a deny without a persisted claim would
     // repeat on every call.
-    await chmod(stateDir, 0o500);
+    const writer = openAppDatabase({ path: join(stateDir, "recall.db") });
+    writer.sqlite.exec("BEGIN IMMEDIATE");
     let out: string;
     try {
       out = await runGateLane(call(sid, "Edit"), { reflexPool: pool(RULE) });
     } finally {
-      await chmod(stateDir, 0o700);
+      writer.sqlite.exec("ROLLBACK"); writer.close();
     }
     assert.equal(out, "{}");
     const rows = await gateRows(sid);
@@ -428,10 +430,11 @@ describe("#1304 Codex verified gate protocol", () => {
   it("a failed Codex claim write fails open and preserves the pending id", async () => {
     const sid = session("codex-readonly");
     await book(sid, ["pref-a"]);
-    await chmod(stateDir, 0o500);
+    const writer = openAppDatabase({ path: join(stateDir, "recall.db") });
+    writer.sqlite.exec("BEGIN IMMEDIATE");
     let out: string;
     try { out = await runGateLane(codex(sid), {reflexPool: noPool}); }
-    finally { await chmod(stateDir, 0o700); }
+    finally { writer.sqlite.exec("ROLLBACK"); writer.close(); }
     assert.equal(out, "{}");
     assert.equal((await gateRows(sid))[0]?.non_conformance, "state_write_failed");
     assert.deepEqual((await loadSessionState(sid)).pendingMustLoad?.map(e => e.id), ["pref-a"]);

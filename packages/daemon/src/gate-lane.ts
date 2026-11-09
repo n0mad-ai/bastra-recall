@@ -52,7 +52,7 @@ import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { defaultLogDir } from "./telemetry.js";
 import { isReflexPoolMember, matchReflexPool, reflexConfig, reflexPool, type ReflexMatch } from "./reflex.js";
 import {
-  mutateSessionState, recordActiveConventions, recordClaimedMustLoad,
+  loadSessionState, mutateSessionState, recordActiveConventions, recordClaimedMustLoad,
   type ActiveConvention, type PendingMustLoad,
 } from "./session-state.js";
 import { recordBudgetShadow } from "./session-budget.js";
@@ -364,10 +364,15 @@ async function gate(payload: GatePayload, deps: GateDeps, startedAt: number, onD
   const elapsed = Date.now() - startedAt;
   if (!persisted) {
     // No claim reached the disk, so nothing may be denied: the call passes.
+    // SQLite may reject BEGIN before the callback sees the pending ids. The
+    // read snapshot is diagnostic only; it never claims or consumes them.
+    const unclaimedMustLoadIds = claimedMustLoad.length > 0
+      ? claimedMustLoad.map(e => e.id)
+      : subagent ? [] : ((await loadSessionState(sessionId)).pendingMustLoad ?? []).map(e => e.id);
     await emitTelemetry({
       outcome: "pass",
       non_conformance: expired() ? "gate_timeout" : "state_write_failed",
-      ...(claimedMustLoad.length > 0 ? { unclaimed_must_load_ids: claimedMustLoad.map((e) => e.id) } : {}),
+      ...(unclaimedMustLoadIds.length > 0 ? { unclaimed_must_load_ids: unclaimedMustLoadIds } : {}),
       ...(claimedReflex.length > 0 ? { unclaimed_reflex_ids: claimedReflex.map((m) => m.memory.fm.id) } : {}),
     });
     return "{}";

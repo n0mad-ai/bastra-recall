@@ -16,10 +16,11 @@
  * the same server, so the loopback POST costs ~1ms and keeps the telemetry
  * event exactly where it always was.
  */
-import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { readHookMarker, writeHookMarker } from "./hook-state-database.js";
+import { sessionStateDir } from "./session-state.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envOff, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
@@ -52,7 +53,7 @@ const SCORE_FLOOR = 50;
 // #161: hits at/above this are REQUIRED-band — they bypass backoff suppression.
 const MUST_LOAD_SCORE = 100;
 const THROTTLE_WINDOW_MS = 30_000;
-const THROTTLE_DIR = join(tmpdir(), "bastra-hook");
+// The configured hook-state root also identifies its persisted throttle rows.
 // #161: backoff source key — fail-hints back off independently.
 const BACKOFF_SOURCE = "bash-fail";
 
@@ -516,13 +517,18 @@ export function formatHintBlock(
 export function throttleFile(sessionId: string): string {
   // sanitize sessionId — keep alnum + dash, fall back if empty
   const safe = sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "default";
-  return join(THROTTLE_DIR, `fail-throttle-${safe}.ts`);
+  return join(sessionStateDir(), `fail-throttle-${safe}.ts`);
+}
+
+function throttleKey(sessionId: string): string {
+  return sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "default";
 }
 
 export async function isThrottled(sessionId: string): Promise<boolean> {
   try {
-    const s = await stat(throttleFile(sessionId));
-    return Date.now() - s.mtimeMs < THROTTLE_WINDOW_MS;
+    const key = throttleKey(sessionId);
+    const at = await readHookMarker(sessionStateDir(), key, true);
+    return at !== null && Date.now() - at < THROTTLE_WINDOW_MS;
   } catch {
     return false;
   }
@@ -530,13 +536,7 @@ export async function isThrottled(sessionId: string): Promise<boolean> {
 
 export async function markThrottle(sessionId: string): Promise<void> {
   try {
-    // mode 0700/0600: os.tmpdir() is world-writable on Linux — keep the
-    // throttle dir/files owner-only to block symlink/TOCTOU races.
-    await mkdir(THROTTLE_DIR, { recursive: true, mode: 0o700 });
-    await writeFile(throttleFile(sessionId), String(Date.now()), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    await writeHookMarker(sessionStateDir(), throttleKey(sessionId), true);
   } catch {
     // Best-effort; missing throttle is acceptable.
   }
