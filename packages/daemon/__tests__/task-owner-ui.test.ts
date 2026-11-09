@@ -230,6 +230,37 @@ async function renewalUI(){
  await runInContext('open()',u.ctx);await new Promise(r=>setTimeout(r,0));
  return {...u,calls,expire:()=>{expired=true;},deny:()=>{renewFails=true;},allow:()=>{renewFails=false;},change:(next:any)=>{status=next;},tick:async()=>{await tick?.();},sessions:()=>calls.filter(c=>c.url==='/ui/tasks/session').length};
 }
+test('#1219 follow-up 1: successful create closes its form even when the following refresh expires', async()=>{
+ const u=await renewalUI(),fetch=(u.ctx as any).fetch;let created=0;
+ (u.ctx as any).fetch=async(url:string,args:any)=>{if(url.endsWith('task_create')){created++;u.expire();return{ok:true,json:async()=>liveTask};}return fetch(url,args);};
+ for(const [id,value] of Object.entries({goal:'Saved reminder',when:'1h',timing:'after',timezone:'Europe/Berlin',domain:'personal',level:'notify',every:''}))u.get(id).value=value;
+ u.get('compose').showModal();u.get('create').handlers.submit({preventDefault(){}});await new Promise(r=>setImmediate(r));
+ assert.equal(created,1);assert.equal(u.get('compose').open,false);assert.doesNotMatch(u.get('message').textContent,/erneut.*aus/);
+});
+test('#1219 follow-up 2: failed renewal remains visible after a drag overwrites its message', async()=>{
+ const u=await renewalUI();u.expire();u.deny();await u.tick();await runInContext("message('Ziehe die Aufgabe in eine markierte Spalte.');action(()=>api('resolve',{id:'fixture'}))",u.ctx);
+ assert.equal(u.get('message').dataset.kind,'error');assert.match(u.get('message').textContent,/abgelaufen|nicht erreichbar/);
+});
+test('#1219 adversarial: a completed resolve followed by an expired refresh never asks to repeat the write', async()=>{
+ const u=await renewalUI(),fetch=(u.ctx as any).fetch;let writes=0;
+ (u.ctx as any).fetch=async(url:string,args:any)=>{if(url.endsWith('task_resolve')){writes++;u.expire();return{ok:true,json:async()=>({...liveTask,state:'resolved'})};}return fetch(url,args);};
+ await runInContext('action(()=>mutate(snapshot.tasks[0]||{id:"fixture"},"resolve"))',u.ctx);
+ assert.equal(writes,1);assert.doesNotMatch(u.get('message').textContent,/Aktion erneut/);assert.match(u.get('message').textContent,/aktuellen Aufgabenstand/);
+});
+test('#1219 follow-up 3: a late old-session denial does not mark the renewed session expired', async()=>{
+ const u=await renewalUI(),fetch=(u.ctx as any).fetch;let release!:()=>void;
+ (u.ctx as any).fetch=async(url:string,args:any)=>{if(url.endsWith('task_resolve')){await new Promise<void>(r=>{release=r;});return{ok:false,json:async()=>({code:'unauthorized'})};}return fetch(url,args);};
+ const pending=runInContext("action(()=>api('resolve',{id:'fixture'}))",u.ctx);u.expire();await u.tick();release();await pending;
+ assert.doesNotMatch(u.get('message').textContent,/abgelaufen/);assert.equal(await runInContext('accessExpired',u.ctx),false);
+});
+test('#1219 follow-up 4: non-auth status failure after renewal keeps polling and clears recovered error', async()=>{
+ const u=await renewalUI(),fetch=(u.ctx as any).fetch;let failNext=false,statuses=0;
+ (u.ctx as any).fetch=async(url:string,args:any)=>{if(url==='/ui/tasks/session'){const result=await fetch(url,args);failNext=true;return result;}if(url.endsWith('task_status')){statuses++;if(failNext){failNext=false;return{ok:false,json:async()=>({code:'unavailable'})};}}return fetch(url,args);};
+ u.expire();await u.tick();const before=statuses;assert.equal(await runInContext('accessExpired',u.ctx),false);await u.tick();assert.equal(statuses,before+1);assert.equal(u.get('message').hidden,true);
+});
+test('#1219 follow-up 5 repro: repeatedly successful renewal has no cooldown (owner decision pending)', async()=>{
+ const u=await renewalUI(),before=u.sessions();for(let i=0;i<6;i++){u.expire();await u.tick();}assert.equal(u.sessions(),before+6);
+});
 test('expired local session renews silently and shows an external task with fresh CSRF',async()=>{
  const u=await renewalUI(),before=u.sessions();u.expire();u.change({...liveBase,tasks:[liveTask]});await u.tick();
  assert.equal(u.sessions(),before+1);assert.ok(descendants(u.get('tasks')).some(n=>n.textContent===liveTask.goal));assert.equal(u.get('message').hidden,true);
