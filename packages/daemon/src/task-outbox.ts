@@ -19,7 +19,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
     const action = store.intents.filter(i => i.task_id === o.task_id).at(-1);
     const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
     const critical = action && ["pending", "unknown"].includes(action.state) && o.attempts.find(a => a.client === client)?.last_action_key !== actionKey;
-    return task?.armed && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
+    return task?.armed && !task.paused && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
       && !(task.state === "snoozed" && task.snoozed_until! > now) && (ownerInspect || !task.notification_policy.muted)
       && !o.resolution && (ownerInspect || critical || input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
       && task.owner_domains.every(d => principal.domains.includes(d));

@@ -7,12 +7,12 @@ import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { taskStoreSchema, TASK_MAX_BYTES, type TaskStore } from "./task-schema.js";
 import { canonicalTaskValue } from "./task-canonical.js";
-import { TaskStoreError, atomicWrite, withTaskStoreGuard } from "./task-store.js";
+import { TaskStoreError, atomicWrite, withTaskStoreGuard, decodeTaskStore } from "./task-store.js";
 import { authenticateTask, requireTaskOwner, requireTaskDomains } from "./task-auth.js";
 import type { TaskServiceContext } from "./task-service.js";
 const sha=(v:string)=>createHash("sha256").update(v).digest("hex");
 export const archiveIntentKey=(actor:string,key:string)=>sha(canonicalTaskValue(["archive-intent-v1",actor,key]));
-const bundleSchema=z.strictObject({schema_version:z.literal(1),id:z.string().uuid(),snapshot:taskStoreSchema});
+const bundleSchema=z.strictObject({schema_version:z.literal(1),id:z.string().uuid(),snapshot:z.preprocess(value => decodeTaskStore(JSON.stringify(value)),taskStoreSchema)});
 export function taskArchivePath(path:string,id:string){return join(dirname(path),"task-archives",`${z.string().uuid().parse(id)}.json`);}
 export async function readTaskArchive(path:string,entry:TaskStore["archives"][number]):Promise<TaskStore>{
   try {

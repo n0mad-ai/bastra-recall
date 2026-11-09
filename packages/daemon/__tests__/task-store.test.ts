@@ -181,8 +181,8 @@ test("ordinary capacity cannot consume control reserve", async () => {
   assert.ok(Buffer.byteLength(JSON.stringify(result)) < TASK_MAX_BYTES);
 });
 
-test("unbounded recurrence, terminal arming, unsafe time and orphan occurrence fail validation", () => {
-  assert.equal(taskSchema.safeParse({ ...task(), recurrence: { kind: "elapsed", interval: 1, catch_up: "latest" } }).success, false);
+test("unbounded recurrence is valid; terminal arming, unsafe time and orphan occurrence fail validation", () => {
+  assert.equal(taskSchema.safeParse({ ...task(), recurrence: { kind: "elapsed", interval: 1, catch_up: "latest" } }).success, true);
   assert.equal(taskSchema.safeParse({ ...task(), state: "cancelled", armed: true }).success, false);
   assert.equal(taskSchema.safeParse({ ...task(), timezone: "invented/no-zone" }).success, false);
   assert.equal(taskSchema.safeParse({ ...task(), schedule: { kind: "duration", reference_at: 1, duration_ms: 5, at: 7 } }).success, false);

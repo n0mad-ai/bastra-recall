@@ -47,7 +47,6 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
   }
   let recurrence: object | undefined;
   if (options.every) {
-    if (!options.count && !options.end) throw Object.assign(new Error("Wiederholung braucht --count oder --end"), { code: "validation",reason:"recurrence_limit_required" });
     const match = /^(\d+)(m|h|d|w)$/.exec(String(options.every)); if (!match || Number(match[1]) <= 0) throw Object.assign(new Error("--every: zum Beispiel 1d oder 1w"), { code: "validation" });
     const calendar = (schedule as { kind: string }).kind === "calendar";
     if (calendar && !["d", "w"].includes(match[2])) throw Object.assign(new Error("Kalender-Wiederholung braucht Tage/Wochen"), { code: "validation" });
@@ -81,10 +80,10 @@ export const actionStateName: Record<string,string> = { pending: "offen, Abgleic
 export function friendlyTaskResult(sub: string, result: any): string {
   const taskLine = (t: any) => {
     const when = t.schedule.kind === "event" ? `Ereignis ${quote(t.schedule.source_id)}` : taskDisplayTime(t.schedule.at, t.timezone);
-    return `${quote(t.goal)} · ${when} · ${t.timezone} · ${t.armed ? "scharf" : "unscharf"} · ${taskStateName[t.state] ?? t.state} · ${levelName[t.action_level] ?? t.action_level}\n  ID ${t.id}`
+    return `${quote(t.goal)} · ${when} · ${t.timezone} · ${t.armed ? "scharf" : "unscharf"} · ${t.paused ? "pausiert" : taskStateName[t.state] ?? t.state} · ${levelName[t.action_level] ?? t.action_level}\n  ID ${t.id}`
       + (t.schedule.kind === "calendar" && ambiguousTaskCalendar(t.schedule.local_time,t.timezone) ? "\n  Mehrdeutige Ortszeit: früherer Zeitpunkt gewählt. Owner muss diese Wahl mit review prüfen." : "")
       + (t.state === "snoozed" ? `\n  Zurückgestellt bis ${taskDisplayTime(t.snoozed_until, t.timezone)} (${t.timezone})` : "")
-      + (t.recurrence ? `\n  Wiederholung: ${t.recurrence.kind === "calendar" ? "Kalendertage" : "verstrichene Dauer"}; begrenzt auf ${t.recurrence.count ?? "Endzeit"}` : "")
+      + (t.recurrence ? `\n  Wiederholung: ${t.recurrence.kind === "calendar" ? "Kalendertage" : "verstrichene Dauer"}; ${t.recurrence.count !== undefined ? `Anzahl ${t.recurrence.count}` : t.recurrence.until !== undefined ? `bis ${taskDisplayTime(t.recurrence.until,t.timezone)}` : "ohne Ende"}` : "")
       + (sub === "rearm" ? "\n  Wieder zur Prüfung vorgelegt, UNSCHARF. Scharf schalten: bastra tasks review <id>." : "")
       + (t.last_failure ? `\n  Letzter Aufgabenfehler: ${t.last_failure.code === "source_unavailable" ? "Quelle nicht erreichbar" : t.last_failure.message}` : "")
       + (t.budget?`\n  Budget: Prüfung frühestens alle ${t.budget.poll_interval_ms/1000}s; Timeout ${t.budget.timeout_ms}ms; Quelle höchstens ${t.budget.max_source_bytes} Bytes.`:"")

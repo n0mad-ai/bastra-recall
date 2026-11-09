@@ -85,7 +85,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       const principal = await authenticateTask(authorization);
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
-    if ((args.sub === "execution-enable" || args.sub === "resume")) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
+    if ((args.sub === "execution-enable" || (args.sub === "resume" && !input.id))) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization,args.json); return 0; }
     if (agent && args.sub === "archive") {
       const { readTaskStore, tasksPath } = await import("../task-store.js");
@@ -99,7 +99,8 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     }
     if (args.sub === "due") input = { include_acknowledged: true, max_bytes: 16384 };
     const controls: Record<string, object> = { mute: { muted: true }, unmute: { muted: false }, off: { enabled: false }, on: { enabled: true }, stop: { execution_stopped: true }, resume: { execution_stopped: false } };
-    const result = await taskCliCall(controls[args.sub ?? ""] ? "controls" : args.sub ?? "list", controls[args.sub ?? ""] ?? input, authorization, baseUrl);
+    const control = args.sub === "resume" && input.id ? undefined : controls[args.sub ?? ""];
+    const result = await taskCliCall(control ? "controls" : args.sub ?? "list", control ?? input, authorization, baseUrl);
     process.stdout.write((args.json ? JSON.stringify(result, null, 2) : friendlyTaskResult(args.sub ?? "list", result)) + "\n");
     if (!args.json && args.sub === "create" && options.goal && !options.timezone) process.stdout.write(`Zeitzone aus dem System angenommen: ${(result as any).timezone}. Mit --timezone bewusst festlegen.\n`);
     return 0;

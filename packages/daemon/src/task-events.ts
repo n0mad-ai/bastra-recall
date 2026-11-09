@@ -92,7 +92,7 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   let visited = 0;
   while (visited < store.tasks.length && remaining > 0) {
     const task = store.tasks[(start + visited++) % store.tasks.length]; remaining--;
-    if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state)
+    if (!task.armed || task.paused || ["resolved", "cancelled", "expired"].includes(task.state)
       || (task.state === "snoozed" && task.snoozed_until! > now)) continue;
     if (task.schedule.kind === "event") {
       const before = task.last_event_sequence ?? 0;
@@ -171,9 +171,9 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
   for (const source of snapshot.sources) {
     if (Date.now() - started >= 5000) break;
     if (allowedSources && !allowedSources.has(source.id)) continue;
-    if (activeOnly && !snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
+    if (activeOnly && !snapshot.tasks.some(t => t.armed && !t.paused && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
     if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
-    const watchers=snapshot.tasks.filter(t=>t.armed&&t.schedule.kind==="event"&&t.schedule.source_id===source.id&&!["resolved","cancelled","expired"].includes(t.state));
+    const watchers=snapshot.tasks.filter(t=>t.armed&&!t.paused&&t.schedule.kind==="event"&&t.schedule.source_id===source.id&&!["resolved","cancelled","expired"].includes(t.state));
     const charged=watchers.filter(t=>!allowedTasks||allowedTasks.has(t.id));if(activeOnly&&!charged.length)continue;
     const maxBytes=charged.length?Math.max(...charged.map(t=>t.budget.max_source_bytes)):1024*1024;
     const maxMs=Math.min(1000,charged.length?Math.max(...charged.map(t=>t.budget.timeout_ms)):1000,Math.max(1,5000-(Date.now()-started)));

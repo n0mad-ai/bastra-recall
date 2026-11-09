@@ -249,6 +249,8 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks list | due | status [--json] [--agent]
   bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
   bastra tasks get|review|resolve|cancel|rearm|delete <id>
+  bastra tasks pause|resume|end-series <id>  Pausieren, fortsetzen oder Serie beenden
+  Wiederholung: --every 1d auch ohne --count/--end; resolve erledigt nur einen Termin.
   bastra tasks acknowledge <id> --occurrence <occurrence-id>
   bastra tasks snooze <id> --until 2026-10-13T18:00
   bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal

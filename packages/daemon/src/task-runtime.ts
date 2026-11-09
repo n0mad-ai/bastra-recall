@@ -57,7 +57,7 @@ export class TaskRuntime {
       this.snapshot = snapshot; this.loaded = true; this.ioStopped = false; return changed;
     } catch { this.lastError = "task_store_unavailable"; this.ioStopped = true; throw new Error("Task store unavailable"); }
   }
-  get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => t.armed && !["resolved", "cancelled", "expired"].includes(t.state)) || (this.ctx.executionHost === true && this.snapshot.intents.some(i => i.state === "pending"))); }
+  get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => t.armed && !t.paused && !["resolved", "cancelled", "expired"].includes(t.state)) || (this.ctx.executionHost === true && this.snapshot.intents.some(i => i.state === "pending"))); }
   contact(): void {
     if (this.stopped) return;
     this.queued = true;
@@ -73,7 +73,7 @@ export class TaskRuntime {
       let visited = 0;
       while (visited < this.snapshot.tasks.length && selected.size < 10) {
         const task = this.snapshot.tasks[(this.pollCursor + visited++) % this.snapshot.tasks.length];
-        if (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
+        if (!task.armed || task.paused || ["resolved", "cancelled", "expired"].includes(task.state) || (task.schedule.kind !== "event" && !task.evidence.length)) continue;
         const event = taskEventToAssess(task, this.snapshot);
         const material = taskCheckMaterial(task, this.snapshot);
         const previous = this.checks.get(task.id);
@@ -97,7 +97,7 @@ export class TaskRuntime {
           this.backoff = Math.max(this.backoff, failed ? delay : 0); if (failed) this.lastError = "source_unavailable";
         }
         // Accepted/new events never inherit a failed or older snapshot's backoff.
-        if (this.snapshot.tasks.some(t => { if (!t.armed || t.schedule.kind !== "event") return false; const sourceId = t.schedule.source_id; return this.snapshot.events.some(e => e.source_id === sourceId)
+        if (this.snapshot.tasks.some(t => { if (!t.armed || t.paused || t.schedule.kind !== "event") return false; const sourceId = t.schedule.source_id; return this.snapshot.events.some(e => e.source_id === sourceId)
           && this.checks.get(t.id)?.material !== taskCheckMaterial(t, this.snapshot); })) this.queued = true;
         this.nextTick = Math.min(now + 60000, ...[...this.checks.values()].map(c => c.next));
       } catch { this.ioStopped = true; this.lastError = "task_job_unavailable"; this.backoff = Math.min(Math.max(this.backoff * 2, 60000), 3600000); this.nextTick = now + this.backoff; }

@@ -29,7 +29,7 @@ export function decodeTaskStore(raw: string): TaskStore {
   if (Buffer.byteLength(raw) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "task snapshot exceeds its hard limit; original preserved");
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new TaskStoreError("corrupt", "invalid task JSON; original preserved"); }
-  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1 && value.schema_version !== 2 && value.schema_version !== 3)
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version !== 1 && value.schema_version !== 2 && value.schema_version !== 3 && value.schema_version !== 4)
     throw new TaskStoreError("unsupported_version", "unsupported task schema; original preserved");
   if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 1) {
     // v1 was strictly empty for actions. Never migrate unchecked capabilities.
@@ -42,6 +42,10 @@ export function decodeTaskStore(raw: string): TaskStore {
     if (["intents", "receipts"].some(k => !Array.isArray(legacy[k]) || (legacy[k] as unknown[]).length)) throw new TaskStoreError("corrupt", "v2 execution state must be empty");
     value = { ...legacy, schema_version: 3 };
   }
+  // v4 adds optional pause/expiry/delivery metadata. Preserve all identities,
+  // revisions and action proofs; existing rows need no invented defaults.
+  if (typeof value === "object" && value !== null && "schema_version" in value && value.schema_version === 3)
+    value = { ...value, schema_version: 4 };
   if (value && typeof value === "object") dropLegacyTaskComparisons(value);
   const parsed = taskStoreSchema.safeParse(value);
   if (!parsed.success) throw new TaskStoreError("corrupt", "invalid task schema or references; original preserved");
@@ -257,7 +261,7 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
   }, { strictLocal: true });
 }
 
-export type TaskLifecycleOperation = "snooze" | "acknowledge" | "resolve" | "cancel" | "rearm";
+export type TaskLifecycleOperation = "snooze" | "acknowledge" | "resolve" | "cancel" | "rearm" | "pause" | "resume" | "end_series";
 /** Internal lifecycle primitive. Authorization and signed-proof validation belong
  * to the shared service; callers cannot equate delivery with this operation. */
 export function transitionTask(task: Task, operation: TaskLifecycleOperation, actor: string, now: number, snoozedUntil?: number): Task {
@@ -269,11 +273,20 @@ export function transitionTask(task: Task, operation: TaskLifecycleOperation, ac
     case "snooze":
       if (snoozedUntil === undefined || snoozedUntil <= now) throw new TaskStoreError("conflict", "snooze requires a future instant");
       next.state = "snoozed"; next.snoozed_until = snoozedUntil; break;
-    case "resolve": next.state = "resolved"; next.armed = false; break;
+    case "pause": next.paused = true; break;
+    case "resume": next.paused = false; break;
+    case "resolve":
+      if (task.recurrence && (task.next_slot || (task.recurrence.count === undefined && task.recurrence.until === undefined))) next.state = "pending";
+      else { next.state = "resolved"; next.armed = false; }
+      break;
+    case "end_series":
+      if (!task.recurrence) throw new TaskStoreError("conflict", "task has no recurring series");
+      next.state = "cancelled"; next.armed = false; break;
     case "cancel": next.state = "cancelled"; next.armed = false; break;
     case "rearm": delete next.agent_snooze_deadline; delete next.last_material_hash; delete next.last_event_sequence; delete next.slots_checked; delete next.next_slot; next.state = "pending"; next.armed = false; next.generation++; next.review_reason = "Owner review required before arming"; break;
   }
-  if (["resolve", "cancel", "rearm"].includes(operation)) delete next.snoozed_until;
+  if (["resolve", "cancel", "rearm", "end_series"].includes(operation)) delete next.snoozed_until;
+  if (operation === "rearm" || ["resolved", "cancelled", "expired"].includes(next.state)) delete next.paused;
   next.revision++; next.updated_at = now;
   next.history.push({ at: now, actor, operation, before_revision: task.revision, after_revision: next.revision, reason: operation });
   return taskSchema.parse(next);

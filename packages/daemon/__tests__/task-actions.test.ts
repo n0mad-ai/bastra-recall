@@ -10,7 +10,7 @@ import { mintTaskCredential } from "../src/task-auth.js";
 import { callTaskCrud } from "../src/task-service.js";
 import { transactTaskStore, readTaskStore, decodeTaskStore } from "../src/task-store.js";
 import { newOwnerKey, unlockOwnerKey, signTaskApproval, verifyTaskApproval, bytesHash, readApprovalRegistry, type ApprovalRegistry } from "../src/task-approval-keys.js";
-import { approvalBinding } from "../src/task-actions.js";
+import { approvalBinding, validateTaskProposal } from "../src/task-actions.js";
 async function fixture(domains = ["personal"], protectedBoundary = true) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "task-actions-"))), targetPath = join(root, "artifact.txt"); await writeFile(targetPath, "old\n");
   const envelopes = domains.map(() => newOwnerKey("synthetic owner key password"));
@@ -34,10 +34,20 @@ async function fixture(domains = ["personal"], protectedBoundary = true) {
   };
   return { root, ctx, registry, targetPath, prepared, auth, approve, envelopes, owners };
 }
+test("paused tasks cannot prepare or execute, and resume never restores a stale proposal", async () => {
+  const f = await fixture(); const original = (await readTaskStore(f.ctx.path)).tasks[0];
+  let task = await callTaskCrud(f.ctx, f.auth, "task_pause", { id: original.id, expected_revision: `initial:${original.revision}` }) as any;
+  await assert.rejects(callTaskCrud(f.ctx, f.auth, "task_prepare", { id: task.id, expected_revision: task.expected_revision, target_id: "artifact", payload: "new\n" }), { code: "conflict" });
+  await assert.rejects(validateTaskProposal(f.ctx, await readTaskStore(f.ctx.path), f.prepared.proposal, f.registry), { code: "conflict" });
+  task = await callTaskCrud(f.ctx, f.auth, "task_resume", { id: task.id, expected_revision: task.expected_revision }) as any;
+  assert.equal(task.paused, false);
+  await assert.rejects(validateTaskProposal(f.ctx, await readTaskStore(f.ctx.path), f.prepared.proposal, f.registry), { code: "approval_stale" });
+  assert.equal(await readFile(f.targetPath, "utf8"), "old\n");
+});
 test("v1 migrates only empty actions and keeps tasks/cursors; capabilities never silently migrate", async () => {
   const f = await fixture(); const store = await readTaskStore(f.ctx.path);
   const raw = { ...store, schema_version: 1, proposals: [] };
-  assert.equal(decodeTaskStore(JSON.stringify(raw)).schema_version, 3);
+  assert.equal(decodeTaskStore(JSON.stringify(raw)).schema_version, 4);
   assert.deepEqual(decodeTaskStore(JSON.stringify(raw)).events, store.events);
   assert.deepEqual(decodeTaskStore(JSON.stringify(raw)).tasks, store.tasks);
   assert.throws(() => decodeTaskStore(JSON.stringify({ ...raw, approvals: [{ approved: true }] })), /empty/);

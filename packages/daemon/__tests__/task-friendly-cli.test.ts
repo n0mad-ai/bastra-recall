@@ -38,8 +38,8 @@ test("compiled bastra tasks due exists, is readable and preserves --json machine
     const json = await run(["list", "--agent", "--json"]); assert.equal(JSON.parse(json.output).tasks.length, 1);
     const capture = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--timezone", "Europe/Madrid"]); assert.equal(capture.code, 0, capture.errors); assert.match(capture.output, /scharf/); assert.doesNotMatch(capture.output, /unscharf/);
     const armed = await run(["create", "--agent", "--goal", "Erinnern", "--after", "7d", "--arm"]); assert.equal(armed.code, 0, armed.errors); assert.match(armed.output, /scharf/);
-    const denied = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm", "--level", "prepare"]); assert.equal(denied.code, 1); assert.match(denied.errors, /Owner/);
-    assert.equal((await readTaskStore(ctx.path)).tasks.length, 3);
+    const prepared = await run(["create", "--agent", "--goal", "Prüfen", "--after", "7d", "--arm", "--level", "prepare"]); assert.equal(prepared.code, 0, prepared.errors); assert.match(prepared.output, /scharf/);
+    assert.equal((await readTaskStore(ctx.path)).tasks.length, 4);
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); }
 });
 test("one owner setup gives hooks a private separate agent credential; missing/revoked/unsafe status is honest", async () => {
@@ -75,9 +75,9 @@ test("readable states, local times, controls, off-status and errors keep machine
  assert.match(friendlyTaskResult("mute",{controls:base.controls,resumed_authority:false}),/Stumm geschaltet/);assert.ok(!friendlyTaskResult("stop",{controls:base.controls,resumed_authority:false}).startsWith("{"));
  assert.match(friendlyTaskError("not_found","cancel"),/unbekannt/);assert.match(friendlyTaskError("protected_boundary_required","resume"),/standardmäßig gestoppt/);
 });
-test("human recurrence is bounded and ambiguous autumn time stays visibly unarmed",()=>{
+test("human recurrence supports optional bounds and ambiguous autumn time stays visibly unarmed",()=>{
  const repeating=friendlyTaskCreate({goal:"Täglich",when:"2026-10-12T18:00",timezone:"Europe/Madrid",every:"1d",count:"3"}) as any;assert.equal(repeating.recurrence.kind,"calendar");assert.equal(repeating.recurrence.count,3);
- assert.throws(()=>friendlyTaskCreate({goal:"Endlos",after:"7d",every:"1d"}));
+ assert.equal((friendlyTaskCreate({goal:"Endlos",after:"7d",every:"1d"}) as any).recurrence.count,undefined);
  const ambiguous=friendlyTaskCreate({goal:"Herbst",when:"2026-10-25T02:30",timezone:"Europe/Madrid",arm:true}) as any;assert.equal(ambiguous.arm,false);assert.match(friendlyTaskResult("create",{...ambiguous,id:"fixture",state:"pending",armed:false}),/Mehrdeutige Ortszeit/);
 });
 test("explicit owner due is always inspectable when muted/off; passive clients stay quiet",async()=>{
@@ -92,9 +92,9 @@ test("private owner cache is separate from hook access, rejects automation and r
  finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(token===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=token;}
 });
 
-test("mid-flow errors name DST gap, bounded repeat and past snooze; declining resume is not an agent error",async()=>{
+test("mid-flow errors name DST gap and past snooze; declining resume is not an agent error",async()=>{
  assert.throws(()=>friendlyTaskCreate({goal:"Gap",when:"2026-03-29T02:30",timezone:"Europe/Madrid"}),/Sommerzeit/);
- assert.throws(()=>friendlyTaskCreate({goal:"Repeat",after:"7d",every:"1d"}),/--count.*--end/);
+ assert.equal((friendlyTaskCreate({goal:"Repeat",after:"7d",every:"1d"}) as any).recurrence.until,undefined);
  assert.match(friendlyTaskError("validation","snooze","snooze_past"),/Vergangenheit/);assert.match(friendlyTaskError("forbidden","resume","owner_declined"),/Nicht bestätigt/);
  const f:any={id:"t",goal:"Test",schedule:{kind:"instant",at:1},timezone:"Europe/Madrid",state:"pending",armed:false,action_level:"notify",review_reason:"Explicit owner review required",budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
  assert.ok(!friendlyTaskResult("get",f).includes("Explicit"));assert.match(friendlyTaskResult("get",f),/Budget.*60s/);assert.ok(!friendlyTaskResult("due",{cards:[{...f,due_at:1,task_id:"t",occurrence_id:"o",why_now:"Registered condition is due; evaluation is not a passed measurement gate"}],overflow:0}).includes("Registered condition"));
@@ -104,5 +104,5 @@ test("#1331: friendly agent notify defaults armed and help describes the actual 
   const { COMMAND_HELP } = await import("../src/cli/help-text.js");
   assert.equal((friendlyTaskCreate({ agent: true, goal: "Beauftragte Erinnerung", after: "7d", timezone: "Europe/Berlin" }) as any).arm, true);
   assert.doesNotMatch(COMMAND_HELP.tasks, /--arm braucht Owner-Rolle/);
-  assert.match(COMMAND_HELP.tasks, /notify.*--agent.*scharf/s);
+  assert.match(COMMAND_HELP.tasks, /Aufgaben.*--agent.*scharf/s);
 });

@@ -193,7 +193,7 @@ export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?
   const store = await readTaskStore(ctx.path); if (!store.controls.enabled) return assessed;
   const sourceCache: ReadContext["sourceCache"] = new Map(); const sourceReads = new Map<string, number>();
   const started = Date.now(); const updates: Array<{ id: string; verification: Verification }> = [];
-  for (const task of store.tasks.filter(t => t.armed && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
+  for (const task of store.tasks.filter(t => t.armed && !t.paused && (!allowedTasks || allowedTasks.has(t.id)) && (t.schedule.kind === "event" || t.evidence.length)).slice(0, 100)) {
     if (Date.now() - started >= maxMs) break;
     const event = taskEventToAssess(task, store);
     if (!event && task.schedule.kind === "event") { assessed.set(task.id, taskCheckMaterial(task, store)); continue; }

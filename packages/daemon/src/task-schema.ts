@@ -2,7 +2,7 @@
 import { proposalSchema, challengeSchema, approvalSchema, leaseSchema, intentSchema, receiptSchema } from "./task-action-schema.js";
 import { z } from "zod";
 
-export const TASK_STORE_VERSION = 3;
+export const TASK_STORE_VERSION = 4;
 export const TASK_MAX_BYTES = 4 * 1024 * 1024;
 export const TASK_MAX_ROWS = 1000;
 const instant = z.number().int().nonnegative().safe();
@@ -51,14 +51,14 @@ export const taskSchema = z.strictObject({
   sensitivity: z.enum(["public", "private", "restricted"]),
   goal: text, resolution_condition: text,
   state: z.enum(["pending", "due", "snoozed", "resolved", "cancelled", "expired"]),
-  armed: z.boolean(), review_reason: z.string().max(4096).optional(),
+  armed: z.boolean(), paused: z.boolean().optional(), review_reason: z.string().max(4096).optional(),
   schedule: taskScheduleSchema,
   timezone: z.string().min(1).max(128), reference_at: instant,
   recurrence: z.strictObject({
     kind: z.enum(["elapsed", "calendar"]), interval: z.number().int().positive().safe(),
     count: z.number().int().positive().max(10000).optional(), until: instant.optional(),
     catch_up: z.literal("latest"),
-  }).refine(r => r.count !== undefined || r.until !== undefined, "recurrence must be bounded").optional(),
+  }).optional(),
   action_level: z.enum(["notify", "prepare", "execute"]),
   notification_policy: z.strictObject({
     muted: z.boolean(), retry_interval_ms: z.number().int().positive().safe(),

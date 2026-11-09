@@ -44,7 +44,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict" | "protected_boundary_required", message: string) {
@@ -254,8 +254,15 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (!occurrence) throw new TaskServiceError("not_found", "occurrence absent in current generation");
       occurrence.acknowledgement ??= { at: now, actor: principal.actor_id, proof_id: principal.credential_id };
     }
-    if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: principal.role === "owner" ? "Explicit owner resolution" : "Conversational task resolution" };
+    if (op === "resolve") {
+      const occurrences = task.recurrence
+        ? [args.occurrence_id ? relevant.find(o => o.id === args.occurrence_id) : relevant.filter(o => !o.resolution).sort((a,b) => a.due_at - b.due_at).at(-1)]
+        : relevant;
+      if (task.recurrence && !occurrences[0]) throw new TaskServiceError(args.occurrence_id ? "not_found" : "validation", "Recurring resolution requires a due occurrence");
+      for (const o of occurrences) if (o) o.resolution ??= { at: now, actor: principal.actor_id, reason: principal.role === "owner" ? "Explicit owner resolution" : "Conversational task resolution" };
+    }
     const next = transitionTask(task, op, principal.actor_id, now, args.until);
+    if (op === "resolve" && task.recurrence && relevant.some(o => !o.resolution)) { next.state = "due"; next.armed = task.armed; }
     if (op === "rearm") next.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
     s.tasks[s.tasks.indexOf(task)] = next;
   }, operation === "task_edit" || operation === "task_review" || operation === "task_rearm" ? "normal" : "control");
@@ -266,6 +273,7 @@ export const TASK_INPUT_SCHEMAS = {task_recover:taskRecoverInput, task_archive: 
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({ archive_id: z.string().uuid().optional() }), task_get: getInput,
   task_delete: mutationInput, task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
+  task_pause: lifecycleInput, task_resume: lifecycleInput, task_end_series: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
 };
 

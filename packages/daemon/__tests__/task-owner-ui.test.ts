@@ -21,6 +21,13 @@ async function ui(snapshot:any,due:any={cards:[]},overrides:any={}){
  const source=(await readFile(new URL("../webui/js/tasks.js",import.meta.url),"utf8")).replace("export function createTasksView() {", "").replace(/return \{ open, close \};\s*\}\s*$/, ""),ctx=createContext({document,Intl,Date,JSON,Map,Set,Error,AbortController,setTimeout,clearTimeout,setInterval:()=>0,clearInterval:()=>{},crypto:{randomUUID:()=>"synthetic"},prompt:()=>null,confirm:()=>false,fetch:async(url:string)=>({ok:true,json:async()=>url.endsWith("task_due")?due:snapshot}),...overrides});
  runInContext(source,ctx);await runInContext("refresh()",ctx);return{nodes,get:(id:string)=>get(`task-${id}`),ctx};
 }
+test("paused series is visible on the board with resume and explicit series termination", async () => {
+ const task={id:"paused-series",goal:"Daily check",original_request:"Check daily",state:"due",paused:true,armed:true,action_level:"prepare",schedule:{kind:"instant",at:1000},timezone:"UTC",deliveries:[{resolved:false}],recurrence:{kind:"elapsed",interval:86400000,catch_up:"latest"}};
+ const snapshot={role:"agent",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[task],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}};
+ const u=await ui(snapshot);const column=u.get("tasks").children.find(c=>c.dataset.taskColumn==="snoozed")!;
+ const nodes=descendants(column);assert.ok(nodes.some(n=>n.textContent==="Pausiert"));assert.ok(nodes.some(n=>n.textContent==="Fortsetzen"&&!n.disabled));assert.ok(nodes.some(n=>n.textContent==="Serie beenden"&&!n.disabled));
+ await runInContext("selectTask(snapshot.tasks[0])",u.ctx);assert.ok(descendants(u.get("detail-body")).some(n=>n.textContent==="pausiert"));
+});
 test("terminal owner UI offers rearm while disabling invalid lifecycle actions and exposes real budgets",async()=>{
  const task={id:"terminal",goal:"Done </script><img onerror=bad>",original_request:"literal data",state:"resolved",last_failure:{code:"source_budget",message:"Quell-Bytegrenze überschritten"},armed:false,action_level:"notify",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",deliveries:[{last_attempt:1000,acknowledged:true}],budget:{poll_interval_ms:60000,timeout_ms:1000,max_source_bytes:1024}};
  const base={role:"owner",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true,next_tick:1000},tasks:[task],capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000,review_required:0},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false},budgets:{max_assessments_per_turn:10,source_turn_ms:5000,poll_ms:60000,snapshot_bytes:4194304}};
@@ -65,16 +72,16 @@ test("retired legacy proposal shows new preparation without preview, signing or 
  const visible=descendants(u.get("preview")).map(n=>n.textContent).join(" ");assert.match(visible,/Vorschlag veraltet/);assert.match(visible,/Neue Vorbereitung und neue Freigaben/);assert.equal(u.get("binding").textContent,"");assert.equal(u.get("sign-command").textContent,"");assert.ok(!descendants(u.get("proposal")).some(n=>n.id==="task-execute-button"));
 });
 
-test("kanban locks unauthorized drop targets and blocked drops never call mutation endpoints",async()=>{
+test("kanban allows agent management of prepare tasks while blocking nonsensical due drops",async()=>{
  const task={id:"prepare",goal:"Draft",original_request:"Synthetic",state:"pending",armed:false,action_level:"prepare",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",deliveries:[]};
  const base={role:"agent",controls:{enabled:true,muted:false,execution_stopped:true},runtime:{running:true},tasks:[task],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{enrolled_domains:[],protected_boundary:false}};
  const calls:string[]=[];const u=await ui(base,undefined,{fetch:async(url:string)=>{calls.push(url);return{ok:true,json:async()=>base};}});
  const cols=u.get("tasks").children,card=cols.find(c=>c.dataset.taskColumn==="planned")!.children[1].children[0];
  await card.handlers.dragstart({dataTransfer:{setData(){}}});
- assert.equal(cols.find(c=>c.dataset.taskColumn==="done")!.children[0].attributes["aria-disabled"],"true");
+ assert.equal(cols.find(c=>c.dataset.taskColumn==="done")!.children[0].attributes["aria-disabled"],"false");
  assert.equal(cols.find(c=>c.dataset.taskColumn==="due")!.children[0].attributes["aria-disabled"],"true");
  assert.equal(cols.find(c=>c.dataset.taskColumn==="failed")!.children[0].attributes["aria-disabled"],"false");
- await cols.find(c=>c.dataset.taskColumn==="done")!.handlers.drop({preventDefault(){}});
+ await cols.find(c=>c.dataset.taskColumn==="due")!.handlers.drop({preventDefault(){}});
  assert.equal(calls.filter(url=>url.endsWith("task_resolve")).length,0);
  assert.match(u.get("message").textContent,/nicht abgelegt/);
  for(const col of cols){assert.equal(col.children[0].attributes['aria-disabled'],'false');assert.ok(!col.classNames.has('locked'));assert.ok(!col.classNames.has('drop-target'));}
@@ -122,7 +129,7 @@ test('plain task copy hides session chatter and keeps technical values in a clos
  await runInContext('selectTask(snapshot.tasks[0])',u.ctx);const detail=descendants(u.get('detail-body'));
  for(const label of ['Status','Fällig','Herkunft','Wortlaut','Nächste Prüfung','Letzte Zustellung'])assert.ok(detail.some(n=>n.textContent===label),label);
  const technical=detail.find(n=>n.children.some(c=>c.textContent==='Technische Details'))!;assert.equal(technical.open,false);assert.ok(descendants(technical).some(n=>n.textContent.includes('technical-client')));assert.ok(descendants(technical).some(n=>n.textContent.includes('Timeout 1000ms')));
- assert.ok(!detail.some(n=>n.textContent==='Freigeben'||n.textContent==='Bearbeiten'));
+ assert.equal(detail.find(n=>n.textContent==='Freigeben')?.disabled,false);assert.equal(detail.find(n=>n.textContent==='Bearbeiten')?.disabled,false);
  assert.equal(detail.find(n=>n.textContent==='Vorbereiten')?.disabled,true);assert.ok(detail.some(n=>n.textContent==='Zum Vorbereiten fehlt noch die Freigabe dieser Aufgabe.'));
 });
 
