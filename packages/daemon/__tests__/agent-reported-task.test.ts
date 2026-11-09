@@ -1,7 +1,7 @@
 import test from 'node:test';
-import {syncBuiltinESMExports} from 'node:module';
+import {DatabaseSync} from 'node:sqlite';
 import assert from 'node:assert/strict';
-import fs,{mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {recordRulebookCheck,beginRulebookRound,rulebookBoundary} from '../src/rulebook-check.js';
@@ -61,11 +61,14 @@ for(const invalidDismissal of [false,true])test('failed persistence never report
  const sid='failed-persist-'+invalidDismissal;
  await recordRulebookCheck(sid,{applicable:['copy-rule'],task:'draft-for-review'},catalog);
  let writes=0;
- const rename=t.mock.method(fs,'rename',async()=>{writes++;throw Error('fixture rename failure');});
- syncBuiltinESMExports();
+ const originalExec=DatabaseSync.prototype.exec;
+ const commit=t.mock.method(DatabaseSync.prototype,'exec',function(this:DatabaseSync,sql:string){
+  if(sql==='COMMIT'){writes++;throw Error('fixture commit failure');}
+  return originalExec.call(this,sql);
+ });
  let out;
  try{out=await recordRulebookCheck(sid,{applicable:[],task:'none',...(invalidDismissal?{not_applicable:[{id:'copy-rule',reason:'Try dismissing the protected current rule'}]}:{})},catalog);}
- finally{rename.mock.restore();syncBuiltinESMExports();}
+ finally{commit.mock.restore();}
  assert.ok(writes>0,'mutation ran but atomic persistence failed');
  assert.equal(out.ok,false);
  assert.equal('task' in out?out.task:undefined,undefined);

@@ -9,6 +9,7 @@ import {beginRulebookRound} from "../src/rulebook-check.js";
 import {bookPendingMustLoad,mutateSessionState,loadSessionState} from "../src/session-state.js";
 import type {KernelCandidates} from "../src/rulebook-catalog.js";
 import type {Memory} from "@bastra-recall/core";
+import {openAppDatabase} from "../src/app-database.js";
 const catalog:KernelCandidates={entries:[{id:"fixture-rule",title:"Fixture",group:"explicit",revision:"r",updated:null,stale_status:"unknown",body:"",rulebook:"on-demand",applies_when:"Fixture"}],omitted:0};
 const p=(session_id:string)=>({session_id,bastra_client:"claude-code",hook_event_name:"PreToolUse",tool_name:"fixture_send_message",tool_input:{}});
 const denied=(out:string)=>JSON.parse(out).hookSpecificOutput?.permissionDecision==="deny";
@@ -52,16 +53,18 @@ test("fix3: late gate telemetry restores C allowance as well as legacy claims",a
 });
 
 test("fix3: failure of the later gate write releases the earlier C reservation",async()=>{
- const {chmodSync}=await import("node:fs");
  const sid="c-later-write-failure";
  await beginRulebookRound(p(sid),catalog);
  const deps={kernel:async()=>catalog,reflexPool:()=>[]};
+ const writer=openAppDatabase({path:join(root,"recall.db")});
+ let held=false;
+ const release=()=>{if(held){writer.sqlite.exec("ROLLBACK");held=false;}};
  try {
-  const out=await runGateLane(p(sid),{...deps,reflexPool:()=>{chmodSync(root,0o500);return [];},telemetry:async fields=>{
-   if(fields.non_conformance==="state_write_failed")chmodSync(root,0o700);
+  const out=await runGateLane(p(sid),{...deps,reflexPool:()=>{writer.sqlite.exec("BEGIN IMMEDIATE");held=true;return [];},telemetry:async fields=>{
+   if(fields.non_conformance==="state_write_failed")release();
   }});
   assert.equal(out,"{}");
- }finally{chmodSync(root,0o700);}
+ }finally{release();writer.close();}
  assert.equal(denied(await runGateLane(p(sid),deps)),true);
  assert.equal(denied(await runGateLane(p(sid),deps)),true);
  assert.equal(denied(await runGateLane(p(sid),deps)),false);

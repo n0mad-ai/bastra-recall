@@ -21,9 +21,10 @@
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openAppDatabase } from "../src/app-database.js";
 
 // HOME first: `settingsFilePath()` and the pending file resolve under it, and
 // this test enables a repository — that must not land in the developer's own
@@ -325,8 +326,13 @@ test("parks nothing and leaves the session-state file untouched while the opt-in
 
   await announceEdit(repo, id);
   await landEditAndReindex(repo);
-  const stateFile = join(home, "hook-state", `${id}.json`);
-  const before = await stat(stateFile);
+  const persistedState = () => {
+    const database = openAppDatabase({ path: join(home, "hook-state", "recall.db") });
+    try { return database.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(id)?.value; }
+    finally { database.close(); }
+  };
+  const before = persistedState();
+  assert.ok(before, "the Write lane must have persisted its booking");
 
   process.env.BASTRA_PROMPT_IMPACT = "off";
   try {
@@ -335,8 +341,8 @@ test("parks nothing and leaves the session-state file untouched while the opt-in
     process.env.BASTRA_PROMPT_IMPACT = "on";
   }
 
-  const after = await stat(stateFile);
-  assert.equal(after.mtimeMs, before.mtimeMs, "Stop rewrote the state file although the opt-in is off");
+  const after = persistedState();
+  assert.equal(after, before, "Stop rewrote the state record although the opt-in is off");
   assert.equal((await loadSessionState(id)).boundary, undefined);
 });
 

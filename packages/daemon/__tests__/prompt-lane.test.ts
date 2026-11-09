@@ -15,6 +15,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { openAppDatabase } from "../src/app-database.js";
 import {
   detectAssertion,
   detectRetrieval,
@@ -1337,7 +1338,7 @@ test("#541 — an assertion-mode hit injects once per session, and the reset sig
  * lane suppressed forever instead of probing again after `streak` skips.
  */
 test("#539 — a suppressed prompt-lane emission books `skipped` into the saved state", async () => {
-  const { mkdtemp, rm, writeFile, readFile: rf } = await import("node:fs/promises");
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join: j } = await import("node:path");
   const stateDir = await mkdtemp(j(tmpdir(), "bastra-539-prompt-"));
@@ -1393,7 +1394,12 @@ test("#539 — a suppressed prompt-lane emission books `skipped` into the saved 
     );
     assert.equal(stdout, "{}", "precondition: this emission must be suppressed");
 
-    const saved = JSON.parse(await rf(j(stateDir, `${sessionId}.json`), "utf8")) as {
+    const database = openAppDatabase({ path: j(stateDir, "recall.db") });
+    let persisted;
+    try { persisted = database.sqlite.prepare("SELECT value FROM app_records WHERE namespace LIKE 'hook-session:%' AND key=?").get(sessionId); }
+    finally { database.close(); }
+    assert.ok(persisted, "the session delta must reach SQLite");
+    const saved = JSON.parse(JSON.parse(String(persisted.value)).raw) as {
       sources?: Record<string, SourceBackoff>;
     };
     const entry = saved.sources?.["prompt-lookup"];
