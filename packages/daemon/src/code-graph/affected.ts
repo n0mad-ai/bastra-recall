@@ -546,13 +546,13 @@ export function changedLines(diff: string, file: string): ChangedLines {
       next = 0;
     } else if (line.kind === "old-header") {
       if (!hasGitHeader) {
-        const path = unquoteGitPath(line.raw.slice(4));
+        const path = unquoteGitPath(line.raw.slice(4).replace(/\t.*$/, ""));
         inFile = path.endsWith(file) || path === "/dev/null";
       }
     } else if (line.kind === "new-header") {
       // The file is gone on the new side: nothing in the working tree to
       // place a line in. The whole file is the only honest answer.
-      if (inFile && line.raw.slice(4).trim() === "/dev/null") mappable = false;
+      if (inFile && line.raw.slice(4).replace(/\t.*$/, "").trim() === "/dev/null") mappable = false;
     } else if (!inFile) {
       continue;
     } else if (line.kind === "hunk-header") {

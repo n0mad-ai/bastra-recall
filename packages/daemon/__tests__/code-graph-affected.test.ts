@@ -981,3 +981,15 @@ describe("against the real graph of this repository", () => {
     );
   });
 });
+
+
+describe("changedLines: headerless tab-suffixed paths (#1250)", () => {
+  for (const path of ['a/space name.ts', '"a/space name.ts"', '"a/\\303\\244 \\"q\\".ts"']) {
+    it(`matches ${path} before its timestamp suffix`, () => {
+      const file = unquoteGitPath(path).slice(2);
+      const diff = `--- ${path}\t2026-11-09\n+++ ${path.replace('a/', 'b/')}\t\n@@ -1 +1 @@\n-old\n+new\n`;
+      assert.deepEqual(changedLines(diff, file), { lines: [1], mappable: true });
+      assert.deepEqual(changedLines(diff, "other.ts"), { lines: [], mappable: true });
+    });
+  }
+});
