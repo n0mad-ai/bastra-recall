@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #529, the cross-process half.
  *
@@ -87,7 +88,7 @@ test("#529 — concurrent buildQueue PROCESSES keep every queued conversation", 
     );
     await Promise.all(Array.from({ length: WRITERS }, (_, i) => runChild(script, [queueDir, String(i)])));
 
-    const raw = await readFile(join(queueDir, "import-queue.jsonl"), "utf8");
+    const raw = readAppRecord("import-queue", join(queueDir, "import-queue.jsonl"));
     const titles = raw
       .split("\n")
       .filter((l) => l.trim().length > 0)

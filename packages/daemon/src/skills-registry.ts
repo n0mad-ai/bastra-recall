@@ -4,22 +4,26 @@ import { bastraDataDir } from "./platform-paths.js";
  * on another surface (a Claude Code skill, an external doc), so the map stops
  * rendering them as "unwritten" ghosts and gives them their own `skills` ring.
  *
- * Deliberately the floors.ts shape: a tiny daemon-side JSON state file, atomic
- * tmp+rename, NOT frontmatter — the vault files stay untouched. And
+ * Deliberately the floors.ts shape: a tiny daemon-side database state record,
+ * NOT frontmatter — the vault files stay untouched. And
  * deliberately NOT a sync: no path is ever read, no folder scanned, no watcher
  * started. The user declares an id once; recall never opens the file behind
  * it. That is the whole contract — reference, not ingestion.
  *
- * Persistence: ~/.bastra/skills.json (override: BASTRA_SKILLS_PATH).
+ * Persistence: local recall.db. skills.json (override: BASTRA_SKILLS_PATH)
+ * is the legacy identity; its original is retained as .pre-db.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { readAppRecord, writeAppRecord } from "./app-record-store.js";
+import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SkillRef } from "@bastra-recall/core";
 import { withPathLock } from "./path-lock.js";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
+
+function validateLegacyJson(text: string): void {
+  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+}
 
 export interface SkillEntry extends SkillRef {
   /** ISO timestamp, stamped on add. */
@@ -48,7 +52,7 @@ function isSkillEntry(v: unknown): v is SkillEntry {
 async function readRegistry(path: string): Promise<SkillEntry[]> {
   let raw: string;
   try {
-    raw = await readFile(path, "utf8");
+    raw = readAppRecord("skills", path, validateLegacyJson);
   } catch {
     return [];
   }
@@ -67,10 +71,7 @@ async function readRegistry(path: string): Promise<SkillEntry[]> {
 }
 
 async function writeRegistry(entries: SkillEntry[], path: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-  await writeFile(tmp, JSON.stringify(entries, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-  await rename(tmp, path);
+  writeAppRecord("skills", path, JSON.stringify(entries, null, 2) + "\n", validateLegacyJson);
 }
 
 /**

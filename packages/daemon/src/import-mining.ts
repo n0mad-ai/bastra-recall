@@ -7,13 +7,14 @@ import { bastraDataDir } from "./platform-paths.js";
  * noise): `bastra import <conversations.json>` parses the export, keeps
  * only the USER's own messages (the dense source for preferences and
  * decisions — and far less sensitive than full transcripts), and writes a
- * local queue under ~/.bastra/. The AI session then combs it chunk-wise
+ * local queue in recall.db. The old queue and cursor files are migration
+ * identities, retained as .pre-db originals. The AI session then combs it chunk-wise
  * via `bastra import mine`, distills candidate facts, and stages them
  * through the same `import-review.md` gate as #208 — never auto-saved.
- * The queue never leaves the machine and is deleted when mining completes.
+ * The queue never leaves the machine and becomes absent when mining completes.
  */
-import { readFile, rename, unlink, writeFile, mkdir } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-store.js";
 import { join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 
@@ -171,7 +172,7 @@ export interface QueueStatus {
 
 async function readQueueRaw(dir: string): Promise<string> {
   try {
-    return await readFile(join(dir, QUEUE_FILE), "utf8");
+    return readAppRecord("import-queue", join(dir, QUEUE_FILE));
   } catch {
     return "";
   }
@@ -181,17 +182,14 @@ async function readQueueLines(dir: string): Promise<string[]> {
   return (await readQueueRaw(dir)).split("\n").filter((l) => l.trim().length > 0);
 }
 
-/** Atomic tmp+rename — a crash mid-write leaves the previous queue/cursor
- *  intact instead of a half-written one (#529, hardening as in floors.ts). */
+/** Atomic database record commit; caller holds the queue path lock. */
 async function writeAtomic(path: string, content: string): Promise<void> {
-  const tmp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-  await writeFile(tmp, content, "utf8");
-  await rename(tmp, path);
+  writeAppRecord("import-queue", path, content);
 }
 
 async function readCursor(dir: string): Promise<number> {
   try {
-    const n = parseInt(await readFile(join(dir, CURSOR_FILE), "utf8"), 10);
+    const n = parseInt(readAppRecord("import-queue", join(dir, CURSOR_FILE)), 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
   } catch {
     return 0;
@@ -204,8 +202,8 @@ async function readCursor(dir: string): Promise<number> {
  *  #529: serialised per queue directory and written tmp+rename. Unguarded,
  *  every concurrent caller took the initial-empty branch and `writeFile()` over
  *  the others — 80 parallel calls reported 80 queued conversations with 1 on
- *  disk. `queued` is the durable count now: those lines are part of the file
- *  that was renamed into place before the result is returned.
+ *  disk. `queued` is the durable count now: those lines are committed in the database
+ *  before the result is returned.
  *
  *  The lock is `crossProcess` because every writer of this queue IS a separate
  *  process: `bastra import <export>` queues, `bastra import mine` advances the
@@ -248,7 +246,7 @@ export async function queueStatus(dir: string = defaultQueueDir()): Promise<Queu
 async function clearQueueLocked(dir: string): Promise<void> {
   for (const f of [QUEUE_FILE, CURSOR_FILE]) {
     try {
-      await unlink(join(dir, f));
+      deleteAppRecord("import-queue", join(dir, f));
     } catch {
       // already gone
     }
@@ -273,7 +271,7 @@ export interface MiningChunk {
 /**
  * Next chunk of the queue (~16k chars, at least one conversation, newest
  * first). Advances the cursor immediately — mining is best-effort, a chunk
- * lost to a crash is re-importable. Deletes the queue when drained.
+ * lost to a crash is re-importable. Makes the queue absent when drained.
  *
  * #529: the cursor transition runs under the same queue lock as `buildQueue()`
  * — cross-process, since every mining step is its own `bastra import mine`

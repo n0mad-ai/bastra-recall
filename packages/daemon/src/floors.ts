@@ -23,17 +23,20 @@ import { bastraDataDir } from "./platform-paths.js";
  *     surface. Anti-incidental-touch invariant: no `why` = no affirm = the
  *     clock does not move.
  *
- * Persistence: ~/.bastra/floors.json (override: BASTRA_FLOORS_PATH — same
- * per-file pattern as pending-suggestions.ts), atomic tmp+rename writes.
- * Latency is sacred: the whole registry is ONE small file read per session
+ * Persistence: local recall.db; floors.json (override: BASTRA_FLOORS_PATH)
+ * remains the identity and one-time migration source, retained as .pre-db.
+ * Latency is sacred: the whole registry is ONE small database record read per session
  * start; the recall hot path (search.ts) is not involved at all.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
-import { dirname, join } from "node:path";
+import { readAppRecord, writeAppRecord } from "./app-record-store.js";
+import { join } from "node:path";
 import { appendAct } from "./floor-acts.js";
 import { withPathLock } from "./path-lock.js";
 import { scopeEquals } from "@bastra-recall/core/scope";
+
+function validateLegacyJson(text: string): void {
+  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+}
 
 export interface FloorEntry {
   memory_id: string;
@@ -85,7 +88,7 @@ function isFloorEntry(v: unknown): v is FloorEntry {
 async function readRegistry(path: string): Promise<FloorEntry[]> {
   let raw: string;
   try {
-    raw = await readFile(path, "utf8");
+    raw = readAppRecord("floors", path, validateLegacyJson);
   } catch {
     return [];
   }
@@ -103,12 +106,9 @@ async function readRegistry(path: string): Promise<FloorEntry[]> {
   return parsed.filter(isFloorEntry);
 }
 
-/** Atomic tmp+rename, owner-only perms (same hardening as settings.ts). */
+/** Transactional database write; caller holds the cross-process store lock. */
 async function writeRegistry(entries: FloorEntry[], path: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-  await writeFile(tmp, JSON.stringify(entries, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-  await rename(tmp, path);
+  writeAppRecord("floors", path, JSON.stringify(entries, null, 2) + "\n", validateLegacyJson);
 }
 
 export interface AddFloorInput {
@@ -185,7 +185,7 @@ export async function addFloor(input: AddFloorInput, path: string = floorsFilePa
     else entries.push(entry);
     await writeRegistry(entries, path);
     return entry;
-  });
+  }, { crossProcess: true });
 }
 
 /**
@@ -207,7 +207,7 @@ export async function release(condition: string, path: string = floorsFilePath()
     if (removed.length === 0) return [];
     await writeRegistry(entries.filter((e) => e.condition !== token), path);
     return removed;
-  });
+  }, { crossProcess: true });
 }
 
 export interface AffirmOptions {
@@ -280,7 +280,7 @@ export async function affirm(
     entries[idx] = next;
     await writeRegistry(entries, path);
     return next;
-  });
+  }, { crossProcess: true });
 }
 
 /**

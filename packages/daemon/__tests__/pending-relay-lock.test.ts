@@ -1,3 +1,4 @@
+import { readAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs, { mkdtemp, readFile, writeFile, unlink, rm, stat } from "node:fs/promises";
@@ -30,27 +31,27 @@ test("busy hook writes return immediately and the deferred write persists after 
  try{
   const start=performance.now();await writePendingFromHook("Invented new relay observation");assert.ok(performance.now()-start<100);await delay(100);assert.equal(await readFile(path,"utf8"),original);
  }finally{await unlink(pathLockFilePath(path));}
- const deadline=Date.now()+2000;while(Date.now()<deadline){const rows=JSON.parse(await readFile(path,"utf8"));if(rows.length===2)break;await delay(20);}
- const rows=JSON.parse(await readFile(path,"utf8"));assert.deepEqual(rows.map((r:{blocks:string})=>r.blocks),["Invented old relay observation","Invented new relay observation"]);assert.equal(warnings,"");
+ const deadline=Date.now()+2000;while(Date.now()<deadline){const rows=JSON.parse(readAppRecord("pending-suggestions",path));if(rows.length===2)break;await delay(20);}
+ const rows=JSON.parse(readAppRecord("pending-suggestions",path));assert.deepEqual(rows.map((r:{blocks:string})=>r.blocks),["Invented old relay observation","Invented new relay observation"]);assert.equal(warnings,"");
 }));
 test("the actual Stop response skips busy relay contention and writes later",()=>fixture(async path=>{
  const turns=[{role:"assistant",content:"Which architecture?\n1. Polling\n2. Queue"},{role:"user",content:"2"}];
  assert.ok(evaluateHeuristics(turns).length>0);await writeFile(path,"[]");await writeFile(pathLockFilePath(path),"held fixture lock");
  const start=performance.now();try{assert.equal(await runStopLane({hook_event_name:"Stop",cwd:"/tmp",transcript:turns},"http://127.0.0.1:1"),"{}");assert.ok(performance.now()-start<500);assert.equal(await readFile(path,"utf8"),"[]");}
  finally{await unlink(pathLockFilePath(path));}
- const deadline=Date.now()+2000;while(Date.now()<deadline){if(JSON.parse(await readFile(path,"utf8")).length)break;await delay(20);}
- assert.match(await readFile(path,"utf8"),/architecture-decision/);
+ const deadline=Date.now()+2000;while(Date.now()<deadline){if(JSON.parse(readAppRecord("pending-suggestions",path)).length)break;await delay(20);}
+ assert.match(readAppRecord("pending-suggestions",path),/architecture-decision/);
 }));
 test("draft deletion failure leaves the validated relay unchanged",t=>fixture(async(path,drafts)=>{
  const original=JSON.stringify([{ts:Date.now(),blocks:"Invented retained relay observation"}]);await writeFile(path,original);await writeFile(drafts,"draft fixture");
  const real=fs.unlink;t.mock.method(fs,"unlink",async(p:Parameters<typeof fs.unlink>[0])=>{if(String(p)===drafts)throw Object.assign(new Error("fixture draft deletion denied"),{code:"EACCES"});return real(p);});syncBuiltinESMExports();
- try{await assert.rejects(purgeDrafts(),/draft deletion denied/);assert.equal(await readFile(path,"utf8"),original);assert.equal(await readFile(drafts,"utf8"),"draft fixture");}
+ try{await assert.rejects(purgeDrafts(),/draft deletion denied/);assert.equal(readAppRecord("pending-suggestions",path),original);assert.equal(await readFile(drafts,"utf8"),"draft fixture");}
  finally{t.mock.restoreAll();syncBuiltinESMExports();}
 }));
 test("purge accepts an empty relay, keeps it private, and reports an absent relay honestly",()=>fixture(async(path,drafts)=>{
- await writeFile(path,"");await writeFile(drafts,"draft fixture");assert.deepEqual(await purgeDrafts(),{pendingRelay:true});assert.deepEqual(JSON.parse(await readFile(path,"utf8")),[]);
- if(process.platform!=="win32")assert.equal((await stat(path)).mode&0o777,0o600);
- await unlink(path);await writeFile(drafts,"draft fixture");assert.deepEqual(await purgeDrafts(),{pendingRelay:false});await assert.rejects(stat(path),{code:"ENOENT"});
+ await writeFile(path,"");await writeFile(drafts,"draft fixture");assert.deepEqual(await purgeDrafts(),{pendingRelay:true});assert.deepEqual(JSON.parse(readAppRecord("pending-suggestions",path)),[]);
+ if(process.platform!=="win32")assert.equal((await stat(appRecordDatabasePath(path))).mode&0o777,0o600);
+ deleteAppRecord("pending-suggestions",path);await writeFile(drafts,"draft fixture");assert.deepEqual(await purgeDrafts(),{pendingRelay:false});await assert.rejects(stat(path),{code:"ENOENT"});
 }));
 
 test("purge reports a relay access error separately from draft-store errors",t=>fixture(async(path,drafts)=>{

@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * Tests für das #48-Redesign: Stop-Hook-Vorschläge laufen über die stille
  * Pending-Datei (statt systemMessage-Chat-Spam), und system-injizierte
@@ -6,7 +7,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -65,7 +65,7 @@ test("writePendingSuggestion onPersisted acknowledges only successfully stored r
   const persistedRows: unknown[] = [];
   const opts = { onPersisted: () => {
     acknowledgments++;
-    persistedRows.push(JSON.parse(readFileSync(path, "utf8")));
+    persistedRows.push(JSON.parse(readAppRecord("pending-suggestions", path)));
   } };
   try {
     process.env.BASTRA_PENDING_RELAY = "off";
@@ -85,7 +85,6 @@ test("writePendingSuggestion onPersisted acknowledges only successfully stored r
       assert.equal(rows.length, 1);
       assert.equal(rows[0].blocks, "persist me");
     }
-    await rm(path);
     await writeFile(path, "directory blocker");
     process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(path, "pending.json");
     await writePendingSuggestion("persist me", opts);
@@ -290,7 +289,7 @@ test("#1207: a busy lease bounds pending writes and reports no text", { timeout:
 
 
 test("#1207: a recently crashed lease retains the pending suggestion after stale takeover", { timeout: 13_000 }, async (t) => {
-  const { writeFile, readFile } = await import("node:fs/promises");
+  const { writeFile } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "bastra-pending-crashed-"));
   const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
   const path = join(dir, "pending.json");
@@ -302,6 +301,6 @@ test("#1207: a recently crashed lease retains the pending suggestion after stale
   });
   await writeFile(`${path}.lock`, "crashed");
   await writePendingSuggestion("retained after stale takeover");
-  const rows = JSON.parse(await readFile(path, "utf8"));
+  const rows = JSON.parse(readAppRecord("pending-suggestions", path));
   assert.equal(rows[0].blocks, "retained after stale takeover");
 });

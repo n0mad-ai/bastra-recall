@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #675 follow-ups to the after-session harvest:
  *   - SessionEnd books the session as finished, so the harvest does not wait
@@ -118,7 +119,7 @@ test("a quote the vault already holds is dropped before the cap and counted as s
       now: 2000,
     });
     assert.deepEqual(r, { harvested: 1, candidates: 1, stored: 1 });
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as { blocks: string }[];
+    const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as { blocks: string }[];
     assert.doesNotMatch(pending[0].blocks, /sign the tag/);
     assert.match(pending[0].blocks, /written by hand/);
     assert.equal((await harvestEvents(dir))[0].stored_count, 1);

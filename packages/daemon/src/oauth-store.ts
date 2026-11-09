@@ -1,25 +1,25 @@
 /**
  * #1279 Phase 2: the persistent half of the daemon's OAuth server — the
- * registered clients and the grants issued to them, in one small JSON file
- * under the bastra home (`oauth.json`).
+ * registered clients and grants in one local app-database record. The legacy
+ * oauth.json path remains the identity; its original is retained as .pre-db.
  *
- * Tokens are stored only as SHA-256 hashes: the file proves a presented token,
+ * Tokens are stored only as SHA-256 hashes: the record proves a presented token,
  * it can never hand one out. A token is 32 random bytes, so an unsalted hash
  * is enough — there is nothing to brute-force.
  *
- * Read on every check instead of cached: `bastra oauth revoke` edits the file
+ * Read on every check instead of cached: `bastra oauth revoke` edits the record
  * from another process, and a revocation must bite on the very next request,
- * without a daemon restart. The file holds a handful of entries.
+ * without a daemon restart. The record holds a handful of entries.
  *
  * Writes take the cross-process path lock (path-lock.ts), because the daemon
- * and `bastra oauth revoke` both write this file: without it a refresh landing
- * next to a revoke could write the revoked grant back. Files land by rename,
- * so a reader never sees half a file; a mutation that changed nothing does not
+ * and `bastra oauth revoke` both write this record: without it a refresh landing
+ * next to a revoke could write the revoked grant back. SQLite commits are atomic;
+ * a mutation that changed nothing does not
  * write at all.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readAppRecord, writeAppRecord } from "./app-record-store.js";
+import { join } from "node:path";
 import { bastraDataDir } from "./platform-paths.js";
 import { withPathLock } from "./path-lock.js";
 
@@ -94,9 +94,17 @@ export function sanitizeClientName(name: string): string {
   return name.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
 }
 
+function validateOAuthFile(text: string): void {
+  const data: unknown = JSON.parse(text);
+  if (!data || typeof data !== "object") throw new Error("Invalid OAuth state; original preserved");
+  const value = data as Partial<OAuthFile>;
+  if ((value.clients !== undefined && !Array.isArray(value.clients)) || (value.grants !== undefined && !Array.isArray(value.grants)))
+    throw new Error("Invalid OAuth state; original preserved");
+}
+
 async function load(path: string): Promise<OAuthFile> {
   try {
-    const data = JSON.parse(await readFile(path, "utf8")) as Partial<OAuthFile>;
+    const data = JSON.parse(readAppRecord("oauth", path, validateOAuthFile)) as Partial<OAuthFile>;
     return { clients: data.clients ?? [], grants: data.grants ?? [] };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { clients: [], grants: [] };
@@ -126,10 +134,7 @@ async function mutate<T>(path: string, fn: (data: OAuthFile, now: number) => T):
     const result = fn(data, now);
     const after = JSON.stringify(data, null, 2);
     if (JSON.stringify(data) !== before) {
-      await mkdir(dirname(path), { recursive: true });
-      const tmp = `${path}.tmp-${process.pid}`;
-      await writeFile(tmp, after + "\n", { encoding: "utf8", mode: 0o600 });
-      await rename(tmp, path);
+      writeAppRecord("oauth", path, after + "\n", validateOAuthFile);
     }
     return result;
   }, { crossProcess: true });

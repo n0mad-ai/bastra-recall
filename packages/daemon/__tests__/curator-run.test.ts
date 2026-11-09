@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * Integration test for the curator pass (#155/#156): usage sidecar → decision
  * → state/demotions → REPORT.md, against a temp vault root, a fake in-RAM
@@ -346,7 +347,7 @@ test("reflex promotion (#1308): proposals persist across curator passes without 
       assert.deepEqual((await loadCuratorState(root)).reflex_suggested, undefined, "review-first does not propose");
       const result = await runCuratorPass(deps, { force: true, nowMs: T_ACT });
       assert.equal(result.error, undefined);
-      const rows = JSON.parse(await readFile(pendingPath, "utf8"));
+      const rows = JSON.parse(readAppRecord("pending-suggestions", pendingPath));
       const blocks = rows.map((row: { blocks: string }) => row.blocks).join("\n");
       assert.equal((blocks.match(/<reflex-candidate /g) ?? []).length, 1);
       assert.ok(blocks.includes('evidence="user-directed-frustration"'));
@@ -379,7 +380,7 @@ test("reflex promotion (#1308): disabled or failed relay can retry before perman
         await withEnv("BASTRA_PENDING_RELAY", "on", async () => {
           const result = await runCuratorPass(deps, { force: true, nowMs: T_ACT + 1000 });
           assert.equal(result.error, undefined);
-          const rows = JSON.parse(await readFile(pendingPath, "utf8"));
+          const rows = JSON.parse(readAppRecord("pending-suggestions", pendingPath));
           assert.equal(rows.length, 1);
           assert.match(rows[0].blocks, /user-directed-frustration/);
           const suggestedAt = (await loadCuratorState(root)).reflex_suggested?.frustration;

@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 /**
  * #513: the pending relay has two lanes. `recency` is shown once and gone;
  * `trends` is shown at every real session start, never consumed on read, and
@@ -5,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -63,7 +64,7 @@ test("#513: a trends entry is shown at every start, not deleted on read, and age
       assert.equal(r.trends[0].sessions, i);
     }
     // Still on disk after N reads — reading never consumed it.
-    assert.match(await readFile(path, "utf8"), /taxonomy-drift/);
+    assert.match(readAppRecord("pending-suggestions", path), /taxonomy-drift/);
     const past = await start(`s-${PENDING_TRENDS_SESSIONS_DEFAULT + 1}`);
     assert.equal(past.trends.length, 0, "aged out after N counted sessions");
   });
@@ -152,7 +153,7 @@ test("#771: a tombstone ends once N starts pass without a re-write, and the file
       await start("s-1");
       await start("s-2");
       assert.equal((await start("s-3")).trends.length, 0, "aged out");
-      assert.match(await readFile(path, "utf8"), /"retired":true/);
+      assert.match(readAppRecord("pending-suggestions", path), /"retired":true/);
 
       // While the condition stands, every Stop writes it again and pushes the
       // tombstone's end back: it outlasts any number of starts.
@@ -165,7 +166,7 @@ test("#771: a tombstone ends once N starts pass without a re-write, and the file
       // so the file is removed.
       await start("s-10");
       await start("s-11");
-      await assert.rejects(readFile(path, "utf8"), /ENOENT/);
+      await assert.rejects(Promise.resolve().then(() => readAppRecord("pending-suggestions", path)), { code: "ENOENT" });
       // The same text coming up again after that is a new trend.
       await stop();
       const back = await start("s-12");
@@ -184,7 +185,7 @@ test("#771: a start that does not count leaves a tombstone alone", async () => {
       await start("s-2"); // aged out
       for (let i = 0; i < 5; i++) await start(`eval-${i}`);
       await consumePendingSuggestions();
-      assert.match(await readFile(path, "utf8"), /"retired":true/);
+      assert.match(readAppRecord("pending-suggestions", path), /"retired":true/);
     },
     { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
   );
@@ -202,7 +203,7 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
       try {
         const trend = (name: string) => writePendingSuggestion(`<t>${name}</t>`, { lane: "trends", key: name });
         const tombstonesOnDisk = async () =>
-          (JSON.parse(await readFile(path, "utf8")) as { retired?: boolean }[]).filter((e) => e.retired).length;
+          (JSON.parse(readAppRecord("pending-suggestions", path)) as { retired?: boolean }[]).filter((e) => e.retired).length;
         // Five trends age out at the same start: five tombstones.
         for (let i = 0; i < 5; i++) await trend(`old-${i}`);
         await start("s-1");
@@ -246,7 +247,7 @@ async function retire(path: string, clusters: Record<string, number>): Promise<P
   await start("r-1");
   await start("r-2");
   assert.equal((await start("r-3")).trends.length, 0, "aged out");
-  const rows = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+  const rows = JSON.parse(readAppRecord("pending-suggestions", path)) as PendingSuggestion[];
   return rows.find((e) => e.retired)!;
 }
 
@@ -260,7 +261,7 @@ test("#997: a count bump does not revive a retired drift hint, and does not rest
       assert.equal(live.trends[0].sessions, 2, "8 → 9 on a live hint keeps the counter");
       assert.match(live.trends[0].blocks, /9 share tag:foo/, "and shows the current numbers");
       assert.equal((await start("s-3")).trends.length, 0, "aged out");
-      const tomb = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+      const tomb = JSON.parse(readAppRecord("pending-suggestions", path)) as PendingSuggestion[];
       assert.deepEqual(tomb[0].clusters, { "tag:foo": 9 }, "the tombstone carries the keys and the size at retirement");
       for (const n of [10, 17, 12]) {
         await drift({ "tag:foo": n });
@@ -307,16 +308,16 @@ test("#997: a tombstone written by the text rule is compared by text once, then 
     async (path) => {
       // Pre-#997 tombstone: no `clusters`.
       const legacy = { ts: Date.now(), blocks: "<taxonomy-drift>8 share tag:foo</taxonomy-drift>", lane: "trends", key: "taxonomy-drift", sessions: 0, retired: true };
-      await writeFile(path, JSON.stringify([legacy]), "utf8");
+      writeAppRecord("pending-suggestions", path, JSON.stringify([legacy]));
       await drift({ "tag:foo": 8 }); // same text → stays retired and learns its keys
       assert.equal((await start("s-1")).trends.length, 0);
-      const rows = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+      const rows = JSON.parse(readAppRecord("pending-suggestions", path)) as PendingSuggestion[];
       assert.deepEqual(rows[0].clusters, { "tag:foo": 8 });
       await drift({ "tag:foo": 9 });
       assert.equal((await start("s-2")).trends.length, 0, "from here on the keys decide");
 
       // A legacy tombstone meeting changed text revives once (unknown size).
-      await writeFile(path, JSON.stringify([legacy]), "utf8");
+      writeAppRecord("pending-suggestions", path, JSON.stringify([legacy]));
       await drift({ "tag:foo": 9 });
       assert.equal((await start("s-3")).trends.length, 1);
     },

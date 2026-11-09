@@ -1,3 +1,4 @@
+import { readAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, stat, chmod, rm } from "node:fs/promises";
@@ -43,8 +44,8 @@ test("purge clears drafts, sidecars and relay even when relay is disabled; relay
   await writeFile(path, JSON.stringify([{ ts: Date.now(), blocks: "Invented observation" }]));
   for (const p of [drafts, draftVectorsPath(), drafts + ".decisions.json"]) await writeFile(p, "[]");
   process.env.BASTRA_PENDING_RELAY = "0"; await purgeDrafts();
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), []);
-  if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
+  assert.deepEqual(JSON.parse(readAppRecord("pending-suggestions", path)), []);
+  if (process.platform !== "win32") assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
   for (const p of [drafts, draftVectorsPath(), drafts + ".decisions.json"]) await assert.rejects(stat(p), { code: "ENOENT" });
 }));
 

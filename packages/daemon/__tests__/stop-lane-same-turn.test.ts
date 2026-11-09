@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #662: a save suggestion reaches the Claude Code session that produced it, in
  * the running turn, instead of the next session (which has nothing left to
@@ -151,7 +152,7 @@ test("#662 — Codex, no session id and BASTRA_STOP_SAME_TURN=0 keep the pending
   ] as const) {
     await withSandbox(env, async (dir) => {
       assert.equal(await stop(extra), "{}", label);
-      const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as { blocks: string }[];
+      const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as { blocks: string }[];
       assert.equal(pending.length, 1, label);
       assert.match(pending[0].blocks, /architecture-decision/, label);
       const [row] = await events(dir);

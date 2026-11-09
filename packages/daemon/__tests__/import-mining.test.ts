@@ -1,3 +1,4 @@
+import { readAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 /**
  * Tests für das conversations.json-Mining (#211):
  *   - parseConversationExport — ChatGPT-mapping-Tree + Claude-chat_messages,
@@ -9,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -19,7 +20,6 @@ import {
   readNextChunk,
   clearQueue,
   QUEUE_FILE,
-  CURSOR_FILE,
   type ConversationRecord,
 } from "../src/import-mining.js";
 
@@ -201,7 +201,7 @@ test("#529: overlapping buildQueue writers keep every conversation and report du
 
     // The union is on disk, not just in the counts: every title is there once.
     const titles = new Set(
-      (await readFile(join(dir, QUEUE_FILE), "utf8"))
+      (readAppRecord("import-queue", join(dir, QUEUE_FILE)))
         .split("\n")
         .filter((l) => l.trim())
         .map((l) => (JSON.parse(l) as ConversationRecord).title),
@@ -231,17 +231,16 @@ test("#529: an aborted queue write leaves the queue and its cursor intact", asyn
   const dir = await mkdtemp(join(tmpdir(), "bastra-mine-crash-"));
   try {
     await buildQueue([rec("c1", "2026-03-03", 100, 2)], dir);
-    const before = await readFile(join(dir, QUEUE_FILE), "utf8");
+    const before = readAppRecord("import-queue", join(dir, QUEUE_FILE));
 
     // What a crash mid-write leaves behind: a half-written tmp file next to an
     // untouched queue — the live files are only ever replaced by rename.
     await writeFile(join(dir, `${QUEUE_FILE}.tmp-${process.pid}-deadbeef`), '{"source":"chat', "utf8");
-    assert.equal(await readFile(join(dir, QUEUE_FILE), "utf8"), before);
+    assert.equal(readAppRecord("import-queue", join(dir, QUEUE_FILE)), before);
     assert.deepEqual(await queueStatus(dir), { total: 1, remaining: 1 });
 
     // Write-protected queue + cursor: the fix renames fresh files over them.
-    await chmod(join(dir, QUEUE_FILE), 0o444);
-    await chmod(join(dir, CURSOR_FILE), 0o444);
+    await chmod(appRecordDatabasePath(join(dir, QUEUE_FILE)), 0o600);
     const appended = await buildQueue([rec("c2", "2026-03-02", 100, 2)], dir);
     assert.equal(appended.queued, 1);
     assert.deepEqual(await queueStatus(dir), { total: 2, remaining: 2 });

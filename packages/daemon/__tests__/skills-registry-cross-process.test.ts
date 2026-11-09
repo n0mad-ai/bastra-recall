@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #533, the cross-process half.
  *
@@ -16,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,7 +57,7 @@ test("#533 — two processes adding skills at once keep the whole durable union"
       runChild(script, [registry, "beta", String(perChild)]),
     ]);
 
-    const persisted = JSON.parse(await readFile(registry, "utf8")) as { id: string }[];
+    const persisted = JSON.parse(readAppRecord("skills", registry)) as { id: string }[];
     const expected = [
       ...Array.from({ length: perChild }, (_, i) => `alpha-${i}`),
       ...Array.from({ length: perChild }, (_, i) => `beta-${i}`),

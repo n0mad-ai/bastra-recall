@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #675: after-session harvest — the Stop lane books a session, a daemon job
  * reads its transcript once it has gone quiet and relays what the user said
@@ -194,7 +195,7 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
     const old = new Date(booked - 1000);
     await utimes(transcript, old, old);
     assert.deepEqual(await runSessionHarvest({ loadTurns, now: later }), { harvested: 1, candidates: 1, stored: 0 });
-    const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as { blocks: string; lane?: string }[];
+    const pending = JSON.parse(readAppRecord("pending-suggestions", join(dir, "pending.json"))) as { blocks: string; lane?: string }[];
     assert.equal(pending.length, 1);
     assert.equal(pending[0].lane, undefined, "recency lane (#513)");
     assert.match(pending[0].blocks, /<session-harvest session="harvest-" project="release-tool">/);

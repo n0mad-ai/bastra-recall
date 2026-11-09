@@ -1,3 +1,4 @@
+import { readAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -20,13 +21,12 @@ async function fixture(work: (dir: string, path: string) => Promise<void>): Prom
   }
 }
 async function privateFile(path: string): Promise<void> {
-  if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
 }
 
 test("an unreadable existing relay is preserved and warns without text or paths", {
   skip: process.platform === "win32" || process.getuid?.() === 0,
 }, t => fixture(async (_dir, path) => {
-  await writeFile(path, "[]"); await takePendingRelay(); // Reset the diagnostic budget.
   const original = JSON.stringify([{ ts: Date.now(), blocks: "Invented old relay observation" }]);
   await writeFile(path, original); await chmod(path, 0o200);
   let warning = "";
@@ -39,7 +39,6 @@ test("an unreadable existing relay is preserved and warns without text or paths"
 }));
 
 test("invalid JSON or a non-array relay is preserved, while a missing file is created", t => fixture(async (_dir, path) => {
-  await writeFile(path, "[]"); await takePendingRelay();
   let warning = "";
   t.mock.method(process.stderr, "write", (chunk: unknown) => { warning += String(chunk); return true; });
   for (const original of ['{"blocks":"Invented broken relay"', '{"blocks":"Invented wrong shape"}']) {
@@ -51,14 +50,14 @@ test("invalid JSON or a non-array relay is preserved, while a missing file is cr
   assert.ok(!warning.includes(path)); assert.doesNotMatch(warning, /Invented/);
   await rm(path);
   await writePendingSuggestion("Invented fresh relay observation");
-  const rows = JSON.parse(await readFile(path, "utf8"));
+  const rows = JSON.parse(readAppRecord("pending-suggestions", path));
   assert.equal(rows.length, 1); assert.equal(rows[0].blocks, "Invented fresh relay observation");
   await privateFile(path);
 }));
 
 test("relay writes redact and deduplicate repeated input; references stay readable", () => fixture(async (_dir, path) => {
   await writePendingSuggestion(block); await writePendingSuggestion(block);
-  const file = await readFile(path, "utf8"); assert.ok(!file.includes(secret)); assert.match(file, /\[REDACTED\]/);
+  const file = readAppRecord("pending-suggestions", path); assert.ok(!file.includes(secret)); assert.match(file, /\[REDACTED\]/);
   assert.equal(JSON.parse(file).length, 1); await privateFile(path);
   const reference = "<save-eval>Fixture station password=$WIFI_SECRET</save-eval>";
   await writePendingSuggestion(reference);
@@ -73,7 +72,7 @@ test("ordinary append scrubs all legacy rows and preserves their metadata", () =
     { ts: Date.now(), blocks: block, lane: "trends", key: "fixture-trend", sessions: 3, retired: true, clusters: { fixture: 4 } },
   ]), { mode: 0o644 });
   await writePendingSuggestion("ordinary fixture suggestion");
-  const file = await readFile(path, "utf8"), rows = JSON.parse(file);
+  const file = readAppRecord("pending-suggestions", path), rows = JSON.parse(file);
   assert.ok(!file.includes(secret)); assert.equal(rows[0].extra, "kept");
   assert.equal(rows[1].key, "fixture-trend"); assert.equal(rows[1].sessions, 3); assert.equal(rows[1].retired, true);
   assert.deepEqual(rows[1].clusters, { fixture: 4 }); await privateFile(path);
@@ -90,7 +89,7 @@ test("trend read-back scrubs legacy storage with private rights and keeps sessio
   await writeFile(path, JSON.stringify([{ ts: Date.now(), blocks: block, lane: "trends", key: "fixture-trend", sessions: 0 }]), { mode: 0o644 });
   const relay = await takePendingRelay({ countable: true, sessionId: "invented-owner" });
   assert.equal(relay.trends[0].sessions, 1); assert.ok(!relay.trends[0].blocks.includes(secret));
-  assert.ok(!(await readFile(path, "utf8")).includes(secret)); await privateFile(path);
+  assert.ok(!(readAppRecord("pending-suggestions", path)).includes(secret)); await privateFile(path);
   assert.equal((await takePendingRelay()).trends[0].sessions, 1);
 }));
 
@@ -100,7 +99,7 @@ test("provisional settlement matches original quotes and returns original caller
   await writePendingSuggestion(other, { provisional: "invented-pass" });
   const removed = await settleProvisionalSuggestions("invented-pass", new Set([block]));
   assert.deepEqual([...removed], [block]);
-  const file = await readFile(path, "utf8"), rows = JSON.parse(file);
+  const file = readAppRecord("pending-suggestions", path), rows = JSON.parse(file);
   assert.equal(rows.length, 1); assert.match(rows[0].blocks, /Other fixture/); assert.equal(rows[0].provisional, undefined);
   assert.ok(!file.includes(secret)); await privateFile(path);
 }));
@@ -108,11 +107,11 @@ test("provisional settlement matches original quotes and returns original caller
 test("redaction expansion stays bounded and repeated writes keep complete placeholders", () => fixture(async (_dir, path) => {
   const expanding = "password=x ".repeat(Math.floor(PENDING_ENTRY_CHAR_CAP / 11));
   await writePendingSuggestion(expanding);
-  const first = JSON.parse(await readFile(path, "utf8"))[0].blocks as string;
+  const first = JSON.parse(readAppRecord("pending-suggestions", path))[0].blocks as string;
   assert.ok(first.length <= PENDING_ENTRY_CHAR_CAP); assert.ok(!first.includes("password=x"));
   assert.ok(first.endsWith("…")); assert.doesNotMatch(first, /\[REDACT[^\]]*…$/);
   await writePendingSuggestion(expanding);
-  const rows = JSON.parse(await readFile(path, "utf8"));
+  const rows = JSON.parse(readAppRecord("pending-suggestions", path));
   assert.equal(rows.length, 1); assert.equal(rows[0].blocks, first);
 }));
 
@@ -135,6 +134,6 @@ test("harvest's already-stored check sees original quotes before relay redaction
   ] });
   assert.equal(next.stored, 0); assert.equal(next.candidates, 1);
   assert.ok(seen.includes(quote)); assert.ok(seen.includes(fresh)); assert.ok(seen.every(input => !input.includes("[REDACTED]")));
-  const file = await readFile(path, "utf8"); assert.ok(!file.includes(secret)); assert.ok(!file.includes("inventedmarigold"));
+  const file = readAppRecord("pending-suggestions", path); assert.ok(!file.includes(secret)); assert.ok(!file.includes("inventedmarigold"));
   assert.match(file, /calibration/); await privateFile(path);
 }));

@@ -6,23 +6,28 @@ import { bastraDataDir } from "./platform-paths.js";
  * sichtbare Feld ist `systemMessage`, und das rendert Claude Code 1:1 in den
  * Chat — die „Zeichenflut", die den Hook 2026-05-30 deaktiviert hat. Statt
  * dorthin zu emittieren, schreibt der Stop-Hook seine <save-eval>-Blöcke in
- * diese Datei; der SessionStart-Hook der NÄCHSTEN Session liest sie still als
+ * einen lokalen DB-Datensatz; der SessionStart-Hook der NÄCHSTEN Session liest sie still als
  * additionalContext ein (für den Agent sichtbar, im Chat unsichtbar) und
  * konsumiert die Datei.
  *
- * #513: zwei Spuren in derselben Datei — `recency` (einmal zeigen, dann weg)
+ * #513: zwei Spuren in demselben Datensatz — `recency` (einmal zeigen, dann weg)
  * und `trends` (bei jedem Start zeigen, nach N gezählten Sessions weg).
+ * Der alte JSON-Pfad bleibt Migrationsidentität, das Original liegt als .pre-db.
  */
-import { access, chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-store.js";
 import { constants } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
-import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { envInt, envOff } from "./env.js";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { clipDraftText } from "./draft-text.js";
+
+function validateLegacyJson(text: string): void {
+  if (text.trim() && !Array.isArray(JSON.parse(text))) throw new Error("Local registry must be a JSON array; original preserved");
+}
 
 /**
  * The two jobs the relay serves (#513). `recency`: something just happened —
@@ -154,7 +159,7 @@ export async function purgePendingSuggestions(clearDrafts: () => Promise<void> =
   return withPathLock(path, async () => {
     let present = true;
     try {
-      const raw = await readFile(path, "utf8");
+      const raw = readAppRecord("pending-suggestions", path, validateLegacyJson);
       if (raw.trim() && !Array.isArray(JSON.parse(raw))) throw new PendingRelayAccessError();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") present = false;
@@ -192,15 +197,7 @@ function scrubPendingRows(rows: PendingSuggestion[]): void {
 /** Every write, including write-back/settlement, cleans legacy rows in place. */
 async function writePendingRows(path: string, rows: PendingSuggestion[]): Promise<void> {
   scrubPendingRows(rows);
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-  try {
-    await writeFile(tmp, JSON.stringify(rows), { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await chmod(tmp, 0o600);
-    await rename(tmp, path);
-  } finally {
-    await unlink(tmp).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-  }
+  writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson);
 }
 
 /**
@@ -214,14 +211,13 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  * five-entry cap, and every call returned normally. The temp name was only
  * PID-scoped on top of that, so two writes in the same daemon shared it.
  *
- * Fix: the shared per-path lock (path-lock.ts) plus an operation-unique temp
- * name. Serialising costs nothing the hook can feel — the file holds at most
- * five short entries and one write is a read plus a rename — and the hook
- * has no lock wait on the Stop response path: that wrapper defers a busy
+ * Persistence now uses one atomic app-database record under the shared per-path
+ * lock (path-lock.ts). The hook has no lock wait on the Stop response path:
+ * that wrapper defers a busy
  * write, while background callers retry for at most 11 seconds.
  *
  * Every relay mutation uses the same cross-process path lock: the daemon
- * produces/consumes entries and the drafts CLI can explicitly clear the file.
+ * produces/consumes entries and the drafts CLI can explicitly clear the record.
  * Clearing must serialize with those daemon operations too.
  */
 export async function writePendingSuggestion(
@@ -255,7 +251,7 @@ export async function writePendingSuggestion(
       ran = true;
       let entries: PendingSuggestion[] = [];
       try {
-        const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+        const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson)) as unknown;
         if (!Array.isArray(parsed)) {
           reportLoss("existing file is not a JSON array — write skipped; original preserved");
           return;
@@ -514,7 +510,7 @@ export async function takePendingRelay(
   const maxSessions = pendingTrendsSessions();
   try {
     return (await tryWithPathLock(path, async () => {
-      const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+      const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson)) as unknown;
       lossDiagnostics = 0;
       const valid = Array.isArray(parsed)
         ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
@@ -547,7 +543,7 @@ export async function takePendingRelay(
       if (trends.length + tombstones.length > 0) {
         await writePendingRows(path, [...tombstones, ...trends]);
       } else {
-        await unlink(path).catch(() => {});
+        deleteAppRecord("pending-suggestions", path, validateLegacyJson);
       }
       return { recency, trends };
     }, { crossProcess: true, noQueue: true })) ?? { recency: [], trends: [] };
@@ -579,7 +575,7 @@ export async function settleProvisionalSuggestions(token: string, withdraw: Read
   }
   try {
     return await withPathLock(path, async () => {
-      const parsed:unknown = JSON.parse(await readFile(path,"utf8"));
+      const parsed:unknown = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson));
       if (!Array.isArray(parsed)) return removed;
       const rows = parsed as PendingSuggestion[];
       scrubPendingRows(rows);

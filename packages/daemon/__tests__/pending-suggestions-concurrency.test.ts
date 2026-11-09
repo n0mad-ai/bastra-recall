@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #532 — concurrent stop-hook suggestions silently collapsed to one pending
  * candidate. `writePendingSuggestion` was an unlocked read-modify-write on one
@@ -8,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writePendingSuggestion, consumePendingSuggestions } from "../src/pending-suggestions.js";
@@ -39,7 +40,7 @@ test("#532 — concurrent writes keep the durable set up to the cap, and losses 
     await Promise.all(attempted.map((blocks) => writePendingSuggestion(blocks)));
     diag.restore();
 
-    const persisted = JSON.parse(await readFile(path, "utf8")) as { blocks: string }[];
+    const persisted = JSON.parse(readAppRecord("pending-suggestions", path)) as { blocks: string }[];
     // The cap is enforced against the DURABLE state, not an in-memory snapshot:
     // 40 attempts must leave the full five, not one arbitrary winner.
     assert.equal(persisted.length, 5, `40 concurrent writes must persist the full cap, got ${persisted.length}`);

@@ -18,6 +18,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readAppRecord } from "../src/app-record-store.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
@@ -185,8 +186,8 @@ test("persistence roundtrip: entries survive as valid JSON on disk and re-read i
       path,
     );
 
-    const raw = JSON.parse(await readFile(path, "utf8")) as FloorEntry[];
-    assert.equal(raw.length, 2, "registry is a plain JSON array on disk");
+    const raw = JSON.parse(readAppRecord("floors", path)) as FloorEntry[];
+    assert.equal(raw.length, 2, "registry is a plain JSON array in the database");
 
     const reread = await listFloors(undefined, path);
     assert.deepEqual(reread, [a, b], "listFloors returns exactly what add persisted");

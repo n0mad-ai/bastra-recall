@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 /**
  * #1279 Phase 2: OAuth 2.1 for the remote MCP door.
  *
@@ -15,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, stat, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
@@ -297,7 +298,7 @@ test("oauth: full code + PKCE flow ends in a working tools/list, and the token o
     });
     assert.equal(other.status, 401);
 
-    const stored = await readFile(storePath, "utf8");
+    const stored = readAppRecord("oauth", storePath);
     assert.ok(!stored.includes(tokens.access_token) && !stored.includes(tokens.refresh_token), "tokens stored hashed only");
   });
 });
@@ -452,9 +453,9 @@ test("oauth: a refresh replay after the grace window revokes the grant", async (
     const refresh = (rt: string) =>
       call(port, "POST", "/api/v1/oauth/token", form({ grant_type: "refresh_token", refresh_token: rt, client_id: clientId }));
     const next = JSON.parse((await refresh(tokens.refresh_token)).text) as Tokens;
-    const data = JSON.parse(await readFile(storePath, "utf8")) as { grants: { rotated_at: number }[] };
+    const data = JSON.parse(readAppRecord("oauth", storePath)) as { grants: { rotated_at: number }[] };
     for (const g of data.grants) g.rotated_at = Date.now() - 61_000;
-    await writeFile(storePath, JSON.stringify(data), "utf8");
+    writeAppRecord("oauth", storePath, JSON.stringify(data));
     assert.equal((await refresh(tokens.refresh_token)).status, 400);
     assert.equal((await mcp(port, next.access_token, INIT)).status, 401, "replay outside the window revokes");
   });
@@ -490,14 +491,14 @@ test("oauth: a reused code revokes what it bought; a malformed verifier is refus
 test("oauth: control characters never reach the terminal", async () => {
   await withServer(async (port, storePath) => {
     await register(port, "\u001b[31mEvil\u0007\u009bName");
-    const stored = await readFile(storePath, "utf8");
+    const stored = readAppRecord("oauth", storePath);
     assert.ok(!/\\u001b|\\u0007|\\u009b/i.test(stored), "sanitised at registration");
     assert.match(stored, /\[31mEvilName/);
 
     // A file written by hand (or before the fix) is sanitised again on print.
     const data = JSON.parse(stored) as { clients: { client_name: string }[] };
     data.clients[0].client_name = "\u001b]0;pwned\u0007X";
-    await writeFile(storePath, JSON.stringify(data), "utf8");
+    writeAppRecord("oauth", storePath, JSON.stringify(data));
     let out = "";
     const write = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((chunk: string) => { out += chunk; return true; }) as typeof process.stdout.write;
@@ -514,9 +515,9 @@ test("oauth: control characters never reach the terminal", async () => {
 test("oauth: expired and revoked tokens are rejected", async () => {
   await withServer(async (port, storePath) => {
     const a = await login(port);
-    const data = JSON.parse(await readFile(storePath, "utf8")) as { grants: { access_expires_at: number }[] };
+    const data = JSON.parse(readAppRecord("oauth", storePath)) as { grants: { access_expires_at: number }[] };
     for (const g of data.grants) g.access_expires_at = Date.now() - 1000;
-    await writeFile(storePath, JSON.stringify(data), "utf8");
+    writeAppRecord("oauth", storePath, JSON.stringify(data));
     assert.equal((await mcp(port, a.tokens.access_token, INIT)).status, 401, "expired");
 
     const b = await login(port);
@@ -596,7 +597,7 @@ test("oauth store: unused registrations expire, the cap evicts the oldest unused
     for (let i = 0; i < 99; i++) ids.push((await registerClient({ client_name: `c${i}`, redirect_uris: [REDIRECT] }, path))!.client_id);
     const extra = await registerClient({ client_name: "extra", redirect_uris: [REDIRECT] }, path);
     assert.ok(extra, "at the cap, a new registration still succeeds");
-    let data = JSON.parse(await readFile(path, "utf8")) as { clients: { client_id: string; created_at: string }[] };
+    let data = JSON.parse(readAppRecord("oauth", path)) as { clients: { client_id: string; created_at: string }[] };
     const present = new Set(data.clients.map((c) => c.client_id));
     assert.equal(data.clients.length, 100);
     assert.ok(present.has(kept.client_id), "a granted client is never evicted");
@@ -604,15 +605,15 @@ test("oauth store: unused registrations expire, the cap evicts the oldest unused
 
     // Ten minutes later every never-granted registration is gone.
     for (const c of data.clients) c.created_at = new Date(Date.now() - 11 * 60_000).toISOString();
-    await writeFile(path, JSON.stringify(data), "utf8");
+    writeAppRecord("oauth", path, JSON.stringify(data));
     assert.equal(await revokeClient("nobody", path), 0);
-    data = JSON.parse(await readFile(path, "utf8")) as typeof data;
+    data = JSON.parse(readAppRecord("oauth", path)) as typeof data;
     assert.deepEqual(data.clients.map((c) => c.client_id), [kept.client_id]);
 
-    const before = (await stat(path)).mtimeMs;
+    const before = (await stat(appRecordDatabasePath(path))).mtimeMs;
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(await revokeClient("nobody", path), 0);
-    assert.equal((await stat(path)).mtimeMs, before, "nothing changed, nothing written");
+    assert.equal((await stat(appRecordDatabasePath(path))).mtimeMs, before, "nothing changed, nothing written");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -639,7 +640,7 @@ test("oauth: exact public route allowlist rejects methods, subpaths and forged c
     assert.equal((await approve(port, "forged-request", TOKEN)).status, 400);
     assert.equal((await approve(port, requestId, "forged-token")).status, 401);
     assert.equal((await approve(port, requestId, TOKEN)).status, 302);
-    const store = JSON.parse(await readFile(storePath, "utf8"));
+    const store = JSON.parse(readAppRecord("oauth", storePath));
     assert.equal(store.grants.length, 0, "consent alone never creates a grant without code+PKCE exchange");
   });
 });
