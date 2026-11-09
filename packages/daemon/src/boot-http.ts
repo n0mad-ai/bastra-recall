@@ -59,6 +59,7 @@ export async function startHttp(opts: {
       ? { port: null, close: async () => undefined }
       : await startHttpServer({
           port: httpPort,
+          settingsUi: { restart: process.platform === "darwin" && daemonOrigin().startedBy === "launchagent" ? async () => { process.kill(process.pid, "SIGTERM"); } : undefined },
           vault,
           search,
           telemetry,

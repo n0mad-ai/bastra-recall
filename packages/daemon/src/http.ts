@@ -1,3 +1,4 @@
+import { dispatchSettingsUi, type SettingsUiOptions } from "./settings-ui.js";
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
 import { assistantAddressOptions, migrateAssistantAddressRuntime, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
 import { handleAssistantAddressUi } from "./http-assistant-address.js";
@@ -119,6 +120,7 @@ export {
 export { mergeHookRecallHits } from "./hook-recall-merge.js";
 
 export interface HttpOptions {
+  settingsUi?: SettingsUiOptions;
   assistantAddress?: AssistantAddressOptions & { port?: number };
   port: number;
   vault: Vault;
@@ -263,6 +265,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         return;
       }
     }
+
+    if (dispatchSettingsUi(req, res, method, pathname, opts.settingsUi)) return;
 
     if (url.split("?",1)[0].startsWith("/ui/assistant-address")) {
       void handleAssistantAddressUi(req,res,method,url.split("?",1)[0],{...addressOptions,daemonUrl:`http://127.0.0.1:${req.socket.localPort}`},()=>addressListener?.refresh()??Promise.resolve({}));
