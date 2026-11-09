@@ -1,3 +1,4 @@
+import { validateTaskDeletePrune } from "./task-delete.js";
 import { bastraDataDir } from "./platform-paths.js";
 import { dropLegacyTaskComparisons, migrateTaskComparisons } from "./task-private-comparison.js";
 import { discoverTaskArchiveExports,validateTaskArchivePrune } from "./task-archive.js";
@@ -144,7 +145,7 @@ function assertTaskProgress(before: TaskStore, after: TaskStore): void {
     if (next.revision <= old.revision || next.history.length <= old.history.length)
       throw new TaskStoreError("conflict", "task changes require a newer revision and appended audit");
     const rearm = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "rearm";
-    const editedGeneration = next.generation === old.generation + 1 && !next.armed && next.history.at(-1)?.operation === "edit";
+    const editedGeneration = next.generation === old.generation + 1 && next.history.at(-1)?.operation === "edit";
     if (next.generation !== old.generation && !rearm && !editedGeneration)
       throw new TaskStoreError("conflict", "generation changes require explicit unarmed re-arm");
     if (["resolved", "cancelled", "expired"].includes(old.state) && (next.state !== old.state || next.armed) && !rearm)
@@ -168,7 +169,7 @@ export async function atomicWrite(path: string, payload: string, assertOwnership
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-export type TaskMutationKind = "normal" | "control" | "archive";
+export type TaskMutationKind = "normal" | "control" | "archive" | "delete";
 /** One strict local lock spans durable intent, target CAS and receipt commits. */
 export async function withTaskStoreGuard<T>(path: string, run: (guard: {
   snapshot: () => TaskStore; assertOwnership: () => void;
@@ -184,7 +185,7 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
       for (const [name, limit] of Object.entries({ tasks: 1000, sources: 1000, proposals: 1000, intents: 1000, archives:1000, consumed_approval_ids:10000, recovery_history:1000, events: 10000, occurrences: 10000, challenges: 10000, approvals: 10000, receipts: 10000 }))
         if ((draft[name as keyof TaskStore] as unknown[]).length > limit) throw new TaskStoreError("capacity", `${name} capacity reached; owner archive required`);
       const next = cleanStore(draft);
-      const predecessor = kind === "archive" ? await validateTaskArchivePrune(path,store,next) : store;
+      const predecessor = kind === "archive" ? await validateTaskArchivePrune(path,store,next) : kind === "delete" ? validateTaskDeletePrune(store,next) : store;
       assertTaskProgress(predecessor, next);
       if (canonicalTaskValue(next) === canonicalTaskValue(store)) return structuredClone(store);
       next.revision = store.revision + 1;

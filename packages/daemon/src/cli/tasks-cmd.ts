@@ -52,7 +52,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     if (args.sub === "client-status") {
       const status = await taskClientCoverage(); process.stdout.write((args.json ? JSON.stringify(status) : `${status.authorized ? "Client-Kennung gültig (Daemon muss laufen)" : "Keine Karten für diesen Client"}: ${status.coverage}${"remedy" in status ? `; ${status.remedy}` : ""}`) + "\n"); return 0;
     }
-    if (["recover","archive","archive-restore"].includes(args.sub??"")) { await ownerTaskMaintenance(args.sub!,words,options,args.json); return 0; }
+    if (["recover","archive-restore", ...(options.agent || words[0] === "agent" ? [] : ["archive"])].includes(args.sub??"")) { await ownerTaskMaintenance(args.sub!,words,options,args.json); return 0; }
     if (args.sub === "targets") { await ownerTaskTargets(words,options,args.json); return 0; }
     if (args.sub === "keys") { await taskOwnerKeys(words); return 0; }
     if (args.sub === "auth") {
@@ -87,6 +87,11 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     }
     if ((args.sub === "execution-enable" || args.sub === "resume")) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization,args.json); return 0; }
+    if (agent && args.sub === "archive") {
+      const { readTaskStore, tasksPath } = await import("../task-store.js");
+      const snapshot = await readTaskStore(tasksPath());
+      input = { task_ids: words.length ? words : String(options.id ?? "").split(",").filter(Boolean), expected_revision: snapshot.revision, recovery_epoch: snapshot.recovery_epoch };
+    }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
     if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until)) {
       const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision ??= task.expected_revision;

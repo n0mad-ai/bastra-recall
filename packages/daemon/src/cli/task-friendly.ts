@@ -54,7 +54,7 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
     recurrence = { kind: calendar ? "calendar" : "elapsed", interval: Number(match[1]) * (calendar ? (match[2] === "w" ? 7 : 1) : ({m:60000,h:3600000,d:86400000,w:604800000}[match[2]]!)), catch_up: "latest",
       ...(options.count ? { count: Number(options.count) } : {}), ...(options.end ? { until: taskWhen(String(options.end), timezone) } : {}) };
   }
-  const agentNotify = options.agent === true && (options.level ?? "notify") === "notify";
+  const agentNotify = options.agent === true;
   const ambiguous = (schedule as any).kind === "calendar" && ambiguousTaskCalendar((schedule as any).local_time, timezone);
   if (agentNotify && ambiguous) throw Object.assign(new Error("Mehrdeutige Ortszeit: erst den genauen Zeitpunkt bestätigen"), { code: "validation" });
   return { ...(options.agent ? { origin: { kind: "user-request", client: "cli", session: "local-terminal", context: goal } } : {}), ...(recurrence ? { recurrence } : {}), idempotency_key: randomUUID(), original_request: goal, goal, resolution_condition: String(options["resolve-when"] ?? "Owner bestätigt Erledigung"), schedule,
@@ -91,6 +91,8 @@ export function friendlyTaskResult(sub: string, result: any): string {
       + `\n  Quellenprüfung: ${friendlyVerification(t)}`
       + (t.review_reason ? `\n  Prüfung: ${quote(reviewName[t.review_reason]??t.review_reason)}` : "");
   };
+  if (sub === "delete") return `Aufgabe ${result.id} gelöscht.`;
+  if (sub === "archive") return `Aufgaben archiviert. Archiv-ID ${result.archive_id}.`;
   if (sub === "due") return result.cards.length ? result.cards.map((c:any)=>c.kind==="availability"?`${c.summary} Details: ${c.detail_command}`:`${quote(c.goal)} · fällig ${taskDisplayTime(c.due_at,c.timezone)} · ${c.timezone}${c.acknowledged ? " · quittiert, noch offen" : ""}\n  ${quote(friendlyWhyNow(c.why_now))}${c.action_outcome ? `\n  Wirkung: ${actionStateName[c.action_outcome.receipt_outcome ?? c.action_outcome.state] ?? c.action_outcome.state} · Absicht ${c.action_outcome.intent_id} · ${c.action_outcome.temp_cleanup_pending?"Temp-Rest, sichere Bereinigung nötig · ":""}${c.action_outcome.review_hint ?? actionStateName[c.action_outcome.receipt_outcome] ?? "Quittung vorhanden"}` : ""}\n  Aufgabe ${c.task_id}${c.compact?`\n  Gekürzt; Details: ${c.detail_command}`:""}\n  Vorkommen ${c.occurrence_id}\n  Quittieren: bastra tasks acknowledge ${c.task_id} --occurrence ${c.occurrence_id}${c.presentation === "owner-inspection-delivery-paused" ? "\n  Zustellung ist stumm/aus; Owner sieht Fälliges hier trotzdem." : ""}`).join("\n\n")+(result.overflow?`\nWeitere fällige Karten: ${result.overflow}; due erneut aufrufen.`:"") : "Keine aktuelle fällige Karte. Unscharfe/zurückgestellte/offene Aufgaben und Zustellgründe: bastra tasks status.";
   if (result.controls && result.resumed_authority === false) {
     const messages:Record<string,string>={mute:"Stumm geschaltet: Zustellung wird verschoben, nichts erledigt sich.",unmute:"Zustellung wieder hörbar; offene Arbeit bleibt erhalten.",off:"Funktion aus: keine automatische Auswertung/Zustellung; Aufgaben bleiben gespeichert.",on:"Funktion an: Auswertung beim nächsten Kontakt/Job; Ausführungsfreigaben werden nicht erneuert.",stop:"Ausführung gestoppt. Erinnern und Vorbereiten bleiben nutzbar.",resume:"Ausführungsstopp aufgehoben; nur explizit aktivierte Adapter und gültige neue Wirkungskette dürfen schreiben."};

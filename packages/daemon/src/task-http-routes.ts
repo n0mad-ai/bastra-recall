@@ -2,7 +2,7 @@
 import type { TaskCrudOperation } from "./task-service.js";
 
 export interface TaskHttpRoute {
-  method: "GET" | "POST" | "PATCH";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   operation: TaskCrudOperation;
 }
@@ -17,6 +17,7 @@ export const TASK_HTTP_ROUTES: readonly TaskHttpRoute[] = [
   { method: "GET", path: "/tasks", operation: "task_list" },
   { method: "POST", path: "/tasks", operation: "task_create" },
   { method: "GET", path: "/tasks/{id}", operation: "task_get" },
+  { method: "DELETE", path: "/tasks/{id}", operation: "task_delete" },
   { method: "PATCH", path: "/tasks/{id}", operation: "task_edit" },
   ...["review", "snooze", "acknowledge", "resolve", "cancel", "rearm", "reconsider"].map(action => ({
     method: "POST" as const, path: `/tasks/{id}/${action}`, operation: `task_${action}` as TaskCrudOperation,

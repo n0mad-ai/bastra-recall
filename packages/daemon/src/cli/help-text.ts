@@ -45,7 +45,7 @@ Commands:
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' installs a service;
                              a hand-written one is never replaced without --force
-  tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm>
+  tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm|delete>
                              Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
@@ -248,7 +248,7 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid
   bastra tasks list | due | status [--json] [--agent]
   bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
-  bastra tasks get|review|resolve|cancel|rearm <id>
+  bastra tasks get|review|resolve|cancel|rearm|delete <id>
   bastra tasks acknowledge <id> --occurrence <occurrence-id>
   bastra tasks snooze <id> --until 2026-10-13T18:00
   bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal
@@ -262,9 +262,9 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks client-status      Zeigt fehlende/revokte Client-Kennung ehrlich
   bastra tasks <operation> --input input.json  Erweiterte/Maschinen-Eingabe
 Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
-Client-Kennung. Beauftragte notify-Erinnerungen werden mit --agent direkt scharf angelegt;
---agent --arm ist für notify ohne Owner-Freigabe erlaubt. Ohne Agent-Auftrag bleibt
-Anlegen standardmäßig unscharf. prepare/execute brauchen zum Scharfschalten weiter den Owner.
+Client-Kennung. Beauftragte Aufgaben werden mit --agent direkt scharf angelegt;
+--agent --arm ist für alle Aufgabenstufen ohne weitere Owner-Freigabe erlaubt. Ohne Agent-Auftrag bleibt
+Anlegen ohne Auftrag standardmäßig unscharf. Die lokale Dateiausführung braucht signierte Owner-Freigaben.
 --after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
 Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
   bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]

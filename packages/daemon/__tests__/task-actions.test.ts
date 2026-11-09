@@ -82,7 +82,7 @@ test("forged signatures and edited/recovered proposals cannot acquire authority"
   const other = unlockOwnerKey(newOwnerKey("different synthetic password"), "different synthetic password");
   await assert.rejects(callTaskCrud(f.ctx, ownerAuth, "task_approval", { challenge_id: challenge.challenge.id, decision: "approve", signature: signTaskApproval(other, approvalBinding(challenge.proposal, challenge.challenge, "approve")) }), /signature/);
   const task = (await readTaskStore(f.ctx.path)).tasks[0]; await callTaskCrud(f.ctx, ownerAuth, "task_edit", { id: task.id, expected_revision: "initial:0", patch: { goal: "Changed" } });
-  await assert.rejects(callTaskCrud(f.ctx, ownerAuth, "task_approval", { challenge_id: challenge.challenge.id, decision: "approve", signature: "fake" }), /inactive/);
+  await assert.rejects(callTaskCrud(f.ctx, ownerAuth, "task_approval", { challenge_id: challenge.challenge.id, decision: "approve", signature: "fake" }), { code: "approval_stale" });
 });
 test("target root/symlink escapes fail closed and registry files require private permissions", async () => {
   const f = await fixture(); await symlink(f.targetPath, join(f.root, "link.txt")); f.registry.targets[0].path = "link.txt";

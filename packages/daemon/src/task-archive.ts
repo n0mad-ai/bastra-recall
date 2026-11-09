@@ -56,10 +56,10 @@ export async function validateTaskArchivePrune(path:string,before:TaskStore,afte
 }
 export const taskArchiveInput=z.strictObject({task_ids:z.array(z.string().min(1).max(160)).min(1).max(100),expected_revision:z.number().int().nonnegative().safe(),recovery_epoch:z.string().min(1).max(160)});
 export async function archiveTasks(ctx:TaskServiceContext,authorization:string|undefined,raw:unknown){
-  const input=taskArchiveInput.parse(raw),owner=await authenticateTask(authorization,ctx.authPath);requireTaskOwner(owner);
+  const input=taskArchiveInput.parse(raw);await authenticateTask(authorization,ctx.authPath);
   return withTaskStoreGuard(ctx.path,async guard=>{
     const s=guard.snapshot();if(s.revision!==input.expected_revision||s.recovery_epoch!==input.recovery_epoch)throw new TaskStoreError("conflict","Archive snapshot changed");
-    const current=await authenticateTask(authorization,ctx.authPath);requireTaskOwner(current);const ids=new Set(input.task_ids),group=selectGroup(s,ids);
+    const current=await authenticateTask(authorization,ctx.authPath);const ids=new Set(input.task_ids),group=selectGroup(s,ids);
     if(group.tasks.length!==ids.size)throw Object.assign(new Error("Task absent"),{code:"not_found"});
     const domains=[...new Set([...group.tasks.flatMap(t=>t.owner_domains),...group.proposals.flatMap(p=>p.required_domains),...group.events.flatMap(e=>e.owner_domains),...group.sources.flatMap(src=>src.owner_domains)])];requireTaskDomains(current,domains);
     if(!s.controls.execution_stopped||group.tasks.some(t=>t.armed||!["resolved","cancelled","expired"].includes(t.state)||t.decision_change?.status==="pending")||group.occurrences.some(o=>!o.resolution)||group.intents.some(i=>i.state==="pending"||i.state==="unknown"||i.temp_cleanup_pending)||group.leases.some(l=>l.state==="active"))throw new TaskStoreError("conflict","Stop execution; unresolved occurrences/intents/leases stay active");

@@ -1,3 +1,4 @@
+import { deleteTaskRows } from "./task-delete.js";
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
@@ -32,6 +33,7 @@ const editableSchema = z.strictObject({
   notification_policy: fields.notification_policy, budget: fields.budget,
 });
 export const taskCreateInputSchema = editableSchema.extend({
+  owner_domains: fields.owner_domains.optional(),
   idempotency_key: identity, arm: z.boolean().optional(), origin: fields.origin,
   sensitivity: fields.sensitivity.default("private"),
   action_level: fields.action_level.default("notify"), evidence: fields.evidence.default([]),
@@ -42,7 +44,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict" | "protected_boundary_required", message: string) {
@@ -130,9 +132,10 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   }
   if (operation === "task_create") {
     const parsed = taskCreateInputSchema.parse(raw);
-    // Attributable conversational notify requests need no later Owner review.
-    // Explicit drafts and prepare/execute keep their existing authority path.
-    const input = { ...parsed, arm: parsed.arm ?? (principal.role === "agent" && parsed.action_level === "notify" && parsed.origin !== undefined) };
+    // Commissioned task management is separate from signed local action execution.
+    const owner_domains = principal.role === "agent" && (!parsed.owner_domains || parsed.owner_domains.some(d => !principal.domains.includes(d)))
+      ? [...principal.domains] : parsed.owner_domains ?? [...principal.domains];
+    const input = { ...parsed, owner_domains, arm: parsed.arm ?? (principal.role === "agent" && parsed.origin !== undefined) };
     const legacyInput = structuredClone(input);
     if (principal.role === "agent" && input.arm && input.schedule.kind === "calendar" && ambiguousTaskCalendar(input.schedule.local_time, input.schedule.timezone))
       throw new TaskServiceError("validation", "Clarify DST overlap and submit the confirmed exact instant");
@@ -144,9 +147,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     const previousDisplayInput = structuredClone(input);
     if (previousDisplayInput.schedule.kind === "event" && legacyInput.schedule.kind === "event") previousDisplayInput.schedule.expected = legacyInput.schedule.expected;
     requireTaskDomains(principal, input.owner_domains);
-    if (input.arm && input.action_level !== "notify") requireTaskOwner(principal);
     if (principal.role === "agent" && input.arm && !input.origin) throw new TaskServiceError("validation", "Conversational arming requires origin, client, session and context");
-    if (input.arm && input.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
     const id = hash({ actor: principal.actor_id, key: input.idempotency_key });
     const creationHash = await privateTaskComparison(ctx.path,"create",input);
     let archived: Awaited<ReturnType<typeof archivedTask>>;
@@ -201,6 +202,15 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (duplicateId) return { ...view(store, findTask(store, duplicateId, principal)), duplicate: true };
     return archived && !store.tasks.some(t=>t.id===id) ? {...view(archived.snapshot,archived.task),archived:true,archive_id:archived.entry.id} : view(store, findTask(store, id, principal));
   }
+  if (operation === "task_delete") {
+    const input = mutationInput.parse(raw);
+    await transactTaskStore(ctx.path, undefined, s => {
+      const task = findTask(s, input.id, principal);
+      if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
+      deleteTaskRows(s, new Set([task.id]));
+    }, "delete");
+    return { id: input.id, deleted: true };
+  }
   const input = operation === "task_edit" ? editInput.parse(raw)
     : operation === "task_review" ? mutationInput.parse(raw) : lifecycleInput.parse(raw);
   const store = await transactTaskStore(ctx.path, undefined, async s => {
@@ -208,13 +218,11 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
     if (operation === "task_edit") {
       const patch = editInput.parse(input).patch;
-      if (principal.role === "agent" && patch.action_level && patch.action_level !== task.action_level) requireTaskOwner(principal);
       if (patch.schedule) {
         const kind = patch.schedule.kind === "event" ? s.sources.find(src=>patch.schedule!.kind === "event" && src.id === patch.schedule!.source_id)?.kind : undefined;
         await normalizeSchedule(ctx.path, patch.schedule, kind);
       }
-      if (principal.role !== "owner" && (task.creator !== principal.actor_id || task.armed || task.state !== "pending"))
-        requireTaskOwner(principal);
+      if (patch.owner_domains && principal.role === "agent" && patch.owner_domains.some(d => !principal.domains.includes(d))) patch.owner_domains = [...principal.domains];
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
       const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level"]
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
@@ -222,29 +230,23 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (triggerChanged) {
         task.generation++; delete task.snoozed_until; task.last_event_sequence = s.events.at(-1)?.sequence ?? 0; delete task.last_material_hash; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
-      } task.armed = false; task.review_reason = "Edited binding requires explicit owner review";
+      }
+      if (task.armed && task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
+      if (task.armed && await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       audit(task, principal, "edit", now);
       taskSchema.parse(task);
       return;
     }
     if (operation === "task_review") {
-      requireTaskOwner(principal);
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
-      if (task.action_level === "execute" && !(await ctx.approvalRegistry)?.protected_boundary) throw new TaskServiceError("protected_boundary_required", "execute monitoring requires protected owner configuration");
       if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
       if (await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
       task.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
       task.armed = true; delete task.agent_snooze_deadline; delete task.review_reason; audit(task, principal, "review", now); return;
     }
     const op = operation.slice(5) as TaskLifecycleOperation;
-    if (op === "rearm" || (["acknowledge", "resolve"].includes(op) && task.action_level !== "notify")) requireTaskOwner(principal);
     const args = lifecycleInput.parse(input);
     if (op === "snooze" && (args.until === undefined || args.until <= now)) throw Object.assign(new TaskServiceError("validation","Future snooze required"),{reason:"snooze_past"});
-    if (op === "snooze" && principal.role === "agent" && task.action_level !== "notify") {
-      const ceiling = task.agent_snooze_deadline ?? now + 24 * 60 * 60 * 1000;
-      if (args.until === undefined || args.until > ceiling) throw new TaskServiceError("validation", "agent snooze exceeds the fixed 24-hour window");
-      task.agent_snooze_deadline = ceiling;
-    }
     const relevant = s.occurrences.filter(o => o.task_id === task.id && o.generation === task.generation);
     if (op === "acknowledge") {
       if (!args.occurrence_id) throw new TaskServiceError("validation", "acknowledgement requires occurrence_id");
@@ -252,7 +254,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       if (!occurrence) throw new TaskServiceError("not_found", "occurrence absent in current generation");
       occurrence.acknowledgement ??= { at: now, actor: principal.actor_id, proof_id: principal.credential_id };
     }
-    if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: principal.role === "owner" ? "Explicit owner resolution" : "Conversational notify resolution" };
+    if (op === "resolve") for (const o of relevant) o.resolution ??= { at: now, actor: principal.actor_id, reason: principal.role === "owner" ? "Explicit owner resolution" : "Conversational task resolution" };
     const next = transitionTask(task, op, principal.actor_id, now, args.until);
     if (op === "rearm") next.last_event_sequence = s.events.at(-1)?.sequence ?? 0;
     s.tasks[s.tasks.indexOf(task)] = next;
@@ -263,7 +265,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
 export const TASK_INPUT_SCHEMAS = {task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({ archive_id: z.string().uuid().optional() }), task_get: getInput,
-  task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
+  task_delete: mutationInput, task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
 };
 

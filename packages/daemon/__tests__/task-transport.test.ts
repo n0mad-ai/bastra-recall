@@ -25,25 +25,22 @@ async function fixture() {
     scope: { kind: "personal", name: "fixture" }, owner_domains: ["personal"] };
   return { ctx, owner, agent, base, input, close: () => new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) };
 }
-test('#1321: denied owner domains identify rejected and enrolled domains without granting access', async () => {
+test('#1321: all transports map unregistered agent task areas into enrolled domains', async () => {
   const f = await fixture();
   try {
     const auth = `Bearer ${f.agent.token}`, input = { ...f.input, owner_domains: ['personal', 'foo', 'bar'] };
     const response = await fetch(`${f.base}/api/v1/task_create`, { method: 'POST', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-    assert.equal(response.status, 403);
-    const denied = await response.json() as any;
-    assert.equal(denied.reason, 'owner_domain_not_enrolled');
-    assert.deepEqual(denied.rejected, ['foo', 'bar']); assert.deepEqual(denied.allowed, ['personal']);
-    assert.match(denied.hint, /owner_domains.*task_status/);
+    assert.equal(response.status, 200);
+    const created = await response.json() as any;
+    assert.deepEqual(created.owner_domains, ['personal']);
     const mcp = await callTaskMcp('task_create', input, auth, f.ctx);
-    assert.deepEqual(JSON.parse(mcp.content[0].text), denied);
-    await assert.rejects(taskCliCall('create', input, auth, f.base), (e: any) => { assert.deepEqual(taskFailure(e).body, denied); return true; });
-    assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 0);
-    const created = await callTaskMcp('task_create', f.input, auth, f.ctx);
-    assert.notEqual(created.isError, true); assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 1);
-    assert.match(taskTools.find(t => t.name === 'task_create')!.description, /owner_domains.*subset.*task_status.*domains/);
+    assert.notEqual(mcp.isError, true);
+    assert.deepEqual(JSON.parse(mcp.content[0].text), created);
+    assert.deepEqual(await taskCliCall('create', input, auth, f.base), created);
+    assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 1);
   } finally { await f.close(); }
 });
+
 test("HTTP canonical routes, MCP and CLI share creation, revision and lifecycle semantics", async () => {
   const f = await fixture(); try {
     const auth = `Bearer ${f.owner.token}`;
@@ -67,7 +64,7 @@ test("all transports report common validation/unauthorized/forbidden/not-found/c
     for (const [op, body, header, status, code] of [
       ["task_get", { actor: "owner" }, auth, 400, "validation"],
       ["task_get", { id: row.id }, "Bearer invalid", 401, "unauthorized"],
-      ["task_review", { id: row.id, expected_revision: row.expected_revision }, `Bearer ${f.agent.token}`, 403, "forbidden"],
+      ["task_reconcile", {}, `Bearer ${f.agent.token}`, 403, "forbidden"],
       ["task_get", { id: "missing" }, auth, 404, "not_found"],
       ["task_cancel", { id: row.id, expected_revision: "initial:999" }, auth, 409, "conflict"],
     ] as const) {
@@ -135,4 +132,22 @@ test("#1331: task_create tells agents to arm clear requested/confirmed notify wi
   assert.match(description, /requested or confirmed.*arm=true/i);
   assert.match(description, /no (?:additional )?owner review/i);
   assert.doesNotMatch(description, /For user requests first confirm/);
+});
+
+test('agent delete shares MCP, HTTP DELETE and CLI revision semantics', async () => {
+  const f = await fixture();
+  try {
+    const auth = `Bearer ${f.agent.token}`;
+    for (const transport of ['mcp', 'http', 'cli']) {
+      const task = await taskCliCall('create', { ...f.input, idempotency_key: transport, goal: transport }, auth, f.base) as any;
+      const input = { id: task.id, expected_revision: task.expected_revision };
+      if (transport === 'mcp') assert.equal(JSON.parse((await callTaskMcp('task_delete', input, auth, f.ctx)).content[0].text).deleted, true);
+      else if (transport === 'cli') assert.equal((await taskCliCall('delete', input, auth, f.base) as any).deleted, true);
+      else {
+        const response = await fetch(`${f.base}/api/v1/tasks/${task.id}`, { method: 'DELETE', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_revision: task.expected_revision }) });
+        assert.equal(response.status, 200); assert.equal((await response.json() as any).deleted, true);
+      }
+    }
+    assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 0);
+  } finally { await f.close(); }
 });
