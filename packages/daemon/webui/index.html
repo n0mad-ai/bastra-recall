@@ -49,7 +49,8 @@
     </div>
 
     <div class="topbar-right">
-      <button id="assistant-settings-open" class="opt-btn">Einstellungen</button>
+      <button id="settings-open" class="opt-btn">Einstellungen</button>
+      <button id="assistant-settings-open" class="opt-btn" hidden>Name und Adresse</button>
       <span id="stat-count" class="stat" title="memories in the vault">—</span>
       <!-- weather-slot anchors the picker under its own button -->
       <div id="weather-slot">
@@ -473,6 +474,12 @@
   <div id="hint">drag to pan · scroll to zoom · click a node to inspect · drag a label to move its cloud</div>
 
   <script src="vendor/ctxmenu.js"></script>
+  <dialog id="recall-settings" aria-labelledby="settings-title">
+    <header class="settings-header"><h2 id="settings-title">Einstellungen</h2><button id="settings-close" class="skill-declare" type="button">Schließen</button></header>
+    <div class="settings-body"><nav id="settings-nav" aria-label="Einstellungsbereiche"></nav><section id="settings-fields" aria-label="Optionen"></section></div>
+    <footer class="settings-footer"><p id="settings-status" role="status" aria-live="polite"></p><button id="settings-save" class="skill-declare" type="button" disabled>Speichern</button><button id="settings-restart" class="skill-declare" type="button" disabled>Neu starten</button></footer>
+  </dialog>
+
   <dialog id="assistant-settings" aria-labelledby="assistant-settings-title">
     <h2 id="assistant-settings-title">Name des Assistenten</h2>
     <form id="assistant-name-form"><label>Wie heißt dein Assistent?<input id="assistant-name" placeholder="Jarvis" maxlength="63" required autocomplete="off" /></label><button class="skill-declare">Namen speichern</button></form>

@@ -3,6 +3,7 @@
  *  view/structure state, the selection, and the view switch. Everything with
  *  a boundary of its own lives in `managers/` or `boot/`. */
 
+import { createSettingsPanel } from "./settings.js";
 import { createAssistantAddressSettings } from "./assistant-address.js";
 import { fetchGraph, fetchAnnotations, postAnnotation, fetchSemanticSearch, clusterHues } from "./graph-data.js";
 import { createSimulation } from "./simulation.js";
@@ -38,6 +39,7 @@ const $ = (sel) => document.querySelector(sel);
 const root = document.documentElement;
 applyStoredTheme(root);
 createAssistantAddressSettings();
+createSettingsPanel();
 
 async function main() {
   const canvas = $("#map");

@@ -1,0 +1,21 @@
+#recall-settings{width:min(960px,calc(100vw - 32px));max-height:calc(100vh - 40px);padding:0;border:1px solid var(--line,#555);border-radius:16px;background:var(--panel,#151a25);color:var(--fg,#eee)}
+#recall-settings::backdrop{background:#0009}
+.settings-header,.settings-footer{padding:18px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.settings-header{border-bottom:1px solid var(--line,#555);justify-content:space-between}
+.settings-header h2{margin:0;font-size:20px}
+.settings-body{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:340px}
+#settings-nav{display:flex;flex-direction:column;gap:4px;padding:16px;border-right:1px solid var(--line,#555)}
+#settings-nav button{text-align:left;padding:10px;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer}
+#settings-nav button[aria-pressed="true"]{background:var(--accent-soft,#35415f)}
+#settings-fields{padding:8px 24px;min-width:0;overflow:auto;max-height:60vh}
+.settings-row{padding:14px 0;border-bottom:1px solid var(--line,#555);display:flex;gap:10px;align-items:start;flex-wrap:wrap}
+.settings-row label{display:flex;align-items:center;justify-content:space-between;gap:16px;flex:1;flex-wrap:wrap;min-width:0}
+.settings-label{font-weight:600;line-height:1.6}
+.settings-row input:not([type="checkbox"]),.settings-row select,.settings-row textarea{box-sizing:border-box;min-width:150px;max-width:100%;padding:8px;border:1px solid var(--line,#555);border-radius:7px;background:var(--bg,#10151f);color:inherit;font:inherit}
+.settings-row textarea{width:100%;resize:vertical;font-family:monospace}
+.settings-row input[type="checkbox"]{width:20px;height:20px;accent-color:var(--accent,#819cff)}
+.settings-reset{padding:8px;background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer}
+.settings-note{width:100%;margin:4px 0 0;font-size:12px;line-height:1.5;opacity:.75;overflow-wrap:anywhere}
+.settings-footer{border-top:1px solid var(--line,#555)}
+#settings-status{margin:0;flex:1;min-width:180px;font-size:13px;line-height:1.5}
+@media(max-width:640px){.settings-body{grid-template-columns:1fr}#settings-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line,#555)}#settings-nav button{white-space:nowrap}#settings-fields{padding:8px 16px}.settings-row label{gap:8px}.settings-header,.settings-footer{padding:16px}}
