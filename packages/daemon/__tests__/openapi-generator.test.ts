@@ -34,7 +34,7 @@ test("actual dispatcher branches determine coverage and shared tool schemas dete
   }
   assert.deepEqual(matchTaskHttpRoute("GET", "/api/v1/tasks/"), { operation: "task_list" });
   assert.equal(matchTaskHttpRoute("GET", "/api/v1/tasks/invalid%20id"), undefined);
-  assert.equal(matchTaskHttpRoute("DELETE", "/api/v1/tasks/test"), undefined);
+  assert.deepEqual(matchTaskHttpRoute("DELETE", "/api/v1/tasks/test"), { operation: "task_delete", id: "test" });
   const findDocument: any = api.paths["/find_document"]?.post;
   assert.equal(findDocument.requestBody.content["application/json"].schema.properties.k.maximum, 5);
   assert.deepEqual(findDocument.requestBody.content["application/json"].schema.required, ["query"]);

@@ -12,23 +12,23 @@ For service-managed daemons, add the same environment variable to the service co
 
 While disabled there is no task runtime, polling, delivery, source checking or automatic Agent credential setup. The Tasks tab and `task_*` MCP tools are hidden; task HTTP routes, including UI session routes, return 404 with `feature_disabled`. `bastra tasks …` only explains how to enable the preview. `BASTRA_CONVERSATIONAL_REMINDERS=0` is a separate, narrower switch inside the enabled preview; it does not enable tasks.
 
-## Owner decision 2026-10-11: notify in conversation
+## Tasks in conversation
 
-Say “remind me …”: the agent first confirms what, weekday/date/time/timezone and recurrence with “Yes, add” / “No” or free-text refinement. Ambiguous time is clarified. It then creates an armed notify reminder directly. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges in one line: `→ Erinnerung eingetragen: <was> – <wann>`.
+Ask the agent to create a task or reminder: a commissioned or confirmed task is created armed at any action level. The agent asks only for missing or ambiguous goal/date/time/timezone/recurrence, including DST ambiguity. When it notices a deadline or promised follow-up itself, it adds it without a question and acknowledges in one line: `→ Erinnerung eingetragen: <was> – <wann>`.
 
-Due cards are briefly mentioned at response start. “Done”, “tomorrow again” or “forget it” control notify in conversation. Origin (user request / agent observed), client, session and scrubbed cause remain visible. There are no daily or open-reminder limits; identical cause/time is deduplicated. Physical store/delivery budgets still apply. `BASTRA_CONVERSATIONAL_REMINDERS=0` disables conversational arming; the agent reports an unarmed draft instead. One-off work requests do not become reminders.
+Due cards are briefly mentioned at response start. “Done”, “tomorrow again” or “forget it” control tasks of every level in conversation. Origin (user request / agent observed), client, session and scrubbed cause remain visible. There are no daily or open-reminder limits; identical cause/time is deduplicated. Physical store/delivery budgets still apply. `BASTRA_CONVERSATIONAL_REMINDERS=0` disables conversational arming; the agent reports an unarmed draft instead. One-off work requests do not become reminders.
 
-The server cannot prove claimed user intent. This residual boundary is consciously accepted: an unwanted reminder can be cancelled in conversation. Prepare/execute keep the existing approval path in this task; Daniel plans to discuss it later.
+Task management and executing an action have separate authority. Agents can edit, reschedule, complete, cancel, archive and delete tasks of every level. Missing or unenrolled task areas map to the agent’s enrolled area; projects belong in scope.name. Actual local file replacement still requires the existing exact signed Owner approvals, protected configuration and live lease. Creating an execute task does not execute it or grant those approvals.
 
-Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Delivery is at next contact while the daemon runs; an absent client is not automatically awakened.
+Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Conversation cards arrive at the next contact while the daemon runs. Optional macOS notifications also surface due work without a contact; they do not launch an agent.
 
 ## Automatic agent access
 
 At local single-user daemon startup, a separate private agent credential is configured for hooks/MCP. Existing users need no command after an update; client settings and valid credentials are preserved. Revoked, unsafe or ambiguous multi-owner access is not silently replaced. `bastra tasks client-status` reports actual access. `BASTRA_CONVERSATIONAL_REMINDERS=0` prevents automatic setup and agent arming. The manual Owner path below remains available for separate administration and signing.
 
-## 1 From zero to your first card
+## 1 CLI examples and separate Owner administration
 
-Use your own terminal and an existing private owner directory outside agent access. Keep tokens out of chat.
+Normal conversation and the local board use automatic Agent access. The following separate Owner setup is for administration and signing. Use your own terminal and an existing private owner directory outside agent access. Keep tokens out of chat.
 
 ```sh
 bastra tasks auth mint owner me personal /PRIVATE/OWNER/task.token
@@ -56,7 +56,7 @@ bastra tasks create --goal "Evaluate the run" --after 1m --timezone Europe/Madri
 bastra tasks list
 ```
 
-The confirmation shows what, when, timezone, state and armed/unarmed. Without --arm it stays unarmed; prepare/execute agent proposals do. Owner review is explicit:
+The confirmation shows what, when, timezone, state and armed/unarmed. Without --arm it stays unarmed. Agent CLI creation with --agent --arm supports every level. An explicit review command can activate a draft:
 
 ```sh
 bastra tasks review TASK_ID
@@ -70,7 +70,7 @@ bastra tasks acknowledge TASK_ID --occurrence OCCURRENCE_ID
 bastra tasks resolve TASK_ID
 ```
 
-Copy IDs from the card. Acknowledge means seen, still open. Only resolve completes it. cancel stops it; rearm brings it back **unarmed**, with no renewed old approval. The normal CLI uses readable German output; --json remains the machine format.
+Copy IDs from the card. Acknowledge means seen, still open. resolve completes a one-off task or the selected/latest due occurrence of a series. end_series ends the whole series. cancel stops it; rearm brings it back **unarmed**, with no renewed old approval. The normal CLI uses readable German output; --json remains the machine format.
 
 ## 2 Time, repeats and postponement
 
@@ -80,7 +80,7 @@ bastra tasks create --goal "Daily review" --when 2026-10-12T18:00 --timezone Eur
 bastra tasks snooze TASK_ID --until 18:00
 ```
 
-After 7d means elapsed duration. Local --when uses the given timezone; an omitted timezone is explicitly reported as a system-timezone assumption. Local calendar repeats differ from elapsed days. Every repeat needs a count or --end. Nonexistent DST time rejects; ambiguous autumn time chooses the earlier instant but stays visibly unarmed until owner review. Simple snooze uses the next local 18:00; a full future date works too. The fixed agent 24-hour snooze ceiling applies to prepare/execute.
+After 7d means elapsed duration. Local --when uses the given timezone; an omitted timezone is explicitly reported as a system-timezone assumption. Local calendar repeats differ from elapsed days. Repeats may run without a count or --end. Add either to bound the series. catch_up: latest coalesces missed slots into the latest catch-up occurrence. tasks pause ID persists a pause; tasks resume ID continues the series. tasks end_series ID ends it explicitly. Finishing one occurrence leaves later dates active; a finite series resolves after its final occurrence. Nonexistent DST time rejects; ambiguous autumn time chooses the earlier instant but stays visibly unarmed until owner review. Simple snooze uses the next local 18:00; a full future date works too. Agents can postpone every action level without an artificial 24-hour ceiling. A pause stops source evaluation, delivery and action preparation/execution; it does not refresh an old execution approval.
 
 ## 3 Status and controls
 
@@ -183,11 +183,31 @@ The existing Recall UI has a **Tasks** tab with active, completed archive, and f
 
 A local single-user installation opens an **Agent-role** browser session without token entry (private SameSite/HttpOnly session cookie plus CSRF validation). The session lasts for the daemon lifetime; reloading the page reuses it. Local Host/Origin and enabled UI are required. No Owner credential is exposed; revocation is checked on every call. Separate Owner administration keeps the existing private login under “Separate Owner-Funktionen”. Signing remains outside the browser. The ordinary REST API still requires its mapped credential and cannot use this cookie. Ordinary local access has no logout button. The button is available only after entering a separate access token. A daemon restart invalidates browser sessions; the page reconnects without replaying mutations.
 
-The browser session grants reminders and their conversational controls, not level elevation, Owner arming or execution approval. Prepare/execute retain the existing contract pending Daniel's later discussion.
+The browser Agent session manages every task level, including activation and completion. It grants no signing key or execution approval; exact local file execution retains its separate signed contract.
 Local-access boundary: any process running as the same OS user can read/use the private Agent token. A single Owner identity supplies its assigned domains, matching existing setup-hooks so project reminders remain reachable; this grants no Owner signatures. Multiple Owners require explicit setup. Corrupt, overly permissive or revoked files are reported by normal task status, Doctor and once at daemon start; cards remain unavailable until Owner repair. Replacement of a missing automatically generated file revokes the previously managed automatic credentials.
 
 Unsafe/corrupt or revoked reminder access detected at startup also produces one public Hook/MCP status hint per session. The hint contains no private task data and acknowledges nothing.
 
-**Tokenless-browser boundary:** With the UI enabled, any local process can obtain an Agent session, including a different OS user on the same machine, without access to the credential file. A local proxy/tunnel may also convey access if it rewrites/removes Host/Origin to localhost. This matches the existing local UI model; loopback proves no OS user identity. On multi-user machines, disable `ui.enabled`. The actual access-boundary fix is deferred to [issue #1198](https://github.com/n0mad-ai/bastra-recall/issues/1198) and is not implemented in this stack. It grants or changes no Owner/signing/execution authority.
+**Tokenless-browser boundary:** With the UI enabled, any local process can obtain an Agent session, including a different OS user on the same machine, without access to the credential file. A local proxy/tunnel may also convey access if it rewrites/removes Host/Origin to localhost. This matches the existing local UI model; loopback proves no OS user identity. On multi-user machines, disable `ui.enabled`. The actual access-boundary fix is deferred to [issue #1198](https://github.com/n0mad-ai/bastra-recall/issues/1198) and is not implemented in this stack. It grants Agent task-management authority only, with no Owner signing or execution approval.
 The same actual request at the same time is deduplicated even after required redaction; different contents remain separate. Internal context assembly records no card delivery. The SessionStart output presents the due card and records its presentation attempt at the output.
 Reminder comparison now belongs to a private local key for this task store. Neither the key nor the comparison value appears in cards, API/status or task exports. Valid legacy task snapshots, backups and managed archives lose unkeyed reminder/create comparisons; redacted secrets are never reconstructed. Legacy request retries that can no longer be verified are rejected; use the existing task ID. The key stays local and is not silently replaced when lost. Unrestricted filesystem access as the same OS user remains outside this boundary. Event baselines, event/claim values and material/retry comparisons also use this key. A raw expected value or its lowercase SHA-256 digest produces the same private comparison; the supplied digest is not retained as display text, including content-version on a general event source. Only registered file/Git/Memory sources expose actual version identifiers. Migration binds existing content digests to the key without recovering scrubbed secrets. API responses, cards and cold exports omit comparison fields. Git OIDs, file/Memory versions and exact execution byte digests remain version/integrity metadata. Pre-upgrade proposals are conservatively retired as stale and require new preparation and fresh existing approvals. Their old task/challenge/approval binding values and signatures are removed from live snapshots, backups and managed archives; status shows stale. IDs, spending and receipts stay intact, including exact executed retries and newly approved rollback. No approval rights change. Previously copied responses, signatures or exports cannot be recalled. Original proposal IDs stay as audit/retry references; with sufficient original signing metadata they can still verify historical guesses. Stale replies and cold exports no longer supply that old signing body. Restored terminal archives carry no comparison proof and need a new explicitly reviewed baseline before reuse.
+
+## Local notifications and persisted task state
+
+With tasks enabled, `tasks.notifications` defaults to true in Settings. Set it false to disable native notifications without cancelling tasks. macOS is supported; other platforms keep next-contact delivery. Status reports actual support and whether the native daemon host is running. Notification Center may suppress presentation according to the user’s OS settings.
+
+A durable occurrence receipt records a native claim and OS submission separately from acknowledgement. A conversation presentation prevents a later native duplicate. A submitted native notification suppresses duplicate passive conversation delivery; explicit due/board inspection still shows unread work and `already_notified`. A definite OS failure may retry after the task’s retry interval. A timeout or crash with an uncertain submission keeps its claim to avoid a possible duplicate; it does not claim human reading. The board remains available for inspection.
+
+Task snapshot v4 migrates v1–v3 on read without changing task IDs, revisions or history. Existing cold archive bytes and integrity hashes remain unchanged; their snapshots decode through the same migration. Back up local app state before upgrading; restore/recovery remains explicit. Active tasks can be deleted with `bastra tasks delete ID --agent` or `task_delete` using `expected_revision`; in-flight or unknown execution must be reconciled first. Cold archive deletion is tracked separately in #1408.
+
+## Optional validity and evidence completion
+
+`expires_at` is an optional UTC epoch-millisecond validity end, separate from the due time and recurrence `until`. At that instant an unresolved task becomes `expired`, even while paused or snoozed. It is disarmed and emits one durable expiry notice; this does not claim completion. Without `expires_at`, due work stays open until explicitly resolved or until an explicitly configured evidence policy verifies completion.
+
+Use `--expires` when creating a task, `bastra tasks edit ID --expires 2026-12-01T18:00:00Z` to change it, or `--expires none` to remove it. The board provides the same optional validity field. MCP/HTTP edits use `patch: {"expires_at": null}` to clear it. An expired task needs explicit rearm and review after changing its validity; editing alone never revives a terminal task. Acknowledge the expiry notice before archiving the expired task.
+
+For a one-off task with nonempty registered `evidence`, opt in to `auto_resolve: {"verifier_id":"bound-evidence-v1"}`. The existing bounded verifier must confirm the exact registered revisions/hashes, attributable evidence and permitted state age in a fresh check. Only `verified` completes it; stale, unavailable, revised, future or contested evidence cannot. `resolution_condition` stays descriptive and is never parsed as code or a text command. Recurring tasks cannot reuse this policy because evidence would need rebinding for each occurrence. Set `auto_resolve: null` in an edit to remove the policy.
+
+## Local app integration
+
+The [local task app API](Local%20Task%20App%20API.md) documents the SSE stream, explicit read receipt, execution-result retrieval and attributed executor reports. The generated [OpenAPI contract](openapi.yaml) specifies local routes. Each reconnect resynchronizes current durable state; the stream is not a historical replay log. No remote access, device pairing, phone push, provider action or agent launcher is included. General non-task freshness remains outside this task contract.

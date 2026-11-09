@@ -8,6 +8,8 @@ export interface TaskHttpRoute {
 }
 export const TASK_HTTP_ROUTES: readonly TaskHttpRoute[] = [
   { method: "GET", path: "/tasks/due", operation: "task_due" },
+  { method: "GET", path: "/tasks/{id}/result", operation: "task_result_get" },
+  { method: "POST", path: "/tasks/{id}/result", operation: "task_result_report" },
   { method: "POST", path: "/tasks/recovery", operation: "task_recover" },
   { method: "POST", path: "/tasks/archive", operation: "task_archive" },
   { method: "POST", path: "/tasks/archive/restore", operation: "task_archive_restore" },

@@ -1,5 +1,6 @@
 import { deleteTaskRows } from "./task-delete.js";
 import { taskValidityExpired } from "./task-validity.js";
+import { callTaskResult, taskResultGetInput, taskResultReportInput } from "./task-app-api.js";
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
@@ -45,7 +46,7 @@ const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const editInput = mutationInput.extend({ patch: editableSchema.extend({ expires_at: fields.expires_at.nullable(), auto_resolve: fields.auto_resolve.nullable() }).partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
-export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series"] as const;
+export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series", "task_result_get", "task_result_report"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
 export class TaskServiceError extends Error {
   constructor(public readonly code: "not_found" | "validation" | "conflict" | "protected_boundary_required", message: string) {
@@ -88,6 +89,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   operation: TaskCrudOperation, raw: unknown): Promise<unknown> {
   const principal = await authenticateTask(authorization, ctx.authPath);
   const now = (ctx.now ?? Date.now)();
+  if (operation === "task_result_get" || operation === "task_result_report") return callTaskResult(ctx, authorization, operation, raw);
   if (isTaskExecution(operation)) return executeTaskAction(ctx, authorization, operation, raw);
   if (operation === "task_recover") return recoverTasks(ctx,authorization,raw);
   if (operation === "task_archive") return archiveTasks(ctx,authorization,raw);
@@ -274,7 +276,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
   return view(store, findTask(store, input.id, principal));
 }
 
-export const TASK_INPUT_SCHEMAS = {task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
+export const TASK_INPUT_SCHEMAS = {task_result_get:taskResultGetInput, task_result_report:taskResultReportInput, task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({ archive_id: z.string().uuid().optional() }), task_get: getInput,
   task_delete: mutationInput, task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,

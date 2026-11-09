@@ -40,7 +40,7 @@ test("tokenless task UI session is local/CSRF-protected Agent access, never Owne
   const input={idempotency_key:"ui",original_request:"Synthetic",goal:"Remind me",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()+100000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"],arm:true,origin:{kind:"user-request",client:"ui",session:"synthetic",context:"Synthetic request"}};
   const made=await post("/ui/tasks/api/task_create",input,headers);assert.equal(made.status,200);const task=await made.json() as any;assert.equal(task.armed,true);
   assert.equal((await post("/ui/tasks/api/task_controls",{execution_stopped:false},headers)).status,403);
-  assert.equal((await post("/ui/tasks/api/task_edit",{id:task.id,expected_revision:task.expected_revision,patch:{action_level:"execute"}},headers)).status,403);
+  assert.equal((await post("/ui/tasks/api/task_edit",{id:task.id,expected_revision:task.expected_revision,patch:{action_level:"execute"}},headers)).status,200,"Agent task management includes every action level");
   assert.equal((await post("/api/v1/task_status",{},headers)).status,401,"cookie cannot bypass explicit REST auth");
   const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]});process.env.BASTRA_TASK_TOKEN=owner.token;assert.equal((await post("/ui/tasks/session")).status,403,"Owner env is never a tokenless browser grant");delete process.env.BASTRA_TASK_TOKEN;
   const before=await readTaskStore(ctx.path);assert.equal(before.controls.execution_stopped,true);

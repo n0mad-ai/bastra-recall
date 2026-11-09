@@ -23,7 +23,7 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
-Proactive tasks remain an **opt-in preview, off by default until v1.2.0**. To try them, set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them. [Preview instructions and limits](./docs/Proactive%20Tasks.md).
+Proactive tasks remain an **opt-in preview, off by default until v1.2.0**. To try them, set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them. On current main, agents manage all task levels, recurring tasks can pause, and optional macOS notifications surface due work. [Instructions and limits](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
 On current main, local app state uses SQLite while memories remain Markdown. The web UI includes shared [settings](./docs/Settings.md#english), including stored task and telemetry switches; environment overrides still win. [Database and rollback](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 
@@ -195,7 +195,7 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
 
-Proaktive Aufgaben bleiben eine **Opt-in-Vorschau, bis v1.2.0 standardmäßig aus**. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten. [Vorschau-Anleitung und Grenzen](./docs/Proaktive%20Aufgaben.md).
+Proaktive Aufgaben bleiben eine **Opt-in-Vorschau, bis v1.2.0 standardmäßig aus**. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten. Auf aktuellem main verwalten Agenten alle Aufgabenstufen; Serien sind pausierbar und optionale Mac-Mitteilungen melden Fälliges. [Anleitung und Grenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
 Auf dem aktuellen main verwendet lokaler App-Zustand SQLite; Erinnerungen bleiben Markdown. Die Web-UI enthält gemeinsame [Einstellungen](./docs/Settings.md#deutsch), einschließlich gespeicherter Aufgaben- und Telemetrieschalter; Umgebungsvariablen gewinnen weiter. [Datenbank und Rückweg](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 

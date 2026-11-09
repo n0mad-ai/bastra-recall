@@ -1,4 +1,5 @@
 import { matchTaskHttpRoute } from "./task-http-routes.js";
+import { dispatchTaskStream } from "./task-app-api.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 import { isLoopbackHost } from "./http-auth.js";
 import { taskClientToken } from "./task-client-auth.js";
@@ -14,6 +15,8 @@ import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { PathLockUnavailableError } from "./path-lock.js";
 
 const TASK_HELP: Partial<Record<TaskCrudOperation,string>> = {
+ task_result_get:"Read the attributed executor report plus local intent/receipt outcomes. Executor reports are separate from signed local action receipts and do not prove an external action.",
+ task_result_report:"Persist an attributed executor report with expected_revision; at, actor and generation come from the server. This never executes an action, resolves a task or signs an approval.",
  task_pause:"Pause evaluation and delivery without ending or disarming the task.",
  task_resume:"Resume a paused task; recurring schedules catch up the latest missed slot once. Never restores execution approvals.",
  task_end_series:"Explicitly end a recurring series. task_resolve completes one occurrence (occurrence_id, or the latest unresolved occurrence) and preserves the next scheduled slot.",
@@ -33,7 +36,7 @@ const TASK_HELP: Partial<Record<TaskCrudOperation,string>> = {
 export const taskTools = TASK_CRUD_OPERATIONS.map(name => ({ name,
   description: `${name}: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, snooze, cancel, archive and delete. Rearm remains unarmed; local file execution retains signed Owner approval. ${TASK_HELP[name]??""}`,
   inputSchema: z.toJSONSchema(TASK_INPUT_SCHEMAS[name]) as { type: "object"; properties: Record<string, unknown> },
-  annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal", destructiveHint: name === "task_delete" },
+  annotations: { readOnlyHint: name === "task_get" || name === "task_list" || name === "task_status" || name === "task_proposal" || name === "task_result_get", destructiveHint: name === "task_delete" },
 }));
 export function isTaskTool(name: string): name is TaskCrudOperation { return (TASK_CRUD_OPERATIONS as readonly string[]).includes(name); }
 export function defaultTaskContext(deps?: Pick<ToolDeps, "vault" | "vaultPath">, executionHost = false): TaskServiceContext { return { executionHost, path: tasksPath(), authPath: taskAuthPath(), approvalRegistry: tasksEnabled() ? pinnedApprovalRegistry() : undefined, approvalRegistryPath: approvalRegistryPath(), memoryRead: deps ? taskMemoryReader(deps) : undefined, memoryChange: deps ? taskMemoryChanger(deps) : undefined, memorySubscribe: deps ? listener => deps.vault.on(e => listener(e.kind === "remove" ? e.id : e.memory.fm.id)) : undefined }; }
@@ -72,6 +75,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
   const pathname = new URL(url, "http://127.0.0.1").pathname;
   if (!pathname.startsWith("/api/v1/tasks") && !pathname.startsWith("/api/v1/task_")) return false;
   if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks preview disabled; opt in with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
+  if (pathname === "/api/v1/tasks/stream") { void dispatchTaskStream(req, res, ctx); return true; }
   void (async () => {
     try {
       if (!isLoopbackHost(req.headers.host,[])) throw Object.assign(new Error("Local task Host required"),{code:"forbidden"});

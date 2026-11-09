@@ -18,6 +18,7 @@ import { TASK_INPUT_SCHEMAS } from "../src/task-service.js";
 import { ALL_TOOL_DEFS } from "../src/tool-defs.js";
 import { taskTools } from "../src/task-transport.js";
 import { TASK_HTTP_ROUTES } from "../src/task-http-routes.js";
+import { TASK_STREAM_PATH, taskResultResponseSchema, taskStreamEventSchema, taskStreamSnapshotSchema } from "../src/task-app-api.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 type Schema = Record<string, unknown>;
@@ -170,7 +171,26 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
       security: [{ taskCredential: [] }],
       ...(parameters.length ? { parameters } : {}),
     };
+    if (route.operation === "task_result_get" || route.operation === "task_result_report") {
+      (paths[route.path]![route.method.toLowerCase()].responses as Schema)["200"] = {
+        description: "Attributed executor report and signed local execution records; reporting never performs or proves an external action.",
+        content: { "application/json": { schema: z.toJSONSchema(taskResultResponseSchema, { target: "openapi-3.0" }) } },
+      };
+    }
   }
+  paths[TASK_STREAM_PATH] = { get: {
+    ...operation("local_task_stream", "Local live task events. Every connection starts with an authoritative snapshot/resync; Last-Event-ID does not request historical replay. Bearer header required; URL tokens and query parameters are rejected. Heartbeat rechecks credential revocation. Events never acknowledge, resolve or authorize a task."),
+    "x-local-only": true, security: [{ taskCredential: [] }],
+    "x-sse-events": {
+      snapshot: z.toJSONSchema(taskStreamSnapshotSchema, { target: "openapi-3.0" }),
+      changed: z.toJSONSchema(taskStreamEventSchema, { target: "openapi-3.0" }),
+      due: z.toJSONSchema(taskStreamEventSchema, { target: "openapi-3.0" }),
+      completed: z.toJSONSchema(taskStreamEventSchema, { target: "openapi-3.0" }),
+      expired: z.toJSONSchema(taskStreamEventSchema, { target: "openapi-3.0" }),
+    },
+    responses: { "200": { description: "UTF-8 SSE frames: id, event and JSON data. Event types: snapshot, changed, due, completed, expired. Reconnect always reconciles with a fresh snapshot. Stream is limited to 32 clients per task store and disconnects slow consumers above 256 KiB buffered output.", content: { "text/event-stream": { schema: { type: "string" } } } },
+      ...Object.fromEntries(Object.keys(errorDescriptions).map(status => [status, { $ref: `#/components/responses/Error${status}` }])) },
+  } };
   const api: ApiDocument = {
     openapi: "3.0.3",
     info: { title: "Bastra.Recall REST API", version: JSON.parse(readFileSync(resolve(root, "packages/daemon/package.json"), "utf8")).version,

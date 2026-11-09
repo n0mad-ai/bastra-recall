@@ -78,6 +78,7 @@ function cleanTask(task: Task): Task {
   if (out.origin) for (const key of ["client", "session", "context"] as const) out.origin[key] = cleanText(out.origin[key]);
   if (out.verification?.refuted_value) out.verification.refuted_value = cleanText(out.verification.refuted_value);
   if (out.review_reason) out.review_reason = cleanText(out.review_reason);
+  if (out.executor_report) out.executor_report.summary = cleanText(out.executor_report.summary);
   if (out.last_failure) out.last_failure.message = cleanText(out.last_failure.message);
   if (out.schedule.kind === "event") out.schedule.expected = cleanText(out.schedule.expected);
   for (const row of out.history) {
