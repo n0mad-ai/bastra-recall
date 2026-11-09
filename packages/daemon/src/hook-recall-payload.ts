@@ -90,6 +90,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     hits: emittedHits,
     ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
     vault_size: vault.size(),
+    ...(vault.availability().not_loaded ? { vault_availability: vault.availability() } : {}),
     // The MCP forwarder's recall path is this stream, not recallHandler.
     ...(vaultMissing ? { vault_missing: vaultMissing } : {}),
     latency_ms: totalLatencyMs,

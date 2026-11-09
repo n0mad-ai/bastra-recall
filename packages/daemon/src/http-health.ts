@@ -25,6 +25,7 @@ import type { CodeStale } from "./code-staleness.js";
 
 export interface HealthDeps {
   vaultSize: () => number;
+  vaultAvailability?: () => { not_loaded: number; cloud_only: number; warning: string | null };
   /** Why the vault directory is absent, or null — see vault-presence.ts. */
   vaultMissing?: () => string | null;
   version: string;
@@ -83,6 +84,7 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
   return {
     ok: true,
     vault_size: deps.vaultSize(),
+    ...(deps.vaultAvailability ? { vault_availability: deps.vaultAvailability() } : {}),
     // `vault_size: 0` from a directory that is not there is not an empty vault.
     vault_missing: deps.vaultMissing?.() ?? null,
     version: deps.version,

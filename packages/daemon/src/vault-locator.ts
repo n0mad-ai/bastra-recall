@@ -21,6 +21,7 @@ export function vaultLocator(vault: {
   get(id: string): { filePath: string } | undefined;
   pathsFor?(id: string): string[];
   scanBlindSpots?(): string[];
+  cloudOnlyPaths?(): string[];
 }): MemoryLocator {
   return {
     locate(id: string): Located {
@@ -29,7 +30,10 @@ export function vaultLocator(vault: {
       // leerer, und `none` war dann eine Behauptung ohne Deckung. Hinter dem
       // Ordner, den der Vault nicht öffnen konnte, kann genau diese id liegen.
       const blind = vault.scanBlindSpots?.() ?? [];
-      if (blind.length > 0) return { kind: "incomplete", unreadable: blind };
+      if (blind.length > 0) {
+        const cloudOnly = vault.cloudOnlyPaths?.() ?? [];
+        return { kind: "incomplete", unreadable: blind, ...(cloudOnly.length ? { cloudOnly } : {}) };
+      }
       // `pathsFor` kennt auch die quarantänisierten Dateien — `get()` allein
       // verschwieg, dass es eine zweite gibt, und der Locator konnte
       // `ambiguous` nie melden. Ein Save lief dann durch und ließ das Duplikat

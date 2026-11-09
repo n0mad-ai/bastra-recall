@@ -167,6 +167,7 @@ interface HookRecallDonePayload {
   unfused?: boolean;
   degraded?: string;
   vault_missing?: string;
+  vault_availability?: { not_loaded: number; cloud_only: number; warning: string | null };
   /** #421: Pool-Reflexe, von `projectRecallResult` durchgereicht. */
   reflex_hits?: Array<{ id: string; score: number } & Record<string, unknown>>;
 }

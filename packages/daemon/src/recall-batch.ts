@@ -107,6 +107,7 @@ export interface BatchSubResult {
   degraded?: string;
   /** The vault directory is absent — see vault-presence.ts. */
   vault_missing?: string;
+  vault_availability?: { not_loaded: number; cloud_only: number; warning: string | null };
   /** #421: Pool-Reflexe dieser Phrasierung (`recall-pipeline.ts`). */
   reflex_hits?: BatchHit[];
   draft_hits?: DraftHit[];
@@ -122,6 +123,7 @@ export interface BatchMerged {
   weak_result?: true;
   no_home?: true;
   vault_missing?: string;
+  vault_availability?: { not_loaded: number; cloud_only: number; warning: string | null };
   /** Der Score-Raum, in dem die zurückgegebenen Zahlen zu lesen sind. Nie
    *  optional: eine fehlende Angabe war genau der Weg, auf dem rohe BM25-Werte
    *  als Rang-Summen gelesen wurden. */
@@ -240,6 +242,7 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
     query: queries.join(" | "),
     query_count: queries.length,
     vault_size: vaultSize,
+    ...(subs.find(s => s.vault_availability)?.vault_availability ? { vault_availability: subs.find(s => s.vault_availability)!.vault_availability } : {}),
     hits,
     recall_id: recallIds[0],
     recall_ids: recallIds,
@@ -369,6 +372,7 @@ export function projectRecallResult(
     query,
     ...(Array.isArray(payload.draft_hits) && payload.draft_hits.length > 0 ? { draft_hits: payload.draft_hits } : {}),
     vault_size: payload.vault_size,
+    ...(payload.vault_availability ? { vault_availability: payload.vault_availability } : {}),
     hits: payload.hits,
     recall_id: payload.recall_id,
     latency_ms: payload.latency_ms,

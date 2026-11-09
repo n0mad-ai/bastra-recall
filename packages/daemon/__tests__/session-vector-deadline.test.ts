@@ -104,7 +104,12 @@ async function probeRoute(body: Record<string, unknown>, vaultPath: string): Pro
     },
     logEvidenceDecision: async () => {},
   };
-  const vault = { size: () => 0, get: () => undefined, root: vaultPath };
+  const vault = {
+    size: () => 0,
+    get: () => undefined,
+    root: vaultPath,
+    availability: () => ({ not_loaded: 0, cloud_only: 0, warning: null }),
+  };
   const toolDeps = { vaultPath, search, telemetry } as unknown as ToolDeps;
 
   const server: Server = createServer((req, res) => {

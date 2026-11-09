@@ -120,6 +120,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
     healthPayload: () =>
       buildHealthPayload({
         vaultSize: () => vault.size(),
+        vaultAvailability: () => vault.availability(),
         vaultMissing: () => missingVaultReason(vault.root),
         version,
         embedding: opts.embedding,

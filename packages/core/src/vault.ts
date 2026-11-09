@@ -1,3 +1,4 @@
+import { isCloudPlaceholderError, CLOUD_OFFLINE_GUIDANCE } from "./cloud-placeholder.js";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, basename, relative, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -18,7 +19,9 @@ export class VaultIOError extends Error {
     public readonly filePath: string,
     public readonly cause: Error,
   ) {
-    super(`could not read ${filePath}: ${cause.message}`);
+    super(isCloudPlaceholderError(cause)
+      ? `could not read ${filePath}: only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}`
+      : `could not read ${filePath}: ${cause.message}`);
     this.name = "VaultIOError";
   }
 }
@@ -85,6 +88,26 @@ export class Vault {
    * nicht lesen kann, verbergen beide eine id.
    */
   private unreadableFiles = new Set<string>();
+  private cloudOnlyFiles = new Set<string>();
+  private readFailureLogged = new Map<string, string>();
+
+  private noteReadFailure(file: string, error: VaultIOError): boolean {
+    this.unreadableFiles.add(file);
+    if (isCloudPlaceholderError(error.cause)) this.cloudOnlyFiles.add(file);
+    else this.cloudOnlyFiles.delete(file);
+    const changed = this.readFailureLogged.get(file) !== error.message;
+    this.readFailureLogged.set(file, error.message);
+    return changed;
+  }
+
+  cloudOnlyPaths(): string[] { return [...this.cloudOnlyFiles]; }
+
+  availability(): { not_loaded: number; cloud_only: number; warning: string | null } {
+    const count = this.scanBlindSpots().length;
+    const cloud = this.cloudOnlyFiles.size;
+    return { not_loaded: count, cloud_only: cloud, warning: count === 0 ? null :
+      `${count} vault files not loaded; ${cloud ? `${cloud} are only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE}` : "check unreadable files and folders."}` };
+  }
 
   constructor(public readonly root: string) {}
 
@@ -128,8 +151,8 @@ export class Vault {
             // Unlesbar ist ein blinder Fleck, kaputtes Frontmatter nicht: Die
             // eine Datei kann jede id tragen, die andere trägt nachweislich
             // keine.
-            if (err instanceof VaultIOError) this.unreadableFiles.add(f);
-            console.warn(`[vault] init skipped (${basename(f)}): ${msg}`);
+            if (!(err instanceof VaultIOError) || this.noteReadFailure(f, err))
+              console.warn(`[vault] init skipped (${basename(f)}): ${msg}`);
             results[i + j] = { kind: "fail", file: f, err: msg };
           }
         }
@@ -249,6 +272,9 @@ export class Vault {
     const scan = await this.listMarkdownFiles();
     this.unreadablePaths = scan.unreadable;
     const onDisk = new Set(scan.files);
+    for (const file of this.unreadableFiles) {
+      if (!onDisk.has(file) && !scan.unreadable.some(dir => file.startsWith(dir + sep))) this.handleRemove(file);
+    }
     // Drop index entries whose file is gone (missed unlink/move) — aber nur,
     // wenn der Scan überhaupt überall hinsehen konnte. Codex-Gegenreview (P0):
     // Wurde ein Unterordner nach dem Laden unlesbar, war er für den Walk leer,
@@ -285,7 +311,7 @@ export class Vault {
           try {
             const st = await stat(p);
             const known = this.fileStats.get(p);
-            if (!known || known.mtimeMs !== st.mtimeMs || known.size !== st.size) {
+            if (this.unreadableFiles.has(p) || !known || known.mtimeMs !== st.mtimeMs || known.size !== st.size) {
               await this.reindexFile(p);
             }
           } catch {
@@ -487,6 +513,8 @@ export class Vault {
       // Definition kein quarantänisiertes Duplikat mehr.
       this.forgetDuplicate(filePath);
       this.unreadableFiles.delete(filePath);
+      this.cloudOnlyFiles.delete(filePath);
+      this.readFailureLogged.delete(filePath);
       this.memorys.set(m.fm.id, m);
       this.filePathToId.set(filePath, m.fm.id);
       // A file this vault already knows under the same id is a CHANGE, whatever
@@ -504,13 +532,15 @@ export class Vault {
       // last-known-good node and let the watcher or the periodic reconcile
       // retry; a real deletion still arrives as `unlink` → handleRemove.
       if (err instanceof VaultIOError) {
-        this.unreadableFiles.add(filePath);
-        console.error(
-          `[vault] ${kind} could not read ${basename(filePath)} (${err.cause.message}) — ` +
+        if (this.noteReadFailure(filePath, err)) console.error(
+          `[vault] ${kind} could not read ${basename(filePath)} (${err.message}) — ` +
             `keeping the last indexed version, will retry`,
         );
         return;
       }
+      this.unreadableFiles.delete(filePath);
+      this.cloudOnlyFiles.delete(filePath);
+      this.readFailureLogged.delete(filePath);
       // #240/A2.2: A file that stopped being a memory — turned into a plain
       // note, or its YAML broke during an Obsidian edit — used to leave the
       // LAST VALID node in the index forever. Recall then served pre-edit
@@ -541,6 +571,8 @@ export class Vault {
   private handleRemove(filePath: string): void {
     this.fileStats.delete(filePath);
     this.unreadableFiles.delete(filePath);
+    this.cloudOnlyFiles.delete(filePath);
+    this.readFailureLogged.delete(filePath);
     this.duplicateSkipLogged.delete(filePath);
     // Eine gelöschte Datei ist kein Duplikat mehr — sonst meldete der Locator
     // `ambiguous` für einen Zustand, den es nicht mehr gibt, und blockierte

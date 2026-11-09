@@ -1,3 +1,4 @@
+import { isCloudPlaceholderError } from "./cloud-placeholder.js";
 /**
  * Memory-Identität als EINE Auskunft: Welche Datei gehört zu dieser id, und
  * was liegt eigentlich an einem gegebenen Pfad?
@@ -47,7 +48,7 @@ export type Occupant =
    *  hängender Cloud-Mount). Wer das mit `absent` verwechselt, zerstört genau
    *  die Dateien, die er am wenigsten beurteilen kann. Jeder Aufrufer muss
    *  fail-closed reagieren: nicht überschreiben, nicht mutieren. */
-  | { kind: "unreadable"; reason: string };
+  | { kind: "unreadable"; reason: string; cloudOnly?: boolean };
 
 /** Wo ein Memory mit dieser id liegt. `ambiguous` ist kein Ausnahmefall,
  *  sondern ein Vault-Defekt (#240/A2.3): Zwei Dateien mit derselben id lassen
@@ -61,7 +62,7 @@ export type Located =
    *  unlesbar. `none` wäre hier eine Behauptung, die der Scan nicht belegen
    *  kann: Hinter dem unlesbaren Ordner kann genau dieses Memory liegen, und
    *  ein Save darauf legte ein zweites File mit derselben id an. */
-  | { kind: "incomplete"; unreadable: string[] };
+  | { kind: "incomplete"; unreadable: string[]; cloudOnly?: string[] };
 
 /**
  * Die Auskunft, die der Save-Pfad braucht. Der Daemon reicht eine Fassung
@@ -94,7 +95,7 @@ export function readOccupant(filePath: string): Occupant {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "absent" };
-    return { kind: "unreadable", reason: code ?? String(err) };
+    return { kind: "unreadable", reason: code ?? String(err), ...(isCloudPlaceholderError(err) ? { cloudOnly: true } : {}) };
   }
   return occupantOfRaw(raw, filePath);
 }
@@ -127,11 +128,12 @@ export function occupantOfRaw(raw: string, filePath: string): Occupant {
 export function scanVaultForId(vaultRoot: string, id: string): Located {
   const found: string[] = [];
   const unreadable: string[] = [];
-  walk(vaultRoot, vaultRoot, id, found, unreadable);
+  const cloudOnly: string[] = [];
+  walk(vaultRoot, vaultRoot, id, found, unreadable, cloudOnly);
   // Zuerst die Ehrlichkeit, dann die Funde: Ein Scan, der nicht überall
   // hinsehen konnte, darf weder `none` noch `unique` behaupten — hinter dem
   // Ordner, den er übersprungen hat, kann dieselbe id ein zweites Mal liegen.
-  if (unreadable.length > 0) return { kind: "incomplete", unreadable };
+  if (unreadable.length > 0) return { kind: "incomplete", unreadable, ...(cloudOnly.length ? { cloudOnly } : {}) };
   if (found.length === 0) return { kind: "none" };
   if (found.length === 1) return { kind: "unique", filePath: found[0] };
   return { kind: "ambiguous", filePaths: found };
@@ -143,6 +145,7 @@ function walk(
   id: string,
   out: string[],
   unreadable: string[],
+  cloudOnly: string[],
 ): void {
   let entries;
   try {
@@ -161,13 +164,14 @@ function walk(
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      walk(vaultRoot, full, id, out, unreadable);
+      walk(vaultRoot, full, id, out, unreadable, cloudOnly);
       continue;
     }
     if (!e.isFile() || !isMarkdown(e.name)) continue;
     const occupant = readOccupant(full);
     if (occupant.kind === "unreadable") {
       unreadable.push(full);
+      if (occupant.cloudOnly) cloudOnly.push(full);
       continue;
     }
     if (occupant.kind === "memory" && occupant.id === id) out.push(full);
@@ -212,13 +216,14 @@ export async function scanVaultForIdAsync(
 ): Promise<Located> {
   const found: string[] = [];
   const unreadable: string[] = [];
+  const cloudOnly: string[] = [];
   const counters: IdScanStats = stats ?? { dirs: 0, files: 0, bytes: 0, blindSpots: 0 };
   counters.dirs = 0;
   counters.files = 0;
   counters.bytes = 0;
-  await walkAsync(vaultRoot, id, found, unreadable, counters, budget ? { ...budget, reserved: 0, entries: 0 } : undefined);
+  await walkAsync(vaultRoot, id, found, unreadable, cloudOnly, counters, budget ? { ...budget, reserved: 0, entries: 0 } : undefined);
   counters.blindSpots = unreadable.length;
-  if (unreadable.length > 0) return { kind: "incomplete", unreadable };
+  if (unreadable.length > 0) return { kind: "incomplete", unreadable, ...(cloudOnly.length ? { cloudOnly } : {}) };
   if (found.length === 0) return { kind: "none" };
   if (found.length === 1) return { kind: "unique", filePath: found[0] };
   return { kind: "ambiguous", filePaths: found };
@@ -248,6 +253,7 @@ async function walkAsync(
   id: string,
   out: string[],
   unreadable: string[],
+  cloudOnly: string[],
   stats: IdScanStats,
   budget?: { maxBytes: number; maxFiles: number; deadline: number; reserved: number; entries: number; onLimit?: (reason: "bytes" | "files" | "timeout") => void },
 ): Promise<void> {
@@ -267,7 +273,7 @@ async function walkAsync(
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      await walkAsync(full, id, out, unreadable, stats, budget);
+      await walkAsync(full, id, out, unreadable, cloudOnly, stats, budget);
       continue;
     }
     if (!e.isFile() || !isMarkdown(e.name)) continue;
@@ -299,7 +305,7 @@ async function walkAsync(
           // Verschwunden ist kein blinder Fleck; alles andere schon.
           return code === "ENOENT" || code === "ENOTDIR"
             ? { kind: "skip" as const }
-            : { kind: "unreadable" as const, full };
+            : { kind: "unreadable" as const, full, cloudOnly: isCloudPlaceholderError(err) };
         }
         stats.files++;
         // Codex-Gegenreview: `raw.length` zählt UTF-16-Codeeinheiten, keine
@@ -318,7 +324,10 @@ async function walkAsync(
     );
     for (const r of settled) {
       if (r.kind === "hit") out.push(r.full);
-      else if (r.kind === "unreadable") unreadable.push(r.full);
+      else if (r.kind === "unreadable") {
+        unreadable.push(r.full);
+        if (r.cloudOnly) cloudOnly.push(r.full);
+      }
     }
   }
 }
@@ -346,13 +355,14 @@ export function vaultRelative(vaultRoot: string, filePath: string): string {
 export function snapshotLocator(vaultRoot: string): MemoryLocator {
   const byId = new Map<string, string[]>();
   const unreadable: string[] = [];
-  collect(vaultRoot, vaultRoot, byId, unreadable);
+  const cloudOnly: string[] = [];
+  collect(vaultRoot, vaultRoot, byId, unreadable, cloudOnly);
   return {
     locate(id: string): Located {
       // Ein blinder Fleck gilt für JEDE Frage an diesen Snapshot: Der Scan
       // weiß nicht, welche ids hinter dem übersprungenen Ordner liegen, also
       // kann er für keine id `none` belegen.
-      if (unreadable.length > 0) return { kind: "incomplete", unreadable };
+      if (unreadable.length > 0) return { kind: "incomplete", unreadable, ...(cloudOnly.length ? { cloudOnly } : {}) };
       const hits = byId.get(id);
       if (hits === undefined || hits.length === 0) return { kind: "none" };
       if (hits.length === 1) return { kind: "unique", filePath: hits[0] };
@@ -366,6 +376,7 @@ function collect(
   dir: string,
   out: Map<string, string[]>,
   unreadable: string[],
+  cloudOnly: string[],
 ): void {
   let entries;
   try {
@@ -379,13 +390,14 @@ function collect(
     if (e.name.startsWith(".") || e.name === "node_modules") continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      collect(vaultRoot, full, out, unreadable);
+      collect(vaultRoot, full, out, unreadable, cloudOnly);
       continue;
     }
     if (!e.isFile() || !isMarkdown(e.name)) continue;
     const occupant = readOccupant(full);
     if (occupant.kind === "unreadable") {
       unreadable.push(full);
+      if (occupant.cloudOnly) cloudOnly.push(full);
       continue;
     }
     if (occupant.kind !== "memory") continue;

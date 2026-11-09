@@ -151,7 +151,8 @@ export function createSidebarPanels(deps) {
     $("#system").innerHTML =
       kv("daemon", `v${h.version}`, true) +
       kv("semantic recall", h.semantic_recall, h.semantic_recall === "on") +
-      kv("embedding", h.embedding_mode);
+      kv("embedding", h.embedding_mode) +
+      (h.vault_availability?.warning ? kv("vault", h.vault_availability.warning) : "");
     // prefill the bug-report form with the same sanitized block `bastra
     // feedback bug` sends — version/OS/embedding/vault size, never content
     const diag = [

@@ -62,6 +62,7 @@ export interface HookRecallResponse {
   hits: HookRecallHit[];
   draft_hits?: import("./draft-search.js").DraftHit[];
   vault_size: number;
+  vault_availability?: { not_loaded: number; cloud_only: number; warning: string | null };
   latency_ms: number;
   recall_id: string;
   /** #249: kein zurückgegebener Hit knüpft lexikalisch an — der Top-Score ist

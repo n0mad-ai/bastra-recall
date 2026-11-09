@@ -91,6 +91,7 @@ export const RecallArgs = z.object({
 export interface RecallResult {
   query: string;
   vault_size: number;
+  vault_availability?: { not_loaded: number; cloud_only: number; warning: string | null };
   hits: unknown[];
   recall_id: string;
   latency_ms: number;
@@ -354,6 +355,7 @@ async function recallAgainstVault(
       query_count: queries.length,
       recall_id: merged.recall_id ?? "",
       vault_size: merged.vault_size ?? deps.vault.size(),
+      ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
       latency_ms: subs.reduce((m, s) => Math.max(m, s.latency_ms ?? 0), 0),
       ...(collapsed.length > 0
         ? { queries_collapsed: collapsed.length, note: batchDuplicateNote(collapsed.length, queries.length) }
@@ -553,6 +555,7 @@ async function recallAgainstVault(
   const budgeted = fitRecallWithReflexToBudget(projected, reflexHits, parsed.data.max_tokens, (emitted, emittedReflex, dropped) => ({
     query: query,
     vault_size: deps.vault.size(),
+    ...(deps.vault.availability().not_loaded ? { vault_availability: deps.vault.availability() } : {}),
     hits: emitted,
     ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
     recall_id: recallId,

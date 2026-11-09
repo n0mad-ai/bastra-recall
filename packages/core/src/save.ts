@@ -1,3 +1,4 @@
+import { CLOUD_OFFLINE_GUIDANCE } from "./cloud-placeholder.js";
 import { createHash } from "node:crypto";
 /**
  * The save orchestration: build the frontmatter, resolve the target, commit the
@@ -120,7 +121,10 @@ function assertIdIsNotClaimedElsewhere(
     throw new Error(
       `cannot verify where memory '${id}' lives: the vault scan could not read ` +
         `${located.unreadable.map((p) => vaultRelative(vaultRoot, p)).join(", ")}. ` +
-        `Fix the permissions before saving — writing now could create a second file with the same id.`,
+        (located.cloudOnly?.length
+          ? `${located.cloudOnly.length} files are only in the cloud (not downloaded). ${CLOUD_OFFLINE_GUIDANCE} `
+          : `Restore read access to the files and folders before saving. `) +
+        `Writing now could create a second file with the same id.`,
     );
   }
   // Ein `ambiguous` ist ein Vault-Defekt (#240/A2.3), keine Wahlmöglichkeit:

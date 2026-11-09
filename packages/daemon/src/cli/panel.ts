@@ -32,6 +32,7 @@ interface HealthResponse {
   ok: boolean;
   version?: string;
   vault_size?: number;
+  vault_availability?: { warning: string | null };
   semantic_recall?: "on" | "off" | "degraded";
   update_available?: HealthUpdate | null;
   code_stale?: CodeStale | null;
@@ -210,6 +211,7 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
     ["update", `mode: ${mode}`],
     ["daemon", daemonRow],
     ["vault", vaultRow],
+    ...(health?.vault_availability?.warning ? [["vault warning", health.vault_availability.warning] as PanelRow] : []),
     ...(recallRow ? [recallRow] : []),
     ["docs", docsMode === "off" ? "off" : `${docsMode} (${docsLanguage})`],
     ["api token", apiToken ? "set (browser/REST enabled)" : "not set (loopback only)"],
