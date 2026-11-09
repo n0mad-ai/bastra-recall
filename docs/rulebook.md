@@ -142,6 +142,26 @@ Only a real current owner turn ends the previous round. Native tool results,
 compact summaries, notifications and injected text do not create a new owner
 turn. The question immediately preceding a current choice remains available.
 
+`UserPromptSubmit` uses the same structural owner-prompt check before starting
+a rulebook round (#1376). Task notifications, agent mail and harness-only
+context preserve the current round, its check and loaded-rule evidence; they
+produce no fresh rulebook notice. Actual owner prompts still start a round.
+This adapter test does not certify a new native host version.
+For save-suggestion suppression, an opaque Codex `functions.exec` source and
+its aggregate output do not prove that a nested save/edit actually ran. This
+remaining #1376 path needs trustworthy executed-subtool evidence; parsing the
+JavaScript source would also count comments, strings and unreachable calls.
+
+`UserPromptSubmit` prüft vor einer neuen Regelbuchrunde dieselbe strukturelle
+Nutzerherkunft (#1376). Task-Benachrichtigungen, Agentennachrichten und reiner
+Harness-Kontext erhalten die aktuelle Runde samt Prüfung und Ladebelegen;
+sie erzeugen keinen neuen Regelbuchhinweis. Echte Nutzerprompts beginnen
+weiterhin eine Runde. Der Adaptertest zertifiziert keine neue Host-Version.
+Für das Unterdrücken von Speicherhinweisen beweisen opaker Codex-Quelltext in
+`functions.exec` und dessen Sammelausgabe keinen ausgeführten Save/Edit-Aufruf.
+Dieser Rest von #1376 braucht verlässliche Belege ausgeführter Untertools;
+Quelltextauswertung würde auch Kommentare, Strings und unerreichbare Aufrufe zählen.
+
 | Stop path | Evidence and requested work | Bound / no-evidence behavior |
 |---|---|---|
 | Generic rulebook check (`rulebookBoundary`) | Current nonempty applicable rule catalog plus a missing round check: check the standing rules. | One Stop request per actor/context/round; no invented correspondence IDs. |

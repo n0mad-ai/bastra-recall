@@ -227,7 +227,7 @@ export async function runPromptLane(
   prewarm?: Prewarmer, reflexPool?: () => string[], opts: PromptLaneOptions = {},
 ): Promise<string> {
   let notice = "";
-  if (opts.kernel && payload.hook_event_name === "UserPromptSubmit" && hookClientEvidence(payload) !== "replay") {
+  if (opts.kernel && payload.hook_event_name === "UserPromptSubmit" && hookClientEvidence(payload) !== "replay" && (!payload.prompt?.trim() || ownerPromptText(payload.prompt) !== null)) {
     try { notice = await beginRulebookRound(payload, await catalogFor(payload, opts.kernel)); }
     catch { // Even a catalog outage must expire the previous round's receipt.
       notice = await beginRulebookRound(payload, { entries: [], omitted: 0 }).catch(() => "");
