@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
@@ -53,18 +54,19 @@ test("draft identity is deterministic and Unicode normalization is language inde
 test("40 parallel upserts persist every row in an atomic 0600 JSON array", () => isolated(async (path, dir) => {
   assert.deepEqual(await listDrafts(now), []);
   await Promise.all(Array.from({ length: 40 }, (_, i) => upsertDraft(draft(i), now)));
-  const file = JSON.parse(await readFile(path, "utf8")) as { version: number; rows: Draft[] };
+  const file = JSON.parse(await readAppRecord("drafts", path)) as { version: number; rows: Draft[] };
   assert.equal(file.version, DRAFT_STORE_VERSION);
   const stored = file.rows;
   assert.equal(new Set(stored.map((d) => d.id)).size, 40);
-  if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
-  assert.deepEqual(await readdir(dir), ["drafts.json"]);
+  if (process.platform !== "win32") assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
+  assert.ok((await readdir(dir)).includes("recall.db"));
+  await assert.rejects(readFile(path), {code:"ENOENT"});
   const rows = await listDrafts(now);
   rows[0].quote = "changed caller copy";
   assert.notEqual((await listDrafts(now))[0].quote, rows[0].quote);
-  await chmod(path, 0o644);
+  await chmod(appRecordDatabasePath(path), 0o644);
   await upsertDraft({ ...draft(0), context: "updated" }, now);
-  if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
   assert.equal((await listDrafts(now)).length, 40);
 }));
 
@@ -78,13 +80,13 @@ test("expiry uses capture/use evidence, not a display; list never refreshes acce
   const c = draft(3);
   c.surfaced.push({ session_id: "display", ts: now, novel: [] });
   await upsertDraft(c, now + 20);
-  const before = await readFile(path, "utf8");
+  const before = await readAppRecord("drafts", path);
   assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS - 1)).length, 1);
-  assert.equal(await readFile(path, "utf8"), before);
+  assert.equal(await readAppRecord("drafts", path), before);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS }), 2);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 10 }), 1);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 20 }), 0);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")).rows, []);
+  assert.deepEqual(JSON.parse(await readAppRecord("drafts", path)).rows, []);
 }));
 
 test("promoted/rejected retention and missing-note tombstone", () => isolated(async () => {
@@ -119,7 +121,7 @@ test("bounds every text field, commands, reads and surfaced history", () => isol
   }
   assert.equal(saved.surfaced.length, 5);
   assert.equal(saved.situation.lits.length, 32);
-  assert.ok((await stat(path)).size <= DRAFT_MAX_BYTES);
+  assert.ok(Buffer.byteLength(readAppRecord("drafts", path)) <= DRAFT_MAX_BYTES);
 }));
 
 test("cap evicts oldest last_touched rather than insertion order", () => isolated(async (path) => {
@@ -139,7 +141,7 @@ test("byte cap includes Unicode and evidence and evicts older rows", () => isola
   const row = draft(2);
   row.evidence = Array.from({ length: 1600 }, (_, i) => ({ session_id: "会話".repeat(20), turn: i, ts: now }));
   for (let i = 0; i < 4; i++) await upsertDraft({ ...row, id: draft(i).id, last_touched: now + i }, now);
-  assert.ok((await stat(path)).size <= DRAFT_MAX_BYTES);
+  assert.ok(Buffer.byteLength(readAppRecord("drafts", path)) <= DRAFT_MAX_BYTES);
   assert.ok((await listDrafts(now)).length < 4);
 }));
 
@@ -154,7 +156,7 @@ test("retained fields are scrubbed; >30% of the retained quote is dropped", () =
   d.situation.lits = [secret];
   d.surfaced = [{ session_id: "other", ts: now, novel: [secret] }];
   assert.ok(await upsertDraft(d, now));
-  const raw = await readFile(path, "utf8");
+  const raw = await readAppRecord("drafts", path);
   assert.ok(!raw.includes(secret));
   assert.ok(!raw.includes("user:pass"));
   assert.ok(!raw.includes(homedir()));
@@ -175,9 +177,9 @@ test("cache notices another process writing or purging, and concurrent processes
 
 test("corrupt and oversized stores surface an error without overwriting the file", () => isolated(async (path) => {
   for (const text of ["not json", "{}", " ".repeat(DRAFT_MAX_BYTES + 1)]) {
-    await writeFile(path, text);
+    writeAppRecord("drafts", path, text);
     await assert.rejects(upsertDraft(draft(), now));
-    assert.equal(await readFile(path, "utf8"), text);
+    assert.equal(await readAppRecord("drafts", path), text);
   }
   await purgeDrafts();
   await purgeDrafts();
@@ -206,7 +208,7 @@ test("bounds precede redaction, incomplete tokens are omitted, and exactly 30% i
   const saved = (await upsertDraft(d, now))!;
   assert.equal(saved.quote, "x".repeat(589));
   assert.equal(saved.situation.before[0], "x".repeat(189));
-  assert.ok(!(await readFile(path, "utf8")).includes(token));
+  assert.ok(!(await readAppRecord("drafts", path)).includes(token));
   const secret = "0123456789abcdef".repeat(2) + "abcd";
   const quote = "x ".repeat(42) + secret;
   assert.equal(secret.length / quote.length, 0.3);
@@ -283,24 +285,24 @@ test("legacy arrays migrate and unknown fields survive a rewrite", () => isolate
   assert.equal((await listDrafts(now))[0].surfaced.length, 0);
   assert.equal(draftStoreDiagnostics().version, 0);
   await upsertDraft(draft(2), now);
-  const migrated = JSON.parse(await readFile(path, "utf8"));
+  const migrated = JSON.parse(await readAppRecord("drafts", path));
   assert.equal(migrated.version, DRAFT_STORE_VERSION);
   assert.deepEqual(migrated.rows[0].extension, { keep: true });
   assert.equal(migrated.rows[0].situation.host, "host.internal");
   migrated.extension = { root: true };
-  await writeFile(path, JSON.stringify(migrated));
+  writeAppRecord("drafts", path, JSON.stringify(migrated));
   await upsertDraft(draft(3), now);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")).extension, { root: true });
+  assert.deepEqual(JSON.parse(await readAppRecord("drafts", path)).extension, { root: true });
 }));
 
 test("future versions and truncated files are never overwritten", () => isolated(async (path) => {
   for (const text of [JSON.stringify({ version: DRAFT_STORE_VERSION + 1, rows: [{ ...draft(), next: true }], extension: true }), JSON.stringify({ version: DRAFT_STORE_VERSION + 2, items: ["future layout"] }), '[{"id":"truncated']) {
-    await writeFile(path, text);
+    writeAppRecord("drafts", path, text);
     assert.deepEqual(await listDrafts(now), []);
     assert.ok(draftStoreDiagnostics().corrupt || draftStoreDiagnostics().unsupportedVersion);
     await assert.rejects(upsertDraft(draft(2), now), /original file preserved/);
     await assert.rejects(expireDrafts({ now }), /original file preserved/);
-    assert.equal(await readFile(path, "utf8"), text);
+    assert.equal(await readAppRecord("drafts", path), text);
   }
 }));
 
@@ -320,7 +322,7 @@ test("an empty file initializes like a legacy empty array", () => isolated(async
   assert.deepEqual(await listDrafts(now), []);
   assert.equal(draftStoreDiagnostics().corrupt, false);
   await upsertDraft(draft(), now);
-  assert.equal(JSON.parse(await readFile(path, "utf8")).version, DRAFT_STORE_VERSION);
+  assert.equal(JSON.parse(await readAppRecord("drafts", path)).version, DRAFT_STORE_VERSION);
 }));
 
 test("the suite supplies an isolated drafts path without overriding a deliberate one", () => isolated(async (path) => {

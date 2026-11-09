@@ -138,7 +138,10 @@ export class AppDatabase {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
     this.sqlite = new DatabaseSync(this.path, { allowExtension: false });
     try {
-      chmodSync(this.path, 0o600);
+      const mode=lstatSync(this.path).mode & 0o777;
+      // Windows chmod models writability, not POSIX group/other bits. Avoid a
+      // metadata write on every read-only open: watchers would wake themselves.
+      if(process.platform==="win32" ? (mode & 0o200)===0 : mode!==0o600)chmodSync(this.path, 0o600);
       // PRAGMA works on Node 22 too (constructor timeout was added later).
       this.sqlite.exec(`PRAGMA busy_timeout=${busyTimeoutMs}`);
       enableWal(this.sqlite, busyTimeoutMs);

@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, readdir } from "node:fs/promises";
@@ -66,8 +67,8 @@ test("E replay cannot reset novel/window and each successful use is booked once"
 }));
 test("E dry-run preserves vault and every draft field except candidate metadata despite valid use",()=>isolated(async(vault,row)=>{
  await hinted(row);await acted();await runDraftShadow({provider,ollama:local,vault});delete process.env.BASTRA_DRAFT_PROMOTE;
- const before=await tree(vault.root),draft=await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8");
- const result=await runDraftPromote(options(vault));assert.equal(result.wouldPromote,1);assert.deepEqual(await tree(vault.root),before);const after=JSON.parse(await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8"));
+ const before=await tree(vault.root),draft=await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!);
+ const result=await runDraftPromote(options(vault));assert.equal(result.wouldPromote,1);assert.deepEqual(await tree(vault.root),before);const after=JSON.parse(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!));
  assert.equal(after.rows[0].review_candidate.kind,"draft_would_promote");for(const row of after.rows)delete row.review_candidate;
  assert.deepEqual(after,JSON.parse(draft));
 }));

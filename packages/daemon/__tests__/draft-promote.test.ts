@@ -1,8 +1,8 @@
+import { DatabaseSync } from "node:sqlite";
+import { deleteAppRecord, readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
-import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -101,7 +101,7 @@ test("PSK intake stays redacted in promoted title, summary, body, cues and audit
   assert.match(note.body, /\[REDACTED\]/);
   assert.ok(!(await readFile(note.filePath, "utf8")).includes(secret));
   assert.ok(!(await readFile(join(vault.root, ".bastra", "audit-log.ndjson"), "utf8")).includes(secret));
-  assert.ok(!(await readFile(join(dir, "drafts.json"), "utf8")).includes(secret));
+  assert.ok(!(await readAppRecord("drafts", join(dir, "drafts.json"))).includes(secret));
 }));
 
 test("semantic repeat uses same-model local vectors and keeps both verbatim quotes", () => isolated(async (vault, _dir, vaultId) => {
@@ -290,10 +290,10 @@ test("D fix: dry duplicate/recovery decisions preserve draft state and attach on
   await existingNote(vault, "stored-note", first); await repeat(vaultId);
   const provider = providerFor(); await runDraftShadow({ provider, ollama: local, vault });
   delete process.env.BASTRA_DRAFT_PROMOTE;
-  const before = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
+  const before = await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!);
   const events: DraftPromotionEvent[] = [];
   await runDraftPromote({ provider, ollama: local, judge, vault, vaultVectors: vectors(vault, provider), emit: e => events.push(e) });
-  assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(before));
+  assert.deepEqual(withoutCandidateMetadata(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!)), withoutCandidateMetadata(before));
   assert.ok((await listDrafts()).some(row => row.review_candidate));
   assert.ok(events.some(e => e.kind === "draft_would_block" as string));
 }));
@@ -347,8 +347,8 @@ test("D fix: dry recovery does not change state even for an already landed note"
   const provider = providerFor(); await runDraftShadow({ provider, ollama: local, vault });
   const opts = { provider, ollama: local, judge, vault, vaultVectors: vectors(vault, provider) }; await runDraftPromote(opts); await upsertDraft(open);
   delete process.env.BASTRA_DRAFT_PROMOTE;
-  const before = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"); await runDraftPromote(opts);
-  assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(before));
+  const before = await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!); await runDraftPromote(opts);
+  assert.deepEqual(withoutCandidateMetadata(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!)), withoutCandidateMetadata(before));
   assert.ok((await listDrafts()).some(row => row.review_candidate));
 }));
 
@@ -408,7 +408,7 @@ test("D fix: unavailable meaning comparison retains the old relay with the sharp
   try {
     const result = await runSessionHarvestTick({ vault, search, rawProvider: null, ollama: null, embIdx: () => null }, now + 1000);
     assert.ok(result!.relayed > 0); assert.equal(vault.size(), 0);
-    assert.match(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!, "utf8"), /isolated connection/);
+    assert.match(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!), /isolated connection/);
   } finally { search.stop(); }
 }));
 
@@ -450,9 +450,15 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
     t.diagnostic(`event-loop max lag ${maxLag.toFixed(1)}ms; scheduled writer ${writerMs.toFixed(1)}ms`);
     assert.ok(maxLag < 500, `event loop ${maxLag}ms`); assert.ok(writerMs < 500, `writer ${writerMs}ms`);
     await runDraftPromote(options); // Any concurrent writer's changed state settles.
-    const originalOpen = fs.open; let vectorReads = 0;
-    fs.open = (async (...args: Parameters<typeof fs.open>) => { if(String(args[0]) === draftVectorsPath()) vectorReads++; return originalOpen(...args); }) as typeof fs.open;
-    syncBuiltinESMExports();
+    const originalPrepare = DatabaseSync.prototype.prepare; let vectorReads = 0;
+    DatabaseSync.prototype.prepare = function(this:DatabaseSync,sql:string){
+      const statement=originalPrepare.call(this,sql);
+      if(sql.startsWith("SELECT value FROM app_records")){
+        const get=statement.get.bind(statement);
+        statement.get=((...args:unknown[])=>{if(args[0]==="draft-vectors")vectorReads++;return Reflect.apply(get,statement,args);}) as typeof statement.get;
+      }
+      return statement;
+    };
     try {
       const samples:number[]=[];
       for(let sample=0;sample<3;sample++) {
@@ -460,12 +466,12 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
         samples.push(performance.now()-started);
         assert.equal(unchanged.errors,0); assert.equal(unchanged.wouldPromote,0,"unchanged pass skips candidate math");
       }
-      assert.equal(vectorReads,3,"one vector-file load per tick");
+      assert.equal(vectorReads,3,"one vector-record load per tick");
       const median=[...samples].sort((a,b)=>a-b)[1];
       t.diagnostic(`unchanged 480/100/2000 ticks ${samples.map(n=>n.toFixed(1)).join("/")}ms; median ${median.toFixed(1)}ms; one vector load each`);
       // Wall time is diagnostic only: concurrent suite/host CPU load is not a
       // property of the implementation. Skip and one-load assertions explain it.
-    } finally { fs.open=originalOpen; syncBuiltinESMExports(); }
+    } finally { DatabaseSync.prototype.prepare=originalPrepare; }
   } finally { clearInterval(ticker); }
 }));
 
@@ -508,13 +514,13 @@ test("D2 corrupt and future draft stores cannot delay or consume the default rel
   delete process.env.BASTRA_DRAFT_PROMOTE;
   const search=new SearchIndex(vault);search.start();
   try {for(const [i,data] of ["{broken",JSON.stringify({version:99,rows:[]})].entries()) {
-    await unlink(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).catch(()=>{});
+    deleteAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!);
     await writeFile(process.env.BASTRA_DRAFTS_PATH!,data);
     const path=join(dir,`broken-relay-${i}.jsonl`);
     await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
     await noteSessionForHarvest({session_id:`broken-${i}`,transcript_path:path,ended:true,now});
     await runSessionHarvestTick({vault,search,rawProvider:null,ollama:null,embIdx:()=>null},now+1000).catch(()=>{});
-    const pending=JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"));
+    const pending=JSON.parse(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!));
     assert.equal(pending.length,1);assert.match(pending[0].blocks,/isolated connection/);
   }}finally{search.stop();}
 }));
@@ -531,7 +537,7 @@ test("D2 relay is durable before an embedding pass can be interrupted",()=>isola
   const tick=runSessionHarvestTick({vault,search,rawProvider:provider,ollama:local,draftJudge:judge,embIdx:()=>null},now+1000);
   try{
     await began;
-    const durable=await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8").catch(()=>"");
+    const durable=await Promise.resolve().then(()=>readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!)).catch(()=>"");
     release();await tick;
     assert.match(durable,/isolated connection/,"survives process termination while embeddings are in flight");
   }finally{release();await tick.catch(()=>{});search.stop();}
@@ -549,7 +555,7 @@ test("D2 word cues exclude common vault words, numeric fragments and redacted sp
 
 test("D2 terminating the embedding process preserves relay in default and sharp modes",()=>isolated(async(vault,dir)=>{
   for(const mode of ["0","1"]) {
-    await unlink(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).catch(()=>{});
+    deleteAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!);
     const path=join(dir,`process-abort-${mode}.jsonl`);
     await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
     await noteSessionForHarvest({session_id:`process-abort-${mode}`,transcript_path:path,ended:true,now});
@@ -561,11 +567,11 @@ test("D2 terminating the embedding process preserves relay in default and sharp 
       while(!errors.includes("embedding-started")&&Date.now()<deadline&&child.exitCode===null)await new Promise(r=>setTimeout(r,10));
       assert.match(errors,/embedding-started/,`mode ${mode}; stdout ${output}`);
       child.kill("SIGTERM");await exited;
-      const durable=JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"));
+      const durable=JSON.parse(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!));
       assert.equal(durable.length,1);assert.match(durable[0].blocks,/isolated connection/);
       const search=new SearchIndex(vault);search.start();
       try {await runSessionHarvestTick({vault,search,rawProvider:null,ollama:null,embIdx:()=>null},now+2000);}finally{search.stop();}
-      assert.deepEqual(JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8")),durable);
+      assert.deepEqual(JSON.parse(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!)),durable);
     }finally{child.kill("SIGTERM");await exited;}
   }
 }));
@@ -575,27 +581,36 @@ test("D3 failed capture keeps its sharp relay",()=>isolated(async(vault,dir)=>{
   await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
   await noteSessionForHarvest({session_id:"uncaptured",transcript_path:path,ended:true,now});
   await writeFile(process.env.BASTRA_DRAFTS_PATH!,JSON.stringify({version:1,rows:[]}));
-  const originalRename=fs.rename;
-  fs.rename=(async(...args:Parameters<typeof fs.rename>)=>{if(String(args[1])===process.env.BASTRA_DRAFTS_PATH)throw Object.assign(new Error("fixture read-only store"),{code:"EROFS"});return originalRename(...args);}) as typeof fs.rename;
-  syncBuiltinESMExports();
+  const originalPrepare=DatabaseSync.prototype.prepare;
+  DatabaseSync.prototype.prepare=function(this:DatabaseSync,sql:string){
+    const statement=originalPrepare.call(this,sql);
+    if(sql.startsWith("INSERT INTO app_records")){
+      const run=statement.run.bind(statement);
+      statement.run=((...args:unknown[])=>{
+        if(args[0]==="drafts"&&args[1]===process.env.BASTRA_DRAFTS_PATH)throw Object.assign(new Error("fixture read-only store"),{code:"EROFS"});
+        return Reflect.apply(run,statement,args);
+      }) as typeof statement.run;
+    }
+    return statement;
+  };
   const provider=providerFor(),search=new SearchIndex(vault);search.start();
   const index={providerIdentity:()=>({id:provider.id,dim:2}),snapshot:()=>new Map(),currentSnapshot:()=>new Map()} as unknown as EmbeddingIndex;
   try {await runSessionHarvestTick({vault,search,rawProvider:provider,ollama:local,draftJudge:judge,embIdx:()=>index},now+1000).catch(()=>{});
-    assert.match(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"),/isolated connection/);
-  }finally{search.stop();fs.rename=originalRename;syncBuiltinESMExports();}
+    assert.match(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!),/isolated connection/);
+  }finally{search.stop();DatabaseSync.prototype.prepare=originalPrepare;}
 }));
 
 test("D3 sharp fallback withdrawal preserves five foreign relay blocks",()=>isolated(async(vault,dir)=>{
   const {writePendingSuggestion}=await import("../src/pending-suggestions.js");
   for(let i=0;i<5;i++)await writePendingSuggestion(`foreign fixture ${i}`);
-  const before=JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"));
+  const before=JSON.parse(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!));
   const path=join(dir,"sharp-single.jsonl");
   await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
   await noteSessionForHarvest({session_id:"sharp-single",transcript_path:path,ended:true,now});
   const provider=providerFor(),search=new SearchIndex(vault);search.start();
   const index={providerIdentity:()=>({id:provider.id,dim:2}),snapshot:()=>new Map(),currentSnapshot:()=>new Map()} as unknown as EmbeddingIndex;
   try {await runSessionHarvestTick({vault,search,rawProvider:provider,ollama:local,draftJudge:judge,embIdx:()=>index},now+1000);
-    assert.deepEqual(JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8")),before);
+    assert.deepEqual(JSON.parse(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!)),before);
   }finally{search.stop();}
 }));
 
@@ -728,10 +743,10 @@ test("judge: an unchanged candidate is never asked twice; a changed draft is; a 
 test("judge: the dry run asks the model, logs classes only and writes no vault or draft lifecycle fields", () => isolated(async (vault, dir, vaultId) => {
   await captureDraft(row(first, "one", vaultId)); await captureDraft(row(paraphrase, "two", vaultId)); delete process.env.BASTRA_DRAFT_PROMOTE;
   const provider = providerFor(), asked = judgeFor(); await runDraftShadow({ provider, ollama: local, vault });
-  const before = await tree(vault.root), drafts = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
+  const before = await tree(vault.root), drafts = await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!);
   const result = await runDraftPromote({ provider, ollama: local, judge: asked, vault, vaultVectors: vectors(vault, provider) });
   assert.equal(result.wouldPromote, 1); assert.equal(asked.prompts.length, 3);
-  assert.deepEqual(await tree(vault.root), before); assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(drafts));
+  assert.deepEqual(await tree(vault.root), before); assert.deepEqual(withoutCandidateMetadata(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!)), withoutCandidateMetadata(drafts));
   assert.equal(((await listDrafts())[0].review_candidate as {kind:string}).kind, "draft_would_promote");
   const log = (await Promise.all((await readdir(join(dir, "logs"))).map(path => readFile(join(dir, "logs", path), "utf8")))).join("\n");
   const event = JSON.parse(log.trim().split("\n").at(-1)!);
@@ -751,7 +766,7 @@ test("judge: an unjudged sharp pass keeps the harvest relay", () => isolated(asy
     const index = { providerIdentity: () => ({ id: provider.id, dim: 2 }), snapshot: () => new Map<string, Float32Array>(), currentSnapshot: () => new Map<string, Float32Array>() } as unknown as EmbeddingIndex;
     const result = await runSessionHarvestTick({ vault, search, rawProvider: provider, ollama: local, embIdx: () => index }, now + 1000);
     assert.equal(result?.promotion.promoted, 0); assert.equal(result?.promotion.unjudged, 1); assert.equal(vault.size(), 0);
-    assert.ok(result!.relayed > 0); assert.match(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!, "utf8"), /isolated amber database/);
+    assert.ok(result!.relayed > 0); assert.match(await readAppRecord("pending-suggestions", process.env.BASTRA_PENDING_SUGGESTIONS_PATH!), /isolated amber database/);
   } finally { search.stop(); }
 }));
 

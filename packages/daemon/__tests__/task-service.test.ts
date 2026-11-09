@@ -1,7 +1,8 @@
+import { writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintTaskCredential, revokeTaskCredential } from "../src/task-auth.js";
@@ -83,7 +84,7 @@ test("prepare acknowledgement and resolution remain owner commands", async () =>
 test("recovery epoch rejects formerly valid revision token; revocation denies next CRUD", async () => {
   const f = await fixture(); const t = await f.call(f.owner, "task_create", f.input);
   await f.call(f.owner, "task_edit", { id: t.id, expected_revision: t.expected_revision, patch: { goal: "New" } });
-  await writeFile(f.ctx.path, "broken"); await recoverTaskStore(f.ctx.path, "owner");
+  await writeAppRecord("tasks", f.ctx.path, "broken"); await recoverTaskStore(f.ctx.path, "owner");
   await assert.rejects(f.call(f.owner, "task_review", { id: t.id, expected_revision: t.expected_revision }), { code: "conflict" });
   await revokeTaskCredential(f.ctx.authPath, f.owner.credential_id);
   await assert.rejects(f.call(f.owner, "task_get", { id: t.id }), { code: "unauthorized" });

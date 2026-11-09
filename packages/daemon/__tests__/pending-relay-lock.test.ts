@@ -1,8 +1,8 @@
 import { readAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs, { mkdtemp, readFile, writeFile, unlink, rm, stat } from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
+import { mkdtemp, readFile, writeFile, unlink, rm, stat } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathLockFilePath } from "../src/path-lock.js";
@@ -44,9 +44,20 @@ test("the actual Stop response skips busy relay contention and writes later",()=
 }));
 test("draft deletion failure leaves the validated relay unchanged",t=>fixture(async(path,drafts)=>{
  const original=JSON.stringify([{ts:Date.now(),blocks:"Invented retained relay observation"}]);await writeFile(path,original);await writeFile(drafts,"draft fixture");
- const real=fs.unlink;t.mock.method(fs,"unlink",async(p:Parameters<typeof fs.unlink>[0])=>{if(String(p)===drafts)throw Object.assign(new Error("fixture draft deletion denied"),{code:"EACCES"});return real(p);});syncBuiltinESMExports();
- try{await assert.rejects(purgeDrafts(),/draft deletion denied/);assert.equal(readAppRecord("pending-suggestions",path),original);assert.equal(await readFile(drafts,"utf8"),"draft fixture");}
- finally{t.mock.restoreAll();syncBuiltinESMExports();}
+ const prepare=DatabaseSync.prototype.prepare;
+ t.mock.method(DatabaseSync.prototype,"prepare",function(this:DatabaseSync,sql:string){
+  const statement=prepare.call(this,sql);
+  if(sql.startsWith("INSERT INTO app_records")){
+   const run=statement.run.bind(statement);
+   t.mock.method(statement,"run",(...args:unknown[])=>{
+    if(args[0]==="drafts"&&JSON.parse(String(args[2])).text===null)
+      throw Object.assign(new Error("fixture draft deletion denied"),{code:"EACCES"});
+    return Reflect.apply(run,statement,args);
+   });
+  }return statement;
+ });
+ try{await assert.rejects(purgeDrafts(),/draft deletion denied/);assert.equal(readAppRecord("pending-suggestions",path),original);assert.equal(readAppRecord("drafts",drafts),"draft fixture");}
+ finally{t.mock.restoreAll();}
 }));
 test("purge accepts an empty relay, keeps it private, and reports an absent relay honestly",()=>fixture(async(path,drafts)=>{
  await writeFile(path,"");await writeFile(drafts,"draft fixture");assert.deepEqual(await purgeDrafts(),{pendingRelay:true});assert.deepEqual(JSON.parse(readAppRecord("pending-suggestions",path)),[]);

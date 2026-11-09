@@ -1,7 +1,8 @@
 /** Local-only repeat measurements (#1084, B3); never modifies drafts or vault notes. */
-import { createHash, randomBytes } from "node:crypto";
-import { appendFile, chmod, mkdir, open, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { appendFile, mkdir } from "node:fs/promises";
+import { readAppRecord, writeAppRecord, deleteAppRecord } from "./app-record-store.js";
+import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { cosine, isLoopbackHost, type EmbeddingProvider, type Vault } from "@bastra-recall/core";
 import { draftsPath, draftVectorsPath, listDrafts, type Draft } from "./draft-store.js";
@@ -72,16 +73,10 @@ export function localDraftProvider(opts: DraftShadowOptions): EmbeddingProvider 
 }
 async function loadCache(path: string): Promise<VectorCache | null> {
   try {
-    const handle = await open(path, "r");
-    try {
-      // Validate/read/chmod the same inode, even if the pathname is replaced.
-      const info = await handle.stat();
-      if (!info.isFile() || info.size > VECTOR_MAX_BYTES) return null;
-      const text = await handle.readFile({ encoding: "utf8" });
+      const text = readAppRecord("draft-vectors", path, JSON.parse);
       if (Buffer.byteLength(text) > VECTOR_MAX_BYTES) return null;
       const raw = JSON.parse(text);
       if (raw.version !== 1 || typeof raw.provider !== "string" || !Number.isInteger(raw.dim) || raw.dim <= 0 || !Array.isArray(raw.rows)) return null;
-      if ((info.mode & 0o777) !== 0o600) await handle.chmod(0o600);
       const entries = new Map<string, DraftVectorEntry>();
       for (const row of raw.rows.slice(-500)) {
         if (!/^d-[a-f0-9]{12}$/.test(row?.id ?? '') || typeof row.fp !== 'string' || typeof row.quoteHash !== 'string' || typeof row.vector !== 'string') continue;
@@ -96,28 +91,19 @@ async function loadCache(path: string): Promise<VectorCache | null> {
         if (Array.isArray(pair) && /^[a-f0-9]{64}$/.test(pair[0]) && /^[a-f0-9]{64}$/.test(pair[1])) decisions.set(pair[0], pair[1]);
       }
       return { provider: raw.provider, dim: raw.dim, entries, decisions };
-    } finally { await handle.close(); }
   } catch { return null; }
 }
 
 async function saveCache(path: string, cache: VectorCache): Promise<void> {
   if (cache.entries.size === 0 && cache.decisions.size === 0) {
-    await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+    deleteAppRecord("draft-vectors", path);
     return;
   }
   const rows = [...cache.entries].map(([id, row]) => ({ id, fp: row.fp, quoteHash: row.quoteHash, measured: row.measured, vaultMeasured: row.vaultMeasured,
     vector: Buffer.from(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength).toString("base64") }));
   const payload = JSON.stringify({ version: 1, provider: cache.provider, dim: cache.dim, rows, decisions: [...cache.decisions] });
   if (Buffer.byteLength(payload) > VECTOR_MAX_BYTES) throw new Error("draft vector byte bound");
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-  try {
-    await writeFile(tmp, payload, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await chmod(tmp, 0o600);
-    await rename(tmp, path);
-  } finally {
-    await unlink(tmp).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-  }
+  writeAppRecord("draft-vectors", path, payload, JSON.parse);
 }
 
 /** Recheck under the draft writer lock: purge during an embedding request must
@@ -186,7 +172,7 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
   const provider = localDraftProvider(opts);
   const path = draftVectorsPath();
   if (!provider) {
-    try { await stat(path); } catch (error) {
+    try { readAppRecord("draft-vectors", path, JSON.parse); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") result.errors++;
       return result;
     }

@@ -1,6 +1,7 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {captureTypedDrafts} from '../src/draft-capture.js';
@@ -42,11 +43,11 @@ test('cleanup rejects polluted drafts once and retains their evidence',async()=>
 test('cleanup retains aged polluted and unrelated rows rather than expiring them',async()=>{
  const {rejectInjectedDrafts,storedDrafts}=await import('../src/draft-store.js');
  const path=process.env.BASTRA_DRAFTS_PATH!,now=Date.now(),old=now-10*24*60*60*1000;
- const doc=JSON.parse(await readFile(path,'utf8'));
+ const doc=JSON.parse(await readAppRecord("drafts", path));
  const fp=draftFingerprint(exact+' older');
  doc.rows.push({...doc.rows[0],id:draftId('aged',0,fp),fp,quote:exact+' older',state:'open',created:old,last_touched:old,evidence:[{session_id:'aged',turn:0,ts:old}],surfaced:[]});
  const owner=doc.rows.find((r:any)=>r.state==='open');owner.created=old;owner.last_touched=old;
- await writeFile(path,JSON.stringify(doc));
+ writeAppRecord("drafts",path,JSON.stringify(doc));
  assert.equal(await rejectInjectedDrafts(now),1);
  const rows=await storedDrafts(now);assert.equal(rows.length,doc.rows.length);
  assert.equal(rows.find(r=>r.id===draftId('aged',0,fp))?.state,'rejected');

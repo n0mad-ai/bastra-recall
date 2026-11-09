@@ -1,3 +1,4 @@
+import { readAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import reviewRule from "../src/draft-review-rule.json" with { type: "json" };
 import { draftReviewTools } from "../src/draft-review-handler.js";
@@ -76,10 +77,10 @@ for (const lang of ["en","de"]) {
   }));
 }
 test("all three switches suppress candidate reads and claims; retained candidates can be delivered later", () => fixture(async (_vault,id) => {
-  await candidate(row(id)); const before=await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8"); const mtime=(await stat(process.env.BASTRA_DRAFTS_PATH!)).mtimeMs;
+  await candidate(row(id)); const before=await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!); const mtime=(await stat(appRecordDatabasePath(process.env.BASTRA_DRAFTS_PATH!))).mtimeMs;
   for(const key of ["BASTRA_PENDING_RELAY","BASTRA_SESSION_HARVEST","BASTRA_DRAFT_HINTS"]) {
     process.env[key]="0"; assert.equal((await takeDraftReview(id)).block,""); process.env[key]="1";
-    assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8"),before); assert.equal((await stat(process.env.BASTRA_DRAFTS_PATH!)).mtimeMs,mtime);
+    assert.equal(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!),before); assert.equal((await stat(appRecordDatabasePath(process.env.BASTRA_DRAFTS_PATH!))).mtimeMs,mtime);
   }
   assert.equal((await takeDraftReview(id)).fingerprints.length,1);
 }));

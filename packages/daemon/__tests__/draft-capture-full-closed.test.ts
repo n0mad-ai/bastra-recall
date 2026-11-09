@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, readdir, rm } from "node:fs/promises";
@@ -20,7 +21,7 @@ test("B2: a closed-only full store keeps tombstones and reports five evicted new
       return { id: draftId("closed", i, fp), fp, quote, kind: "typed", state: i % 2 ? "rejected" : "promoted", created: now, last_touched: now, evidence: [{ session_id: "closed", turn: i, ts: now }], surfaced: [], situation: { before: [], after: [], reads: [], lits: [] } };
     });
     await writeFile(paths.BASTRA_DRAFTS_PATH, JSON.stringify({ version: 1, rows }));
-    const before = await readFile(paths.BASTRA_DRAFTS_PATH, "utf8");
+    const before = await readAppRecord("drafts", paths.BASTRA_DRAFTS_PATH);
     const transcript = join(dir, "new.jsonl");
     await writeFile(transcript, Array.from({ length: 5 }, (_, i) => JSON.stringify({ type: "user", message: { role: "user", content: String.fromCodePoint(0x6000 + i).repeat(30) } })).join("\n"));
     await noteSessionForHarvest({ session_id: "new", transcript_path: transcript, ended: true, now });
@@ -31,7 +32,7 @@ test("B2: a closed-only full store keeps tombstones and reports five evicted new
     assert.equal(event.draft_evicted_count, 5);
     assert.equal(event.draft_error, false);
     assert.equal((await listDrafts(now + 1)).length, 500);
-    assert.equal(await readFile(paths.BASTRA_DRAFTS_PATH, "utf8"), before);
+    assert.equal(await readAppRecord("drafts", paths.BASTRA_DRAFTS_PATH), before);
   } finally {
     for (const [key, value] of previous) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     await rm(dir, { recursive: true, force: true });

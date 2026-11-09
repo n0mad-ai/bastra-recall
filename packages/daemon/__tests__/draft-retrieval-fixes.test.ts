@@ -1,3 +1,4 @@
+import { readAppRecord, deleteAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -42,10 +43,10 @@ test("fixed 200-draft/200-query corpus reports conservative DF-cap cost and nega
 
 test("recall does not delete covered or contradictory drafts, including unrelated rows", () => isolated(async (_dir, row) => {
   row.quote = "Am Dienstag wird nie ausgeliefert, Releases laufen freitags nach dem Review";
-  await captureDrafts([row]); const before = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
+  await captureDrafts([row]); const before = await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!);
   await searchDrafts("dienstag ausgeliefert releases", [{ body: "Am Freitag wird nie ausgeliefert, Releases laufen dienstags nach dem Review" }]);
   await searchDrafts("unrelated physics", [{ body: row.quote }]);
-  assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"), before);
+  assert.equal(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH!), before);
   assert.equal((await listDrafts()).length, 1);
 }));
 
@@ -157,7 +158,7 @@ test("background cache watcher observes external deletion without retrieval I/O"
   await captureDrafts([row]); const stop = startDraftSearchCache();
   try {
     assert.equal((await searchDrafts("purpurdrucker zyanpatronen")).length, 1);
-    await fs.unlink(process.env.BASTRA_DRAFTS_PATH!);
+    deleteAppRecord("drafts",process.env.BASTRA_DRAFTS_PATH!);
     for (let i = 0; i < 600 && (await searchDrafts("purpurdrucker zyanpatronen")).length; i++) await new Promise(r => setTimeout(r, 5));
     assert.equal((await searchDrafts("purpurdrucker zyanpatronen")).length, 0);
   } finally { stop(); }

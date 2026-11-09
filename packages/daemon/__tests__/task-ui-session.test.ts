@@ -1,7 +1,8 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp, readFile} from "node:fs/promises";
+import {mkdtemp} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {createServer, request} from "node:http";
@@ -38,5 +39,5 @@ test("tokenless task UI session is local/CSRF-protected Agent access, never Owne
 test("cold archive browsing is read-only, domain-filtered and hash-verified",async()=>{
  const root=await mkdtemp(join(tmpdir(),"task-ui-archive-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"task-auth.json")};const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains:["personal"]}),other=await mintTaskCredential(ctx.authPath,{actor_id:"other",role:"agent",domains:["other"]});const auth=`Bearer ${owner.token}`;
  const input={idempotency_key:"archive-ui",original_request:"Synthetic",goal:"Finished",resolution_condition:"Done",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"]};let task=await callTaskCrud(ctx,auth,"task_create",input) as any;await callTaskCrud(ctx,auth,"task_resolve",{id:task.id,expected_revision:task.expected_revision});const before=await readTaskStore(ctx.path);const archive=await callTaskCrud(ctx,auth,"task_archive",{task_ids:[task.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch}) as any;
- const bytes=await readFile(ctx.path,"utf8");const rows=await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_list",{archive_id:archive.archive_id}) as any;assert.equal(rows.tasks[0].state,"resolved");assert.equal(rows.tasks[0].archived,true);assert.equal(await readFile(ctx.path,"utf8"),bytes);await assert.rejects(callTaskCrud(ctx,`Bearer ${other.token}`,"task_list",{archive_id:archive.archive_id}),{code:"not_found"});
+ const bytes=await readAppRecord("tasks", ctx.path);const rows=await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_list",{archive_id:archive.archive_id}) as any;assert.equal(rows.tasks[0].state,"resolved");assert.equal(rows.tasks[0].archived,true);assert.equal(await readAppRecord("tasks", ctx.path),bytes);await assert.rejects(callTaskCrud(ctx,`Bearer ${other.token}`,"task_list",{archive_id:archive.archive_id}),{code:"not_found"});
 });

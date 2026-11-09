@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -57,7 +58,7 @@ test("real upgraded daemon needs no setup command and preserves client configura
     const task = await call("create",{idempotency_key:"automatic",original_request:"Synthetic upgrade deadline",goal:"Evaluate synthetic run",resolution_condition:"Done",schedule:{kind:"instant",at:Date.now()-1},timezone:"Europe/Madrid",scope:{kind:"personal",name:"upgrade"},owner_domains:["personal"],arm:true,origin:{kind:"agent-observed",client:"automatic-test",session:"synthetic",context:"Promised synthetic follow-up"}}); assert.equal(task.armed,true);
     const waitOccurrence = async (id: string, delivered = false) => {
       const until = Date.now()+10000;
-      while(Date.now()<until){ const snapshot=JSON.parse(await readFile(join(data,"tasks.json"),"utf8")); const occurrence=snapshot.occurrences.find((o:any)=>o.task_id===id);if(occurrence&&(!delivered||occurrence.attempts.length))return occurrence;await pause(25); }
+      while(Date.now()<until){ const snapshot=JSON.parse(await readAppRecord("tasks",join(data,"tasks.json"))); const occurrence=snapshot.occurrences.find((o:any)=>o.task_id===id);if(occurrence&&(!delivered||occurrence.attempts.length))return occurrence;await pause(25); }
       throw new Error("own occurrence/delivery deadline");
     };
     await waitOccurrence(task.id); await pause(100);

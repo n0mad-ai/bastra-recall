@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -115,9 +116,9 @@ test("passive owner displays are quiet and acknowledged unfinished work resurfac
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].attempts.length, 1, "first delivery must finish before testing that quiet reads do not write");
-    const bytes = await import("node:fs/promises").then(fs => fs.readFile(f.ctx.path, "utf8"));
+    const bytes = readAppRecord("tasks", f.ctx.path);
     for (let i = 0; i < 6; i++) assert.equal(await taskAttachment(f.ctx, `Bearer ${f.owner.token}`, `two-${i}`, "prompt"), undefined);
-    assert.equal(await import("node:fs/promises").then(fs => fs.readFile(f.ctx.path, "utf8")), bytes);
+    assert.equal(readAppRecord("tasks", f.ctx.path), bytes);
     let s = await readTaskStore(f.ctx.path); await callTaskCrud(f.ctx, `Bearer ${f.owner.token}`, "task_acknowledge", { id: s.tasks[0].id, expected_revision: `${s.recovery_epoch}:${s.tasks[0].revision}`, occurrence_id: s.occurrences[0].id });
     f.ctx.now = () => 3000 + 24 * 60 * 60 * 1000;
     assert.ok(await taskAttachment(f.ctx, `Bearer ${f.owner.token}`, "tomorrow", "prompt"));

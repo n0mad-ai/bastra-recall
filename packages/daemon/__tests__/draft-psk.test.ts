@@ -1,6 +1,7 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp,  rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureTypedDrafts } from "../src/draft-capture.js";
@@ -25,7 +26,7 @@ test("PSK is removed from persisted quote, question and situation before derivin
     assert.match(rows[0].situation.before[0], /\[REDACTED\]/);
     assert.match(rows[0].situation.after[0], /\[REDACTED\]/);
     assert.ok(!JSON.stringify(rows).includes("fixture vpn"));
-    assert.ok(!(await readFile(process.env.BASTRA_DRAFTS_PATH, "utf8")).includes("fixture vpn"));
+    assert.ok(!(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH)).includes("fixture vpn"));
   } finally {
     if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH; else process.env.BASTRA_DRAFTS_PATH = previous;
     await rm(dir, { recursive: true, force: true });
@@ -38,7 +39,7 @@ test('legacy command secrets do not survive in literal, novel or matched fields 
   const {writeFile}=await import('node:fs/promises');const {captureDraft,draftFingerprint,draftId}=await import('../src/draft-store.js');const now=Date.now(),secret='fixture-low-secret',quote='Use a separate calibration database for our invented deployments.';
   await writeFile(process.env.BASTRA_DRAFTS_PATH,JSON.stringify({version:1,rows:[{id:'d-0123456789ab',fp:'a'.repeat(40),kind:'typed',quote,situation:{before:[`curl -u user:${secret} https://fixture.invalid`],after:[],reads:[],lits:[secret,'fixture.invalid']},evidence:[{session_id:'old',turn:1,ts:now}],created:now,last_touched:now,surfaced:[{session_id:'reader',ts:now-2,novel:[secret],used:{ts:now-1,tool:'Bash',exit_code:0,matched:[secret]}}],state:'open'}]}));
   const fp=draftFingerprint('Another fictional deployment requires an isolated aquarium recorder.');await captureDraft({id:draftId('new',0,fp),fp,quote:'Another fictional deployment requires an isolated aquarium recorder.',kind:'typed',situation:{before:[],after:[],reads:[],lits:[]},evidence:[{session_id:'new',turn:0,ts:now}],created:now,last_touched:now,surfaced:[],state:'open'});
-  assert.ok(!(await readFile(process.env.BASTRA_DRAFTS_PATH,'utf8')).includes(secret));
+  assert.ok(!(await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH)).includes(secret));
  }finally{if(previous===undefined)delete process.env.BASTRA_DRAFTS_PATH;else process.env.BASTRA_DRAFTS_PATH=previous;await rm(dir,{recursive:true,force:true});}
 });
 
@@ -48,7 +49,7 @@ test('legacy secrets with capitals leave lower-cased novel and matched tokens on
   const {writeFile}=await import('node:fs/promises');const {captureDraft,draftFingerprint,draftId}=await import('../src/draft-store.js');const now=Date.now(),secret='Zx81Kartoffel',token=secret.toLowerCase(),quote='Use a separate calibration database for our invented deployments.';
   await writeFile(process.env.BASTRA_DRAFTS_PATH,JSON.stringify({version:1,rows:[{id:'d-0123456789ab',fp:'a'.repeat(40),kind:'typed',quote,situation:{before:[`curl -u deploybot:${secret} https://fixture.invalid`],after:[],reads:[],lits:[token,'fixture.invalid']},evidence:[{session_id:'old',turn:1,ts:now}],created:now,last_touched:now,surfaced:[{session_id:'reader',ts:now-2,novel:[token,`deploybot:${token}`,'fixture.invalid'],used:{ts:now-1,tool:'Bash',exit_code:0,matched:[`deploybot:${token}`]}}],state:'open'}]}));
   const fp=draftFingerprint('Another fictional deployment requires an isolated aquarium recorder.');await captureDraft({id:draftId('new',0,fp),fp,quote:'Another fictional deployment requires an isolated aquarium recorder.',kind:'typed',situation:{before:[],after:[],reads:[],lits:[]},evidence:[{session_id:'new',turn:0,ts:now}],created:now,last_touched:now,surfaced:[],state:'open'});
-  const stored=await readFile(process.env.BASTRA_DRAFTS_PATH,'utf8');
+  const stored=await readAppRecord("drafts", process.env.BASTRA_DRAFTS_PATH);
   assert.ok(!stored.toLowerCase().includes(token));
   assert.ok(stored.includes('fixture.invalid'));
  }finally{if(previous===undefined)delete process.env.BASTRA_DRAFTS_PATH;else process.env.BASTRA_DRAFTS_PATH=previous;await rm(dir,{recursive:true,force:true});}

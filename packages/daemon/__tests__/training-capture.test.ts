@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 /**
  * #1128-capture — the opt-in local label store for the draft check.
  *
@@ -101,7 +102,7 @@ test("switch off: the tick writes no label store, keeps no text and asks the mod
 
 test("switch on: every new draft is kept with its text and judged in shadow, not only promotion candidates", () => isolated(true, async dir => {
   await upsertDraft(draft(amber, "one"), now); await upsertDraft(draft(garden, "two"), now);
-  const before = await readFile(join(dir, "drafts.json"), "utf8");
+  const before = await readAppRecord("drafts", join(dir, "drafts.json"));
   const judge = judgeFor("request");
   const result = await tick(dir, judge, apart);
   assert.equal(result?.promotion.promoted, 0); assert.equal(result?.promotion.wouldPromote, 0);
@@ -118,7 +119,7 @@ test("switch on: every new draft is kept with its text and judged in shadow, not
   }
   if (process.platform !== "win32") assert.equal((await stat(trainingCapturePath())).mode & 0o777, 0o600);
   // Shadow only: the drafts are untouched and the event log stays text-free.
-  assert.equal(await readFile(join(dir, "drafts.json"), "utf8"), before);
+  assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), before);
   assert.ok((await listDrafts(now)).every(row => row.state === "open"));
   assert.doesNotMatch(await logsWithoutStore(dir), /amber database|artist easel/);
   // Nothing is asked or written twice.
@@ -292,10 +293,10 @@ test("a link from the store to the draft store leaves the drafts valid and the t
   await upsertDraft(draft(amber, "one"), now);
   await mkdir(join(dir, "logs"));
   await symlink(join(dir, "drafts.json"), trainingCapturePath());
-  const before = await readFile(join(dir, "drafts.json"), "utf8");
+  const before = await readAppRecord("drafts", join(dir, "drafts.json"));
   const result = await tick(dir, judgeFor(), apart);
   assert.ok(result, "the harvest tick still completes");
-  assert.equal(await readFile(join(dir, "drafts.json"), "utf8"), before);
+  assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), before);
   assert.equal(JSON.parse(before).rows.length, 1);
   assert.equal((await listDrafts(now)).length, 1);
 }));
@@ -341,10 +342,10 @@ test("a draft that is already due when capture is first switched on is still kep
   await upsertDraft(draft(amber, "one"), now);
   const due = now + DRAFT_UNCONFIRMED_AGE_MS + 1;
   assert.deepEqual(await listDrafts(due), [], "the normal listing no longer returns it");
-  assert.match(await readFile(join(dir, "drafts.json"), "utf8"), /amber database/);
+  assert.match(await readAppRecord("drafts", join(dir, "drafts.json")), /amber database/);
   await tick(dir, null, apart, due);
   assert.ok((await records()).some(row => row.type === "statement" && row.quote === amber));
-  assert.doesNotMatch(await readFile(join(dir, "drafts.json"), "utf8"), /amber database/, "the tick then expired it as before");
+  assert.doesNotMatch(await readAppRecord("drafts", join(dir, "drafts.json")), /amber database/, "the tick then expired it as before");
 }));
 
 test("two shadow checks at once ask each item once and write one verdict", () => isolated(true, async () => {

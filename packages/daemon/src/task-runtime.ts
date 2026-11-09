@@ -1,9 +1,10 @@
 import { reconcilePendingTaskIntents } from "./task-execution.js";
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
-import { watch, existsSync, type FSWatcher } from "node:fs";
+import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
 import { emptyTaskStore, type TaskStore } from "./task-schema.js";
 import { readTaskStore } from "./task-store.js";
+import { appRecordDatabasePath } from "./app-record-store.js";
 import { observeTaskSources, reconcileTaskTime } from "./task-events.js";
 import { taskEventToAssess, taskCheckMaterial, assessTaskFreshness } from "./task-freshness.js";
 import { onTaskSnapshot, onTaskWake } from "./task-runtime-signal.js";
@@ -30,12 +31,16 @@ export class TaskRuntime {
   }
   private installWatcher(): void {
     if (this.watcher || this.stopped) return;
-    const target = dirname(this.ctx.path); let directory = target;
+    const dbPath=appRecordDatabasePath(this.ctx.path);
+    const target = dirname(dbPath); let directory = target;
     while (!existsSync(directory) && dirname(directory) !== directory) directory = dirname(directory);
     try {
       this.watcher = watch(directory, { persistent: false }, (_event, name) => {
-        const wanted = directory === target ? basename(this.ctx.path) : relative(directory, target).split(sep)[0];
-        if (name?.toString() !== wanted) return;
+        const wanted = directory === target ? basename(dbPath) : relative(directory, target).split(sep)[0];
+        if(name?.toString()!==wanted){
+          if(directory!==target||name?.toString()!==`${basename(dbPath)}-wal`)return;
+          try{if(statSync(`${dbPath}-wal`).size<=32)return;}catch{return;}
+        }
         if (directory !== target) { this.watcher?.close(); this.watcher = undefined; this.installWatcher(); }
         void this.refresh().then(changed => { if (changed) this.contact(); }).catch(() => undefined);
       });

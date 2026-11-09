@@ -6,6 +6,7 @@ import { createHmac, createHash, randomBytes } from "node:crypto";
 import { withPathLock } from "./path-lock.js";
 import { atomicWrite, TaskStoreError, decodeTaskStore } from "./task-store.js";
 import { canonicalTaskValue } from "./task-canonical.js";
+import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
 const prefix = "hmac-v1:";
 export const privateComparisonPath = (path: string) => `${path}.comparison-key`;
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -23,7 +24,7 @@ export async function privateTaskComparison(path: string, purpose: string, value
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new TaskStoreError("corrupt", "Private task comparison key unavailable; original preserved");
       // A lost key must not silently replace the identity of existing comparisons.
       for (const candidate of [path,`${path}.backup`]) {
-        try { const s=JSON.parse(await readFile(candidate,"utf8")); if (containsPrivateComparison(s))
+        try { const s=JSON.parse(readTaskSnapshotText(candidate)); if (containsPrivateComparison(s))
           throw new TaskStoreError("corrupt","Private task comparison key missing; restore its private original");
         } catch(e) { if(e instanceof TaskStoreError)throw e;if((e as NodeJS.ErrnoException).code!=="ENOENT")throw new TaskStoreError("corrupt","Private comparison state unavailable"); }
       }
@@ -112,12 +113,13 @@ const migrated = new Set<string>();
 export async function migrateTaskComparisons(path: string): Promise<void> {
   if (migrated.has(path)) return;
   const marker = `${path}.comparison-migration`, archiveDir = join(dirname(path),"task-archives");
-  let main: string | undefined, backup: string | undefined;
-  try { main=await readFile(path,"utf8"); } catch(e) { if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e; }
-  try { backup=await readFile(`${path}.backup`,"utf8"); } catch(e) { if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e; }
-  // Missing stores are the pre-feature state. No new directory/write in idle reads.
-  if(main===undefined&&backup===undefined)return;
   await withPathLock(path, async ownership => {
+    // Adopt both snapshots under the same strict store lock before any existing
+    // private-comparison normalization. Their exact originals remain .pre-db.
+    let main: string | undefined, backup: string | undefined;
+    try { main=readTaskSnapshotText(path); } catch(e) { if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e; }
+    try { backup=readTaskSnapshotText(`${path}.backup`); } catch(e) { if(!(e instanceof TaskStoreError)&&(e as NodeJS.ErrnoException).code!=="ENOENT")throw e; }
+    if(main===undefined&&backup===undefined)return;
     const plan: Array<{id:string;before:string;after:string}> = [];
     try { const saved=JSON.parse(await readFile(marker,"utf8")); if(!Array.isArray(saved)||saved.length>1000||saved.some(p=>!/^[-a-f0-9]{36}$/.test(p.id)||!/^([a-f0-9]{64})$/.test(p.before)||!/^([a-f0-9]{64})$/.test(p.after)))throw new Error();plan.push(...saved); }
     catch(e) { if((e as NodeJS.ErrnoException).code!=="ENOENT")throw new TaskStoreError("corrupt","Private comparison migration cannot resume safely"); }
@@ -137,13 +139,13 @@ export async function migrateTaskComparisons(path: string): Promise<void> {
     if(plan.length)await atomicWrite(marker,JSON.stringify(plan),ownership);
     // Save the private create bindings into live indices before removing them from exports.
     for(const candidate of [path,`${path}.backup`]) {
-      let raw:string;try{raw=await readFile(candidate,"utf8");}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
+      let raw:string;try{raw=readTaskSnapshotText(candidate);}catch(e){if(e instanceof TaskStoreError||(e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
       let s:any;try{decodeTaskStore(raw);s=JSON.parse(raw);}catch{continue;}if(!Array.isArray(s.tasks))continue;
       dropLegacyTaskComparisons(s);
       await migrateContentComparisons(path, s);
       retireLegacyTaskProposals(s);
       for(const a of s.archives??[]) {const p=plan.find(p=>p.id===a.id);if(p){if(a.hash!==p.before&&a.hash!==p.after)throw new TaskStoreError("corrupt","Private archive index drift");a.hash=p.after;const changed=archiveChanges.find(c=>c.id===a.id);if(changed&&Object.keys(changed.bindings).length)a.creation_bindings=changed.bindings;}}
-      const payload=JSON.stringify(s);if(payload!==raw)await atomicWrite(candidate,payload,ownership);
+      const payload=JSON.stringify(s);if(payload!==raw)writeTaskSnapshotText(candidate,payload,ownership);
     }
     for(const a of archiveChanges)await atomicWrite(join(archiveDir,`${a.id}.json`),a.payload,ownership);
     if(plan.length)await unlink(marker);

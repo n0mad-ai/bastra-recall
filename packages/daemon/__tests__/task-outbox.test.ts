@@ -1,7 +1,8 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintTaskCredential, authenticateTask } from "../src/task-auth.js";
@@ -32,10 +33,10 @@ test("disabled/purged relay and output overflow preserve pending work with no fa
   const f = await fixture(); const store = await readTaskStore(f.ctx.path);
   const small = taskDueProjection(store, f.principal, taskDueInput.parse({ max_bytes: 256 }), 3000);
   assert.equal(small.cards.length, 1); assert.equal(small.cards[0].kind, "availability"); assert.equal(small.overflow, 1); assert.equal(store.occurrences[0].attempts.length, 0);
-  const before = await readFile(f.ctx.path, "utf8"); const saved = process.env.BASTRA_PENDING_RELAY;
+  const before = await readAppRecord("tasks", f.ctx.path); const saved = process.env.BASTRA_PENDING_RELAY;
   try { process.env.BASTRA_PENDING_RELAY = "0"; assert.equal(taskDueProjection(store, f.principal, taskDueInput.parse({}), 3000).cards.length, 1); }
   finally { if (saved === undefined) delete process.env.BASTRA_PENDING_RELAY; else process.env.BASTRA_PENDING_RELAY = saved; }
-  assert.equal(await readFile(f.ctx.path, "utf8"), before);
+  assert.equal(await readAppRecord("tasks", f.ctx.path), before);
 });
 test("several clients share one occurrence, bounded rendering rotates pending cards", async () => {
   const f = await fixture(); for (let i = 0; i < 4; i++) await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, idempotency_key: `more-${i}` });

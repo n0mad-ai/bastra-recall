@@ -195,9 +195,11 @@ function scrubPendingRows(rows: PendingSuggestion[]): void {
 }
 
 /** Every write, including write-back/settlement, cleans legacy rows in place. */
-async function writePendingRows(path: string, rows: PendingSuggestion[]): Promise<void> {
+function sqliteBusy(error:unknown):boolean {return [5,6].includes((error as {errcode?:number}).errcode??-1);}
+
+async function writePendingRows(path: string, rows: PendingSuggestion[],busyTimeoutMs?:number): Promise<void> {
   scrubPendingRows(rows);
-  writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson);
+  writeAppRecord("pending-suggestions", path, JSON.stringify(rows), validateLegacyJson,{busyTimeoutMs});
 }
 
 /**
@@ -247,17 +249,18 @@ export async function writePendingSuggestion(
     const deadline = Date.now() + 11_000;
     while (pendingRelayEnabled()) {
       let ran = false;
-      await tryWithPathLock(path, async () => {
+      try {await tryWithPathLock(path, async () => {
       ran = true;
       let entries: PendingSuggestion[] = [];
       try {
-        const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson)) as unknown;
+        const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0})) as unknown;
         if (!Array.isArray(parsed)) {
           reportLoss("existing file is not a JSON array — write skipped; original preserved");
           return;
         }
         entries = parsed as PendingSuggestion[];
       } catch (error) {
+        if(sqliteBusy(error))throw error;
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
           reportLoss("existing file unreadable or invalid — write skipped; original preserved");
           return;
@@ -321,9 +324,12 @@ export async function writePendingSuggestion(
             `at the ${MAX_ENTRIES}-entry cap`,
         );
       }
-      await writePendingRows(path, kept);
+      await writePendingRows(path, kept,0);
       opts.onPersisted?.();
-      }, { crossProcess: true, noQueue: true, takeOverStale: true });
+      }, { crossProcess: true, noQueue: true, takeOverStale: true });}catch(error){
+        if(!sqliteBusy(error))throw error;
+        ran=false; // SQLite contention follows the existing deferred/retry path.
+      }
       if (ran) return;
       if (opts.deferOnBusy) {
         const { deferOnBusy: _defer, ...background } = opts;
@@ -510,7 +516,7 @@ export async function takePendingRelay(
   const maxSessions = pendingTrendsSessions();
   try {
     return (await tryWithPathLock(path, async () => {
-      const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson)) as unknown;
+      const parsed = JSON.parse(readAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0})) as unknown;
       lossDiagnostics = 0;
       const valid = Array.isArray(parsed)
         ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
@@ -541,9 +547,9 @@ export async function takePendingRelay(
         }
       }
       if (trends.length + tombstones.length > 0) {
-        await writePendingRows(path, [...tombstones, ...trends]);
+        await writePendingRows(path, [...tombstones, ...trends],0);
       } else {
-        deleteAppRecord("pending-suggestions", path, validateLegacyJson);
+        deleteAppRecord("pending-suggestions", path, validateLegacyJson,{busyTimeoutMs:0});
       }
       return { recency, trends };
     }, { crossProcess: true, noQueue: true })) ?? { recency: [], trends: [] };

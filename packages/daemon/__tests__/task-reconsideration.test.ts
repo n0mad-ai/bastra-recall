@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -60,7 +61,7 @@ test("edited/missing/cancelled/superseded bindings disarm old watch and never re
     else await writeFile(f.decisionPath, mode === "edit-decision" ? f.decisionRaw + "changed" : f.decisionRaw.replace('summary:', `${mode === "cancelled" ? "status: cancelled" : "superseded_by: another"}\nsummary:`));
     await reconcileTaskTime(f.ctx); const s = await readTaskStore(f.ctx.path);
     assert.equal(s.tasks[0].armed, false, mode); assert.equal(s.occurrences.length, 0, mode); assert.equal(s.tasks[0].decision!.revision, memoryRevision(f.decisionRaw));
-    const bytes = await readFile(f.ctx.path, "utf8"); await reconcileTaskTime(f.ctx); assert.equal(await readFile(f.ctx.path, "utf8"), bytes);
+    const bytes = await readAppRecord("tasks", f.ctx.path); await reconcileTaskTime(f.ctx); assert.equal(await readAppRecord("tasks", f.ctx.path), bytes);
   }
 });
 test("snooze and stop remain distinct; agent cannot confirm a new decision", async () => {

@@ -1,7 +1,8 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile,  stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -43,8 +44,8 @@ test("empty/unarmed jobs do no periodic I/O; contact catches a new deadline befo
     await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(job.runtime.reads, reads);
     await assert.rejects(stat(f.ctx.path), { code: "ENOENT" });
     await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, arm: false });
-    await new Promise(resolve => setTimeout(resolve, 50)); const before = await readFile(f.ctx.path, "utf8");
-    await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(await readFile(f.ctx.path, "utf8"), before);
+    await new Promise(resolve => setTimeout(resolve, 50)); const before = await readAppRecord("tasks", f.ctx.path);
+    await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(await readAppRecord("tasks", f.ctx.path), before);
     let t = await callTaskCrud(f.ctx, f.auth, "task_get", { id: (await readTaskStore(f.ctx.path)).tasks[0].id }) as any;
     await callTaskCrud(f.ctx, f.auth, "task_review", { id: t.id, expected_revision: t.expected_revision });
     f.setNow(2000); job.runtime.contact(); await waitFor(async () => (await readTaskStore(f.ctx.path)).occurrences.length === 1);
@@ -62,7 +63,7 @@ test("source polling is automatic; failed check backs off and does not block a c
     await waitFor(async () => (await readTaskStore(f.ctx.path)).occurrences.filter(o => o.task_id === watched.id).length === 1);
     const { unlink } = await import("node:fs/promises"); await unlink(join(f.root, "artifact.txt"));
     f.setNow(121000); await job.runtime.tick(); await waitFor(async () => job.runtime.checks.get(watched.id)?.backoff === 60000);
-    const unchanged = await readFile(f.ctx.path, "utf8"); f.setNow(122000); await job.runtime.tick(); assert.equal(await readFile(f.ctx.path, "utf8"), unchanged);
+    const unchanged = await readAppRecord("tasks", f.ctx.path); f.setNow(122000); await job.runtime.tick(); assert.equal(await readAppRecord("tasks", f.ctx.path), unchanged);
     f.setNow(181000); await job.runtime.tick(); await waitFor(async () => job.runtime.checks.get(watched.id)?.backoff === 120000);
     assert.ok((await readTaskStore(f.ctx.path)).occurrences.some(o => o.task_id !== watched.id));
   } finally { job.stop(); await job.runtime.settle(); }
@@ -130,7 +131,7 @@ test("event arriving DURING an older assessment never inherits its backoff or di
 
 test("a healthy committed event after store failure clears global I/O stop and never inherits its hour deadline",async()=>{
  const f=await fixture();await callTaskCrud(f.ctx,f.auth,"task_source_register",{id:"producer",kind:"event",producer_actor:"owner",owner_domains:["personal"],sensitivity:"private",max_age_ms:1000,enabled:true});await callTaskCrud(f.ctx,f.auth,"task_create",{...f.input,schedule:{kind:"event",source_id:"producer",predicate:"equals",expected:"yes"}});const job=startProactiveTaskJob(f.ctx);await job.runtime.ready;
- try{const raw=await readFile(f.ctx.path,"utf8");await writeFile(f.ctx.path,"broken");await assert.rejects((job.runtime as any).refresh());assert.equal(job.runtime.ioStopped,true);job.runtime.nextTick=f.ctx.now()+3600000;await writeFile(f.ctx.path,raw);
+ try{const raw=await readAppRecord("tasks", f.ctx.path);await writeAppRecord("tasks", f.ctx.path,"broken");await assert.rejects((job.runtime as any).refresh());assert.equal(job.runtime.ioStopped,true);job.runtime.nextTick=f.ctx.now()+3600000;await writeAppRecord("tasks", f.ctx.path,raw);
   await callTaskCrud(f.ctx,f.auth,"task_event",{source_id:"producer",source_revision:0,dedup_key:"healthy-after-fault",value:"yes",state_updated_at:f.ctx.now()});
   await waitFor(async()=> (await readTaskStore(f.ctx.path)).occurrences.length===1,5000);assert.equal(job.runtime.ioStopped,false);
  }finally{job.stop();await job.runtime.settle();}

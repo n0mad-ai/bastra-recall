@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, readdir, rm, mkdir } from "node:fs/promises";
@@ -67,15 +68,15 @@ test("B2 ssh failure/explanation/success captures one situated draft and rereads
   assert.ok(!drafts[0].situation.lits.includes("REDACTED"));
   assert.match(drafts[0].situation.after[1], /\[REDACTED\]/);
   assert.match(drafts[0].situation.after[2], /cat ~\//);
-  assert.doesNotMatch(await readFile(join(dir, "drafts.json"), "utf8"), /fixture:alpha/);
-  const before = await readFile(join(dir, "drafts.json"), "utf8");
+  assert.doesNotMatch(await readAppRecord("drafts", join(dir, "drafts.json")), /fixture:alpha/);
+  const before = await readAppRecord("drafts", join(dir, "drafts.json"));
   const queuePath = join(dir, "queue.json");
   const queue = JSON.parse(await readFile(queuePath, "utf8"));
   queue[0].harvested_upto = 0;
   await writeFile(queuePath, JSON.stringify(queue));
   await noteSessionForHarvest({ session_id: "situation", transcript_path: path, ended: true, now: now + 2 });
   assert.equal((await runSessionHarvest({ loadTurns, now: now + 3 })).harvested, 1);
-  assert.equal(await readFile(join(dir, "drafts.json"), "utf8"), before);
+  assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), before);
   assert.equal(await readFile(join(dir, "vault", "fixture.md"), "utf8"), vaultBefore);
   assert.deepEqual(await readdir(join(dir, "vault")), ["fixture.md"]);
   const logs = (await Promise.all((await readdir(join(dir, "logs"))).map(name => readFile(join(dir, "logs", name), "utf8")))).join("");
@@ -104,9 +105,9 @@ test("B2 uses bounded before/after windows between typed turns and merges later 
   assert.ok(draft.situation.reads.length <= 3);
   assert.ok(draft.situation.lits.includes("new.md"));
   assert.ok(draft.situation.lits.length <= 32);
-  const beforeReplay = await readFile(join(dir, "drafts.json"), "utf8");
+  const beforeReplay = await readAppRecord("drafts", join(dir, "drafts.json"));
   await captureTypedDrafts(first, { session_id: "window" }, now + 3, []);
-  assert.equal(await readFile(join(dir, "drafts.json"), "utf8"), beforeReplay, "old evidence must not reorder newer situation cues");
+  assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), beforeReplay, "old evidence must not reorder newer situation cues");
 }));
 
 test("B2 keeps Codex parser output unchanged and captures without situation when Claude fields are absent", () => isolated(async () => {

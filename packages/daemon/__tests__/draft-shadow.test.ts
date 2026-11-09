@@ -1,8 +1,7 @@
+import { readAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm, rename } from "node:fs/promises";
-import fs from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,7 +51,7 @@ async function notes(dir: string, privateFirst = false): Promise<Vault> {
 test("B3 logs Dice and cosine once for cross-session drafts, persists private vectors, never merges drafts", () => isolated(async dir => {
   await upsertDraft(draft(firstQuote,"one"),now);
   await upsertDraft(draft(repeatedQuote,"two"),now);
-  const before = await readFile(join(dir,"drafts.json"),"utf8");
+  const before = await readAppRecord("drafts", join(dir,"drafts.json"));
   const provider = providerFor(() => new Float32Array([1,0]));
   const events: DraftShadowEvent[] = [];
   const result = await runDraftShadow({ provider, ollama: local, now, emit: event => events.push(event) });
@@ -62,10 +61,10 @@ test("B3 logs Dice and cosine once for cross-session drafts, persists private ve
   assert.ok(pair && pair.kind === "draft_repeat_shadow");
   assert.ok(pair.dice >= 0.6);
   assert.equal(pair.cosine,1);
-  assert.equal(await readFile(join(dir,"drafts.json"),"utf8"),before);
+  assert.equal(await readAppRecord("drafts", join(dir,"drafts.json")),before);
   assert.equal((await listDrafts(now)).length,2);
-  if (process.platform !== 'win32') assert.equal((await stat(draftVectorsPath())).mode & 0o777,0o600);
-  assert.doesNotMatch(await readFile(draftVectorsPath(),"utf8"),/Staging uses|Every testing/);
+  if (process.platform !== 'win32') assert.equal((await stat(appRecordDatabasePath(draftVectorsPath()))).mode & 0o777,0o600);
+  assert.doesNotMatch(await readAppRecord("draft-vectors", draftVectorsPath()),/Staging uses|Every testing/);
   await runDraftShadow({ provider, ollama: local, now, emit: event => events.push(event) });
   assert.equal(provider.calls.length,1);
   assert.equal(events.length,1);
@@ -80,7 +79,7 @@ test("B3 scores a paraphrase and unrelated topic against existing same-model not
     const provider = providerFor(text => new Float32Array(text === unrelated ? [0,1] : [1,0]));
     const events: DraftShadowEvent[] = [];
     const before = await tree(join(dir,"vault"));
-    const store = await readFile(join(dir,"drafts.json"),"utf8");
+    const store = await readAppRecord("drafts", join(dir,"drafts.json"));
     await runDraftShadow({ provider, ollama: local, now, vault, vaultVectors: () => ({ provider: provider.id, dim: 2, vectors: new Map([['note-0',new Float32Array([1,0])],['note-1',new Float32Array([-1,0])],['note-2',new Float32Array([0,-1])]]) }), emit: event => events.push(event) });
     const matches = events.filter(event => event.kind === 'draft_vault_shadow');
     assert.equal(matches.length,2);
@@ -88,7 +87,7 @@ test("B3 scores a paraphrase and unrelated topic against existing same-model not
     assert.equal(matches.find(event => event.draft_id === draft(repeatedQuote,'one').id)?.cosine,1);
     assert.equal(matches.find(event => event.draft_id === draft(unrelated,'two').id)?.cosine,0);
     assert.deepEqual(await tree(join(dir,"vault")),before);
-    assert.equal(await readFile(join(dir,"drafts.json"),"utf8"),store);
+    assert.equal(await readAppRecord("drafts", join(dir,"drafts.json")),store);
     assert.equal(provider.calls.flat().length,2,"existing notes are never sent to the provider");
   } finally { await vault.stop(); }
 }));
@@ -126,7 +125,7 @@ test("B3 effective cloud/none choices cannot send draft text or create vector fi
     for (const provider of [cloud,null]) {
       const result=await runDraftShadow({provider,ollama:null,now});
       assert.equal(result.enabled,false);
-      await assert.rejects(stat(draftVectorsPath()),{code:'ENOENT'});
+      await assert.rejects(Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),{code:'ENOENT'});
     }
     assert.deepEqual(calls,[]);
   } finally { globalThis.fetch=realFetch; }
@@ -141,12 +140,12 @@ test("B3 refuses remote Ollama even with opt-in and prunes expired vectors witho
   try {
     await runDraftShadow({provider,ollama:{...local,baseURL:'https://provider.invalid'},now});
     assert.equal(provider.calls.length,0);
-    await assert.rejects(stat(draftVectorsPath()),{code:'ENOENT'});
+    await assert.rejects(Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),{code:'ENOENT'});
   } finally { if(previous===undefined)delete process.env.BASTRA_ALLOW_REMOTE_OLLAMA;else process.env.BASTRA_ALLOW_REMOTE_OLLAMA=previous; }
   await runDraftShadow({provider,ollama:local,now});
   await expireDrafts({now:now+7*24*60*60*1000});
   await runDraftShadow({provider:null,ollama:null,now:now+7*24*60*60*1000});
-  await assert.rejects(stat(draftVectorsPath()),{code:'ENOENT'});
+  await assert.rejects(Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),{code:'ENOENT'});
   assert.equal(provider.calls.length,1);
 }));
 
@@ -196,14 +195,14 @@ test("B3 purge removes vectors immediately and an in-flight embed cannot resurre
   await purgeDrafts();
   release();
   await shadow;
-  await assert.rejects(stat(draftVectorsPath()),{code:'ENOENT'});
+  await assert.rejects(Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),{code:'ENOENT'});
   assert.deepEqual(await listDrafts(now),[]);
   const again=providerFor(()=>new Float32Array([1,0]));
   await upsertDraft(draft(firstQuote,'purge-existing'),now);
   await runDraftShadow({provider:again,ollama:local,now,emit:()=>{}});
-  assert.ok((await stat(draftVectorsPath())).size>0);
+  assert.ok(Buffer.byteLength(readAppRecord("draft-vectors", draftVectorsPath()))>0);
   await purgeDrafts();
-  await assert.rejects(stat(draftVectorsPath()),{code:'ENOENT'});
+  await assert.rejects(Promise.resolve().then(() => readAppRecord("draft-vectors", draftVectorsPath())),{code:'ENOENT'});
 }));
 
 test("B3 keeps same-session pairs out and both threshold arms can log a pair", () => isolated(async () => {
@@ -266,26 +265,22 @@ test("B3 default telemetry writes only scores/IDs and cache invalidates a change
   const changed={...provider,id:'ollama-changed'};
   await runDraftShadow({provider:changed,ollama:{...local,model:'changed'},now,emit:()=>{}});
   assert.equal(provider.calls.length,2);
-  assert.equal(JSON.parse(await readFile(draftVectorsPath(),'utf8')).provider,'ollama-changed');
+  assert.equal(JSON.parse(await readAppRecord("draft-vectors", draftVectorsPath())).provider,'ollama-changed');
 }));
 
 
-test("B3 cache validates and reads the same opened file despite a pathname replacement", t => isolated(async dir => {
+test("B3 migrated vector state stays authoritative over a stale legacy replacement", () => isolated(async dir => {
   const d=draft(firstQuote,'file-race');await upsertDraft(d,now);
   const path=draftVectorsPath();
-  await writeFile(path,JSON.stringify({version:1,provider:'ollama-fixture',dim:2,rows:[{id:d.id,fp:d.fp,quoteHash:createHash('sha256').update(d.quote).digest('hex'),measured:true,vaultMeasured:true,vector:Buffer.from(new Float32Array([1,0]).buffer).toString('base64')}]}));
-  const realStat=fs.stat,realOpen=fs.open;
-  let swapped=false;
-  const swap=async()=>{if(!swapped){swapped=true;await rename(path,join(dir,'original-cache.json'));await writeFile(path,JSON.stringify({version:99}));}};
-  const statSpy=t.mock.method(fs,'stat',async(...args:Parameters<typeof realStat>)=>{const info=await realStat(...args);if(args[0]===path)await swap();return info;});
-  const openSpy=t.mock.method(fs,'open',async(...args:Parameters<typeof realOpen>)=>{const handle=await realOpen(...args);if(args[0]===path){const checked=handle.stat.bind(handle);t.mock.method(handle,'stat',async()=>{const info=await checked();await swap();return info;});}return handle;});
-  syncBuiltinESMExports();
-  try {
-    const provider=providerFor(()=>new Float32Array([1,0]));
-    const result=await runDraftShadow({provider,ollama:local,now,emit:()=>{}});
-    assert.equal(swapped,true);
-    assert.equal(result.errors,0);
-    assert.equal(provider.calls.length,0,'the validated original cache must be reused');
-    assert.equal(JSON.parse(await readFile(path,'utf8')).version,99,'an unrelated replacement must not be rewritten');
-  } finally {statSpy.mock.restore();openSpy.mock.restore();syncBuiltinESMExports();}
+  const original=JSON.stringify({version:1,provider:'ollama-fixture',dim:2,rows:[{id:d.id,fp:d.fp,quoteHash:createHash('sha256').update(d.quote).digest('hex'),measured:true,vaultMeasured:true,vector:Buffer.from(new Float32Array([1,0]).buffer).toString('base64')}]});
+  await writeFile(path,original);
+  const provider=providerFor(()=>new Float32Array([1,0]));
+  assert.equal((await runDraftShadow({provider,ollama:local,now,emit:()=>{}})).errors,0);
+  assert.equal(await readFile(path+'.pre-db','utf8'),original);
+  await writeFile(path,JSON.stringify({version:99}));
+  assert.equal((await runDraftShadow({provider,ollama:local,now,emit:()=>{}})).errors,0);
+  assert.equal(provider.calls.length,0,'the committed cache is reused');
+  assert.equal(JSON.parse(readAppRecord('draft-vectors',path)).version,1);
+  const retained=(await readdir(dir)).filter(name=>name.startsWith('drafts.vectors.json.pre-db-'));
+  assert.equal(retained.length,1);assert.equal(JSON.parse(await readFile(join(dir,retained[0]),'utf8')).version,99);
 }));

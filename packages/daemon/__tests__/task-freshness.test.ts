@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -76,9 +77,9 @@ test("unavailable evidence retries the same journal event after recovery, not co
 test("secret claim values retain exact pre-redaction comparison without executing verify_cmd", async () => {
   const secret = "api_key=sk_" + "z".repeat(36); const f = await premiseFixture(secret);
   await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).tasks[0].verification?.outcome, "refuted");
-  assert.ok(!(await readFile(f.ctx.path, "utf8")).includes(secret));
-  const checked = await readFile(f.ctx.path, "utf8"); await assessTaskFreshness(f.ctx);
-  assert.equal(await readFile(f.ctx.path, "utf8"), checked, "redacted display value does not create repeated freshness writes");
+  assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(secret));
+  const checked = await readAppRecord("tasks", f.ctx.path); await assessTaskFreshness(f.ctx);
+  assert.equal(await readAppRecord("tasks", f.ctx.path), checked, "redacted display value does not create repeated freshness writes");
   const malicious = await premiseFixture("cheap"); const marker = join(malicious.root, "should-not-exist");
   await writeFile(join(malicious.root, "evidence.json"), JSON.stringify({ verify_cmd: `touch ${marker}` }));
   await assessTaskFreshness(malicious.ctx); await reconcileTaskTime(malicious.ctx);
@@ -122,9 +123,9 @@ test("twenty identical checks with advancing clocks do not change revisions, aud
   for (const missing of [false, true]) {
     const f = await premiseFixture("cheap");
     if (missing) { const { unlink } = await import("node:fs/promises"); await unlink(join(f.root, "evidence.json")); }
-    await assessTaskFreshness(f.ctx); const initial = await readFile(f.ctx.path, "utf8");
+    await assessTaskFreshness(f.ctx); const initial = await readAppRecord("tasks", f.ctx.path);
     for (let i = 1; i <= 20; i++) { f.ctx.now = () => 1000 + i * 10; await assessTaskFreshness(f.ctx); }
-    assert.equal(await readFile(f.ctx.path, "utf8"), initial);
+    assert.equal(await readAppRecord("tasks", f.ctx.path), initial);
   }
 });
 test("future bound state age and persisted future verified cache never cause a time occurrence", async () => {
@@ -134,23 +135,23 @@ test("future bound state age and persisted future verified cache never cause a t
   await assessTaskFreshness(f.ctx); await reconcileTaskTime(f.ctx); let s = await readTaskStore(f.ctx.path);
   assert.equal(s.tasks[0].verification?.outcome, "inconclusive"); assert.equal(s.occurrences.length, 0);
   s.tasks[0].verification!.outcome = "verified"; s.tasks[0].verification!.state_updated_at = 999999;
-  await writeFile(f.ctx.path, JSON.stringify(s)); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
+  await writeAppRecord("tasks", f.ctx.path, JSON.stringify(s)); await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
 });
 test("a disabled evidence source invalidates a previously verified cached time check", async () => {
   const f = await fixture(); const raw = "evidence"; const revision = taskValueHash(raw); await writeFile(join(f.root, "enabled.txt"), raw);
   await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "enabled", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "enabled.txt" });
   await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "instant", at: 1000 }, evidence: [{ source_id: "enabled", id: "evidence", revision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }] });
   await assessTaskFreshness(f.ctx); const s = await readTaskStore(f.ctx.path); assert.equal(s.tasks[0].verification?.outcome, "verified");
-  s.sources.find(source => source.id === "enabled")!.enabled = false; await writeFile(f.ctx.path, JSON.stringify(s));
+  s.sources.find(source => source.id === "enabled")!.enabled = false; await writeAppRecord("tasks", f.ctx.path, JSON.stringify(s));
   await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
 });
 test("twenty unchanged clock/evidence checks keep the entire snapshot unchanged", async () => {
   const f = await fixture(); const raw = "clock evidence"; const revision = taskValueHash(raw); await writeFile(join(f.root, "quiet.txt"), raw);
   await callTaskCrud(f.ctx, f.auth, "task_source_register", { ...f.source, id: "quiet", kind: "file", producer_actor: "task-source-reader", root: f.root, path: "quiet.txt" });
   await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "instant", at: 2000 }, evidence: [{ source_id: "quiet", id: "evidence", revision, observed_at: 1000, state_updated_at: 1000, max_age_ms: 1000, provenance: "attributable" }] });
-  await assessTaskFreshness(f.ctx); const initial = await readFile(f.ctx.path, "utf8");
+  await assessTaskFreshness(f.ctx); const initial = await readAppRecord("tasks", f.ctx.path);
   for (let i = 1; i <= 20; i++) { f.ctx.now = () => 1000 + i * 10; await assessTaskFreshness(f.ctx); }
-  assert.equal(await readFile(f.ctx.path, "utf8"), initial);
+  assert.equal(await readAppRecord("tasks", f.ctx.path), initial);
 });
 test("versioned claim retry ignores input/persisted key order and preserves its original journal identity", async () => {
   const f = await premiseFixture("cheap"); const first = (await readTaskStore(f.ctx.path)).events[0];

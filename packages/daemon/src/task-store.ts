@@ -6,7 +6,8 @@ import { canonicalTaskValue } from "./task-canonical.js";
 import { publishTaskSnapshot } from "./task-runtime-signal.js";
 import { randomUUID } from "node:crypto";
 import { renameSync } from "node:fs";
-import { mkdir, open, readFile, unlink, copyFile, chmod, stat } from "node:fs/promises";
+import { mkdir, open, unlink } from "node:fs/promises";
+import { readTaskSnapshotText, writeTaskSnapshotText } from "./task-database.js";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
@@ -48,7 +49,7 @@ export function decodeTaskStore(raw: string): TaskStore {
 
 async function readTaskStoreRaw(path: string): Promise<TaskStore> {
   let raw: string;
-  try { raw = await readFile(path, "utf8"); }
+  try { raw = readTaskSnapshotText(path); }
   catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyTaskStore();
     throw err;
@@ -198,9 +199,9 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
       // Preserve last valid snapshot before replacing it; never back up corruption.
       // Absence has no recoverable predecessor; do not advertise an empty backup.
       let present = true;
-      try { await stat(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
-      if (present) await atomicWrite(`${path}.backup`, JSON.stringify(store), assertOwnership);
-      await atomicWrite(path, payload, assertOwnership);
+      try { readTaskSnapshotText(path); } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") present = false; else throw err; }
+      if (present) writeTaskSnapshotText(`${path}.backup`, JSON.stringify(store), assertOwnership);
+      writeTaskSnapshotText(path, payload, assertOwnership);
       publishTaskSnapshot(path, validated);
       store = validated; return structuredClone(validated);
     };
@@ -221,10 +222,10 @@ export async function transactTaskStore(path: string, expectedRevision: Pick<Tas
 export async function recoverTaskStore(path: string, actor: string, authorize?: (snapshot:TaskStore)=>Promise<void>): Promise<{ store: TaskStore; quarantine: string | null; changes_may_be_missing:true; recovered_archive_exports:number; original_readable:boolean }> {
   return withPathLock(path, async assertOwnership => {
     let backup: TaskStore;
-    try { backup = decodeTaskStore(await readFile(`${path}.backup`, "utf8")); }
+    try { backup = decodeTaskStore(readTaskSnapshotText(`${path}.backup`)); }
     catch { throw new TaskStoreError("invalid_backup", "backup is absent or invalid; original preserved"); }
     await authorize?.(backup);
-    let current:TaskStore|undefined;try{current=decodeTaskStore(await readFile(path,"utf8"));}catch{/* retain damaged original in quarantine */}
+    let current:TaskStore|undefined;try{current=decodeTaskStore(readTaskSnapshotText(path));}catch{/* retain damaged original in quarantine */}
     if(current)await authorize?.(current);
     const cold=await discoverTaskArchiveExports(path,actor);let recoveredArchiveExports=0;
     for(const {entry,snapshot} of cold){await authorize?.({...snapshot,archives:[entry]});const known=backup.archives.find(a=>a.id===entry.id)??current?.archives.find(a=>a.id===entry.id);
@@ -236,9 +237,7 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
     backup.controls.execution_stopped=true;
     let quarantine: string | null = `${path}.corrupt-${randomUUID()}`;
     try {
-      await copyFile(path, quarantine); await chmod(quarantine, 0o600);
-      const original = await open(quarantine, "r");
-      try { await original.sync(); } finally { await original.close(); }
+      await atomicWrite(quarantine, readTaskSnapshotText(path, false), assertOwnership);
     }
     catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") quarantine = null; else throw err; }
     backup.recovery_history.push({ id: randomUUID(), at: Date.now(), from_revision: backup.revision, actor, reason: `Explicit older backup recovery; newer changes may be missing; original quarantined; ${recoveredArchiveExports} cold archive indexes recovered` });
@@ -251,7 +250,7 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
     const cleaned = cleanStore(backup);
     const payload = JSON.stringify(cleaned);
     if (Buffer.byteLength(payload) > TASK_MAX_BYTES) throw new TaskStoreError("capacity", "recovery snapshot exceeds hard limit; original preserved");
-    await atomicWrite(path, payload, assertOwnership);
+    writeTaskSnapshotText(path, payload, assertOwnership);
     publishTaskSnapshot(path, cleaned);
     return { store: cleaned, quarantine, changes_may_be_missing:true,recovered_archive_exports:recoveredArchiveExports,original_readable:!!current };
   }, { strictLocal: true });

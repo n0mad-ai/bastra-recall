@@ -1,9 +1,10 @@
 import { ownerPromptText } from "./system-turn.js";
 import { bastraDataDir } from "./platform-paths.js";
 /** Local, bounded draft storage (#1084, phase A); never reads or writes a vault. */
-import { createHash, randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { watch } from "node:fs";
+import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { readAppRecord, writeAppRecord, deleteAppRecord, appRecordDatabasePath } from "./app-record-store.js";
+import { watch, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -151,19 +152,49 @@ export function draftStoreDiagnostics(): DraftStoreDiagnostics {
   return { ...(cache?.store.diagnostics ?? { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false }) };
 }
 
-async function fileInfo(path: string): Promise<{ stamp: string; mtime: number }> {
+class DraftLegacyValidationError extends Error {}
+function validateLegacyDraftDocument(raw: string): void {
+  if (Buffer.byteLength(raw) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
+  let parsed: unknown;
+  try { parsed=raw.trim()===""?[]:JSON.parse(raw); }
+  catch { throw new DraftLegacyValidationError("draft store is malformed; original file preserved"); }
+  if (Array.isArray(parsed)) return; // Invalid rows retain the existing skip/diagnostic policy.
+  if (!parsed || typeof parsed!=="object") throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
+  const doc=parsed as Record<string,unknown>;
+  if(typeof doc.version==="number"&&Number.isInteger(doc.version)&&doc.version>DRAFT_STORE_VERSION)
+    throw new DraftLegacyValidationError("draft store version is newer; original file preserved");
+  if(typeof doc.version!=="number"||!Number.isInteger(doc.version)||doc.version<0||!Array.isArray(doc.rows))
+    throw new DraftLegacyValidationError("draft store is malformed; original file preserved");
+}
+function draftDocumentText(path:string,busyTimeoutMs?:number):string {
+  try { return readAppRecord("drafts",path,validateLegacyDraftDocument,{busyTimeoutMs}); }
+  catch(error) {
+    // Preserve malformed/future legacy files at their original names while the
+    // ordinary loader still reports its existing diagnostics and disables writes.
+    if(error instanceof DraftLegacyValidationError)return readFileSync(path,"utf8");
+    throw error;
+  }
+}
+function sqliteBusy(error:unknown):boolean {return [5,6].includes((error as {errcode?:number}).errcode??-1);}
+
+async function fileInfo(path: string,busyTimeoutMs?:number): Promise<{ stamp: string; mtime: number }> {
   try {
-    const st = await stat(path);
-    if (st.size > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
-    return { stamp: `${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`, mtime: st.mtimeMs };
+    // Only background/store access reads SQLite; draftSearchSnapshot stays RAM-only.
+    const raw = draftDocumentText(path,busyTimeoutMs);
+    if (Buffer.byteLength(raw) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
+    let mtime = Date.now();
+    try { mtime = (await stat(path)).mtimeMs; } catch {
+      try {mtime=(await stat(`${path}.pre-db`)).mtimeMs;}catch{/* new DB record */}
+    }
+    return { stamp: createHash("sha256").update(raw).digest("hex"), mtime };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { stamp: "missing", mtime: 0 };
     throw err;
   }
 }
 
-async function load(path: string, now: number): Promise<StoreSnapshot> {
-  const info = await fileInfo(path);
+async function load(path: string, now: number,busyTimeoutMs?:number): Promise<StoreSnapshot> {
+  const info = await fileInfo(path,busyTimeoutMs);
   if (cache?.path === path && cache.stamp === info.stamp) return structuredClone(cache.store);
   const store: StoreSnapshot = {
     rows: [], metadata: {},
@@ -172,11 +203,11 @@ async function load(path: string, now: number): Promise<StoreSnapshot> {
   if (info.stamp !== "missing") {
     let parsed: unknown;
     try {
-      const raw = await readFile(path, "utf8");
+      const raw = draftDocumentText(path,busyTimeoutMs);
       parsed = raw.trim() === "" ? [] : JSON.parse(raw);
     }
     catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return load(path, now);
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return load(path, now,busyTimeoutMs);
       store.diagnostics.corrupt = true;
       store.diagnostics.version = null;
     }
@@ -225,26 +256,18 @@ function assertWritable(store: StoreSnapshot): void {
   if (store.diagnostics.unsupportedVersion) throw new Error("draft store version is newer; original file preserved");
 }
 
-async function write(path: string, rows: Draft[], metadata: Record<string, unknown>, now=Date.now()): Promise<void> {
+async function write(path: string, rows: Draft[], metadata: Record<string, unknown>, now=Date.now(),busyTimeoutMs?:number): Promise<void> {
   const retained=new Set(rows.map(row=>row.id));
   const expiredCount=cache?.path===path?cache.store.rows.filter(row=>!retained.has(row.id)&&expired(row,now)).length:0;
   const payload = JSON.stringify(documentOf(rows, metadata));
   if (Buffer.byteLength(payload) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-  try {
-    await writeFile(tmp, payload, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await chmod(tmp, 0o600);
-    await rename(tmp, path);
-    const info = await fileInfo(path);
-    if(expiredCount)void writeDraftEvent({kind:"draft_expired",count:expiredCount});
-    cache = {
-      path, stamp: info.stamp,
-      store: { rows: structuredClone(rows), metadata, diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false } },
-    };
-  } finally {
-    await unlink(tmp).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-  }
+  writeAppRecord("drafts", path, payload, validateLegacyDraftDocument,{busyTimeoutMs});
+  const info = await fileInfo(path,busyTimeoutMs);
+  if(expiredCount)void writeDraftEvent({kind:"draft_expired",count:expiredCount});
+  cache = {
+    path, stamp: info.stamp,
+    store: { rows: structuredClone(rows), metadata, diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false } },
+  };
 }
 
 /** Listing is not a display in a recall lane and does not refresh last_touched. */
@@ -432,9 +455,9 @@ export async function purgeDrafts(): Promise<{ pendingRelay: boolean }> {
   const path = draftsPath();
   return withDraftPublication(() => withPathLock(path, async () => {
     const pendingRelay = await purgePendingSuggestions(async () => {
-      await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-      await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-      await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      deleteAppRecord("drafts", path);
+      deleteAppRecord("draft-vectors", draftVectorsPath());
+      deleteAppRecord("draft-decisions", draftDecisionsPath());
       cache = undefined;
     });
     return { pendingRelay };
@@ -448,8 +471,8 @@ export async function updateRetrievedDrafts(
   if (!removeIds.length && !displays.length) return;
   const path = draftsPath();
   const lock = tryOnly ? tryWithPathLock : withPathLock;
-  await lock(path, async () => {
-    const store = await load(path, now);
+  try {await lock(path, async () => {
+    const store = await load(path, now,tryOnly?0:undefined);
     assertWritable(store);
     const removed = new Set(removeIds);
     const rows = store.rows.filter(row => row.state !== "open" || !removed.has(row.id));
@@ -462,8 +485,8 @@ export async function updateRetrievedDrafts(
       row.last_touched = now;
       changed = true;
     }
-    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata, now);
-  }, { crossProcess: true });
+    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata, now,tryOnly?0:undefined);
+  }, { crossProcess: true });}catch(error){if(!tryOnly||!sqliteBusy(error))throw error;}
 }
 
 /** Promotion and undo serialize with capture/purge. Keep the draft lock across
@@ -473,15 +496,15 @@ export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now: nu
 export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now(), tryOnly = false, noQueue = false): Promise<T | undefined> {
   const path = draftsPath();
   const lock = tryOnly ? tryWithPathLock : withPathLock;
-  return lock(path, async () => {
-    const store = await load(path, now);
+  try {return await lock(path, async () => {
+    const store = await load(path, now,tryOnly?0:undefined);
     assertWritable(store);
     const rows = bounded(store.rows, now, store.metadata);
     const before = JSON.stringify(rows);
     const result = await mutate(rows);
-    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata, now);
+    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata, now,tryOnly?0:undefined);
     return result;
-  }, { crossProcess: true, noQueue });
+  }, { crossProcess: true, noQueue });}catch(error){if(tryOnly&&sqliteBusy(error))return undefined;throw error;}
 }
 
 /** Prime and refresh outside every hook/recall path, including external CLI
@@ -505,8 +528,14 @@ export function startDraftSearchCache(): () => void {
   // in the background as well; retrieval itself never probes the file.
   const timer = setInterval(refresh, 1000); timer.unref();
   try {
-    const watcher = watch(dirname(path), { persistent: false }, (_event, name) => {
-      if (name === null || name.toString() === basename(path)) refresh();
+    const dbPath = appRecordDatabasePath(path);
+    const watcher = watch(dirname(dbPath), { persistent: false }, (_event, name) => {
+      if(name?.toString()===basename(dbPath))refresh();
+      else if(name?.toString()===`${basename(dbPath)}-wal`){
+        // Reader connections can create/remove an empty WAL. Only real frames
+        // indicate a commit; reacting to empty read WALs would refresh forever.
+        try{if(statSync(`${dbPath}-wal`).size>32)refresh();}catch{/* removed WAL */}
+      }
     });
     watcher.on("error", () => { if (cache?.path === path) cache = undefined; });
     return () => { stopped = true; watcher.close(); clearInterval(timer); };

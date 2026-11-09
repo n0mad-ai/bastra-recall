@@ -1,10 +1,10 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp,readFile,writeFile,stat,rm,readdir} from "node:fs/promises";
+import {mkdtemp,writeFile,rm,readdir} from "node:fs/promises";
 import {isSystemInjectedTurn} from "../src/system-turn.js";
 import {parseTranscriptFile} from "../src/stop-transcript.js";
-import fs from "node:fs/promises";
-import {syncBuiltinESMExports} from "node:module";
+import { DatabaseSync } from "node:sqlite";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {captureTypedDrafts} from "../src/draft-capture.js";
@@ -39,7 +39,7 @@ for(const byteLimit of [false,true])test(`B1 fixes: ${byteLimit?"byte":"row"} ev
  const turns=Array.from({length:600},(_,i)=>u(String.fromCodePoint(0x5000+i).repeat(byteLimit?590:30)));
  await captureTypedDrafts(turns,{session_id:"flood",...(byteLimit?{client:"会".repeat(50)}:{})},now,[]);
  const kept=await listDrafts(now);assert.ok(kept.some(d=>d.id===rejected.id));assert.ok(kept.some(d=>d.id===confirmed.id));assert.ok(kept.some(d=>d.id===promoted.id));
- assert.ok(kept.length<=500);assert.ok((await stat(path)).size<=DRAFT_MAX_BYTES);if(byteLimit)assert.ok(kept.length<500);
+ assert.ok(kept.length<=500);assert.ok(Buffer.byteLength(readAppRecord("drafts",path))<=DRAFT_MAX_BYTES);if(byteLimit)assert.ok(kept.length<500);
  await captureTypedDrafts([u(rejected.quote)],{session_id:"again"},now+1,[]);
  assert.equal((await listDrafts(now+1)).find(d=>d.fp===rejected.fp)?.state,"rejected");
 }));
@@ -53,23 +53,29 @@ test("B1 fixes: secret-only changes share the redacted fingerprint, ID and tombs
  rows[0].state="rejected";await upsertDraft(rows[0],now+1);
  await captureTypedDrafts([u(quote("charlie"))],{session_id:"third"},now+2,[]);
  assert.equal((await listDrafts(now+2)).length,1);assert.equal((await listDrafts(now+2))[0].state,"rejected");
- assert.doesNotMatch(await readFile(path,"utf8"),/fixture:alpha|fixture:bravo|fixture:charlie/);
+ assert.doesNotMatch(await readAppRecord("drafts", path),/fixture:alpha|fixture:bravo|fixture:charlie/);
 }));
 
 test("B1 fixes: session capture writes once and idle cleanup never rewrites",(t)=>isolated(async(path,dir)=>{
- const rename=fs.rename;
- const spy=t.mock.method(fs,"rename",(...args:Parameters<typeof rename>)=>rename(...args));
- syncBuiltinESMExports();
+ const prepare=DatabaseSync.prototype.prepare; let writes=0;
+ const spy=t.mock.method(DatabaseSync.prototype,"prepare",function(this:DatabaseSync,sql:string){
+  const statement=prepare.call(this,sql);
+  if(sql.startsWith("INSERT INTO app_records")){
+   const run=statement.run.bind(statement);
+   t.mock.method(statement,"run",(...args:unknown[])=>{if(args[0]==="drafts")writes++;return Reflect.apply(run,statement,args);});
+  }
+  return statement;
+ });
  try{
  const turns=Array.from({length:40},(_,i)=>u(String.fromCodePoint(0x6000+i).repeat(30)));
  await captureTypedDrafts(turns,{session_id:"batch"},now,[]);
- assert.equal(spy.mock.callCount(),1);
- const before=await stat(path);await expireDrafts({now:now+1});const after=await stat(path);
- assert.equal(spy.mock.callCount(),1);assert.equal(after.ino,before.ino);assert.equal(after.mtimeMs,before.mtimeMs);
+ assert.equal(writes,1);
+ const before=readAppRecord("drafts",path);await expireDrafts({now:now+1});
+ assert.equal(writes,1);assert.equal(readAppRecord("drafts",path),before);
  await captureTypedDrafts(turns,{session_id:"batch"},now+1,[]);
- assert.equal(spy.mock.callCount(),1,"an unchanged replay does not write either");
- assert.deepEqual(await readdir(dir),["drafts.json"]);
- }finally{spy.mock.restore();syncBuiltinESMExports();}
+ assert.equal(writes,1,"an unchanged replay does not write either");
+ assert.ok((await readdir(dir)).includes("recall.db"));
+ }finally{spy.mock.restore();}
 }));
 
 test("B1 fixes: telemetry counts only retained new rows and appended evidence, with bounded IDs",()=>isolated(async()=>{

@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
@@ -68,7 +69,7 @@ test("B1 expires single evidence at seven days even when merely displayed", () =
   await harvest("early", [u(task)]);
   assert.equal((await listDrafts(now + 1 + 7 * day - 1)).length, 1);
   assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 1);
-  assert.equal(JSON.parse(await readFile(join(dir, "drafts.json"), "utf8")).rows.length, 0);
+  assert.equal(JSON.parse(await readAppRecord("drafts", join(dir, "drafts.json"))).rows.length, 0);
   await harvest("repeat-a", [u(task)]);
   await harvest("repeat-b", [u(task)]);
   assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 0);
@@ -91,7 +92,7 @@ test("B1 leaves the vault byte-identical and the existing shape relay unchanged"
   const expected = formatHarvestBlock({ session_id: "relay" }, harvestCandidates(turns));
   await harvest("relay", rows);
   assert.deepEqual(await tree(vault), before);
-  assert.equal(JSON.parse(await readFile(join(dir, "pending.json"), "utf8"))[0].blocks, expected);
+  assert.equal(JSON.parse(await readAppRecord("pending-suggestions", join(dir, "pending.json")))[0].blocks, expected);
   assert.equal((await listDrafts(now + 1))[0].kind, "answer");
 }));
 
@@ -134,7 +135,7 @@ test("B1 capture writes redacted bounded text and telemetry contains only counts
   const rows = await listDrafts(now + 1);
   assert.equal(rows.length, 1);
   assert.ok(rows[0].quote.length <= 600);
-  assert.doesNotMatch(await readFile(join(dir,"drafts.json"), "utf8"), /fixture:password/);
+  assert.doesNotMatch(await readAppRecord("drafts", join(dir,"drafts.json")), /fixture:password/);
   const files = await readdir(join(dir,"logs"));
   const logs = (await Promise.all(files.map(f => readFile(join(dir,"logs",f), "utf8")))).join("");
   assert.doesNotMatch(logs, /Please inspect|fixture:password|own database/);
@@ -155,8 +156,8 @@ test("B1 capture writes redacted bounded text and telemetry contains only counts
 test("B1 draft-store errors preserve the shape relay and record a text-free failure", () => isolated(async (dir, harvest) => {
   await writeFile(join(dir,"drafts.json"), "{malformed");
   await harvest("broken", [a("Which database should staging use?"), u(task)]);
-  assert.match(JSON.parse(await readFile(join(dir,"pending.json"),"utf8"))[0].blocks, /staging uses/);
-  assert.equal(await readFile(join(dir,"drafts.json"),"utf8"), "{malformed");
+  assert.match(JSON.parse(await readAppRecord("pending-suggestions", join(dir,"pending.json")))[0].blocks, /staging uses/);
+  assert.equal(await readAppRecord("drafts", join(dir,"drafts.json")), "{malformed");
   const files = await readdir(join(dir,"logs"));
   const logs = (await Promise.all(files.map(f => readFile(join(dir,"logs",f),"utf8")))).join("");
   assert.equal(JSON.parse(logs.trim()).draft_error, true);
@@ -184,9 +185,9 @@ test("B1 structural letter threshold is inclusive and the existing kill switch s
   const previous = process.env.BASTRA_SESSION_HARVEST;
   process.env.BASTRA_SESSION_HARVEST = "0";
   try {
-    const before = await readFile(join(dir,"drafts.json"),"utf8");
+    const before = await readAppRecord("drafts", join(dir,"drafts.json"));
     await runSessionHarvest({ loadTurns: async p => parseTranscriptFile(await readFile(p,"utf8")), now: now + 1 });
-    assert.equal(await readFile(join(dir,"drafts.json"),"utf8"), before);
+    assert.equal(await readAppRecord("drafts", join(dir,"drafts.json")), before);
   } finally {
     if (previous === undefined) delete process.env.BASTRA_SESSION_HARVEST;
     else process.env.BASTRA_SESSION_HARVEST = previous;

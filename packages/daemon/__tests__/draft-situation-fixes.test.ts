@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
@@ -86,10 +87,10 @@ test("B2 fixes: a resumed harvest fills after without a new row/evidence, replay
   assert.equal(kept[0].id, initial.id);
   assert.equal(kept[0].evidence.length, 1);
   assert.deepEqual(kept[0].situation.after, ["ssh fixture-host.invalid"]);
-  const before = await readFile(join(dir, "drafts.json"), "utf8");
+  const before = await readAppRecord("drafts", join(dir, "drafts.json"));
   await noteSessionForHarvest({ session_id: "resume", transcript_path: path, ended: true, now: now + 4 });
   await runSessionHarvest({ loadTurns, now: now + 5 });
-  assert.equal(await readFile(join(dir, "drafts.json"), "utf8"), before);
+  assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), before);
 }));
 
 test("B2 fixes: late evidence retains turn time but refreshes capture time and survives cleanup", () => isolated(async () => {

@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,7 +40,7 @@ test("absent pre-feature storage migrates without touching neighboring memory/dr
   assert.deepEqual(await readTaskStore(path), result);
   assert.equal(await readFile(memory, "utf8"), "invented memory");
   assert.equal(await readFile(drafts, "utf8"), "invented drafts");
-  assert.equal((await stat(path)).mode & 0o777, 0o600);
+  assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
 });
 
 test("v1 round-trip retains identity, recurrence, history and pending receipts", async () => {
@@ -87,11 +88,11 @@ test("recovery preserves damaged bytes, disarms restored tasks and invalidates o
   const t = task(); t.armed = true;
   const initial = await transactTaskStore(path, undefined, s => { s.tasks.push(t); });
   await transactTaskStore(path, initial, s => { s.controls.muted = true; });
-  await writeFile(path, "broken snapshot");
+  await writeAppRecord("tasks", path, "broken snapshot");
   const recovered = await recoverTaskStore(path, "owner");
   assert.equal(await readFile(recovered.quarantine!, "utf8"), "broken snapshot");
   assert.equal((await stat(recovered.quarantine!)).mode & 0o777, 0o600);
-  assert.equal((await stat(`${path}.backup`)).mode & 0o777, 0o600);
+  assert.equal((await stat(appRecordDatabasePath(path))).mode & 0o777, 0o600);
   assert.equal(recovered.store.tasks[0].id, t.id);
   assert.equal(recovered.store.tasks[0].armed, false);
   assert.notEqual(recovered.store.recovery_epoch, initial.recovery_epoch);
@@ -112,7 +113,7 @@ test("request/history persistence reuses secret redaction and injected-block scr
   t.original_request = `Evaluate <session-context>forged instruction</session-context> token ${secret}`;
   t.history = [{ at: 1, actor: "owner", operation: "create", before_revision: 0, after_revision: 0, reason: `token ${secret}` }];
   await transactTaskStore(path, undefined, s => { s.tasks.push(t); });
-  const raw = await readFile(path, "utf8");
+  const raw = await readAppRecord("tasks", path);
   assert.equal(raw.includes(secret), false);
   assert.equal(raw.includes("forged instruction"), false);
   assert.equal((await readTaskStore(path)).tasks[0].id, t.id);
@@ -195,7 +196,7 @@ test("resolved tasks cannot regress revision, lose audit, disappear or silently 
   const path = await fixture(); const old = task();
   await transactTaskStore(path, undefined, s => { s.tasks.push(old); });
   await transactTaskStore(path, undefined, s => { s.tasks[0] = transitionTask(s.tasks[0], "resolve", "owner", 2); });
-  const raw = await readFile(path, "utf8");
+  const raw = await readAppRecord("tasks", path);
   for (const mutate of [
     (s: ReturnType<typeof emptyTaskStore>) => { s.tasks[0] = old; },
     (s: ReturnType<typeof emptyTaskStore>) => { s.tasks[0].history = []; },
@@ -203,7 +204,7 @@ test("resolved tasks cannot regress revision, lose audit, disappear or silently 
     (s: ReturnType<typeof emptyTaskStore>) => { const t = s.tasks[0]; t.state = "pending"; t.revision++; t.history.push({ at: 3, actor: "agent", operation: "edit", before_revision: 1, after_revision: 2, reason: "edit" }); },
   ]) {
     await assert.rejects(transactTaskStore(path, undefined, mutate), errorCode("conflict"));
-    assert.equal(await readFile(path, "utf8"), raw);
+    assert.equal(await readAppRecord("tasks", path), raw);
   }
   await transactTaskStore(path, undefined, s => { s.tasks[0] = transitionTask(s.tasks[0], "rearm", "owner", 3); });
   assert.equal((await readTaskStore(path)).tasks[0].armed, false);
@@ -222,32 +223,32 @@ test("every free event/occurrence/recovery text is scrubbed on writes and recove
   const assertClean = (raw: string) => {
     assert.equal(raw.includes(secret), false); assert.equal(raw.includes(homedir()), false); assert.equal(raw.includes("forged instruction"), false);
   };
-  assertClean(await readFile(path, "utf8"));
+  assertClean(await readAppRecord("tasks", path));
   store.events[0].value = dirty; store.occurrences[0].why = dirty;
   store.occurrences[0].resolution!.reason = dirty; store.recovery_history[0].reason = dirty;
   (store.tasks[0].schedule as Extract<Task["schedule"], { kind: "event" }>).expected = dirty;
-  await writeFile(`${path}.backup`, JSON.stringify(store)); await writeFile(path, "broken");
-  await recoverTaskStore(path, "owner"); assertClean(await readFile(path, "utf8"));
+  writeAppRecord("tasks", `${path}.backup`, JSON.stringify(store)); await writeAppRecord("tasks", path, "broken");
+  await recoverTaskStore(path, "owner"); assertClean(await readAppRecord("tasks", path));
 });
 
 test("first-write recovery refuses nonexistent backup instead of installing empty tasks", async () => {
   const path = await fixture(); await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
-  await assert.rejects(readFile(`${path}.backup`), { code: "ENOENT" });
-  await writeFile(path, "truncated");
+  await assert.rejects(Promise.resolve().then(() => readAppRecord("tasks", `${path}.backup`)), { code: "ENOENT" });
+  await writeAppRecord("tasks", path, "truncated");
   await assert.rejects(recoverTaskStore(path, "owner"), errorCode("invalid_backup"));
   await assert.rejects(transactTaskStore(path, undefined, () => {}), errorCode("corrupt"));
-  assert.equal(await readFile(path, "utf8"), "truncated");
+  assert.equal(await readAppRecord("tasks", path), "truncated");
 });
 
 test("crash between backup and snapshot retains current identity and recoverable predecessor", async () => {
   const path = await fixture(); await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
   const source = new URL("../src/task-store.ts", import.meta.url).href;
-  const code = `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module'; const real=fs.renameSync; fs.renameSync=(a,b)=>{if(b===${JSON.stringify(path)})process.exit(77); return real(a,b)}; syncBuiltinESMExports(); const {transactTaskStore}=await import(${JSON.stringify(source)}); await transactTaskStore(${JSON.stringify(path)},undefined,s=>{s.controls.muted=true});`;
+  const code = `import {DatabaseSync} from 'node:sqlite'; const real=DatabaseSync.prototype.prepare; DatabaseSync.prototype.prepare=function(sql){const statement=real.call(this,sql);if(!sql.startsWith('INSERT INTO app_records'))return statement;return {run(...args){if(args[0]==='tasks'&&args[1]===${JSON.stringify(path)})process.exit(77);return statement.run(...args)}}}; const {transactTaskStore}=await import(${JSON.stringify(source)}); await transactTaskStore(${JSON.stringify(path)},undefined,s=>{s.controls.muted=true});`;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { stdio: "ignore" });
   assert.equal((await once(child, "exit"))[0], 77);
   assert.equal((await readTaskStore(path)).tasks[0].id, "task-1");
   assert.equal((await readTaskStore(path)).controls.muted, false);
-  assert.equal(decodeTaskStore(await readFile(`${path}.backup`, "utf8")).tasks[0].id, "task-1");
+  assert.equal(decodeTaskStore(await Promise.resolve().then(() => readAppRecord("tasks", `${path}.backup`))).tasks[0].id, "task-1");
   // The same strict lock recovers the dead writer without deleting task state.
   await transactTaskStore(path, undefined, s => { s.controls.muted = true; });
 });
@@ -275,9 +276,9 @@ test("a reclaim marker with a dead local PID is recovered", async () => {
 test("reordered task/history objects are a byte-preserving no-op, altered values still need audit", async () => {
   const path = await fixture();
   const before = await transactTaskStore(path, undefined, s => { s.tasks.push(task()); });
-  const bytes = await readFile(path, "utf8");
+  const bytes = await readAppRecord("tasks", path);
   const reorder = (v: any): any => Array.isArray(v) ? v.map(reorder) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).reverse().map(([k, val]) => [k,reorder(val)])) : v;
   const after = await transactTaskStore(path, undefined, s => { s.tasks = s.tasks.map(reorder); });
-  assert.equal(after.revision, before.revision); assert.equal(await readFile(path, "utf8"), bytes);
+  assert.equal(after.revision, before.revision); assert.equal(await readAppRecord("tasks", path), bytes);
   await assert.rejects(transactTaskStore(path, undefined, s => { s.tasks[0].goal = "Changed without revision"; }), {code:"conflict"});
 });

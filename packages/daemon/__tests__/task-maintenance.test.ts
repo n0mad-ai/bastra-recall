@@ -1,3 +1,4 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import {test} from "node:test";
 import assert from "node:assert/strict";
@@ -28,8 +29,8 @@ test("archive is private/exact and frees terminal task capacity without idempote
 });
 test("recovery requires owner/all backup domains and disarms under a new epoch without touching memories",async()=>{
  const f=await fixture(),task=await callTaskCrud(f.ctx,f.auth,"task_create",{...f.input,arm:true}) as any;
- await callTaskCrud(f.ctx,f.auth,"task_snooze",{id:task.id,expected_revision:task.expected_revision,until:3000});await writeFile(join(f.root,"memory.md"),"untouched");await writeFile(f.ctx.path,"broken");
- await assert.rejects(callTaskCrud(f.ctx,f.other,"task_recover",{}),{code:"forbidden"});assert.equal(await readFile(f.ctx.path,"utf8"),"broken");
+ await callTaskCrud(f.ctx,f.auth,"task_snooze",{id:task.id,expected_revision:task.expected_revision,until:3000});await writeFile(join(f.root,"memory.md"),"untouched");await writeAppRecord("tasks", f.ctx.path,"broken");
+ await assert.rejects(callTaskCrud(f.ctx,f.other,"task_recover",{}),{code:"forbidden"});assert.equal(await readAppRecord("tasks", f.ctx.path),"broken");
  const result=await callTaskCrud(f.ctx,f.auth,"task_recover",{}) as any;const restored=await readTaskStore(f.ctx.path);assert.equal(result.quarantined,true);assert.notEqual(restored.recovery_epoch,"initial");assert.equal(restored.tasks[0].armed,false);assert.equal(restored.controls.execution_stopped,true);assert.equal(await readFile(join(f.root,"memory.md"),"utf8"),"untouched");
 });
 test("offline lock quarantine never removes a live local owner and preserves unknown originals",async()=>{
@@ -62,6 +63,6 @@ test("protected paths and encompassing roots reject before registry writes; expl
  }finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(vaultPrevious===undefined)delete process.env.BASTRA_VAULT_PATH;else process.env.BASTRA_VAULT_PATH=vaultPrevious;}
 });
 test("older backup recovery discovers the exact cold export and reports restored active history",async()=>{
- const f=await fixture(),task=await callTaskCrud(f.ctx,f.auth,"task_create",f.input) as any;await callTaskCrud(f.ctx,f.auth,"task_resolve",{id:task.id,expected_revision:task.expected_revision});const s=await readTaskStore(f.ctx.path),archived=await callTaskCrud(f.ctx,f.auth,"task_archive",{task_ids:[task.id],expected_revision:s.revision,recovery_epoch:s.recovery_epoch}) as any;await writeFile(f.ctx.path,"truncated current snapshot");
+ const f=await fixture(),task=await callTaskCrud(f.ctx,f.auth,"task_create",f.input) as any;await callTaskCrud(f.ctx,f.auth,"task_resolve",{id:task.id,expected_revision:task.expected_revision});const s=await readTaskStore(f.ctx.path),archived=await callTaskCrud(f.ctx,f.auth,"task_archive",{task_ids:[task.id],expected_revision:s.revision,recovery_epoch:s.recovery_epoch}) as any;await writeAppRecord("tasks", f.ctx.path,"truncated current snapshot");
  const result=await callTaskCrud(f.ctx,f.auth,"task_recover",{}) as any,restored=await readTaskStore(f.ctx.path);assert.equal(result.changes_may_be_missing,true);assert.equal(result.recovered_archive_exports,1);assert.equal(restored.tasks[0].id,task.id);assert.equal(restored.tasks[0].armed,false);assert.equal(restored.archives[0].id,archived.archive_id);assert.equal(restored.controls.execution_stopped,true);
 });

@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import {test} from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +29,7 @@ test("legacy unkeyed values are removed from live/backup/cold archive and hash i
  // Fresh path emulates an existing installation, before migration has run.
  const path=join(f.root,"legacy.json"),id="00000000-0000-4000-8000-000000000001";const group=structuredClone(s);group.archives=[];const bundle=JSON.stringify({schema_version:1,id,snapshot:group});const archive=taskArchivePath(path,id);const {mkdir}=await import("node:fs/promises");await mkdir(join(f.root,"task-archives"),{recursive:true});await writeFile(archive,bundle,{mode:0o600});
  s.archives=[{id,hash:createHash("sha256").update(bundle).digest("hex"),at:1000,actor:"owner",task_ids:[made.id],intent_keys:[],owner_domains:["personal"]}];await writeFile(path,JSON.stringify(s),{mode:0o600});await writeFile(path+".backup",JSON.stringify(s),{mode:0o600});await readTaskStore(path);
- for(const file of [path,path+".backup",archive]){const raw=await readFile(file,"utf8");assert.ok(!raw.includes('"reminder_fingerprint"'));assert.ok(!raw.includes('"creation_hash"'));assert.ok(!raw.includes("a".repeat(64)));assert.ok(!raw.includes("b".repeat(64)));}
+ for(const file of [path,path+".backup",archive]){const raw=file===archive?await readFile(file,"utf8"):readAppRecord("tasks",file);assert.ok(!raw.includes('"reminder_fingerprint"'));assert.ok(!raw.includes('"creation_hash"'));assert.ok(!raw.includes("a".repeat(64)));assert.ok(!raw.includes("b".repeat(64)));}
  const updated=await readTaskStore(path);assert.equal(updated.archives[0].hash,createHash("sha256").update(await readFile(archive,"utf8")).digest("hex"));await assert.rejects(stat(path+".comparison-migration"),{code:"ENOENT"});
 });
 test("unsafe or missing comparison key fails closed; no automatic replacement of existing HMAC state",async()=>{
@@ -58,7 +59,7 @@ test("event, claim and raw/client-SHA baselines use the same private content com
  const {reconcileTaskTime}=await import("../src/task-events.js");await reconcileTaskTime(f.ctx);let s=await readTaskStore(f.ctx.path);
  const hash=s.events[0].value_hash!;assert.match(hash,/^hmac-v1:/);assert.equal(s.events[0].claim!.value_hash,hash);assert.equal(s.tasks[0].schedule.kind==="event"&&s.tasks[0].schedule.expected_hash,hash);assert.equal(s.tasks[1].schedule.kind==="event"&&s.tasks[1].schedule.expected_hash,hash);assert.equal(s.occurrences.length,2);
  const other=await readTaskStore(g.ctx.path);assert.notEqual(other.tasks[0].schedule.kind==="event"&&other.tasks[0].schedule.expected_hash,hash);
- assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(digest));assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(raw));
+ assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(digest));assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(raw));
  // The former dictionary verifier fails for every four-digit candidate.
  for(let i=0;i<10000;i++)assert.notEqual(createHash("sha256").update(`password=${String(i).padStart(4,"0")}`).digest("hex"),hash.slice(8));
  for(const [op,arg] of [["task_get",{id:a.id}],["task_list",{}],["task_status",{}],["task_due",{session:"private",channel:"mcp"}]] as const){const json=JSON.stringify(await callTaskCrud(f.ctx,f.auth,op,arg));assert.ok(!json.includes(hash));assert.ok(!json.includes(digest));for(const field of ["expected_hash","value_hash","last_material_hash","last_value_hash"])assert.ok(!json.includes(field));}
@@ -84,7 +85,7 @@ test("legacy expected/event/claim/material/source digests migrate in live, backu
  s.archives=[{id,hash:createHash("sha256").update(bundle).digest("hex"),at:1000,actor:"owner",task_ids:[made.id],intent_keys:[],owner_domains:["personal"]}];for(const file of [path,path+".backup"])await writeFile(file,JSON.stringify(s),{mode:0o600});
  const migrated=await readTaskStore(path);assert.equal(migrated.tasks[0].verification,undefined,"old comparison-derived cache binding is discarded");const {privateContentComparison}=await import("../src/task-private-comparison.js"),expected=await privateContentComparison(path,raw);assert.equal(migrated.events[0].value_hash,expected);assert.equal(migrated.events[0].claim!.value_hash,expected);assert.equal(migrated.tasks[0].last_material_hash,expected);assert.equal(migrated.sources[0].last_value_hash,expected);assert.equal(migrated.tasks[0].schedule.kind==="event"&&migrated.tasks[0].schedule.expected_hash,expected);
  assert.equal(migrated.tasks[0].decision_change!.new_body_hash,await privateTaskComparison(path,"decision-body",bodyDigest));
- for(const file of [path,path+".backup",archive]){const bytes=await readFile(file,"utf8");assert.ok(!bytes.includes(digest));assert.ok(!bytes.includes(bodyDigest));}assert.ok(!(await readFile(archive,"utf8")).includes("hmac-v1:"));
+ for(const file of [path,path+".backup",archive]){const bytes=file===archive?await readFile(file,"utf8"):readAppRecord("tasks",file);assert.ok(!bytes.includes(digest));assert.ok(!bytes.includes(bodyDigest));}assert.ok(!(await readFile(archive,"utf8")).includes("hmac-v1:"));
  assert.equal((await callTaskCrud(ctx,f.ownerAuth,"task_create",{...f.input,schedule:{kind:"event",source_id:"source",predicate:"equals",expected:raw}}) as any).id,made.id,"old keyed create retry retains its original identity");
  const duplicate=await callTaskCrud(ctx,f.auth,"task_create",{...f.input,idempotency_key:"legacy-duplicate",schedule:{kind:"event",source_id:"source",predicate:"equals",expected:raw}}) as any;assert.equal(duplicate.id,made.id);assert.equal(duplicate.duplicate,true,"old keyed reminder equality survives the content migration");
  const retry=await callTaskCrud(ctx,f.auth,"task_event",event) as any;assert.equal(retry.event_id,migrated.events[0].id);assert.equal((await readTaskStore(path)).events.length,1);
@@ -104,5 +105,5 @@ test("generic event content-version digest stays private in create, migration an
  assert.equal((await callTaskCrud(ctx,f.ownerAuth,"task_create",{...f.input,schedule:{kind:"event",source_id:"generic",predicate:"content-version",expected:digest}}) as any).id,made.id,"R7 keyed create with formerly public display stays idempotent");
  const duplicate=await callTaskCrud(ctx,f.auth,"task_create",{...f.input,idempotency_key:"display-duplicate",schedule:{kind:"event",source_id:"generic",predicate:"content-version",expected:digest}}) as any;assert.equal(duplicate.id,made.id);assert.equal(duplicate.duplicate,true);
  await callTaskCrud(ctx,f.ownerAuth,"task_resolve",{id:made.id,expected_revision:get.expected_revision});const before=await readTaskStore(path);const archive=await callTaskCrud(ctx,f.ownerAuth,"task_archive",{task_ids:[made.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch}) as any;
- for(const file of [path,path+".backup",taskArchivePath(path,archive.archive_id)])assert.ok(!(await readFile(file,"utf8")).includes(digest));
+ for(const file of [path,path+".backup"])assert.ok(!readAppRecord("tasks",file).includes(digest));assert.ok(!(await readFile(taskArchivePath(path,archive.archive_id),"utf8")).includes(digest));
 });

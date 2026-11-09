@@ -1,5 +1,5 @@
 /** Local state adapters only: never pass a vault path to this module. */
-import { chmodSync, existsSync, lstatSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { openAppDatabase, type AppDatabase } from "./app-database.js";
@@ -10,6 +10,7 @@ export function appRecordDatabasePath(legacyPath: string): string {
 
 interface RecordValue { text: string | null; archive?: string; }
 type Validate = (text: string) => void;
+export interface AppRecordOptions { busyTimeoutMs?: number; }
 function assertLocalSource(path: string): void {
   const check = (value: string) => {
     if (/^(?:\\\\|\/\/)/u.test(value) || /(?:^|[\\/])(?:CloudStorage|Google Drive|GoogleDrive[^\\/]*|Dropbox|OneDrive[^\\/]*|Mobile Documents)(?:[\\/]|$)/iu.test(value))
@@ -42,12 +43,22 @@ function finishArchive(path: string, value: RecordValue): void {
   chmodSync(path, 0o600);
   renameSync(path, destination);
 }
+function readLocalStateText(path:string):string {
+  // Overrides are still regular local files. A FIFO must never turn a legacy
+  // import into a synchronous event-loop wait. Validate the opened descriptor.
+  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|(constants.O_NONBLOCK??0));
+  try {
+    const info=fstatSync(fd);
+    if(!info.isFile())throw Object.assign(new Error("Local state source is not a regular file"),{code:info.isDirectory()?"EISDIR":"EINVAL"});
+    return readFileSync(fd,"utf8");
+  }finally{closeSync(fd);}
+}
 function importLegacy(db: AppDatabase, namespace: string, path: string, validate?: Validate): RecordValue | undefined {
   return db.transaction(() => {
     const current = row(db, namespace, path);
     if (current) return current;
     let text: string;
-    try { text = readFileSync(path, "utf8"); }
+    try { text = readLocalStateText(path); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
     // Corruption/unreadable inputs remain in place; the caller owns its error
     // policy, and can never accidentally complete an empty migration here.
@@ -60,10 +71,10 @@ function importLegacy(db: AppDatabase, namespace: string, path: string, validate
 }
 
 /** Throws ENOENT for absent/deleted state, matching readFile's old contract. */
-export function readAppRecord(namespace: string, legacyPath: string, validate?: Validate): string {
+export function readAppRecord(namespace: string, legacyPath: string, validate?: Validate, options: AppRecordOptions = {}): string {
   const path = resolve(legacyPath);
   assertLocalSource(path);
-  const db = openAppDatabase({ path: appRecordDatabasePath(path) });
+  const db = openAppDatabase({ path: appRecordDatabasePath(path), busyTimeoutMs: options.busyTimeoutMs });
   try {
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
     if (!value) throw missing(path);
@@ -74,10 +85,10 @@ export function readAppRecord(namespace: string, legacyPath: string, validate?: 
 }
 
 /** Caller holds the store's cross-process RMW lock across read and write. */
-export function writeAppRecord(namespace: string, legacyPath: string, text: string, validate?: Validate): void {
+export function writeAppRecord(namespace: string, legacyPath: string, text: string, validate?: Validate, options: AppRecordOptions = {}): void {
   const path = resolve(legacyPath);
   assertLocalSource(path);
-  const db = openAppDatabase({ path: appRecordDatabasePath(path) });
+  const db = openAppDatabase({ path: appRecordDatabasePath(path), busyTimeoutMs: options.busyTimeoutMs });
   try {
     validate?.(text);
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
@@ -87,10 +98,10 @@ export function writeAppRecord(namespace: string, legacyPath: string, text: stri
 }
 
 /** Durable tombstones prevent an interrupted rename from reviving old state. */
-export function deleteAppRecord(namespace: string, legacyPath: string, validate?: Validate): void {
+export function deleteAppRecord(namespace: string, legacyPath: string, validate?: Validate, options: AppRecordOptions = {}): void {
   const path = resolve(legacyPath);
   assertLocalSource(path);
-  const db = openAppDatabase({ path: appRecordDatabasePath(path) });
+  const db = openAppDatabase({ path: appRecordDatabasePath(path), busyTimeoutMs: options.busyTimeoutMs });
   try {
     const value = row(db, namespace, path) ?? importLegacy(db, namespace, path, validate);
     if (value) finishArchive(path, value);

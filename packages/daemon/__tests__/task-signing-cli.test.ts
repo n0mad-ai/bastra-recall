@@ -1,3 +1,4 @@
+import { readAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -58,7 +59,7 @@ sys.exit(0)
     const declined=await run("decline");assert.match(declined,/forbidden/);assert.match(declined,/task_revision/);assert.match(declined,/source_revisions/);assert.match(declined,/registry_hash/);assert.match(declined,/Ziel:/);assert.ok(!declined.includes(f.owner.token));
     const wrong=await run("wrong");assert.match(wrong,/key_unlock_failed/);assert.match(wrong,/"retryable":false/);assert.equal((await import("../src/task-store.js").then(m=>m.readTaskStore(f.ctx.path))).approvals.length,0);
     const human=await run("human");assert.match(human,/Ganze Bindung/);assert.match(human,/Aufgabenrevision/);assert.match(human,/Quellrevisionen/);assert.match(human,/Inhalt-Hash/);assert.match(human,/Signatur gespeichert/);assert.match(human,/Noch kein Write/);assert.ok(!human.includes('"approval_id":'));assert.ok(!human.includes(f.owner.token));
-    assert.ok(!(await readFile(f.ctx.path,"utf8")).includes(f.owner.token));
+    assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(f.owner.token));
   }finally{await new Promise<void>(r=>f.server.close(()=>r()));}
 });
 test("owner key enrollment refuses silent replacement; explicit old-key rotation resets boundary and stops execution",async()=>{

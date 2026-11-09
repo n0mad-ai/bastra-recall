@@ -1,10 +1,11 @@
+import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import { test } from "node:test";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 const TASK_TEST_REPO = fileURLToPath(new URL("../../../", import.meta.url));
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, mkdir, symlink } from "node:fs/promises";
+import { mkdtemp, writeFile,  mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -70,7 +71,7 @@ test("secret equals uses original hashes, not identical redaction placeholders",
   await callTaskCrud(f.ctx, f.agentAuth, "task_event", { source_id: "source", source_revision: 0, dedup_key: "b", value: b, state_updated_at: 1000 });
   let s = await reconcileTaskTime(f.ctx); assert.equal(s.occurrences.length, 0);
   assert.equal(s.tasks[0].schedule.kind === "event" && s.tasks[0].schedule.expected, s.events[0].value);
-  assert.ok(!(await readFile(f.ctx.path, "utf8")).includes(a)); assert.ok(!(await readFile(f.ctx.path, "utf8")).includes(b));
+  assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(a)); assert.ok(!(await readAppRecord("tasks", f.ctx.path)).includes(b));
   await callTaskCrud(f.ctx, f.agentAuth, "task_event", { source_id: "source", source_revision: 0, dedup_key: "a", value: a, state_updated_at: 1000 });
   s = await reconcileTaskTime(f.ctx); assert.equal(s.occurrences.length, 1);
   await callTaskCrud(f.ctx, f.agentAuth, "task_event", { source_id: "source", source_revision: 0, dedup_key: "same", value: a, state_updated_at: 1000 });
@@ -110,8 +111,8 @@ test("journal beyond a tick budget advances, is fair, and cannot duplicate mater
 test("legacy v1 missing source registry migrates additively and missing secret hash never fires", async () => {
   const f = await fixture(); await callTaskCrud(f.ctx, f.auth, "task_source_register", f.source);
   await callTaskCrud(f.ctx, f.auth, "task_create", { ...f.input, schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "masked" } });
-  const original = JSON.parse(await readFile(f.ctx.path, "utf8")); delete original.sources; delete original.evaluation_cursor;
-  delete original.tasks[0].schedule.expected_hash; await writeFile(f.ctx.path, JSON.stringify(original));
+  const original = JSON.parse(await readAppRecord("tasks", f.ctx.path)); delete original.sources; delete original.evaluation_cursor;
+  delete original.tasks[0].schedule.expected_hash; await writeAppRecord("tasks", f.ctx.path, JSON.stringify(original));
   assert.deepEqual((await readTaskStore(f.ctx.path)).sources, []);
   await reconcileTaskTime(f.ctx); assert.equal((await readTaskStore(f.ctx.path)).occurrences.length, 0);
 });
@@ -196,7 +197,7 @@ test("legacy dedup lookup preserves own IDs but never accepts another source's c
   const first = { source_id: "collision:a", source_revision: 0, dedup_key: "b", value: "same", state_updated_at: 1000 };
   await callTaskCrud(f.ctx, f.auth, "task_event", first);
   const s = await readTaskStore(f.ctx.path); const legacy = taskValueHash("collision:a:b"); s.events[0].id = legacy; s.events[0].dedup_key = legacy;
-  await writeFile(f.ctx.path, JSON.stringify(s));
+  await writeAppRecord("tasks", f.ctx.path, JSON.stringify(s));
   assert.equal((await callTaskCrud(f.ctx, f.auth, "task_event", first) as any).event_id, legacy);
   const second = await callTaskCrud(f.ctx, f.auth, "task_event", { ...first, source_id: "collision", dedup_key: "a:b" }) as any;
   assert.notEqual(second.event_id, legacy); assert.equal((await readTaskStore(f.ctx.path)).events.length, 2);
