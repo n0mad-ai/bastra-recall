@@ -93,8 +93,10 @@ after(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+import { writeSettingsFixture } from "./fixtures/settings-db.js";
+
 async function writeCliSettings(promptImpact: { enabled: boolean } | undefined): Promise<void> {
-  await writeFile(
+  await writeSettingsFixture(
     join(home, ".bastra", "cli-settings.json"),
     JSON.stringify({ code: { repos: [repo] }, ...(promptImpact ? { promptImpact } : {}) }),
     "utf8",

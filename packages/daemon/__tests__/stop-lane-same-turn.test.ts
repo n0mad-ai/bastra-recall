@@ -12,7 +12,8 @@ import { readAppRecord } from "../src/app-record-store.js";
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { writeSettingsFixture } from "./fixtures/settings-db.js";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -108,7 +109,7 @@ test("#757 — the user gets one line in their language, the agent a minimal blo
     assert.equal(lines.filter((l) => /save_memory/.test(l)).length, 1, "save_memory is named once");
 
     await mkdir(join(dir, ".bastra"), { recursive: true });
-    await writeFile(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "de" } }), "utf8");
+    await writeSettingsFixture(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "de" } }), "utf8");
     const de = JSON.parse(await stop({ session_id: "cc-757-de" })) as Out;
     assert.equal(
       de.systemMessage,
@@ -116,7 +117,7 @@ test("#757 — the user gets one line in their language, the agent a minimal blo
     );
     assert.equal(de.hookSpecificOutput?.additionalContext, en.hookSpecificOutput?.additionalContext, "the agent block stays English");
 
-    await writeFile(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "tr" } }), "utf8");
+    await writeSettingsFixture(join(dir, ".bastra", "cli-settings.json"), JSON.stringify({ language: { primary: "tr" } }), "utf8");
     const tr = JSON.parse(await stop({ session_id: "cc-757-tr" })) as Out;
     assert.equal(tr.systemMessage, en.systemMessage, "a language without a shipped line falls back to English");
   });

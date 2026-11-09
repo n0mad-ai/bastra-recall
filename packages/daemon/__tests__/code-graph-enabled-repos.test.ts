@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readSettingsFixture } from "./fixtures/settings-db.js";
 import {
   canonicalRepoPath,
   codeAwarenessDisabledByEnv,
@@ -85,8 +86,7 @@ describe("code awareness: which repositories are enabled", () => {
   it("preserves unrelated settings", async () => {
     await withSettings({ update: { mode: "notify" }, commons: { enabled: true } }, async (path) => {
       await setRepoEnabled("/repos/alpha", true, path);
-      const { readFile } = await import("node:fs/promises");
-      const written = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+      const written = JSON.parse(await readSettingsFixture(path, "utf8")) as Record<string, unknown>;
       assert.deepEqual(written.commons, { enabled: true });
       assert.deepEqual(written.update, { mode: "notify" });
     });
@@ -129,6 +129,17 @@ describe("code awareness: the off switches", () => {
 });
 
 describe("code awareness: the synchronous gate the readers use (#585)", () => {
+  it("reads legacy state without adopting it, then follows the DB instead of a recreated stale file", async () => {
+    await withSettings({ code: { repos: ["/repos/alpha"] } }, async (path) => {
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), true);
+      assert.ok((await stat(path)).isFile(), "readonly lookup leaves the legacy original in place");
+      await assert.rejects(stat(join(path, "..", "recall.db")), { code: "ENOENT" });
+      await setRepoEnabled("/repos/alpha", false, path);
+      await writeFile(path, JSON.stringify({ code: { repos: ["/repos/alpha"] } }), "utf8");
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false, "stored opt-out wins over a stale legacy file");
+    });
+  });
+
   it("follows enable and disable without a restart", async () => {
     await withSettings({ update: { mode: "notify" } }, async (path) => {
       assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false);

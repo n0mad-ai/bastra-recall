@@ -16,6 +16,7 @@ import { cmdOnboard, loadAnswersFile, runInterview } from "../src/cli/onboard-cm
 import { parseArgs } from "../src/cli/commands.js";
 import { isOnboardingDone, questionsFor } from "../src/onboarding.js";
 import { ONBOARD_REPLAY_MAX_TURNS } from "../src/cli/doctor-replay.js";
+import { readSettingsFixture } from "./fixtures/settings-db.js";
 
 function sink(): PassThrough {
   const out = new PassThrough();
@@ -217,7 +218,7 @@ test("cmdOnboard --answers: saves through the interview's save path without a TT
     assert.equal(await isOnboardingDone(vault), true);
     const audit = (await readFile(join(vault, ".bastra", "audit-log.ndjson"), "utf8")).trim().split("\n");
     assert.equal(audit.length, 3, "usage profile + identity + world");
-    const settings = await readFile(join(dir, "home", ".bastra", "cli-settings.json"), "utf8");
+    const settings = await readSettingsFixture(join(dir, "home", ".bastra", "cli-settings.json"), "utf8");
     assert.match(settings, /"pl"/, "the language named in identity lands in cli-settings");
   } finally {
     process.env.HOME = savedHome;

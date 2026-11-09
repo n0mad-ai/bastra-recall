@@ -7,8 +7,9 @@
  * defensible default — and it would also mean Recall writing into checkouts
  * nobody asked it to touch.
  *
- * The list lives in the global `~/.bastra/cli-settings.json`, not in a file
- * inside the repository. A config file in the repo would be an artifact that
+ * The list lives in the local app database's settings record (adopted from
+ * `~/.bastra/cli-settings.json`), never in a file inside the repository.
+ * A config file in the repo would be an artifact that
  * shows up in other people's checkouts and can be committed by accident;
  * enabling is a decision of this machine, not of the project.
  *
@@ -23,6 +24,7 @@ import { resolve } from "node:path";
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
 import { platformSupported } from "./graphify-tool.js";
 import { isOffValue } from "../env.js";
+import { readRuntimeSettingsRecord } from "../runtime-feature-settings.js";
 
 /**
  * The env kill switch. Checked everywhere the feature could do work, and
@@ -78,8 +80,9 @@ export async function enabledRepos(
  * does not switch is worse than none, because the user believes it.
  *
  * Synchronous because `CodeGraphCache.get()` is, by the cold-start rule. The
- * cost is one `stat` per call; the file is re-read only when its mtime or size
- * moved. Unreadable or corrupt settings mean "nothing enabled" — the feature
+ * cost is a small readonly DB lookup; unchanged text reuses the parsed set.
+ * Before adoption, the legacy file uses its descriptor's mtime/size cache.
+ * Unreadable or corrupt settings mean "nothing enabled" — the feature
  * fails closed, never open.
  */
 export function isRepoEnabledSync(
@@ -92,9 +95,32 @@ export function isRepoEnabledSync(
   return enabledSnapshot(path).has(canonicalRepoPath(repoRoot));
 }
 
-let snapshot: { path: string; mtimeMs: number; size: number; repos: Set<string> } | null = null;
+let snapshot: { path: string; mtimeMs: number; size: number; repos: Set<string>; text?: string } | null = null;
+
+function reposFromText(text: string): Set<string> {
+  const repos = new Set<string>();
+  try {
+    const raw = (JSON.parse(text) as { code?: { repos?: unknown } }).code?.repos;
+    if (Array.isArray(raw)) {
+      for (const entry of raw) {
+        if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
+      }
+    }
+  } catch { /* Unreadable or corrupt settings never enable a repository. */ }
+  return repos;
+}
 
 function enabledSnapshot(path: string): Set<string> {
+  // The shared readonly mini-reader does no adoption/schema setup. A DB row
+  // supersedes the retained legacy file, including an explicit tombstone.
+  const stored = readRuntimeSettingsRecord(path);
+  if (stored !== undefined) {
+    const text = stored ?? "{}";
+    if (snapshot?.path === path && snapshot.text === text) return snapshot.repos;
+    const repos = reposFromText(text);
+    snapshot = { path, mtimeMs: NaN, size: Buffer.byteLength(text), text, repos };
+    return repos;
+  }
   // One open handle for the check AND the read: a `stat` of the path followed
   // by a read of the path can see two different files (CodeQL
   // js/file-system-race), the same trap reader.ts closes for the graph.
@@ -110,18 +136,9 @@ function enabledSnapshot(path: string): Set<string> {
     if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
       return snapshot.repos;
     }
-    const repos = new Set<string>();
-    try {
-      const raw = (JSON.parse(readFileSync(fd, "utf8")) as { code?: { repos?: unknown } }).code?.repos;
-      if (Array.isArray(raw)) {
-        for (const entry of raw) {
-          if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
-        }
-      }
-    } catch {
-      // Corrupt settings: nothing is enabled. `readSettings` reports the
-      // corruption loudly; this path only has to not act on it.
-    }
+    let repos: Set<string>;
+    try { repos = reposFromText(readFileSync(fd, "utf8")); }
+    catch { repos = new Set(); }
     snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, repos };
     return repos;
   } finally {

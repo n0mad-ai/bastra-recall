@@ -10,7 +10,8 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { readAppRecord } from "../src/app-record-store.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -64,7 +65,7 @@ async function withHome<T>(vars: Record<string, string | undefined>, run: (home:
 }
 
 const config = (...argv: string[]) => cmdConfig(parseArgs(["config", ...argv]));
-const settings = (home: string) => JSON.parse(readFileSync(join(home, ".bastra", "cli-settings.json"), "utf8"));
+const settings = (home: string) => JSON.parse(readAppRecord("settings", join(home, ".bastra", "cli-settings.json")));
 
 /**
  * The text written to stdout/stderr and console while `run` runs. Only

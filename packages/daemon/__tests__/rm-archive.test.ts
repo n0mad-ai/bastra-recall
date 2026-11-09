@@ -6,6 +6,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { writeAppRecord } from "../src/app-record-store.js";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -187,7 +188,7 @@ describe("#650 — retention: two days by default, one knob per class", () => {
     const path = join(dir, "cli-settings.json");
     await setArchiveRetain("junk=0.5,user=1", path);
     assert.equal(await getArchiveRetain(path), "junk=0.5,user=1");
-    writeFileSync(path, JSON.stringify({ update: { mode: "notify" }, archive: { retain: "user=forever" } }));
+    writeAppRecord("settings", path, JSON.stringify({ update: { mode: "notify" }, archive: { retain: "user=forever" } }));
     assert.equal(await getArchiveRetain(path), undefined);
   });
 

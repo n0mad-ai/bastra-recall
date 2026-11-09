@@ -118,6 +118,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/core/src/recall-banter.ts :: keyed DEFAULT_TOOL_PHRASES": "#679 output phrases the product writes, never matched against user text",
   "packages/daemon/src/bash-fail-lane.ts :: words /exit(?:ed)?(?:\\s+with)?(?:\\s+(?:non-zero\\s+)?status)?(?:\\s+code)?|status\\s+code|exit_code/": "#679 reads tool output (exit status), not user text",
   "packages/daemon/src/boot-observers.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
+  "packages/daemon/src/app-database.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect the local DB path; not conversation language",
+  "packages/daemon/src/app-record-store.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect legacy state sources; not conversation language",
   "packages/daemon/src/documents-write-shared.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/core/src/vault.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/daemon/src/pending-suggestions.ts :: words /eval|test|synthetic/": "#679 fixture/session-id markers",

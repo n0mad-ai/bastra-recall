@@ -5,6 +5,7 @@ import { z } from "zod";
 import { normalizeAssistantName } from "./assistant-address-name.js";
 import { parseRetain, parseSize } from "./rm-archive-reconcile.js";
 import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
+import { isSupportedLanguage } from "./learned-recall/language.js";
 
 export const UPDATE_MODES = ["notify", "auto", "off"] as const;
 export const EMBEDDING_PROVIDERS = ["ollama", "openai", "none"] as const;
@@ -42,7 +43,7 @@ export const SETTINGS_REGISTRY = {
   commons: { enabled: setting(bool, { area: "search", label: "Bastra Commons", default: false, restartRequired: true, required: true }) },
   sharedRecall: {
     enabled: setting(bool, { area: "search", label: "Gelernte Brücken", default: false, restartRequired: true, required: true }),
-    language: setting(z.string().trim().toLowerCase().refine((v): boolean => v === "de" || v === "en"), { area: "search", label: "Brückensprache", default: null, restartRequired: true }),
+    language: setting(z.string().trim().toLowerCase().refine((v): boolean => isSupportedLanguage(v)), { area: "search", label: "Brückensprache", default: null, restartRequired: true }),
     live: setting(bool, { area: "search", label: "Live-Brückenerweiterung", default: false, restartRequired: true }),
   },
   evidenceGate: { enabled: setting(bool, { area: "hooks", label: "Evidenzentscheid", default: EVIDENCE_GATE_DEFAULT, env: "BASTRA_EVIDENCE_GATE", restartRequired: true, required: true }) },
