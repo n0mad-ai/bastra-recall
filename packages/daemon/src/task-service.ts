@@ -1,4 +1,5 @@
 import { deleteTaskRows } from "./task-delete.js";
+import { taskValidityExpired } from "./task-validity.js";
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
@@ -26,7 +27,7 @@ const token = z.string().regex(/^[a-z0-9._-]+:\d+$/);
 const fields = taskSchema.shape;
 const editableSchema = z.strictObject({
   original_request: fields.original_request, goal: fields.goal,
-  resolution_condition: fields.resolution_condition, schedule: fields.schedule,
+  resolution_condition: fields.resolution_condition, expires_at: fields.expires_at, auto_resolve: fields.auto_resolve, schedule: fields.schedule,
   timezone: fields.timezone, scope: fields.scope, sensitivity: fields.sensitivity,
   owner_domains: fields.owner_domains, recurrence: fields.recurrence,
   action_level: fields.action_level, evidence: fields.evidence, decision: fields.decision,
@@ -42,7 +43,7 @@ export const taskCreateInputSchema = editableSchema.extend({
 });
 const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
-const editInput = mutationInput.extend({ patch: editableSchema.partial().refine(p => Object.keys(p).length > 0) });
+const editInput = mutationInput.extend({ patch: editableSchema.extend({ expires_at: fields.expires_at.nullable(), auto_resolve: fields.auto_resolve.nullable() }).partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
 export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
@@ -224,9 +225,11 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       }
       if (patch.owner_domains && principal.role === "agent" && patch.owner_domains.some(d => !principal.domains.includes(d))) patch.owner_domains = [...principal.domains];
       if (patch.owner_domains) requireTaskDomains(principal, patch.owner_domains);
-      const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level"]
+      const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level", "expires_at", "auto_resolve"]
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
       Object.assign(task, patch); delete task.reminder_fingerprint;
+      if (patch.expires_at === null) delete task.expires_at;
+      if (patch.auto_resolve === null) delete task.auto_resolve;
       if (triggerChanged) {
         task.generation++; delete task.snoozed_until; task.last_event_sequence = s.events.at(-1)?.sequence ?? 0; delete task.last_material_hash; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";
@@ -238,6 +241,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       return;
     }
     if (operation === "task_review") {
+      if (taskValidityExpired(task, now)) throw new TaskServiceError("conflict", "Task validity has ended; change the validity explicitly first");
       if (["resolved", "cancelled", "expired"].includes(task.state)) throw new TaskServiceError("conflict", "terminal task requires rearm first");
       if (task.schedule.kind === "event") validateEventBinding(s, task.schedule, task.owner_domains);
       if (await taskDecisionStatus(ctx, task)) throw new TaskStoreError("conflict", "decision binding requires review");
@@ -253,6 +257,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       const occurrence = relevant.find(o => o.id === args.occurrence_id);
       if (!occurrence) throw new TaskServiceError("not_found", "occurrence absent in current generation");
       occurrence.acknowledgement ??= { at: now, actor: principal.actor_id, proof_id: principal.credential_id };
+      if (task.state === "expired" && occurrence.kind === "expired") { audit(task, principal, "acknowledge", now); return; }
     }
     if (op === "resolve") {
       const occurrences = task.recurrence

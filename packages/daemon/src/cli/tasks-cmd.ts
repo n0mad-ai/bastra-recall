@@ -93,9 +93,10 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       input = { task_ids: words.length ? words : String(options.id ?? "").split(",").filter(Boolean), expected_revision: snapshot.revision, recovery_epoch: snapshot.recovery_epoch };
     }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
-    if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until)) {
+    if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until || options.expires)) {
       const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision ??= task.expected_revision;
       if (options.until) { try { input.until = taskWhen(String(options.until), task.timezone); } catch { throw new TaskCliInputError("Zeit nicht lesbar"); } }
+      if (args.sub === "edit" && options.expires) input.patch = { ...input.patch, expires_at: options.expires === "none" ? null : taskWhen(String(options.expires), task.timezone) };
     }
     if (args.sub === "due") input = { include_acknowledged: true, max_bytes: 16384 };
     const controls: Record<string, object> = { mute: { muted: true }, unmute: { muted: false }, off: { enabled: false }, on: { enabled: true }, stop: { execution_stopped: true }, resume: { execution_stopped: false } };

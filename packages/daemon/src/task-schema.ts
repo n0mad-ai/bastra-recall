@@ -49,7 +49,8 @@ export const taskSchema = z.strictObject({
   creator: taskIdentitySchema, actor: taskIdentitySchema, owner_domains: domains,
   scope: z.strictObject({ kind: z.enum(["personal", "project", "team"]), name: taskIdentitySchema }),
   sensitivity: z.enum(["public", "private", "restricted"]),
-  goal: text, resolution_condition: text,
+  goal: text, resolution_condition: text, expires_at: instant.optional(),
+  auto_resolve: z.strictObject({ verifier_id: z.literal("bound-evidence-v1") }).optional(),
   state: z.enum(["pending", "due", "snoozed", "resolved", "cancelled", "expired"]),
   armed: z.boolean(), paused: z.boolean().optional(), review_reason: z.string().max(4096).optional(),
   schedule: taskScheduleSchema,
@@ -82,6 +83,8 @@ export const taskSchema = z.strictObject({
     decision_snapshot: z.strictObject({ decision: taskDecisionSchema, evidence: z.array(taskReferenceSchema).max(100) }).optional(),
   })).max(10000),
 }).superRefine((task, ctx) => {
+  if (task.auto_resolve && (!task.evidence.length || task.recurrence))
+    ctx.addIssue({ code: "custom", message: "automatic evidence resolution requires a one-off task with bound evidence" });
   if (["resolved", "cancelled", "expired"].includes(task.state) && task.armed)
     ctx.addIssue({ code: "custom", message: "terminal task cannot be armed" });
   if (task.state === "snoozed" && task.snoozed_until === undefined)
@@ -115,7 +118,7 @@ const eventSchema = z.strictObject({
 });
 
 const occurrenceSchema = z.strictObject({
-  id, task_id: id, task_revision: revision, generation: revision,
+  id, task_id: id, task_revision: revision, generation: revision, kind: z.enum(["due", "expired"]).optional(),
   event_key: id, new_premise: text.optional(), due_at: instant, why: text, missed_count: revision,
   attempts: z.array(z.strictObject({ attempt_id: id.optional(), count: revision.optional(), first_at: instant.optional(), actor: taskIdentitySchema.optional(), role: z.enum(["owner", "agent"]).optional(), last_session: taskIdentitySchema.optional(), last_action_key: hash.optional(), channel: id.optional(), at: instant, client: id, outcome: id })).max(100),
   compacted_attempts: revision.optional(),

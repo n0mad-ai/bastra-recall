@@ -1,5 +1,6 @@
 import { privateContentComparison } from "./task-private-comparison.js";
 import { canonicalTaskValue } from "./task-canonical.js";
+import { taskValidityExpired } from "./task-validity.js";
 /** Registered bounded evidence only; verify_cmd is never executable. */
 import { realpath } from "node:fs/promises";
 import { openTaskSourceFile } from "./task-source-file.js";
@@ -16,7 +17,8 @@ export type TaskEvent = TaskStore["events"][number];
 export type Verification = NonNullable<Task["verification"]>;
 export interface TaskMemorySnapshot { id: string; revision: string; raw: string; body: string; sensitivity: string }
 export function taskBindingHash(task: Task): string {
-  return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains }));
+  return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains,
+    ...(task.expires_at !== undefined ? { expires_at: task.expires_at } : {}), ...(task.auto_resolve ? { auto_resolve: task.auto_resolve } : {}) }));
 }
 export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
   const handle = await openTaskSourceFile(path);
@@ -212,9 +214,21 @@ export async function assessTaskFreshness(ctx: TaskServiceContext, allowedTasks?
   await transactTaskStore(ctx.path, undefined, s => {
     for (const update of updates) {
       const task = s.tasks.find(t => t.id === update.id); if (!task || taskBindingHash(task) !== update.verification.binding_hash) continue;
+      if (!task.armed || task.paused || ["resolved", "cancelled", "expired"].includes(task.state)) continue;
+      // A changed registered source invalidates the read just as a task edit does.
+      if (taskCheckMaterial(task, s) !== assessed.get(task.id)) continue;
       if (!verificationChanged(task.verification, update.verification)) continue;
       const before = task.revision++; task.verification = update.verification; task.updated_at = update.verification.checked_at;
       task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "freshness", before_revision: before, after_revision: task.revision, reason: update.verification.reason });
+      if (task.auto_resolve && task.armed && !task.paused && !taskValidityExpired(task, task.updated_at)
+        && !["resolved", "cancelled", "expired"].includes(task.state) && update.verification.outcome === "verified") {
+        const beforeResolution = task.revision++; task.state = "resolved"; task.armed = false;
+        delete task.snoozed_until; delete task.next_check_at; delete task.next_slot;
+        task.history.push({ at: task.updated_at, actor: "task-source-reader", operation: "evidence-resolve", before_revision: beforeResolution,
+          after_revision: task.revision, reason: "Explicit bound-evidence-v1 policy verified exact fresh registered evidence" });
+        for (const occurrence of s.occurrences.filter(o => o.task_id === task.id && o.generation === task.generation))
+          occurrence.resolution ??= { at: task.updated_at, actor: "task-source-reader", reason: "Exact fresh registered evidence verified" };
+      }
     }
   });
   return assessed;

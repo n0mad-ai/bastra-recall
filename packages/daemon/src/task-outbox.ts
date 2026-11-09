@@ -1,4 +1,5 @@
 import { reconsiderationCard } from "./task-reconsideration.js";
+import { isTaskExpiryNotice } from "./task-validity.js";
 /** Durable occurrences own delivery attempts; relay consumption owns nothing here. */
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -19,8 +20,8 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
     const action = store.intents.filter(i => i.task_id === o.task_id).at(-1);
     const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
     const critical = action && ["pending", "unknown"].includes(action.state) && o.attempts.find(a => a.client === client)?.last_action_key !== actionKey;
-    return task?.armed && !task.paused && task.generation === o.generation && !["resolved", "cancelled", "expired"].includes(task.state)
-      && !(task.state === "snoozed" && task.snoozed_until! > now) && (ownerInspect || !task.notification_policy.muted)
+    return task && (isTaskExpiryNotice(task, o) || (task.armed && !task.paused && !["resolved", "cancelled", "expired"].includes(task.state)
+      && !(task.state === "snoozed" && task.snoozed_until! > now))) && task.generation === o.generation && (ownerInspect || !task.notification_policy.muted)
       && !o.resolution && (ownerInspect || critical || input.include_acknowledged || !o.acknowledgement || (passive && now - o.acknowledgement.at >= 24 * 60 * 60 * 1000))
       && task.owner_domains.every(d => principal.domains.includes(d));
   }) : [];
@@ -64,6 +65,10 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
         ...(card.action_outcome?{action_outcome:card.action_outcome}:{}),controls:["inspect","acknowledge","snooze","resolve"]};
       if(encodedBytes(card)>limit) card={occurrence_id:occurrence.id,task_id:task.id,expected_revision:`${store.recovery_epoch}:${task.revision}`,goal:task.goal.slice(0,24),due_at:occurrence.due_at,timezone:task.timezone,compact:true,why_now:r?"Neubewertung fällig; geänderte Prämisse, keine automatische Umkehr.":"Fällig; Details prüfen.",detail_command:`bastra tasks get ${task.id}`};
     }
+    if (isTaskExpiryNotice(task, occurrence)) {
+      card.state = "expired"; card.why_now = "Die Gültigkeit ist abgelaufen; die Aufgabe wurde nicht als erledigt bestätigt.";
+      card.controls = ["inspect", "acknowledge"];
+    }
     const size = encodedBytes(card);
     if (cards.length >= 3 || bytes + size > input.max_bytes - 256) { overflow++; continue; }
     cards.push(card); occurrenceIds.push(occurrence.id); bytes += size;
@@ -82,8 +87,8 @@ export async function recordTaskDelivery(path: string, principal: TaskPrincipal,
   await transactTaskStore(path, undefined, store => {
     for (const id of occurrenceIds) {
       const occurrence = store.occurrences.find(o => o.id === id); const task = occurrence && store.tasks.find(t => t.id === occurrence.task_id);
-      if (!occurrence || !task || !task.owner_domains.every(d => principal.domains.includes(d)) || task.generation !== occurrence.generation || !task.armed
-        || ["resolved", "cancelled", "expired"].includes(task.state) || occurrence.resolution) continue;
+      if (!occurrence || !task || !task.owner_domains.every(d => principal.domains.includes(d)) || task.generation !== occurrence.generation
+        || (!isTaskExpiryNotice(task, occurrence) && (!task.armed || ["resolved", "cancelled", "expired"].includes(task.state))) || occurrence.resolution) continue;
       const action = store.intents.filter(i => i.task_id === task.id).at(-1);
       const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
       const existing = occurrence.attempts.find(a => a.client === client);

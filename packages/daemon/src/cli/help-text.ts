@@ -245,7 +245,8 @@ Nach Fälligkeit: tasks due, tasks acknowledge ID --occurrence VORKOMMEN, tasks 
 Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung.
   bastra tasks create --goal "Nach sieben Tagen auswerten" --after 7d --domain personal --timezone Europe/Madrid --arm
   bastra tasks create --goal "Täglich prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --every 1d --count 3
-  bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid
+  bastra tasks create --goal "Termin prüfen" --when 2026-10-12T18:00 --timezone Europe/Madrid --expires 2026-10-13T18:00
+  bastra tasks edit ID --expires none   (Gültigkeitsende entfernen)
   bastra tasks list | due | status [--json] [--agent]
   bastra tasks mute|unmute|off|on|stop|resume  Globale Owner-Steuerung
   bastra tasks get|review|resolve|cancel|rearm|delete <id>

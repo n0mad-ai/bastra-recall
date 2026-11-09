@@ -1,4 +1,5 @@
 import { privateContentComparison } from "./task-private-comparison.js";
+import { taskValidityExpired } from "./task-validity.js";
 import { checkTaskDecisions } from "./task-reconsideration.js";
 import { canonicalTaskValue } from "./task-canonical.js";
 /** Single task-owned journal and evaluator; no in-memory timer owns work. */
@@ -92,6 +93,16 @@ export function evaluateTaskSnapshot(store: TaskStore, now: number): void {
   let visited = 0;
   while (visited < store.tasks.length && remaining > 0) {
     const task = store.tasks[(start + visited++) % store.tasks.length]; remaining--;
+    if (!["resolved", "cancelled", "expired"].includes(task.state) && taskValidityExpired(task, now)) {
+      const id = taskValueHash(JSON.stringify(["task-expiry-v1", task.id, task.generation, task.expires_at]));
+      for (const occurrence of store.occurrences.filter(o => o.task_id === task.id && o.generation === task.generation))
+        occurrence.resolution ??= { at: now, actor: "task-source-reader", reason: "Task validity ended" };
+      if (!store.occurrences.some(o => o.id === id)) store.occurrences.push({ id, task_id: task.id, task_revision: task.revision,
+        generation: task.generation, kind: "expired", event_key: `expiry:${task.expires_at}`, due_at: task.expires_at!,
+        why: "Task validity ended; the task expired without a completion claim", missed_count: 0, attempts: [] });
+      task.state = "expired"; task.armed = false; delete task.paused; delete task.snoozed_until;
+      delete task.next_slot; delete task.next_check_at; audit(task, now, "expire"); continue;
+    }
     if (!task.armed || task.paused || ["resolved", "cancelled", "expired"].includes(task.state)
       || (task.state === "snoozed" && task.snoozed_until! > now)) continue;
     if (task.schedule.kind === "event") {

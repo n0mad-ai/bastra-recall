@@ -1,7 +1,7 @@
 /** Owner decision 2026-10-11: conversational notify, never execute authority. */
 import { privateTaskComparison } from "./task-private-comparison.js";
 import type { Task, TaskStore } from "./task-schema.js";
-type ReminderDefinition = Pick<Task, "origin" | "goal" | "original_request" | "resolution_condition" | "schedule" | "timezone" | "recurrence" | "owner_domains" | "scope" | "sensitivity" | "evidence" | "decision">;
+type ReminderDefinition = Pick<Task, "origin" | "goal" | "original_request" | "resolution_condition" | "schedule" | "timezone" | "recurrence" | "owner_domains" | "scope" | "sensitivity" | "evidence" | "decision" | "expires_at" | "auto_resolve">;
 /** Hash actual pre-scrub content; identical redaction placeholders are not equality. */
 export async function reminderFingerprint(path: string, input: ReminderDefinition): Promise<string | undefined> {
   if (!input.origin) return;
@@ -11,6 +11,8 @@ export async function reminderFingerprint(path: string, input: ReminderDefinitio
     schedule: input.schedule, timezone: input.timezone, recurrence: input.recurrence ?? null,
     domains: [...input.owner_domains].sort(), scope: input.scope, sensitivity: input.sensitivity,
     evidence: input.evidence, decision: input.decision ?? null,
+    ...(input.expires_at !== undefined ? { expires_at: input.expires_at } : {}),
+    ...(input.auto_resolve ? { auto_resolve: input.auto_resolve } : {}),
   });
 }
 export async function reminderDuplicate(path: string, store: TaskStore, input: ReminderDefinition, legacyInputs: ReminderDefinition[] = []): Promise<Task | undefined> {

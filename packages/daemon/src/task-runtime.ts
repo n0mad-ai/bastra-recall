@@ -1,5 +1,5 @@
 import { reconcilePendingTaskIntents } from "./task-execution.js";
-import { notifyDueTasks } from "./task-notification.js";
+import { notifyDueTasks, taskNotificationStatus } from "./task-notification.js";
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
 import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
@@ -18,6 +18,7 @@ export class TaskRuntime {
   readonly invalidBindings = new Set<string>();
   readonly checks = new Map<string, { next: number; backoff: number; material: string }>();
   private pollCursor = 0; private stopped = false; private busy: Promise<void> | null = null;
+  private notificationsEnabled = process.platform === "darwin";
   private queued = false; private loaded = false; private watcher?: FSWatcher;
   private unsubscribe: Array<() => void>; private cleanup: Array<() => void> = [];
   readonly ready: Promise<void>;
@@ -58,7 +59,11 @@ export class TaskRuntime {
       this.snapshot = snapshot; this.loaded = true; this.ioStopped = false; return changed;
     } catch { this.lastError = "task_store_unavailable"; this.ioStopped = true; throw new Error("Task store unavailable"); }
   }
-  get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => t.armed && !t.paused && !["resolved", "cancelled", "expired"].includes(t.state)) || (this.ctx.executionHost === true && this.snapshot.intents.some(i => i.state === "pending"))); }
+  get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => !["resolved", "cancelled", "expired"].includes(t.state) && ((t.armed && !t.paused) || t.expires_at !== undefined))
+    || (this.ctx.executionHost === true && (this.snapshot.intents.some(i => i.state === "pending")
+      || (this.notificationsEnabled && !this.snapshot.controls.muted && this.snapshot.occurrences.some(o => o.kind === "expired" && !o.acknowledgement && !o.resolution
+        && !o.attempts.some(a => a.outcome === "attempted") && (!o.notification || o.notification.failed_at !== undefined)
+        && this.snapshot.tasks.some(t => t.id === o.task_id && t.generation === o.generation && !t.notification_policy.muted)))))); }
   contact(): void {
     if (this.stopped) return;
     this.queued = true;
@@ -89,7 +94,7 @@ export class TaskRuntime {
           if (Date.now() - started < 5000) assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
-        if (this.ctx.executionHost) await notifyDueTasks(this.ctx);
+        if (this.ctx.executionHost) { this.notificationsEnabled = (await taskNotificationStatus()).enabled; await notifyDueTasks(this.ctx); }
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
           const task = this.snapshot.tasks.find(t => t.id === id); if (!task || !assessed.has(id)) continue;

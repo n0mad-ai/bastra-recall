@@ -1,7 +1,7 @@
 /** User-facing task options and plain text output; JSON remains explicit. */
 import { randomUUID } from "node:crypto";
 import { localWall, ambiguousTaskCalendar, resolveTaskCalendar } from "../task-clock.js";
-export const TASK_VALUE_FLAGS = ["--goal", "--when", "--after", "--timezone", "--domain", "--scope", "--resolve-when", "--level", "--id", "--revision", "--occurrence", "--until", "--input", "--event-source", "--expected", "--every", "--count", "--end", "--root", "--path", "--sensitivity", "--archive"] as const;
+export const TASK_VALUE_FLAGS = ["--goal", "--when", "--after", "--timezone", "--domain", "--scope", "--resolve-when", "--level", "--id", "--revision", "--occurrence", "--until", "--input", "--event-source", "--expected", "--every", "--count", "--end", "--expires", "--root", "--path", "--sensitivity", "--archive"] as const;
 export function parseTaskOptions(argv: string[]) {
   const options: Record<string, string | boolean> = {}, words: string[] = [];
   for (let i = 2; i < argv.length; i++) {
@@ -56,7 +56,7 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
   const agentNotify = options.agent === true;
   const ambiguous = (schedule as any).kind === "calendar" && ambiguousTaskCalendar((schedule as any).local_time, timezone);
   if (agentNotify && ambiguous) throw Object.assign(new Error("Mehrdeutige Ortszeit: erst den genauen Zeitpunkt bestätigen"), { code: "validation" });
-  return { ...(options.agent ? { origin: { kind: "user-request", client: "cli", session: "local-terminal", context: goal } } : {}), ...(recurrence ? { recurrence } : {}), idempotency_key: randomUUID(), original_request: goal, goal, resolution_condition: String(options["resolve-when"] ?? "Owner bestätigt Erledigung"), schedule,
+  return { ...(options.expires ? { expires_at: taskWhen(String(options.expires), timezone) } : {}), ...(options.agent ? { origin: { kind: "user-request", client: "cli", session: "local-terminal", context: goal } } : {}), ...(recurrence ? { recurrence } : {}), idempotency_key: randomUUID(), original_request: goal, goal, resolution_condition: String(options["resolve-when"] ?? "Owner bestätigt Erledigung"), schedule,
     timezone, scope: { kind: "personal", name: String(options.scope ?? domain.split(",")[0]) }, owner_domains: domain.split(","), action_level: String(options.level ?? "notify"), arm: (options.arm === true || agentNotify) && !ambiguous };
 }
 export const friendlyWhyNow=(why:string)=>why.startsWith("Registered condition") ? "Der Auslöser ist fällig. Zeitablauf bestätigt kein Messergebnis." : why;
@@ -82,6 +82,7 @@ export function friendlyTaskResult(sub: string, result: any): string {
     const when = t.schedule.kind === "event" ? `Ereignis ${quote(t.schedule.source_id)}` : taskDisplayTime(t.schedule.at, t.timezone);
     return `${quote(t.goal)} · ${when} · ${t.timezone} · ${t.armed ? "scharf" : "unscharf"} · ${t.paused ? "pausiert" : taskStateName[t.state] ?? t.state} · ${levelName[t.action_level] ?? t.action_level}\n  ID ${t.id}`
       + (t.schedule.kind === "calendar" && ambiguousTaskCalendar(t.schedule.local_time,t.timezone) ? "\n  Mehrdeutige Ortszeit: früherer Zeitpunkt gewählt. Owner muss diese Wahl mit review prüfen." : "")
+      + (t.expires_at !== undefined ? `\n  Gültig bis ${taskDisplayTime(t.expires_at, t.timezone)} (${t.timezone})` : "")
       + (t.state === "snoozed" ? `\n  Zurückgestellt bis ${taskDisplayTime(t.snoozed_until, t.timezone)} (${t.timezone})` : "")
       + (t.recurrence ? `\n  Wiederholung: ${t.recurrence.kind === "calendar" ? "Kalendertage" : "verstrichene Dauer"}; ${t.recurrence.count !== undefined ? `Anzahl ${t.recurrence.count}` : t.recurrence.until !== undefined ? `bis ${taskDisplayTime(t.recurrence.until,t.timezone)}` : "ohne Ende"}` : "")
       + (sub === "rearm" ? "\n  Wieder zur Prüfung vorgelegt, UNSCHARF. Scharf schalten: bastra tasks review <id>." : "")

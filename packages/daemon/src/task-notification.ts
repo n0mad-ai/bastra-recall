@@ -1,6 +1,7 @@
 /** Optional local OS surface. A durable claim provides at-most-once submission
  * across daemon restarts; an OS submission is never a human read receipt. */
 import { execFile } from "node:child_process";
+import { isTaskExpiryNotice } from "./task-validity.js";
 import { promisify } from "node:util";
 import { readSettings } from "./settings-file.js";
 import { readTaskStore, transactTaskStore } from "./task-store.js";
@@ -23,8 +24,9 @@ async function sendMacNotification(message: TaskNotificationMessage): Promise<vo
   await execFileAsync("/usr/bin/osascript", ["-e", "on run argv\ndisplay notification (item 1 of argv) with title (item 2 of argv)\nend run", message.body, message.title], { timeout: 5000, maxBuffer: 4096 });
 }
 function eligible(store: TaskStore, task: Task | undefined, occurrence: TaskStore["occurrences"][number], now: number): task is Task {
-  if (!store.controls.enabled || store.controls.muted || !task?.armed || task.paused || task.notification_policy.muted
-    || task.state !== "due" || task.generation !== occurrence.generation || occurrence.acknowledgement || occurrence.resolution) return false;
+  if (!store.controls.enabled || store.controls.muted || !task || task.notification_policy.muted
+    || (!isTaskExpiryNotice(task, occurrence) && (!task.armed || task.paused || task.state !== "due"))
+    || task.generation !== occurrence.generation || occurrence.acknowledgement || occurrence.resolution) return false;
   // The conversation is the primary surface. Never submit a second OS alert
   // after a contact has already attempted delivery of this occurrence.
   if (occurrence.attempts.some(a => a.outcome === "attempted")) return false;
@@ -47,7 +49,7 @@ export async function notifyDueTasks(ctx: TaskServiceContext, options: TaskNotif
       const task = occurrence && store.tasks.find(t => t.id === occurrence.task_id);
       if (!occurrence || !eligible(store, task, occurrence, now)) return;
       occurrence.notification = { claimed_at: now };
-      message = { title: "Bastra Recall", body: task.goal.slice(0, 200) };
+      message = { title: "Bastra Recall", body: `${isTaskExpiryNotice(task, occurrence) ? "Abgelaufen: " : ""}${task.goal.slice(0, 200)}` };
     }, "control");
     if (!message) continue;
     let failure: unknown;

@@ -1,5 +1,6 @@
 /** P7 preparation, exact owner proof and local leases. No execution adapter. */
 import { z } from "zod";
+import { taskValidityExpired } from "./task-validity.js";
 import { randomUUID, randomBytes } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
@@ -70,7 +71,7 @@ export function approvalBinding(proposal: Proposal, challenge: Challenge, decisi
 export async function validateTaskProposal(ctx: TaskServiceContext, store: TaskStore, proposal: Proposal, registry: ApprovalRegistry): Promise<Task> {
   if (proposal.status === "stale" || !proposal.task_binding) return fail("approval_stale", "Private binding retired; prepare again");
   const task = store.tasks.find(t => t.id === proposal.task_id);
-  if (!task || task.paused || (!proposal.rollback_of && (!task.armed || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())))) return conflict("Task is inactive");
+  if (!task || task.paused || (!proposal.rollback_of && (!task.armed || taskValidityExpired(task, (ctx.now ?? Date.now)()) || ["cancelled", "resolved", "expired"].includes(task.state) || (task.state === "snoozed" && task.snoozed_until! > (ctx.now ?? Date.now)())))) return conflict("Task is inactive");
   if (proposal.status === "denied") return fail("approval_denied", "Proposal denied");
   if (proposal.status === "revoked") return fail("approval_revoked", "Proposal revoked");
   if (task.revision !== proposal.task_revision || task.generation !== proposal.generation
@@ -126,7 +127,7 @@ export async function callTaskAction(ctx: TaskServiceContext, authorization: str
       const task = store.tasks.find(t => t.id === input.id && t.owner_domains.every(d => principal.domains.includes(d)));
       if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
       if (`${store.recovery_epoch}:${task.revision}` !== input.expected_revision) return fail("approval_stale", "Freshness advanced task revision; fetch current task and prepare again");
-      if (!store.controls.enabled || !task.armed || task.paused || task.action_level === "notify") return conflict("Task is not reviewed for preparation");
+      if (!store.controls.enabled || !task.armed || task.paused || taskValidityExpired(task, now) || task.action_level === "notify") return conflict("Task is not reviewed for preparation");
       if (cleanText(input.payload) !== input.payload || /[\p{Cc}\p{Cf}]/u.test(input.payload.replaceAll("\n", "").replaceAll("\t", ""))) throw Object.assign(new Error("Exact payload cannot be safely previewed"), { code: "validation" });
       const target = registry.targets.find(t => t.id === input.target_id); if (!target) return conflict("Target absent");
       const sourceIds = new Set([...task.evidence.map(e => e.source_id), ...(task.schedule.kind === "event" ? [task.schedule.source_id] : [])]);
