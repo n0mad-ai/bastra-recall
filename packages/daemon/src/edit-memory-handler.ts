@@ -132,7 +132,7 @@ export const EditMemoryArgs = z
   })
   .refine(
     (a) => a.str_replace !== undefined || a.append !== undefined || a.frontmatter !== undefined || a.rulebook_decision !== undefined,
-    { message: "edit_memory needs at least one of str_replace, append, frontmatter or rulebook_decision" },
+    { message: "edit_memory needs at least one of str_replace, append or frontmatter (or standalone rulebook_decision)" },
   ).superRefine((a, ctx) => {
     if (!a.rulebook_decision) return;
     if (!a.expected_revision) ctx.addIssue({ code: "custom", message: "rulebook_decision requires expected_revision from load_memory" });

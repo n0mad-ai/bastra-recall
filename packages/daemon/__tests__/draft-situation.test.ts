@@ -110,14 +110,14 @@ test("B2 uses bounded before/after windows between typed turns and merges later 
   assert.equal(await readAppRecord("drafts", join(dir, "drafts.json")), beforeReplay, "old evidence must not reorder newer situation cues");
 }));
 
-test("B2 keeps Codex parser output unchanged and captures without situation when Claude fields are absent", () => isolated(async () => {
+test("B2 keeps Codex capture without Claude situation while retaining native Stop timestamps", () => isolated(async () => {
   const message = (role: string, text: string) => ({ type: "response_item", timestamp: new Date(now).toISOString(), payload: { type: "message", role, content: [{ type: "input_text", text }] } });
   const turns = parse([
     message("assistant", "Working on the fixture."),
     { type: "response_item", payload: { type: "function_call", name: "shell", arguments: JSON.stringify({ command: "ssh fixture-host.invalid" }) } },
     message("user", quote),
   ]);
-  assert.deepEqual(turns, [{ role: "assistant", content: "Working on the fixture.", commands: ["ssh fixture-host.invalid"], tools: ["shell"], calls:[{name:"shell",input:{command:"ssh fixture-host.invalid"}}] }, { role: "user", content: quote }]);
+  assert.deepEqual(turns, [{ role: "assistant", content: "Working on the fixture.", at: now, commands: ["ssh fixture-host.invalid"], tools: ["shell"], calls:[{name:"shell",input:{command:"ssh fixture-host.invalid"}}] }, { role: "user", content: quote, at: now }]);
   await captureTypedDrafts(turns, { session_id: "codex", client: "codex" }, now, []);
   const drafts = await listDrafts(now);
   assert.equal(drafts.length, 1);

@@ -193,11 +193,14 @@ test("#1307 correction without save reaches the same-turn path once per session"
 
 test("#1307 a subsequent save_memory prevents the correction reminder; a prior save or prose mention does not", async () => {
   await withSandbox({}, async () => {
-    const save = { message: { role: "assistant", content: [{ type: "tool_use", name: "mcp__bastra_recall__save_memory", input: {} }] } };
-    const after = JSON.parse(await stop({ session_id: "correction-saved", transcript: [...CORRECTION_TRANSCRIPT, save] }));
+    const save = { message: { role: "assistant", content: [{ type: "tool_use", id: "correction-save", name: "mcp__bastra_recall__save_memory", input: {} }] } };
+    const saved = { message: { role: "user", content: [{ type: "tool_result", tool_use_id: "correction-save", is_error: false, content: JSON.stringify({ id: "correction", file_path: "/fixture/correction.md" }) }] } };
+    const after = JSON.parse(await stop({ session_id: "correction-saved", transcript: [...CORRECTION_TRANSCRIPT, save, saved] }));
     assert.deepEqual(after, {}, "a saved correction produces no reminder under either reason");
-    const before = JSON.parse(await stop({ session_id: "correction-prior", transcript: [save, ...CORRECTION_TRANSCRIPT] }));
+    const before = JSON.parse(await stop({ session_id: "correction-prior", transcript: [save, saved, ...CORRECTION_TRANSCRIPT] }));
     assert.match(before.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
+    const attempted = JSON.parse(await stop({ session_id: "correction-attempted", transcript: [...CORRECTION_TRANSCRIPT, save] }));
+    assert.match(attempted.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/, "an uncompleted call is not a successful save");
     const prose = JSON.parse(await stop({ session_id: "correction-prose", transcript: [...CORRECTION_TRANSCRIPT, { role: "assistant", content: "I could call save_memory" }] }));
     assert.match(prose.hookSpecificOutput?.additionalContext ?? "", /correction-without-save/);
     const unrelated = JSON.parse(await stop({ session_id: "correction-old", transcript: [...CORRECTION_TRANSCRIPT, { role: "user", content: "Build a calendar widget" }] }));

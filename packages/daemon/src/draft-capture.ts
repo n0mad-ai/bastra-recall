@@ -32,6 +32,11 @@ export async function captureTypedDrafts(
     return turn.role === "user" && text.length > 0 && text.length < PASTE_MIN_CHARS
       && !text.startsWith(INTERRUPT_PREFIX) && !isSystemInjectedTurn(text);
   };
+  // Native Codex timestamps support Stop evidence; they do not opt its drafts
+  // into the existing Claude situation-capture contract.
+  const situation = (index: number) => entry.client === "codex"
+    ? { before: [], after: [], reads: [], lits: [] }
+    : situationForTurn(turns, index, typed);
   for (let i = entry.harvested_upto ?? 0; i < turns.length; i++) {
     const turn = turns[i];
     const text = textBeforeDraftBand(turn.content).trim();
@@ -44,7 +49,7 @@ export async function captureTypedDrafts(
       ...(vaultId ? { vault_id: vaultId } : {}),
       kind: afterFailureForTurn(turns, i, typed) ? "after-failure" : shape?.kind ?? "typed",
       quote: text, ...(shape?.context ? { context: shape.context } : {}),
-      situation: situationForTurn(turns, i, typed),
+      situation: situation(i),
       evidence: [{ session_id: entry.session_id, turn: i, ts: turn.at ?? now, ...(entry.client ? { client: entry.client } : {}) }],
       created: now, last_touched: now, surfaced: [], state: "open",
     });
@@ -54,7 +59,7 @@ export async function captureTypedDrafts(
   let previous = Math.min(entry.harvested_upto ?? 0, turns.length) - 1;
   while (previous >= 0 && !typed(turns[previous])) previous--;
   if (previous >= 0) {
-    const after = situationForTurn(turns, previous, typed).after;
+    const after = situation(previous).after;
     if (after.length > 0) afterUpdates.push({ session_id: entry.session_id, turn: previous, after });
   }
   const result = await captureDrafts(drafts, now, afterUpdates);
