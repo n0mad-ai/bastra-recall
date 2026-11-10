@@ -75,6 +75,12 @@ test('real HTTP account boundary covers UI, task app, hook cards and REST projec
  try{
   assert.equal((await fetch(base+'/health')).status,200);assert.equal(lookups,0);
   assert.equal((await fetch(base+'/api/v1/health')).status,200);assert.equal(lookups,0);
+  for (const authorization of [undefined, 'Bearer invalid-fixture-token']) {
+   const publicResponse=await fetch(base+'/api/v1/health',{headers:{Connection:'close',...(authorization?{'x-bastra-task-authorization':authorization}:{})}});
+   assert.equal(publicResponse.status,200);
+   assert.equal((await publicResponse.json() as Record<string,unknown>).proactive_due,undefined);
+   assert.equal(lookups,0);
+  }
   const ordinary=await fetch(base+'/hook/recall',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'fixture',k:1,lexical_only:true})});assert.equal(ordinary.status,200);await ordinary.text();assert.equal(lookups,0);
   for(const route of ['/ui/health','/api/v1/tasks','/api/v1/tasks/stream','/api/v1/task_list']){
    const response=await fetch(base+route,{headers:{...headers,Authorization:`Bearer ${credential.token}`,'x-bastra-uid':String(owner),Cookie:`uid=${owner}`}});assert.equal(response.status,403,route);await response.text();
