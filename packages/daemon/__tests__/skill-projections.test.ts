@@ -79,3 +79,18 @@ test("#763: the frustration trigger text names a repetition phrase, never the ba
     assert.match(text, /schon wieder/, `${what} names the repetition phrase`);
   }
 });
+
+test("#1409: canonical and generated client frontmatter is valid YAML with string descriptions", async () => {
+  // Standard YAML parser already shipped in the dependency tree, not the projection splitter.
+  const { createRequire } = await import("node:module");
+  const yaml = createRequire(import.meta.url)("js-yaml");
+  for (const [name, text] of [
+    ["canonical", canonical],
+    ["Cursor", gen.renderCursorRule(canonical)],
+    ["plugin", gen.renderPluginSkill(canonical)],
+  ]) {
+    const parsed = yaml.safeLoad(gen.splitFrontmatter(text).frontmatter);
+    assert.equal(typeof parsed.description, "string", name);
+    assert.ok(parsed.description.length > 0, name);
+  }
+});
