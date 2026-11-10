@@ -173,3 +173,9 @@ Byte-Budget und Projekt-Ersatznamen; Overrides und andere Profile bleiben
 unangetastet. Nach Änderungen den Host neu starten. Dateigleichheit belegt weder
 das tatsächliche Laden noch Regelbefolgung; nähere Projektanweisungen und
 Host-Einschränkungen gelten weiter. In Claude hilft `/context` beim Prüfen.
+
+## First-use onboarding / Ersteinführung
+
+During a concrete user task, first-use onboarding waits for a later turn without active work and remains pending. Without active work, the interview starts immediately. See [how Recall works](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).
+
+Bei einer konkreten Nutzeraufgabe wartet die Ersteinführung auf einen späteren Gesprächsschritt ohne laufende Aufgabe und bleibt offen. Ohne laufende Aufgabe beginnt das Gespräch sofort. Siehe [wie Recall funktioniert](https://github.com/n0mad-ai/bastra-recall/wiki/How-Recall-Works).
