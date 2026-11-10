@@ -34,7 +34,7 @@ test('#1335: a failed companion upgrade restores both previous jobs before hosts
 import {mkdir} from 'node:fs/promises';
 import {createServer as netServer,connect} from 'node:net';
 import {createServer,request,Server,IncomingMessage,ServerResponse} from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,type ChildProcess} from 'node:child_process';
 import {once} from 'node:events';
 import ts from 'typescript';
 import {ensureAssistantAddressRuntime} from '../src/assistant-address.js';
@@ -49,22 +49,46 @@ async function runtime(t:test.TestContext){
  const o={runtimeDir:join(root,'runtime'),runtimeSourceDir:source,runtimeNode:process.execPath,home:root,uid:String(process.getuid?.()??501),username:'fixture',settingsPath:join(root,'settings'),hostsPath:join(root,'hosts'),helperPath:join(root,'helper'),daemonUrl:'http://127.0.0.1:9'};
  await writeFile(o.settingsPath,JSON.stringify({ui:{enabled:true},assistant:{name:'jarvis'}}));await writeFile(o.hostsPath,'');return o;
 }
-async function call(port:number,host:string){return new Promise<number>((resolve,reject)=>{const q=request({host,port,path:'/ui/',headers:{Host:`jarvis.localhost:${port}`,Connection:'close'}},r=>{r.resume();r.on('end',()=>resolve(r.statusCode!));});q.on('error',reject);q.setTimeout(8000,()=>q.destroy(Error('fixture timeout')));q.end();});}
+async function call(port:number,host:string,signal?:AbortSignal){return new Promise<number>((resolve,reject)=>{const q=request({host,port,signal,path:'/ui/',headers:{Host:`jarvis.localhost:${port}`,Connection:'close'}},r=>{r.resume();r.on('end',()=>resolve(r.statusCode!));r.on('error',reject);});q.on('error',reject);q.setTimeout(8000,()=>q.destroy(Error('fixture timeout')));q.end();});}
+
+async function bounded<T>(work:Promise<T>,label:string,ms=1500):Promise<T>{
+ let timer:NodeJS.Timeout|undefined;
+ try{return await Promise.race([work,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label)),ms);})]);}
+ finally{clearTimeout(timer);}
+}
 
 test('#1335: both inherited listeners use two real processes for 24 connections, overload and retirement',async t=>{
  const o=await runtime(t);let entered=0;const releases:Array<()=>void>=[];
+ const listeners=[netServer(),netServer()],children:ChildProcess[]=[],abort=new AbortController();
+ let settled:Promise<PromiseSettledResult<number>[]> = Promise.resolve([]);
  const backend=createServer((_q,r)=>{entered++;releases.push(()=>r.end('fixture-ui'));});await new Promise<void>(r=>backend.listen(0,'127.0.0.1',r));
- t.after(()=>{releases.splice(0).forEach(r=>r());backend.closeAllConnections();return new Promise<void>(r=>backend.close(()=>r()));});
+ // Close every owner even when an assertion runs before listeners are handed
+ // off. Waiting for backend.close before terminating its gateways can deadlock.
+ t.after(async()=>{
+  abort.abort();releases.splice(0).forEach(r=>r());backend.closeAllConnections();
+  const closes=[backend,...listeners].map(server=>new Promise<void>(r=>server.close(()=>r())));
+  const exits=children.filter(c=>c.exitCode===null&&c.signalCode===null).map(c=>once(c,'exit'));
+  for(const child of children)try{child.kill('SIGKILL');}catch{}
+  await bounded(Promise.all([...closes,...exits,settled]),'overload fixture cleanup did not settle');
+ });
  await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});
- const listeners=[netServer(),netServer()];await new Promise<void>(r=>listeners[0].listen(0,'127.0.0.1',r));const port=(listeners[0].address()as any).port;
+ await new Promise<void>(r=>listeners[0].listen(0,'127.0.0.1',r));const port=(listeners[0].address()as any).port;
  await new Promise<void>(r=>listeners[1].listen(port,'::1',r));
- const children=listeners.map(server=>spawn('/bin/sh',[join(o.runtimeDir,'launch.sh')],{stdio:[(server as any)._handle.fd,'ignore','pipe'],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_LISTEN:'1',BASTRA_ASSISTANT_ADDRESS_PROTOCOL:'2'}}));
- t.after(async()=>{const exits=children.filter(c=>c.exitCode===null&&c.signalCode===null).map(c=>once(c,'exit'));for(const c of children)try{c.kill('SIGKILL');}catch{}await Promise.all(exits);});
+ children.push(...listeners.map(server=>spawn('/bin/sh',[join(o.runtimeDir,'launch.sh')],{stdio:[(server as any)._handle.fd,'ignore','pipe'],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_LISTEN:'1',BASTRA_ASSISTANT_ADDRESS_PROTOCOL:'2'}})));
  // Adversarial scheduling: pause the actual launchers before Node admission.
  children.forEach(c=>c.kill('SIGSTOP'));
- const rows=execFileSync('/bin/ps',['-ww','-p',children.map(c=>c.pid).join(','),'-o','pid=','-o','stat=','-o','args='],{encoding:'utf8'}).trim().split('\n');
+ // kill() sends SIGSTOP; it does not wait for the kernel's stopped state.
+ // Wait for that state before inspecting it or queueing the adversarial load.
+ let rows:string[]=[];
+ for(const until=Date.now()+1000;;){
+  rows=execFileSync('/bin/ps',['-ww','-p',children.map(c=>c.pid).join(','),'-o','pid=','-o','stat=','-o','args='],{encoding:'utf8'}).trim().split('\n');
+  if(rows.length===2&&rows.every(r=>/\sT\S*\s/.test(r)))break;
+  assert.ok(Date.now()<until,`launchers did not stop: ${rows.join('\n')}`);await new Promise(r=>setTimeout(r,10));
+ }
  assert.equal(rows.length,2);assert.ok(rows.every(r=>/\sT\S*\s/.test(r)),rows.join('\n'));
- const results:number[]=[],pending=Array.from({length:24},(_,i)=>call(port,i%2?'::1':'127.0.0.1').then(code=>{results.push(code);return code;}));
+ const results:number[]=[],pending=Array.from({length:24},(_,i)=>call(port,i%2?'::1':'127.0.0.1',abort.signal).then(code=>{results.push(code);return code;}));
+ settled=Promise.allSettled(pending);
+ if(process.env.BASTRA_FIXTURE_OVERLOAD_FAILURE==='1')assert.fail('injected overload assertion');
  // Persistent jobs do not launch per connection; both listening descriptors stay reserved.
  children.forEach(c=>c.kill('SIGCONT'));await Promise.all(listeners.map(server=>new Promise<void>(r=>server.close(()=>r()))));
  for(const until=Date.now()+6000;Date.now()<until&&entered+results.length<24;)await new Promise(r=>setTimeout(r,20));
@@ -75,6 +99,17 @@ test('#1335: both inherited listeners use two real processes for 24 connections,
  const exits=children.map(c=>once(c,'exit'));await ensureAssistantAddressRuntime({...o,daemonUrl:'http://127.0.0.1:9'});
  await Promise.race([Promise.all(exits),new Promise((_,reject)=>setTimeout(()=>reject(Error('persistent jobs did not retire')),3000).unref())]);
  assert.ok(children.every(c=>c.exitCode===0),'a launchd job can restart only after its previous process exits');
+});
+
+test('#1427: a failed overload assertion settles its fixture process',()=>{
+ let failure:any;
+ const env={...process.env,BASTRA_FIXTURE_OVERLOAD_FAILURE:'1'};delete env.NODE_TEST_CONTEXT;
+ try{execFileSync(process.execPath,['--import','tsx','--import','./scripts/test-env.mjs','--test','--test-reporter=tap','--test-name-pattern=^#1335: both inherited',new URL(import.meta.url).pathname],{
+  // Allow the existing 8 s request budget, bounded cleanup and process startup.
+  env,timeout:12000,stdio:'pipe',encoding:'utf8',
+ });}catch(error){failure=error;}
+ assert.equal(failure?.status,1,`fixture must fail and exit, not hang: ${failure?.message}`);
+ assert.match(failure.stdout,/injected overload assertion/);
 });
 
 test('#1335: confirmed legacy upgrade and removal carry both owned jobs through the lifecycle',async t=>{
