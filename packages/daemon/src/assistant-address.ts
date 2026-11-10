@@ -116,7 +116,7 @@ async function retireLegacyAssistantHelpers(o:ReturnType<typeof assistantAddress
 }
 async function assistantRuntimeBundle(o:ReturnType<typeof assistantAddressOptions>){
  const source=o.runtimeSourceDir??dirname(fileURLToPath(import.meta.url));
- const files=["assistant-address-bootstrap.js","assistant-address-gateway.js","assistant-address-name.js","assistant-address-files.js","http-auth.js","runtime-feature-settings.js","runtime-settings.js"];
+ const files=["assistant-address-bootstrap.js","assistant-address-gateway.js","local-account-access.js","assistant-address-name.js","assistant-address-files.js","http-auth.js","runtime-feature-settings.js","runtime-settings.js"];
  const contents=await Promise.all(files.map(async name=>{
   const path=name==="runtime-settings.js"&&!o.runtimeSourceDir?fileURLToPath(import.meta.resolve("@bastra-recall/core/runtime-settings")):join(source,name);
   const text=await readFile(path,"utf8");

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { processOwnsVault } from "./local-account-access.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 /**
  * bastra-recall daemon — MCP server over a markdown memory vault.
@@ -105,7 +106,8 @@ async function main(): Promise<void> {
     }
   }
 
-  if (tasksEnabled()) await ensureLocalTaskAgent().then(result => {
+  const taskAccountAllowed = await processOwnsVault(VAULT_PATH!);
+  if (tasksEnabled() && taskAccountAllowed) await ensureLocalTaskAgent().then(result => {
     console.error(`[bastra-recall] task agent access: ${result.reason}${!result.configured && result.reason !== "disabled" ? "; reminder cards unavailable — check bastra tasks client-status / setup-hooks" : ""}`);
   }).catch(() => console.error("[bastra-recall] task agent access unavailable; existing configuration preserved"));
 
@@ -223,6 +225,7 @@ async function main(): Promise<void> {
   // watchdog, staged restart, ollama unload, curator tick, log retention —
   // lives in daemon-jobs.ts; this is the single wiring point.
   startBackgroundJobs({
+    taskAccountAllowed,
     vault,
     vaultRoot: VAULT_PATH!,
     search,

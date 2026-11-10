@@ -38,6 +38,8 @@ import { loadTranscript } from "./stop-lane.js";
 import { runTrainingCaptureTick, type TrainingTick } from "./training-capture.js"; // #1128-capture
 
 export interface BackgroundJobDeps {
+  /** Positive process/vault OS-account proof from boot; unknown is closed. */
+  taskAccountAllowed: boolean;
   vault: Vault;
   vaultRoot: string;
   search: SearchIndex;
@@ -72,7 +74,7 @@ export interface BackgroundJobDeps {
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
-  if (tasksEnabled()) startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
+  if (tasksEnabled() && deps.taskAccountAllowed) startProactiveTaskJob(defaultTaskContext(deps.toolDeps, true));
   startVaultReconcile(deps.vault);
   startForwarderSweep();
   startMintSchedule(deps);

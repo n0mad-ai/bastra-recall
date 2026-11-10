@@ -1,3 +1,4 @@
+import { processOwnsVault } from "./local-account-access.js";
 import { reviewSaveSuggestion, saveSuggestionTools } from "./save-suggestion-review.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 import { isTaskExecution } from "./task-execution.js";
@@ -79,6 +80,7 @@ export async function startStdioServer(opts: {
   markActivity: () => void;
 }): Promise<{ server: Server }> {
   const { vault, search, toolDeps, documentWriteEnabled, markActivity } = opts;
+  const ownsVault = await processOwnsVault(vault.root);
 
   const server = new Server(
     { name: "bastra-recall", version: DAEMON_VERSION },
@@ -88,7 +90,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
-      ...(tasksEnabled() ? taskTools : []),
+      ...(tasksEnabled() && ownsVault ? taskTools : []),
       ...draftReviewTools,
       ...saveSuggestionTools,
       ...validateArtifactTools,
@@ -117,6 +119,7 @@ export async function startStdioServer(opts: {
     const { name, arguments: rawArgs } = req.params;
 
     if (isTaskTool(name) && !tasksEnabled()) return { isError: true, content: [{ type: "text" as const, text: "Tasks preview disabled; opt in with BASTRA_TASKS=1" }] };
+    if (name.startsWith("task_") && !ownsVault) return errorResult("Vault account required");
     if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
     if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));
 
@@ -368,7 +371,7 @@ export async function startStdioServer(opts: {
 
     return errorResult(`unknown tool: ${name}`);
     })();
-    if (req.params.name === "task_due") return result;
+    if (req.params.name === "task_due" || !ownsVault) return result;
     return finalizeTaskMcp(result, defaultTaskContext(toolDeps), await taskClientAuthorization());
   });
 

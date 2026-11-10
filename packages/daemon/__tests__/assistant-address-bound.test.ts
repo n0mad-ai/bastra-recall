@@ -42,7 +42,7 @@ import {ensureAssistantAddressRuntime} from '../src/assistant-address.js';
 async function runtime(t:test.TestContext){
  const root=await mkdtemp(join(tmpdir(),'assistant-bound-runtime-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const source=join(root,'source');await mkdir(source);
- for(const name of ['assistant-address-bootstrap','assistant-address-gateway','assistant-address-name','assistant-address-files','http-auth','runtime-feature-settings']){
+ for(const name of ['assistant-address-bootstrap','assistant-address-gateway','local-account-access','assistant-address-name','assistant-address-files','http-auth','runtime-feature-settings']){
   const text=await readFile(new URL(`../src/${name}.ts`,import.meta.url),'utf8');await writeFile(join(source,name+'.js'),ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
  }
  const reader=await readFile(new URL('../../core/src/runtime-settings.ts',import.meta.url),'utf8');await writeFile(join(source,'runtime-settings.js'),ts.transpileModule(reader,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);

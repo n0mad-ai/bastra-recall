@@ -59,7 +59,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
-On `main`, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay).
+On `main`, users confirm rule proposals in chat, and rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Explicitly rejected save suggestions can be suppressed individually per project and restored. [Suggestion controls](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay). On macOS, local UI and task access are bound to the vault owner account. [Account boundary](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary).
 
 ### Install
 
@@ -233,7 +233,7 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
 
-Auf `main` bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und zurücksetzen. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch).
+Auf `main` bestätigen Nutzer Regelvorschläge im Chat; Regel-Saves und -Edits bitten um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook). Ausdrücklich abgelehnte Speichervorschläge lassen sich einzeln je Projekt ausblenden und zurücksetzen. [Vorschlagssteuerung](https://github.com/n0mad-ai/bastra-recall/wiki/Pending-Relay#deutsch). Auf macOS sind lokale Oberfläche und Aufgaben-Zugriff an das Besitzerkonto des Vaults gebunden. [Kontogrenze](https://github.com/n0mad-ai/bastra-recall/wiki/Local-Account-Boundary#deutsch).
 
 ### Installation
 

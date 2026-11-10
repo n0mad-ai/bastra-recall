@@ -1,3 +1,5 @@
+import { createLocalAccountGuard, localAccountPath, vaultAccountUid, type LocalAccountOptions } from "./local-account-access.js";
+import { authenticateTask } from "./task-auth.js";
 import { dispatchSettingsUi, type SettingsUiOptions } from "./settings-ui.js";
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
 import { assistantAddressOptions, migrateAssistantAddressRuntime, publishAssistantAddressEndpoint, type AssistantAddressOptions } from "./assistant-address.js";
@@ -74,11 +76,11 @@ import { tasksEnabled } from "./tasks-enabled.js";
  *     `Access-Control-Allow-Private-Network: true` beantwortet (nur wenn die
  *     Origin erlaubt ist).
  */
-import { installTaskHttpProjection } from "./task-delivery.js";
+import { installTaskHttpProjection, taskRequestAuth } from "./task-delivery.js";
 import { defaultTaskContext } from "./task-transport.js";
 import { requestTaskReconciliation } from "./task-runtime-signal.js";
 import { tasksPath } from "./task-store.js";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type {
   Vault,
@@ -120,6 +122,8 @@ export {
 export { mergeHookRecallHits } from "./hook-recall-merge.js";
 
 export interface HttpOptions {
+  /** Internal OS-boundary dependency injection for fixtures. */
+  localAccount?: LocalAccountOptions;
   settingsUi?: SettingsUiOptions;
   assistantAddress?: AssistantAddressOptions & { port?: number };
   port: number;
@@ -219,16 +223,12 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 
   let addressListener: ReturnType<typeof createAssistantAddressListener> | null = null;
   const addressOptions = assistantAddressOptions(opts.assistantAddress);
-  const server = createServer((req, res) => {
-    if (tasksEnabled()) installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
+  const accountAllowed = createLocalAccountGuard(await vaultAccountUid(vault.root, opts.localAccount), opts.localAccount);
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const t0 = Date.now();
     const url = req.url ?? "";
     const method = req.method ?? "GET";
 
-    // Activity signal for idle self-shutdown — count real work, not the cheap
-    // liveness pings (else a monitor, or bastra.io's admin bridge probing every
-    // 60s, would keep us alive forever).
-    if (!ctx.isHealthProbe(url)) { onActivity?.(); if (tasksEnabled()) requestTaskReconciliation(tasksPath()); }
 
     // #1279: the OAuth discovery documents are public and secret-free; remote
     // MCP clients fetch them through the tunnel, so they answer ahead of the
@@ -252,6 +252,24 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       sendJson(res, 401, { error: "unauthorized" });
       return;
     }
+
+    // #1419: the OS peer account is a separate gate, not a replacement for
+    // Host/token/Origin/CSRF checks. Mapped credentials also cover passive task
+    // cards on ordinary REST and hook replies, before any task state is read.
+    let privateTaskRequest = false;
+    if (tasksEnabled() && taskRequestAuth(req)) {
+      try { await authenticateTask(taskRequestAuth(req), defaultTaskContext(toolDeps).authPath); privateTaskRequest = true; }
+      catch { /* no private cards can be delivered without a mapped credential */ }
+    }
+    const accountRequired = localAccountPath(url) || privateTaskRequest;
+    const accountVerified = accountRequired && await accountAllowed(req.socket);
+    if (accountRequired && !accountVerified) {
+      res.setHeader("Connection", "close"); sendJson(res, 403, { error: "vault account required" }); return;
+    }
+    if (tasksEnabled()) installTaskHttpProjection(req, res, defaultTaskContext(toolDeps));
+    // Ordinary requests still count as activity; only proved account requests
+    // may trigger private task reconciliation.
+    if (!ctx.isHealthProbe(url)) { onActivity?.(); if (tasksEnabled() && accountVerified) requestTaskReconciliation(tasksPath()); }
 
     if (method === "POST" && !url.startsWith("/api/v1/")) {
       const gate = gateLocalPost({
@@ -330,7 +348,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     }
 
     sendJson(res, 404, { error: `not found: ${method} ${url}` });
-  });
+  };
+  const server = createServer((req, res) => { void handleRequest(req, res).catch(() => {
+    if (!res.headersSent) sendJson(res, 503, { error: "local account boundary unavailable" }); else res.destroy();
+  }); });
 
   const handle = await listenHttp(server, port);
   if (handle.port !== null) {

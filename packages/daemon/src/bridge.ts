@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { processOwnsVault } from "./local-account-access.js";
 /**
  * bastra-recall bridge — line-JSON RPC over stdio.
  *
@@ -243,9 +244,9 @@ async function main(): Promise<void> {
   // so it never keeps this process alive; cleared below on stdin close.
   const reconcileTimer = startVaultReconcile(vault);
   // Dedicated mapping is required even on this trusted legacy transport.
-  passiveTaskContext = defaultTaskContext({ vault, vaultPath: VAULT_PATH! });
-  await ensureLocalTaskAgent().catch(() => undefined);
-  const proactiveJob = (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
+  passiveTaskContext = await processOwnsVault(vault.root) ? defaultTaskContext({ vault, vaultPath: VAULT_PATH! }) : undefined;
+  if (passiveTaskContext) await ensureLocalTaskAgent().catch(() => undefined);
+  const proactiveJob = passiveTaskContext && (await taskClientAuthorization()) ? startProactiveTaskJob(passiveTaskContext) : undefined;
   const search = new SearchIndex(vault);
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);

@@ -14,9 +14,9 @@ export function taskRequestAuth(req: IncomingMessage): string | undefined {
 const passiveQuiet = new Map<string, number>();
 export async function taskAttachment(ctx: TaskServiceContext, authorization: string | undefined, session: string, channel: "mcp" | "http" | "session" | "prompt") {
   if (!tasksEnabled()) return undefined;
-  requestTaskReconciliation(ctx.path);
   try {
     const principal = await authenticateTask(authorization, ctx.authPath);
+    requestTaskReconciliation(ctx.path);
     const store = cachedTaskSnapshot(ctx.path); if (!store) return undefined;
     const input = taskDueInput.parse({ session: /^[a-z0-9][a-z0-9._:-]{0,95}$/.test(session) ? session : "unknown", channel });
     const projection = taskDueProjection(store, principal, input, (ctx.now ?? Date.now)(), true);

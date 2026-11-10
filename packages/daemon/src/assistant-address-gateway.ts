@@ -1,3 +1,4 @@
+import { createLocalAccountGuard, type LocalAccountOptions } from "./local-account-access.js";
 /** UI-only loopback gateway. This module and its pure imports also run from a
  * launchd inetd socket as the installing user, never as root. */
 import { createServer, request, type IncomingMessage, type ServerResponse, type Server } from "node:http";
@@ -11,6 +12,7 @@ import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
 export const ASSISTANT_SOCKET_PROTOCOL=2;
 export interface AssistantGatewayOptions {
   runtimeStatePath?:string;runtimeVersion?:string;
+  localAccount?: LocalAccountOptions;
   helperPath?: string; settingsPath: string; databasePath?: string; hostsPath: string; daemonUrl: string; owner?: string; }
 export async function readAssistantGatewayConfig(path: string, databasePath?: string): Promise<{ name: string; enabled: boolean } | null> {
   try {
@@ -31,8 +33,12 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
   const target = new URL(opts.daemonUrl);
   if (target.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(target.hostname) || target.username || target.password || target.pathname !== "/" || target.search || target.hash) throw new Error("assistant gateway requires a fixed loopback daemon URL");
   const owner = opts.owner ?? String(process.getuid?.() ?? 0);
+  const expectedUid = /^(?:0|[1-9][0-9]*)$/.test(owner) ? Number(owner) : undefined;
+  const accountAllowed = createLocalAccountGuard(expectedUid, opts.localAccount);
   return (req: IncomingMessage, res: ServerResponse): void => { void (async () => {
     if (!isLoopback(req)) return reply(res, 403, "loopback only");
+    // The browser peer must be checked here: the upstream daemon only sees this gateway.
+    if (!await accountAllowed(req.socket)) { res.setHeader("Connection", "close"); return reply(res, 403, "vault account required"); }
     if(opts.runtimeStatePath){
       const current=JSON.parse(await readFile(opts.runtimeStatePath,"utf8"));
       if(current.protocol!==ASSISTANT_SOCKET_PROTOCOL||current.version!==opts.runtimeVersion||current.daemonUrl!==opts.daemonUrl||current.databasePath!==opts.databasePath){res.setHeader("Connection","close");return reply(res,503,"assistant runtime changed; retry the request");}
