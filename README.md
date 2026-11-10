@@ -25,7 +25,7 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 Proactive tasks remain an **opt-in preview, off by default until v1.2.0**. To try them, set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them. On current main, agents manage all task levels, recurring tasks can pause, and optional macOS notifications surface due work. [Instructions and limits](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
-On current main, local app state uses SQLite while memories remain Markdown. The web UI includes shared [settings](./docs/Settings.md#english), including stored task and telemetry switches; environment overrides still win. [Database and rollback](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
+On current main, local app state uses SQLite while memories remain Markdown. The web UI includes shared [settings](./docs/Settings.md#english), including stored task and telemetry switches; invalid JSON blocks saving, and environment overrides still win. [Database and rollback](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 
 
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
@@ -199,7 +199,7 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 Proaktive Aufgaben bleiben eine **Opt-in-Vorschau, bis v1.2.0 standardmäßig aus**. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten. Auf aktuellem main verwalten Agenten alle Aufgabenstufen; Serien sind pausierbar und optionale Mac-Mitteilungen melden Fälliges. [Anleitung und Grenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
-Auf dem aktuellen main verwendet lokaler App-Zustand SQLite; Erinnerungen bleiben Markdown. Die Web-UI enthält gemeinsame [Einstellungen](./docs/Settings.md#deutsch), einschließlich gespeicherter Aufgaben- und Telemetrieschalter; Umgebungsvariablen gewinnen weiter. [Datenbank und Rückweg](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
+Auf dem aktuellen main verwendet lokaler App-Zustand SQLite; Erinnerungen bleiben Markdown. Die Web-UI enthält gemeinsame [Einstellungen](./docs/Settings.md#deutsch), einschließlich gespeicherter Aufgaben- und Telemetrieschalter; ungültiges JSON blockiert Speichern, Umgebungsvariablen gewinnen weiter. [Datenbank und Rückweg](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.

@@ -10,6 +10,8 @@ Tasks remain an opt-in preview, **off by default**. They can be enabled in the T
 
 The Access section masks secrets, edits browser CORS origins and lists OAuth clients for revocation. It never reveals a stored API token. To replace a secret, enter its new value; an untouched blank input keeps the previous value. The existing `bastra token` command remains the separate local token-issuance interface. `daemon.env` is masked as a whole because it can contain sensitive values; provide the complete replacement JSON object when changing it. It affects forwarder-spawned daemons; a managed service keeps its own environment.
 
+Invalid JSON edits keep settings unsaved. Save returns to and focuses the invalid editor; correcting or resetting it permits saving. Restart remains blocked while any unsaved edit exists.
+
 ### Local API
 
 The settings API requires a directly local connection, a loopback Host and an enabled web UI. Forwarded requests are rejected. Create a session with an empty JSON `POST /ui/settings/session`; keep its HttpOnly/SameSite=Strict cookie and the returned CSRF token. `GET /ui/settings` returns registry entries, masked values, effective settings, environment-override information and OAuth client summaries. Send JSON `POST /ui/settings` with `{ "changes": { "docs.language": "de" } }` and the `X-Bastra-Settings-CSRF` header to change settings. A null value removes a stored override. Invalid patches write nothing. The assistant name uses the existing dedicated address endpoint so its system transaction cannot be bypassed.
@@ -31,6 +33,8 @@ Alle Felder stammen aus demselben Register wie die CLI. Schalter, Texte/Zahlen u
 Aufgaben bleiben eine Opt-in-Vorschau, **standardmäßig aus**. Sie lassen sich im Aufgabenbereich oder mit `bastra config set tasks.enabled true` einschalten; danach Daemon und verbundene Clients/Hooks neu starten. Ein ausdrücklich gesetztes `BASTRA_TASKS` gewinnt weiterhin (`1` schaltet ein; andere Werte schalten aus). Zum Abschalten die Einstellung ausschalten oder `BASTRA_TASKS=0` setzen und neu starten; gespeicherte Aufgaben werden dadurch nicht storniert. Innerhalb eingeschalteter Aufgaben ist `tasks.notifications` standardmäßig true und steuert optionale Mac-Mitteilungen sofort; andere Plattformen bleiben bei Zustellung zum nächsten Kontakt. Der Schalter aktiviert keine Aufgaben und markiert sie nicht als gelesen. Lokale Telemetrie wird über `telemetry.enabled` gesteuert; `BASTRA_TELEMETRY` beziehungsweise das alte `NEXUS_TELEMETRY` gewinnt weiter. Beide Schalter verwenden einen nur lesenden Start-Schnappschuss; passive Modulimporte legen keinen Speicher an und migrieren nichts.
 
 Der Zugangsbereich maskiert Geheimnisse, bearbeitet erlaubte Browser-CORS-Ursprünge und listet OAuth-Clients zum Widerrufen. Ein gespeichertes API-Token wird nie angezeigt. Zum Ersetzen ein neues Geheimnis eingeben; ein unverändert leeres Eingabefeld behält den bisherigen Wert. `bastra token` bleibt die gesonderte lokale Oberfläche zum Ausstellen von Tokens. `daemon.env` wird vollständig maskiert, weil es sensible Werte enthalten kann; beim Ändern das vollständige neue JSON-Objekt angeben. Es gilt für vom Forwarder gestartete Daemons; ein verwalteter Dienst behält seine eigene Umgebung.
+
+Ungültige JSON-Änderungen bleiben ungespeichert. Speichern führt zum fehlerhaften Feld und fokussiert es; Korrigieren oder Zurücksetzen erlaubt das Speichern. Bei ungespeicherten Änderungen bleibt der Neustart gesperrt.
 
 ### Lokale API
 
