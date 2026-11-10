@@ -18,17 +18,17 @@ Ask the agent to create a task or reminder: a commissioned or confirmed task is 
 
 Due cards are briefly mentioned at response start. “Done”, “tomorrow again” or “forget it” control tasks of every level in conversation. Origin (user request / agent observed), client, session and scrubbed cause remain visible. There are no daily or open-reminder limits; identical cause/time is deduplicated. Physical store/delivery budgets still apply. `BASTRA_CONVERSATIONAL_REMINDERS=0` disables conversational arming; the agent reports an unarmed draft instead. One-off work requests do not become reminders.
 
-Task management and executing an action have separate authority. Agents can edit, reschedule, complete, cancel, archive and delete tasks of every level. Missing or unenrolled task areas map to the agent’s enrolled area; projects belong in scope.name. Actual local file replacement still requires the existing exact signed Owner approvals, protected configuration and live lease. Creating an execute task does not execute it or grant those approvals.
+Agents manage tasks of every level. Your instruction in chat also authorizes the commissioned execution; its user-directed provenance, program, session, wording and time are recorded. Missing or unenrolled task areas map to the agent’s enrolled area; projects belong in scope.name. Preparing an execute task shows the exact change before the adapter writes it.
 
 Bastra keeps explicit tasks beyond one chat. A due card asks for evaluation; it does not prove a measurement passed. Delivery is only a presentation attempt. Explicit owner acknowledgement means seen; completion and an action receipt are separate records. Conversation cards arrive at the next contact while the daemon runs. Optional macOS notifications also surface due work without a contact; they do not launch an agent.
 
 ## Automatic agent access
 
-At local single-user daemon startup, a separate private agent credential is configured for hooks/MCP. Existing users need no command after an update; client settings and valid credentials are preserved. Revoked, unsafe or ambiguous multi-owner access is not silently replaced. `bastra tasks client-status` reports actual access. `BASTRA_CONVERSATIONAL_REMINDERS=0` prevents automatic setup and agent arming. The manual Owner path below remains available for separate administration and signing.
+At local single-user daemon startup, a separate private agent credential is configured for hooks/MCP. Existing users need no command after an update; client settings and valid credentials are preserved. Revoked, unsafe or ambiguous multi-owner access is not silently replaced. `bastra tasks client-status` reports actual access. `BASTRA_CONVERSATIONAL_REMINDERS=0` prevents automatic setup and agent arming. The manual Owner path below remains available for separate administration.
 
 ## 1 CLI examples and separate Owner administration
 
-Normal conversation and the local board use automatic Agent access. The following separate Owner setup is for administration and signing. Use your own terminal and an existing private owner directory outside agent access. Keep tokens out of chat.
+Normal conversation and the local board use automatic Agent access. The following separate Owner setup is for optional administration. Use your own terminal and an existing private owner directory outside agent access. Keep tokens out of chat.
 
 ```sh
 bastra tasks auth mint owner me personal /PRIVATE/OWNER/task.token
@@ -42,7 +42,7 @@ Optional private cache:
 bastra tasks owner-login
 ```
 
-This is interactive-only, revalidated against the registry on each command, and never used by hooks/MCP. It must remain outside agent access. Signing keys/passphrases stay separate.
+This is interactive-only, revalidated against the registry on each command, and never used by hooks/MCP. It must remain outside agent access. This administration login is not a separate execution approval.
 
 ```sh
 bastra tasks setup-hooks
@@ -95,7 +95,7 @@ bastra tasks stop
 
 Status shows on/off, states, next check, last attempt/error, source verification, limits and action outcomes. Mute delays passive presentation; off pauses automatic evaluation/delivery; stop stops execution. Owner due still allows explicit inspection. Nothing silently completes a task or renews expired authority.
 
-Execution is stopped by default. Only the owner can confirm execution-enable/resume with a protected configuration. No is the default, leaving state unchanged. Active reservations appear in status; `tasks release ID` releases your reservation without rolling back an effect or renewing proof.
+Execution is stopped by default. Under the user’s commission, the connected agent can enable the registered adapter with `bastra tasks execution-enable --agent`, without a second confirmation. Active reservations appear in status; `tasks release ID` releases your reservation without rolling back an effect or renewing proof.
 
 ## 4 Browser and decision reconsideration
 
@@ -110,52 +110,44 @@ A versioned attributable premise change can invite Keep/Change/Snooze/Stop, show
 
 ## 5 Register one reversible local artifact
 
-Only local-artifact-v1 is supported: replace an existing registered reversible UTF-8 file with exact approved bytes. No provider messaging, email, Slack, GitHub, cloud or shell adapters.
+Only local-artifact-v1 is supported: replace an existing registered reversible UTF-8 file with exact commissioned bytes. No provider messaging, email, Slack, GitHub, cloud or shell adapters.
 
 ```sh
-bastra tasks targets register demo --root /WORK/ARTIFACTS --path artifact.txt --domain personal
-bastra tasks targets list
-bastra tasks keys enroll personal /PRIVATE/OWNER/approval-key.json
-bastra tasks boundary
-# Restart task processes to pin the changed registry.
-bastra tasks execution-enable
+bastra tasks targets register demo --root /WORK/ARTIFACTS --path artifact.txt --domain personal --agent
+bastra tasks targets list --agent
+bastra tasks execution-enable --agent
 ```
 
-Each question defaults No. Key enrollment asks for the hidden owner token, new hidden passphrase and repetition. boundary asks for the token and explicit assertion. Before signing, inspect the readable whole binding and exact bytes; approve asks for confirmation and the hidden key passphrase. Keys remain outside agent access.
-
-The real resolved narrow work root is shown. Task/key/vault/control/profile locations, all .git state, .husky, .github/workflows, .envrc and .npmrc are blocked. Enclosing protected roots reject too. package.json receives a specific possible-script-execution warning; no extra capability follows. Outside the current project, a work-root warning precedes consent.
+The target registry limits the adapter to the chosen existing file. The real resolved narrow work root is shown. Task/vault/control/profile locations, all .git state, .husky, .github/workflows, .envrc and .npmrc remain blocked. No key enrollment or boundary assertion is required for the chat-authorized execution path.
 
 ```sh
-bastra tasks targets update demo --root /WORK/ARTIFACTS --path other.txt --domain personal
-bastra tasks targets remove demo
+bastra tasks targets update demo --root /WORK/ARTIFACTS --path other.txt --domain personal --agent
+bastra tasks targets remove demo --agent
 ```
 
-Registry edits stop execution, reset protected_boundary, change the revision and stale old proofs. Never silently replace an ID. Restart and review again. Tabs/CRLF/BOM/control characters, unsafe preview transformations and before-state above 16384 characters reject before execute.
+Registry changes invalidate old target bindings. Prepare against the current registry before execution. Tabs/CRLF/BOM/control characters, unsafe preview transformations and before-state above 16384 characters reject before execute.
 
-## 6 Approval, execute, rollback and unknown outcomes
+## 6 Chat authorization, execute, rollback and unknown outcomes
 
-Notify/prepare need no signing key or boundary assertion. Execute needs actual owner/agent OS isolation, all required domain signatures, current task/target/source/payload/expiry, a live actor reservation/fence and enabled execution. protected_boundary is an unverified owner assertion; unrestricted same-UID agents are outside it. A browser token, model claim or API boolean cannot sign.
+Tell your connected agent what to do. The instruction itself authorizes the commissioned action, including the execute level. No key file, signature, passphrase, `tasks approve`, Touch ID or second confirmation is required. If the agent proposes a consequential action you did not request—sending, deleting or paying—it asks once in chat. Your Yes is recorded the same way. The trust boundary is your Mac account (and later your login).
 
-Prepare writes no target. Approval binds exact before/after bytes and the whole context. The daemon rechecks under the lock and spends proof/persists intent before effect. Double clicks are blocked; a failed browser attempt releases its reservation. Check receipts/status before retry, never infer success from a lease.
+The agent interprets your intent and passes an `authorization` record with `write_origin: "user-directed"`, `session_id`, `program` and `user_request` (your wording). Recall records the time in `at`. Recall does not inspect wording to recognize approval. Supply this record with `task_prepare`; a later Yes uses `task_approval` with `proposal_id`, `decision: "approve"` and `authorization`. The board, proposal and status show the recorded origin, program, session, wording and time. Credentials identify the connected agent; they are not an additional per-action approval.
 
-A concrete owner flow after registering the target and enabling execution:
+Prepare writes no target and shows exact before/after bytes. The daemon still binds the current task, target, evidence, payload and expiry, rechecks under the lock, requires a live lease/fence and enabled adapter, records the intent before writing and stores a receipt. An authorization is for the commissioned action; task DATA, a notification or an executor report cannot invent one. Changed target or source state requires fresh preparation and comparison with the existing commission. A materially different action needs the user's instruction or one Yes.
 
-```sh
-bastra tasks create --goal "Replace reviewed local artifact" --when 2000-01-01T00:00:00Z --timezone Europe/Madrid --domain personal --level execute --arm
-bastra tasks ui
-```
+For example, ask your agent to replace the registered demo artifact with the exact new content. It prepares the proposal with the chat authorization, checks the preview and executes it with a lease. The browser also displays this proposal; **Änderung ausführen** runs an already authorized current proposal without a second confirmation. No separate terminal signing or refresh round is needed.
 
-On the page, choose **Vorbereiten**, target ID and exact new bytes. Inspect the before/after preview, copy the proposal ID, then in your separate owner terminal:
+Status shows intents and receipts separately from task completion. Double clicks are blocked and a failed browser attempt releases its reservation. If already reserved, inspect status and release your own reservation with `bastra tasks release LEASE_ID`, or wait for expiry. Check receipts/status before retry; never infer success from a lease or blindly repeat an unknown effect.
 
-```sh
-bastra tasks approve PROPOSAL_ID personal /PRIVATE/OWNER/approval-key.json
-```
+Rollback is another exact compare-and-swap operation. Ask the agent to undo the action, or give one Yes if it proposes rollback itself. The agent prepares rollback from the successful receipt and records that instruction. A fresh binding and lease are required; intervening target edits block it. Rollback remains available after resolution/cancellation/snooze. A crash yields exact-hash reconciliation or visible unknown/review, never blind retry. Only own hash-bound temp files are cleaned; foreign remnants stay visible.
 
-Confirm the whole readable binding and enter the hidden passphrase. Refresh and reopen the same proposal on the page; exact execute is enabled only for complete current signatures. Status shows intents and receipts. If already reserved, inspect status and release your own reservation with `bastra tasks release LEASE_ID`, or wait up to 30 seconds; never blindly retry an unknown effect.
+### Existing installations and recovery
 
-For rollback, select a successful receipt under **Wirkungen und Abgleich**, prepare rollback, separately sign its new proposal and execute it. Rollback is another newly signed exact CAS operation; intervening target edits block it. It remains available after resolution/cancellation/snooze. A crash yields exact-hash reconciliation or visible unknown/review, never blind retry. Only own hash-bound temp files are cleaned; foreign remnants stay visible and can be safely revisited.
+Before upgrading, back up the local app state (`~/.bastra`) while preserving its private permissions. The upgrade retains task IDs, histories, consumed action identities and receipts. The legacy `task-approval-keys.json` registry is copied to the private exact backup `task-approval-keys.json.pre-chat-approval.bak`, then renamed to `task-approval-keys.json.legacy`. The new `task-action-registry.json` retains registered targets and protected key storage roots; historical key enrollment and boundary assertions are no longer execution gates. Task databases and key files stay unchanged; historical signatures do not become new chat instructions. Prepare unfinished work again with its actual user instruction. Keep the backup and renamed originals for inspection.
 
-The [macOS key-isolation investigation](Owner%20Approval%20Key%20Isolation.md) documents file-key limits, the native implementation stop, Apple mechanisms, the transport threat model and required independent verification. It does not deliver OS key isolation.
+To return to the earlier version, stop the daemon and task clients and retain a complete copy of the upgraded state. Reinstall the earlier code and restore the complete pre-upgrade local backup, including its task database and registry. Renaming the registry alone is insufficient: older decoders do not understand newly stored chat authorization fields. Keep the `.legacy` and `.bak` originals in the retained upgraded copy; chat authorizations are not legacy signatures. Restart and inspect task IDs, pending/unknown effects and target contents before any new execution. Never restore an older receipt store and blindly repeat an action; effects after the backup may already have happened.
+
+The [approval-key isolation investigation](Owner%20Approval%20Key%20Isolation.md) is historical. Its key/OS-helper proposal is superseded by chat authorization; it is not a setup requirement.
 
 ## 7 Resource limits, archives and repair
 
@@ -167,7 +159,7 @@ bastra tasks archive FINISHED_TASK_ID
 bastra tasks archive-restore ARCHIVE_ID
 ```
 
-Archive exports exact private terminal groups before retiring active rows. Unresolved occurrences, pending/unknown intents and active leases cannot be retired. Cold idempotency, history and known spent IDs/fencing remain. Missing/tampered exports fail closed. Restore imports terminal history for fresh approved rollback, stays unarmed and stops execution. Journal/spent/archive-index limits can still produce visible capacity backpressure; no silent eviction.
+Archive exports exact private terminal groups before retiring active rows. Unresolved occurrences, pending/unknown intents and active leases cannot be retired. Cold idempotency, history and known spent IDs/fencing remain. Missing/tampered exports fail closed. Restore imports terminal history for fresh commissioned rollback, stays unarmed and stops execution. Journal/spent/archive-index limits can still produce visible capacity backpressure; no silent eviction.
 
 Stop all task processes before `recover [--lock]`. Confirm private validated backup recovery; original is quarantined, epoch changes, tasks disarm and execution stops. Newer changes may be missing. Cold exports and readable original indexes/spent IDs/fence maxima are reconciled; terminal history can return alongside its archive without new authority. Unknown-lock quarantine needs explicit offline assertion and refuses a known live local owner.
 
@@ -175,7 +167,7 @@ If the original is unreadable and backup predates a recent unarchived effect, it
 
 ## 8 Disposable walkthrough
 
-Use the [20–30-minute isolated owner demo](design/proactive-tasks-demo.md). It starts its own daemon/port/profile with invented data, neutralizes inherited test/output settings, and includes browser/CLI notify, postponement, prepare/sign/execute/rollback and prepared decision-reconsideration files. Terminal close cleans the own daemon and own disposable root. No real human/OS-boundary or longitudinal evidence is inferred.
+Use the [20–30-minute isolated owner demo](design/proactive-tasks-demo.md). It starts its own daemon/port/profile with invented data, neutralizes inherited test/output settings, and includes browser/CLI notify, postponement, prepare/execute/rollback and prepared decision-reconsideration files. Terminal close cleans the own daemon and own disposable root. No real human/OS-boundary or longitudinal evidence is inferred.
 
 See the [final 14-case matrix](design/proactive-tasks-matrix.md) and [German instructions](Proaktive%20Aufgaben.md). Human comprehension, interruption burden and longitudinal utility remain separate pending confirmations.
 
@@ -183,14 +175,14 @@ See the [final 14-case matrix](design/proactive-tasks-matrix.md) and [German ins
 
 The existing Recall UI has a **Tasks** tab with active, completed archive, and failed/cancelled archive views. Origin, next check/due time and failure reason are visible. Unknown execution means reconciliation required. Unavailable sources are described as currently unavailable while retries remain scheduled, never as proven permanent failure. Cold archives can be explicitly loaded read-only without reactivating monitoring.
 
-A local single-user installation opens an **Agent-role** browser session without token entry (private SameSite/HttpOnly session cookie plus CSRF validation). The session lasts for the daemon lifetime; reloading the page reuses it. Local Host/Origin and enabled UI are required. No Owner credential is exposed; revocation is checked on every call. Separate Owner administration keeps the existing private login under “Separate Owner-Funktionen”. Signing remains outside the browser. The ordinary REST API still requires its mapped credential and cannot use this cookie. Ordinary local access has no logout button. The button is available only after entering a separate access token. A daemon restart invalidates browser sessions; the page reconnects without replaying mutations. If a new browser needs a slot at the 100-session limit, grants unused for more than 24 hours are reclaimed. This is capacity cleanup, not an automatic session expiry: authenticated board requests and reloads keep a session in use, and an old cookie still works without capacity pressure. If all slots were recently used, a new browser gets `capacity` rather than displacing them. Failed Host, Origin, CSRF or credential checks do not keep a grant alive.
+A local single-user installation opens an **Agent-role** browser session without token entry (private SameSite/HttpOnly session cookie plus CSRF validation). The session lasts for the daemon lifetime; reloading the page reuses it. Local Host/Origin and enabled UI are required. No Owner credential is exposed; revocation is checked on every call. Separate Owner administration keeps the existing private login under “Separate Owner-Funktionen”. Execution authorization comes from the user instruction or Yes in chat. The ordinary REST API still requires its mapped credential and cannot use this cookie. Ordinary local access has no logout button. The button is available only after entering a separate access token. A daemon restart invalidates browser sessions; the page reconnects without replaying mutations. If a new browser needs a slot at the 100-session limit, grants unused for more than 24 hours are reclaimed. This is capacity cleanup, not an automatic session expiry: authenticated board requests and reloads keep a session in use, and an old cookie still works without capacity pressure. If all slots were recently used, a new browser gets `capacity` rather than displacing them. Failed Host, Origin, CSRF or credential checks do not keep a grant alive.
 
-The browser Agent session manages every task level, including activation and completion. It grants no signing key or execution approval; exact local file execution retains its separate signed contract.
-Local-access boundary: any process running as the same OS user can read/use the private Agent token. A single Owner identity supplies its assigned domains, matching existing setup-hooks so project reminders remain reachable; this grants no Owner signatures. Multiple Owners require explicit setup. Corrupt, overly permissive or revoked files are reported by normal task status, Doctor and once at daemon start; cards remain unavailable until Owner repair. Replacement of a missing automatically generated file revokes the previously managed automatic credentials.
+The browser Agent session manages every task level, including activation and completion. The user instruction or Yes in chat authorizes the commissioned execution; exact preview, target comparison and receipts remain required.
+Local-access boundary: any process running as the same OS user can read/use the private Agent token. A single Owner identity supplies its assigned domains, matching existing setup-hooks so project reminders remain reachable; this does not invent a user instruction. Multiple Owners require explicit setup. Corrupt, overly permissive or revoked files are reported by normal task status, Doctor and once at daemon start; cards remain unavailable until Owner repair. Replacement of a missing automatically generated file revokes the previously managed automatic credentials.
 
 Unsafe/corrupt or revoked reminder access detected at startup also produces one public Hook/MCP status hint per session. The hint contains no private task data and acknowledges nothing.
 
-**Tokenless-browser boundary:** With the UI enabled, any local process can obtain an Agent session, including a different OS user on the same machine, without access to the credential file. A local proxy/tunnel may also convey access if it rewrites/removes Host/Origin to localhost. This matches the existing local UI model; loopback proves no OS user identity. On multi-user machines, disable `ui.enabled`. The actual access-boundary fix is deferred to [issue #1198](https://github.com/n0mad-ai/bastra-recall/issues/1198) and is not implemented in this stack. It grants Agent task-management authority only, with no Owner signing or execution approval.
+**Tokenless-browser boundary:** With the UI enabled, any local process can obtain an Agent session, including a different OS user on the same machine, without access to the credential file. A local proxy/tunnel may also convey access if it rewrites/removes Host/Origin to localhost. This matches the existing local UI model; loopback proves no OS user identity. On multi-user machines, disable `ui.enabled`. The actual access-boundary fix is deferred to [issue #1198](https://github.com/n0mad-ai/bastra-recall/issues/1198) and is not implemented in this stack. This is a known local-access limitation; chat authorization is attributed to the connected agent, not cryptographic proof of the human’s identity.
 The same actual request at the same time is deduplicated even after required redaction; different contents remain separate. Internal context assembly records no card delivery. The SessionStart output presents the due card and records its presentation attempt at the output.
 Reminder comparison now belongs to a private local key for this task store. Neither the key nor the comparison value appears in cards, API/status or task exports. Valid legacy task snapshots, backups and managed archives lose unkeyed reminder/create comparisons; redacted secrets are never reconstructed. Legacy request retries that can no longer be verified are rejected; use the existing task ID. The key stays local and is not silently replaced when lost. Unrestricted filesystem access as the same OS user remains outside this boundary. Event baselines, event/claim values and material/retry comparisons also use this key. A raw expected value or its lowercase SHA-256 digest produces the same private comparison; the supplied digest is not retained as display text, including content-version on a general event source. Only registered file/Git/Memory sources expose actual version identifiers. Migration binds existing content digests to the key without recovering scrubbed secrets. API responses, cards and cold exports omit comparison fields. Git OIDs, file/Memory versions and exact execution byte digests remain version/integrity metadata. Pre-upgrade proposals are conservatively retired as stale and require new preparation and fresh existing approvals. Their old task/challenge/approval binding values and signatures are removed from live snapshots, backups and managed archives; status shows stale. IDs, spending and receipts stay intact, including exact executed retries and newly approved rollback. No approval rights change. Previously copied responses, signatures or exports cannot be recalled. Original proposal IDs stay as audit/retry references; with sufficient original signing metadata they can still verify historical guesses. Stale replies and cold exports no longer supply that old signing body. Restored terminal archives carry no comparison proof and need a new explicitly reviewed baseline before reuse.
 

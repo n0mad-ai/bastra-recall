@@ -257,7 +257,7 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
   bastra tasks snooze <id> --until 2026-10-13T18:00
   bastra tasks targets register demo --root DIRECTORY --path artifact.txt --domain personal
   bastra tasks targets update ID --root DIR --path FILE --domain DOMAIN
-  bastra tasks targets remove ID  Owner: stoppen, Grenzerklärung zurücksetzen
+  bastra tasks targets remove ID --agent  Beauftragtes Ziel entfernen, Ausführung stoppen
   bastra tasks targets list       Vorhandene lokale reversible Ziele, kein Anbieter
   bastra tasks archive ID         Nur abgeschlossene Arbeit; vorher tasks stop
   bastra tasks archive-restore ARCHIV_ID  Verlauf/Rollback aufnehmen, unscharf
@@ -268,18 +268,19 @@ Scharf schalten = review; rearm stellt ausdrücklich UNSCHARF zur neuen Prüfung
 Owner-Kennung wird verborgen am Terminal abgefragt; --agent verwendet zugewiesene
 Client-Kennung. Beauftragte Aufgaben werden mit --agent direkt scharf angelegt;
 --agent --arm ist für alle Aufgabenstufen ohne weitere Owner-Freigabe erlaubt. Ohne Agent-Auftrag bleibt
-Anlegen ohne Auftrag standardmäßig unscharf. Die lokale Dateiausführung braucht signierte Owner-Freigaben.
+Anlegen ohne Auftrag standardmäßig unscharf. Auch bei execute gilt die Nutzeranweisung im Chat als Freigabe.
 --after 7d ist eine verstrichene Dauer; --when ohne Offset nutzt die genannte Zeitzone.
 Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
   bastra tasks auth mint|rotate owner|agent actor domain[,domain] new-token-file [old-id]
   bastra tasks auth revoke credential-id
-  bastra tasks boundary          Owner erklärt geschützte Grenze; Prozesse danach neu starten
-  bastra tasks execution-enable   Owner aktiviert lokalen Adapter und hebt Stopp auf
-  bastra tasks keys enroll domain new-private-file
+  bastra tasks execution-enable --agent  Beauftragt lokalen Adapter aktivieren, Stopp aufheben
   bastra tasks release LEASE_ID   Eigene Reservierung freigeben; keine Freigabe erneuern
-  bastra tasks approve|deny proposal-id domain private-key-file
-Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen
-signieren. Notify/prepare funktionieren ohne Signing-Key. Kein Hintergrund-Wakeup;
+  bastra tasks prepare --agent --input input.json
+Maschineneingabe: authorization {write_origin:"user-directed", session_id, program,
+user_request, at}. Der Agent übergibt die Nutzeranweisung, Recall wertet den Wortlaut
+nicht aus. Für eigene folgenreiche Vorschläge einmal im Chat fragen und das Ja
+genauso erfassen. Keine Schlüssel, Passphrase oder zweite Bestätigung.
+Historische Signaturbefehle sind nur für Altbestände erhalten. Kein Hintergrund-Wakeup;
 BASTRA_TASK_TOKEN überschreibt die private lokale Hook-Konfiguration.`,
   suggestions: `bastra suggestions — exact save proposal decisions
 

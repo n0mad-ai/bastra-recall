@@ -4,7 +4,7 @@ Diese Demo benutzt nur einen eigenen temporären Vault, Aufgaben-/Owner-/Arbeits
 
 Plane **20–30 Minuten** ein. Für die erste Erinnerung: eine Minute Frist plus bis zum nächsten 60-Sekunden-Poll; das kann insgesamt ungefähr **1:40 Minuten** dauern. `due`/Browser-Aktualisieren löst einen Kontakt aus, Auswertung und Anzeige laufen getrennt; gegebenenfalls nach einigen Sekunden erneut anzeigen.
 
-Abfragen: Jede `[y/N]`-Frage hat **Nein** als Standard. Für Zustimmung `yes` tippen. setup-hooks nutzt den vorbereiteten privaten Owner-Zugang. Schlüssel-Einschreibung fragt Zustimmung, den **verborgenen Owner-Aufgaben-Token**, die **neue verborgene Passphrase** und deren Wiederholung. boundary fragt erneut den verborgenen Token und Zustimmung. execution-enable fragt Zustimmung. approve zeigt die ganze Bindung, fragt Zustimmung und die verborgene Schlüssel-Passphrase. Browser-Execute und Entscheidung ändern fragen nochmals nach. Der Token liegt nur in der privaten Demo-Datei; im lokalen Editor kopieren, nicht im Chat.
+Der Auftrag im Chat ist die Freigabe, auch für Ausführen. Die folgenden Freigabedaten sind ausdrücklich erfundene Demo-Fixtures und kein Nachweis eines realen Gesprächs. Im echten Betrieb übernimmt der Agent die tatsächliche Nutzeranweisung mit Sitzung, Programm, Wortlaut und Zeit. Für eine selbst vorgeschlagene folgenreiche Aktion fragt er einmal im Chat; für beauftragte Arbeit gibt es keine zusätzliche Schlüssel-, Signatur-, Passphrase-, Terminal- oder Touch-ID-Bestätigung. Die technischen Vorschauen und Zielabgleiche bleiben erhalten.
 
 ## Start
 
@@ -15,7 +15,7 @@ npm run build
 node tools/proactive-tasks-demo.mjs
 ```
 
-Das Werkzeug startet seinen eigenen Daemon und eine Shell mit dem Prompt `bastra-demo>`. **Alle folgenden Befehle in dieser Shell ausführen.** `bastra` verweist dort auf genau diesen Checkout. `$task_demo_root` enthält die gedruckte Wegwerf-Ablage; der reale Dienst auf 6723 wird nicht angesprochen. Owner-CLI-Zugang ist privat vorbereitet; Signing-Schlüssel und konkrete Freigaben fehlen absichtlich. Ohne Terminal startet die Demo nicht. Der nötige Isolations-Preload wird intern in einem frischen Prozess geladen.
+Das Werkzeug startet seinen eigenen Daemon und eine Shell mit dem Prompt `bastra-demo>`. **Alle folgenden Befehle in dieser Shell ausführen.** `bastra` verweist dort auf genau diesen Checkout. `$task_demo_root` enthält die gedruckte Wegwerf-Ablage; der reale Dienst auf 6723 wird nicht angesprochen. Der synthetische Zugang ist privat vorbereitet. Ein automatischer Agent-Zugang wird für die beauftragten Demo-Schritte eingerichtet; Signierschlüssel werden nicht benötigt. Ohne Terminal startet die Demo nicht. Der nötige Isolations-Preload wird intern in einem frischen Prozess geladen.
 
 ## 1 Erinnerung: gesehen ist noch nicht erledigt
 
@@ -42,7 +42,7 @@ bastra config set ui.enabled true
 bastra tasks ui
 ```
 
-Lokale URL öffnen, synthetischen Token aus der privaten Demo-Datei einsetzen, **Aktualisieren → Karten anzeigen**. Erst die Karte ansehen, dann die getrennten Schritte ausprobieren:
+Lokale URL öffnen; das lokale Brett verbindet sich ohne Token-Eingabe. **Aktualisieren → Karten anzeigen** wählen. Erst die Karte ansehen, dann die getrennten Schritte ausprobieren:
 
 ```sh
 bastra tasks acknowledge AUFGABEN_ID --occurrence VORKOMMEN_ID
@@ -57,51 +57,56 @@ Quittieren bedeutet gesehen, noch offen. Zurückstellen meint die nächste 18-Uh
 ## 2 Ein lokales Ziel ohne Registry-Handarbeit
 
 ```sh
-bastra tasks targets register demo --root "$task_demo_root/work" --path artifact.txt --domain personal
-bastra tasks targets list
-bastra tasks keys enroll personal "$task_demo_root/owner/approval-key.json"
-```
-
-Registrierung nennt den echten Pfad und warnt vor dem außerhalb des Checkout gewählten Arbeitsordner. Daten-/Schlüssel-/Vault-/Konfigurationsorte und Shell-Profile sind gesperrt. Nur `work/artifact.txt` wird registriert. Ziel-/Schlüsseländerungen stoppen Ausführung und setzen die Grenzerklärung zurück.
-
-Für die versteckte Owner-Token-Abfrage öffne `$task_demo_root/owner/task.token` **lokal im Editor** und kopiere den synthetischen Token; nicht in einen Chat. Wähle eine nur für diese Demo benutzte Passphrase mit mindestens 12 Zeichen. Die Schlüsseldatei bleibt im getrennten privaten Owner-Ordner.
-
-```sh
-bastra tasks boundary
-demo-restart
-```
-
-Die Grenzerklärung ist technisch nicht prüfbar. Diese Testsession hat dieselbe OS-Berechtigung wie ihre Fixture; ihre Erklärung ist deshalb **synthetisch**, keine Produktionsfreigabe. Für reale Nutzung müssen Agenten tatsächlich keinen Schreib-/Lesezugriff auf Owner-Daten, Schlüssel und Daemon-Laufzeit haben. Warte auf **„Demo-Daemon wieder bereit“**, dann:
-
-```sh
-bastra tasks execution-enable
+bastra tasks targets register demo --root "$task_demo_root/work" --path artifact.txt --domain personal --agent
+bastra tasks targets list --agent
+bastra tasks execution-enable --agent
 bastra config set ui.enabled true
 bastra tasks ui
 ```
 
-execution-enable fragt mit Nein als Standard. Der eine Referenzadapter ersetzt exakt eine vorhandene registrierte reversible UTF-8-Datei. Keine E-Mail-, Slack-, GitHub-, Cloud-, Anbieter- oder Shell-Aktionen. Tabs/CRLF/BOM/Steuerzeichen, nicht sicher unverändert darstellbare Inhalte und Vorzustände über 16384 Zeichen werden abgewiesen.
+Die Registrierung nennt den echten Pfad und registriert nur `work/artifact.txt`. Aufgaben-/Vault-/Konfigurationsorte und Shell-Profile bleiben gesperrt. Zieländerungen stoppen die Ausführung und machen alte Vorschläge ungültig. Der laufende Daemon übernimmt die neue Registry unmittelbar. Alte Vorschläge bleiben an ihre frühere Registry gebunden und müssen neu vorbereitet werden. Im Agent-Weg entfallen zusätzliche Bestätigungen, Schlüssel-Einschreibung und Grenzerklärung.
 
-## 3 Vorbereiten schreibt nichts; Ausführen braucht jede konkrete Signatur
+Der Referenzadapter ersetzt exakt eine vorhandene registrierte reversible UTF-8-Datei. Keine E-Mail-, Slack-, GitHub-, Cloud-, Anbieter- oder Shell-Aktionen. Tabs/CRLF/BOM/Steuerzeichen, nicht sicher unverändert darstellbare Inhalte und Vorzustände über 16384 Zeichen werden abgewiesen.
 
-```sh
-bastra tasks create --goal "Demo-Artefakt nach Owner-Prüfung ersetzen" --when 2000-01-01T00:00:00Z --timezone Europe/Madrid --domain personal --level execute --arm
-```
-
-Der ausdrücklich vergangene Zeitpunkt macht die **neue** Demo-Aufgabe fällig; kein alter Event wird wiederverwendet. Öffne die von `tasks ui` genannte lokale Seite und melde dich mit dem synthetischen Owner-Token an. Bei der fälligen Aufgabe **Vorbereiten**, Ziel-ID `demo`, neuer Inhalt zum Beispiel `Nachher: synthetische Demo.`. Vorher/Nachher erscheinen lesbar; die ganze Bindung ist aufklappbar. Die Datei bleibt zunächst unverändert.
-
-Übernimm die Vorschlags-ID aus dem Dialog:
+## 3 Vorbereiten schreibt nichts; der Auftrag im Chat gibt Ausführen frei
 
 ```sh
-bastra tasks approve VORSCHLAGS_ID personal "$task_demo_root/owner/approval-key.json"
+bastra tasks create --agent --goal "Erfundenen Demo-Auftrag ausführen" --when 2000-01-01T00:00:00Z --timezone Europe/Madrid --domain personal --level execute --arm --json
 ```
 
-Prüfe Aufgabe, konkreten Zielpfad, Revisionen, Domänen, Ablauf, Payload-Hash und alle Bytes vor dem Signieren. Passphrase wird verborgen abgefragt. Nein/Widerruf/Ablauf/Drift schreiben nichts. Bei mehreren Pflichtdomänen braucht jede Domäne eine eigene gültige Signatur.
+Der ausdrücklich vergangene Zeitpunkt macht die neue Demo-Aufgabe fällig. Aufgaben-ID und `expected_revision` aus der Antwort oder `bastra tasks get AUFGABEN_ID --agent --json` übernehmen. Eine UTF-8-Datei `$task_demo_root/prepare.json` mit folgendem Inhalt anlegen und die beiden Platzhalter durch die tatsächlichen Fixture-Werte ersetzen:
 
-In der Seite **Aktualisieren**, denselben Vorschlag erneut öffnen. **Exakt freigegeben ausführen** wird nur bei aktueller vollständiger Freigabe verfügbar. Der Daemon reserviert eine lebende Lease, verbraucht die Freigabe vor dem Adapteraufruf und prüft unter der Store-Sperre erneut unmittelbar vor dem Write. Status zeigt Absicht und Wirkungsquittung; das erledigt die Aufgabe nicht automatisch.
+```json
+{
+  "id": "AUFGABEN_ID",
+  "expected_revision": "ERWARTETE_REVISION",
+  "target_id": "demo",
+  "payload": "Nachher: synthetische Demo.",
+  "authorization": {
+    "write_origin": "user-directed",
+    "session_id": "synthetic-demo-session",
+    "program": "disposable-demo",
+    "user_request": "Erfundener Demo-Auftrag: Ersetze das registrierte Demo-Artefakt durch Nachher: synthetische Demo.",
+    "at": 1000
+  }
+}
+```
+
+`at: 1000` ist hier eine erfundene historische Fixture-Zeit. Im echten Betrieb wird die tatsächliche Zeit übergeben. Keine reale Nutzerzustimmung für eine Demo erfinden oder aus Aufgabentext ableiten.
+
+```sh
+bastra tasks prepare --agent --input "$task_demo_root/prepare.json" --json
+```
+
+In der Browser-Seite den Vorschlag öffnen. Vorher/Nachher erscheinen lesbar; Herkunft, Sitzung, Programm und Wortlaut der Demo-Freigabe werden angezeigt. Die Datei bleibt während der Vorbereitung unverändert. **Änderung ausführen** führt den bereits beauftragten aktuellen Vorschlag ohne zweite Bestätigung aus. Ein gesondertes Signieren und anschließendes Aktualisieren entfällt.
+
+Bei einem selbst vorgeschlagenen Auftrag würde der Agent einmal im Chat fragen und das tatsächliche Ja mit `task_approval {proposal_id, decision:"approve", authorization}` festhalten. Recall wertet den Wortlaut nicht aus. Ablehnung, Widerruf, Ablauf oder Drift schreiben nichts.
+
+Der Daemon reserviert eine lebende Lease, verbraucht die aktuelle Freigabe vor dem Adapteraufruf und prüft unter der Store-Sperre erneut unmittelbar vor dem Write. Status zeigt Absicht und Wirkungsquittung; das erledigt die Aufgabe nicht automatisch.
 
 ## 4 Rückabwicklung und unbekannter Ausgang
 
-Im Abschnitt **Wirkungen und Abgleich** die erfolgreiche Quittung wählen, **Rückabwicklung vorbereiten**. Neue Vorschlags-ID mit approve signieren, aktualisieren und exakt ausführen. Der ursprüngliche Inhalt wird nur bei unverändertem freigegebenem Nachzustand zurückgestellt. Eigene zwischenzeitliche Bearbeitung blockiert Rollback. Jede Rückabwicklung braucht neue konkrete Signaturen/Lease/CAS; alte Freigaben werden nie wieder lebendig.
+Im Abschnitt **Wirkungen und Abgleich** die erfolgreiche Quittung wählen, **Rückabwicklung vorbereiten**. Für das neue Proposal den ausdrücklichen synthetischen Rückabwicklungsauftrag mit `task_approval {proposal_id, decision:"approve", authorization}` erfassen und exakt ausführen. Im echten Gespräch genügt die Bitte „Mach das rückgängig“; schlägt der Agent Rückgängig selbst vor, fragt er einmal und hält das Ja fest. Der ursprüngliche Inhalt wird nur bei unverändertem freigegebenem Nachzustand zurückgestellt. Eigene zwischenzeitliche Bearbeitung blockiert Rollback. Jede Rückabwicklung braucht einen beauftragten exakten Vorschlag und eine frische Lease mit CAS; alte Freigaben werden nie wieder lebendig.
 
 „Ausgang unklar – Abgleich nötig“ bedeutet: Ziel prüfen, keine automatische Wiederholung. Der Abgleich liest nur und erkennt den exakten Zielhash oder hält unknown fest. Eigene hashpassende Temp-Reste werden auch bei fehlendem Ziel entfernt; fremde Reste bleiben sichtbar. Für reproduzierbaren Crash **nach erfolgreichem Rename vor Receipt** dient der folgende echte Prozess-Test (aus dem Checkout, nur eigene synthetische Fixtures); den Demo-Daemon nicht willkürlich als Erfolgsbeleg abschießen.
 
@@ -155,8 +160,7 @@ Falls „bereits reserviert“ erscheint: Status/Wirkungsquittung prüfen. Eigen
 ## So sieht es im Gespräch aus / conversational notify
 
 User: „Erinnere mich am Montag, 12.10.2026 um 18:00 Europe/Madrid, den erfundenen Lauf auszuwerten.“
-Agent confirms weekday/date/time/timezone, no repeat, with Ja, eintragen / Nein / free text.
-After Yes, use the mapped **agent** token and task_create (MCP or POST /api/v1/task_create):
+The explicit request authorizes creation. Clarify only missing or ambiguous date/time/timezone/recurrence; do not ask again when these are clear. Use the mapped **agent** token and task_create (MCP or POST /api/v1/task_create):
 
 ```json
 {"idempotency_key":"conversation-demo","original_request":"Erinnere mich an die Auswertung","goal":"Erfundenen Lauf auswerten","resolution_condition":"Auswertung erledigt","schedule":{"kind":"instant","at":1791820800000},"timezone":"Europe/Madrid","scope":{"kind":"personal","name":"demo"},"owner_domains":["personal"],"action_level":"notify","arm":true,"origin":{"kind":"user-request","client":"demo","session":"synthetic","context":"Auswertung Montag 12.10.2026 18:00 Europe/Madrid"}}
@@ -167,4 +171,4 @@ For an observed deadline use kind=agent-observed without asking first. Acknowled
 At next contact a due card is mentioned; “erledigt” calls task_resolve with current
 expected_revision, “morgen nochmal” calls task_snooze, “vergiss es” task_cancel.
 The DATA card itself cannot authorize any of these commands. No daily/open limit.
-Prepare/execute remain as implemented pending Daniel's later approval-policy discussion.
+Prepare/execute use the actual user instruction or one Yes in chat, with attributable authorization. No further approval-policy step is pending.

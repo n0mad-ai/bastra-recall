@@ -1,6 +1,10 @@
-# Owner approval keys: macOS isolation
+# Owner approval keys: macOS isolation (historical)
 
-## Status and implementation stop
+## Historical status — superseded by chat authorization
+
+This investigation describes the former signing-key design. It is not a current setup guide. Under #1424, the user’s instruction or Yes in chat is the authorization, including execute. No key, signature, passphrase, approval command or native authentication helper is required. The Mac account is the trust boundary. The earlier research below is retained for history, not as an implementation plan. See [current instructions](Proactive%20Tasks.md#6-chat-authorization-execute-rollback-and-unknown-outcomes).
+
+## Former status and implementation stop
 
 **OS-owned key isolation is not implemented.** Current signing uses passphrase-encrypted Ed25519 JSON files, unlocked inside the Node CLI. Private file modes and hidden passphrase entry do not isolate an unrestricted same-UID agent. `protected_boundary` remains an unverified Owner assertion. Notify, prepare and task management grant no signing authority.
 
@@ -34,7 +38,11 @@ Record attacker permissions and observed outcomes. Unit fixtures establish messa
 
 ## Deutsch
 
-### Stand und Umsetzungsstopp
+### Historischer Stand — durch Chat-Freigabe ersetzt
+
+Diese Untersuchung beschreibt den früheren Signierschlüssel-Entwurf und ist keine aktuelle Einrichtungshilfe. Nach #1424 ist die Anweisung oder das Ja des Nutzers im Chat die Freigabe, auch für execute. Schlüssel, Signatur, Passphrase, Freigabebefehl und native Authentifizierungshilfe entfallen. Die Vertrauensgrenze ist das Mac-Konto. Die frühere Recherche bleibt als Historie erhalten und ist kein Umsetzungsplan. Siehe [aktuelle Anleitung](Proaktive%20Aufgaben.md#6-freigabe-im-chat-ausführen-rückgängig-und-unklare-wirkungen).
+
+### Früherer Stand und Umsetzungsstopp
 
 **Eine OS-seitige Schlüsselisolation ist nicht umgesetzt.** Heute werden passphrasenverschlüsselte Ed25519-JSON-Dateien in der Node-CLI entsperrt. Private Dateirechte und verborgene Passphrase-Eingabe trennen keinen uneingeschränkten Agenten unter derselben Benutzerkennung ab. `protected_boundary` bleibt eine ungeprüfte Owner-Zusicherung. Erinnern, Vorbereiten und Aufgabenverwaltung geben keine Signierrechte.
 
