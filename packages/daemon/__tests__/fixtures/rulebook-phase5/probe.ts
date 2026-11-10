@@ -1,4 +1,4 @@
-import {preparedGate} from './prepared-gate.js';
+import {preparedGate,type PreparedGateTiming} from './prepared-gate.js';
 import {rulebookStopRequested} from '../rulebook-stop.js';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
@@ -34,7 +34,7 @@ const denied = (out: any) => out.hookSpecificOutput?.permissionDecision === 'den
 const context = (out: any): string => out.hookSpecificOutput?.additionalContext ?? '';
 
 /** Uses production HTTP routes/search/lanes; never registers a file watcher. */
-export async function serve(vault: Vault) {
+export async function serve(vault: Vault,observe?:(evidence:unknown)=>void) {
   const search = new SearchIndex(vault); search.start();
   const telemetry = new Telemetry();
   const deps = {vault, search, telemetry, vaultPath:vault.root};
@@ -42,10 +42,13 @@ export async function serve(vault: Vault) {
     documentWriteEnabled:false, embedding:{on:false, providerId:null, source:'none'}});
   const url = `http://127.0.0.1:${http.port}`;
   const post = async (path:string, body:unknown, sid?:string) => {
+    const started=performance.now();
     const response = await fetch(url+path, {method:'POST', headers:{'content-type':'application/json',
       ...(sid ? {'x-bastra-cc-session':sid} : {})}, body:JSON.stringify(body), signal:AbortSignal.timeout(5000)});
     assert.equal(response.status,200,`${path}: ${await response.clone().text()}`);
-    return response.json() as Promise<any>;
+    const raw=await response.text();
+    observe?.({path,session_id:sid??(body as any)?.payload?.session_id,raw,elapsed_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS});
+    return JSON.parse(raw) as any;
   };
   return {url, post, deps, close:async()=>{await http.close(); search.stop();}};
 }
@@ -85,8 +88,9 @@ export async function runProbe(): Promise<ProbeResult> {
   let lastGate:unknown;
   const gate = async (sid:string, client:string, name='Write', input={}) => {
     const started=performance.now();
-    const raw=await preparedGate({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel});
-    lastGate={session_id:sid,tool:name,raw,elapsed_with_preparation_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS};
+    let timing:PreparedGateTiming|undefined;
+    const raw=await preparedGate({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel},value=>{timing=value;});
+    lastGate={session_id:sid,tool:name,raw,...timing,elapsed_with_preparation_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS};
     return parse(raw);
   };
   const prompt = async (sid:string, client:string, text:string) => checkedPrompt(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
@@ -259,7 +263,8 @@ export async function runProbe(): Promise<ProbeResult> {
     }
     // Real HTTP transport outage: kill only this disposable server, then restart it.
     for(const client of clients) await attempt('all',client,'autonomous-outage-reset',async()=>{
-      let live=await serve(f.vault);
+      const observe=(evidence:unknown)=>{lastGate=evidence;};
+      let live=await serve(f.vault,observe);
       const sid=`autonomous-${client}`;
       try {
         for(let round=0;round<6;round++){
@@ -267,10 +272,11 @@ export async function runProbe(): Promise<ProbeResult> {
           if(round===2){
             const deadUrl=live.url;await live.close();
             const output=await hookProcess(deadUrl,p);assert.equal(output.code,0);assert.deepEqual(parse(output.stdout),{});
-            live=await serve(f.vault);
+            live=await serve(f.vault,observe);
           }
           if(round===3){
             const restored=parse(await runSessionLane({...common(sid,client),hook_event_name:'SessionStart',source:'compact'},live.url,undefined,async()=>null));
+            lastGate={stage:'compact-session',session_id:sid,round,raw:restored};
             assert.ok(context(restored).includes('COMPLETE_ja_always'));
             assert.equal(denied(await live.post('/hook/gate',{payload:p})),true,'compact invalidates prior check');
           }

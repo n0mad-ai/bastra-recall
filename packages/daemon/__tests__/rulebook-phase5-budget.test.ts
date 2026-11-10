@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {runGateLane} from '../src/gate-lane.js';
-import {preparedGate} from './fixtures/rulebook-phase5/prepared-gate.js';
+import {preparedGate,type PreparedGateTiming} from './fixtures/rulebook-phase5/prepared-gate.js';
 import {RULEBOOK_CATALOG_BUDGET_MS} from '../src/rulebook-catalog.js';
 
 const catalog={entries:[{id:'budget-fixture',title:'Fixture',body:'Full fixture rule',group:'explicit' as const,rulebook:'always' as const,revision:null,updated:null,stale_status:'unknown' as const}],omitted:0};
@@ -14,9 +14,14 @@ test('#1412 slow fixture catalog preparation does not consume the mechanical gat
  const deps={kernel,reflexPool:()=>[]};
  const start=performance.now();
  const raw=await runGateLane(payload('phase5-budget-unprepared'),deps);
- assert.equal(denied(raw),false,`production must fail open for delayed catalog: ${raw}`);
  t.diagnostic(JSON.stringify({raw,elapsed_ms:performance.now()-start,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,provider_delay_ms:delay}));
- const prepared=await preparedGate(payload('phase5-budget-prepared'),deps);
+ assert.equal(denied(raw),false,`production must fail open for delayed catalog: ${raw}`);
+ let timing:PreparedGateTiming|undefined;
+ const prepared=await preparedGate(payload('phase5-budget-prepared'),deps,value=>{timing=value;});
+ assert.ok(timing,'prepared calls retain timing evidence');
+ assert.ok(timing.preparation_ms>=delay,'both catalog projections are prepared outside the gate');
+ assert.ok(timing.gate_ms>=0);
+ t.diagnostic(JSON.stringify({raw:prepared,...timing,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS}));
  assert.equal(denied(prepared),true,`prepared mechanical decision must retain full denial: ${prepared}`);
  assert.match(prepared,/rulebook_check/);
 });
