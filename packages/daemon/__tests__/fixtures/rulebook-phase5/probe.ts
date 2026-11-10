@@ -1,3 +1,4 @@
+import {preparedGate} from './prepared-gate.js';
 import {rulebookStopRequested} from '../rulebook-stop.js';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
@@ -9,6 +10,8 @@ import {Vault, SearchIndex} from '@bastra-recall/core';
 import {startHttpServer} from '../../../src/http.js';
 import {Telemetry} from '../../../src/telemetry.js';
 import {addFloor} from '../../../src/floors.js';
+import {FAST_BUDGET_MS} from '../../../src/hook-budgets.js';
+import {RULEBOOK_CATALOG_BUDGET_MS} from '../../../src/rulebook-catalog.js';
 import {cachedRulebookCatalog} from '../../../src/rulebook-catalog.js';
 import {runSessionLane} from '../../../src/session-lane.js';
 import {runPromptLane} from '../../../src/prompt-lane.js';
@@ -79,7 +82,13 @@ export async function runProbe(): Promise<ProbeResult> {
   const catalog = await kernel(); assert.equal(catalog.entries.length,125);
   const correspondenceIds=catalog.entries.filter(e=>e.validator||e.rule_categories?.includes("correspondence")).map(e=>e.id);
   assert.equal(catalog.entries.filter(e=>e.rulebook==='always').length,10);
-  const gate = async (sid:string, client:string, name='Write', input={}) => parse(await runGateLane({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel}));
+  let lastGate:unknown;
+  const gate = async (sid:string, client:string, name='Write', input={}) => {
+    const started=performance.now();
+    const raw=await preparedGate({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel});
+    lastGate={session_id:sid,tool:name,raw,elapsed_with_preparation_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS};
+    return parse(raw);
+  };
   const prompt = async (sid:string, client:string, text:string) => checkedPrompt(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
   const checkedPrompt=(raw:string)=>{const out=parse(raw);assert.ok(context(out).length<=10000,`prompt context size ${context(out).length}`);return out;};
   const stop = async (sid:string,client:string,text:string,active=false) => parse(await runStopLane({...common(sid,client),hook_event_name:'Stop',stop_hook_active:active,transcript:[{role:'assistant',content:text}]},server.url,{kernel,conventionOf:vaultConventionOf(f.vault)}));
@@ -87,8 +96,8 @@ export async function runProbe(): Promise<ProbeResult> {
   const check = (sid:string,input:object) => server.post('/api/v1/rulebook_check',{...input,session_id:sid},sid);
   const declare=(sid:string,applicable:string[]=[],extra:object={})=>check(sid,{applicable,not_applicable:correspondenceIds.filter(id=>!applicable.includes(id)).map(id=>({id,reason:'This fixture round is outside this rule’s correspondence scope.'})),...extra});
   const attempt = async (language:string,client:string,name:string,fn:()=>Promise<string|void>,gap=false) => {
-    try {const detail=await fn(); rows.push({language,client,case:name,status:gap?'GAP':'PASS',detail:detail??'Verified'});}
-    catch(error) {rows.push({language,client,case:name,status:'FAIL',detail:String(error)});}
+    try {lastGate=undefined;const detail=await fn(); rows.push({language,client,case:name,status:gap?'GAP':'PASS',detail:detail??'Verified'});}
+    catch(error) {rows.push({language,client,case:name,status:'FAIL',detail:String(error)+(lastGate?'\nLast gate evidence: '+JSON.stringify(lastGate):'')});}
   };
   try {
     for(const client of clients) {
