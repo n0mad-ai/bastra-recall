@@ -35,6 +35,7 @@ export const COMMANDS = [
   "rules",
   "tasks",
   "drafts",
+  "suggestions",
   "patches",
   "feedback",
   "archive",

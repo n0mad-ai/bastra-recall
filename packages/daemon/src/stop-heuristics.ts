@@ -25,6 +25,9 @@ const FEATURE_FILE_TOKEN_MIN = 5;
 type Heuristic = "correction-without-save" | "frustration-density" | "feature-completion" | "architecture-decision";
 
 export interface SaveSuggestion {
+  proposal_id?: string;
+  /** Full structural evidence, hashed locally; never rendered or persisted as text. */
+  proposal_evidence?: string;
   heuristic: Heuristic;
   title: string;
   type: "lesson" | "project-fact" | "decision";
@@ -148,8 +151,10 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
   let frustWordCount = 0;
   let capsCueCount = 0;
   const exemplars: string[] = [];
+  const fullEvidence: string[] = [];
   for (const t of userTurns) {
     const fw = countFrustWords(t.content, re);
+    if (fw > 0 || countQualifyingCaps(t.content)>0) fullEvidence.push(t.content);
     if (fw > 0) {
       frustWordCount += fw;
       // #756: a sentence the user said twice is one exemplar, not two.
@@ -168,6 +173,7 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
     heuristic: "frustration-density",
     title: "recurring frustration — capture the underlying lesson",
     type: "lesson",
+    proposal_evidence: JSON.stringify([...new Set(fullEvidence)]),
     body: `Detected ${totalCues} frustration cues (${frustWordCount} explicit frustration words) ` +
       `in the last ${userTurns.length} user turns. ` +
       `Exemplars: ${exemplars.join(" | ")}. ` +
@@ -186,6 +192,7 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
     heuristic: "frustration-density",
     title: "recurring frustration — capture the underlying lesson",
     type: "lesson",
+    proposal_evidence: JSON.stringify([...new Set(repeats)]),
     body: `Detected ${repeats.length} user turns restating an earlier request (language-neutral signal) ` +
       `in the last ${userTurns.length} user turns. ` +
       `Exemplars: ${[...new Set(repeats.map((c) => c.slice(0, 120)))].slice(0, 3).join(" | ")}. ` +
@@ -253,6 +260,7 @@ export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestio
   return [...other, {
     ...correction,
     heuristic: "correction-without-save",
+    proposal_evidence: correction.proposal_evidence,
     body: "The user repeated a correction in this turn and no save_memory followed. " +
       "If it establishes a durable rule, save the user-evidenced failure path and fix; do not infer a missing convention.",
   }];
@@ -338,6 +346,7 @@ export function detectFeatureCompletion(turns: TranscriptTurn[], deps: Heuristic
   return {
     heuristic: "feature-completion",
     title: "feature-completion — save a topology / project-fact entry",
+    proposal_evidence: JSON.stringify({files:[...fileTokens].sort(),commits:turns.filter(isCommitTurn).map(t=>({content:t.role==="tool"?t.content:undefined,commands:t.commands,calls:t.calls?.map(c=>({name:c.name,input:c.input})),results:t.results?.map(r=>r.content)}))}),
     type: "project-fact",
     body: `A git commit was mentioned alongside ${fileTokens.size} distinct repo-relative source files (e.g. ${sample}). ` +
       `If this lands a coherent feature/refactor, save a 'project-fact' that maps what was built where ` +
@@ -355,9 +364,11 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
   const userTurns = turns.filter((t) => t.role === "user").slice(-DECISION_WINDOW_TURNS);
   const patterns = decisionPatterns();
   const exemplars: string[] = [];
+  const fullEvidence: string[] = [];
   for (const t of userTurns) {
     for (const p of patterns) {
       if (p.test(t.content)) {
+        fullEvidence.push(t.content);
         if (exemplars.length < 2) exemplars.push(t.content.slice(0, 160));
         break;
       }
@@ -368,6 +379,7 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
+    proposal_evidence: JSON.stringify(fullEvidence),
     body: `Decision-language in the last ${userTurns.length} user turns: ${exemplars.join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
@@ -379,11 +391,17 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
  *  list, so any language fires. */
 function detectOptionPick(turns: TranscriptTurn[],window=DECISION_WINDOW_TURNS): SaveSuggestion | null {
   const picks = optionPicks(turns, window);
+  const evidence = turns.flatMap((t,i)=>{
+    if(t.role!=="user")return [];
+    let j=i-1;while(j>=0&&turns[j].role!=="assistant"&&turns[j].role!=="user")j--;
+    return j>=0&&optionPicks([turns[j],t],1).length?[[turns[j].content,t.content]]:[];
+  }).slice(-window);
   if (picks.length === 0) return null;
   return {
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
+    proposal_evidence: JSON.stringify(evidence),
     body: `The user picked one of the offered options (language-neutral signal): ${picks.slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
@@ -400,6 +418,7 @@ function detectAskAnswer(turns: TranscriptTurn[],native=false): SaveSuggestion |
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
+    proposal_evidence: JSON.stringify({answers,questions:turns.flatMap(t=>t.calls??[]).filter(c=>c.name===ASK_TOOL).map(c=>({name:c.name,input:c.input}))}),
     body: `The user answered the agent's question (structural signal): ${[...new Set(answers)].slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
@@ -423,11 +442,12 @@ export function appendProductDocHint(suggestions: SaveSuggestion[], mode: DocsMo
 
 export function formatSuggestion(s: SaveSuggestion): string {
   return [
-    `<save-eval>`,
+    s.proposal_id ? `<save-eval proposal_id="${s.proposal_id}">` : `<save-eval>`,
     `Suggested save (heuristic: ${s.heuristic}):`,
     `  title: "${s.title}"`,
     `  type: ${s.type}`,
     `  body: "${escapeBody(s.body)}"`,
+    ...(s.proposal_id ? [`Only after explicit user rejection: review_save_suggestion(id:"${s.proposal_id}", decision:"reject", write_origin:"user-directed", evidence:<user rejection>). Silence is not rejection.`] : []),
     `To save: call save_memory with the values above (or refine first).`,
     `</save-eval>`,
   ].join("\n");

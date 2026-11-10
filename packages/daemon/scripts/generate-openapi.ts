@@ -1,3 +1,4 @@
+import { ReviewSaveSuggestionArgs } from "../src/save-suggestion-review.js";
 /** Generate public API contracts without booting a daemon or touching a vault. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -115,7 +116,7 @@ const inputValidators: Record<string, z.ZodType> = {
   edit_memory: EditMemoryArgs.and(VaultWriteAttribution), archive_memory: ArchiveMemoryArgs,
   find_document: FindDocumentArgs, read_document: ReadDocumentArgs, open_document: OpenDocumentArgs,
   save_document: SaveDocumentArgs, recategorize_document: RecategorizeDocumentArgs, move_document: MoveDocumentArgs,
-  save_product_doc: SaveProductDocArgs, review_draft: ReviewDraftArgs, validate_artifact: ValidateArtifactArgs,
+  save_product_doc: SaveProductDocArgs, review_draft: ReviewDraftArgs, review_save_suggestion: ReviewSaveSuggestionArgs, validate_artifact: ValidateArtifactArgs,
   find_code: FindCodeArgs, find_affected_files: FindAffectedFilesArgs,
   ...TASK_INPUT_SCHEMAS,
 };

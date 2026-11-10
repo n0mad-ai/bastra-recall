@@ -112,6 +112,7 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "read_document",
       "recall",
       "review_draft",
+      "review_save_suggestion",
       "save_document",
       "save_memory",
       "save_product_doc",

@@ -4,7 +4,7 @@ import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { projectForFilter } from "../scope-filter.js";
 import { getApiToken } from "../settings.js";
 
-export async function rulebookCliCall(tool: "list_rules" | "load_memory" | "edit_memory", input: unknown): Promise<any> {
+export async function rulebookCliCall(tool: "list_rules" | "load_memory" | "edit_memory" | "review_save_suggestion", input: unknown): Promise<any> {
   const token = process.env.BASTRA_API_TOKEN || await getApiToken();
   const response = await fetch(`${resolveDaemonEndpoint().baseUrl}/api/v1/${tool}`, {
     method: "POST", headers: { "Content-Type": "application/json", "x-bastra-project": encodeURIComponent(projectForFilter(process.cwd()) ?? ""), ...(token ? { Authorization: `Bearer ${token}` } : {}) },

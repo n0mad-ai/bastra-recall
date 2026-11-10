@@ -32,8 +32,9 @@ export function formatSameTurnBlock(suggestions: SaveSuggestion[]): string {
   return [
     `<save-eval-now source="stop-hook">`,
     `bastra-recall memory check (Stop hook). Judge each line from this conversation: ` +
-      `save it via save_memory if it holds, otherwise end the turn without comment.`,
-    ...suggestions.map((s) => `- ${s.heuristic}: ${s.body}`),
+      `save it via save_memory if it holds, otherwise end the turn without comment. ` +
+      `Only an explicit user rejection permits review_save_suggestion(id:proposal_id, decision:"reject", write_origin:"user-directed", evidence:<user rejection>); silence never does.`,
+    ...suggestions.map((s) => `- ${s.heuristic}: ${s.body}${s.proposal_id ? ` [proposal_id:${s.proposal_id}]` : ""}`),
     `</save-eval-now>`,
   ].join("\n");
 }

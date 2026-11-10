@@ -1,3 +1,4 @@
+import { saveSuggestionTools } from "./save-suggestion-review.js";
 import { tasksEnabled, TASKS_PREVIEW_HINT } from "./tasks-enabled.js";
 /**
  * The canonical list of MCP tool definitions the daemon exposes — the single
@@ -34,6 +35,7 @@ export const ALL_TOOL_DEFS = [
   ...codeTools,
   ...affectedTools,
   ...draftReviewTools,
+  ...saveSuggestionTools,
   ...validateArtifactTools,
 ];
 
@@ -94,6 +96,7 @@ const WRITE_SURFACE_TOOLS = [
   "save_document",
   "save_product_doc",
   "review_draft",
+  "review_save_suggestion",
   // #1309: validate_artifact reads nothing and writes nothing; it belongs
   // wherever an agent delivers copy-ready text, which is the write surface.
   "validate_artifact",

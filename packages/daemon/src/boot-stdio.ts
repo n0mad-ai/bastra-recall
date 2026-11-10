@@ -1,3 +1,4 @@
+import { reviewSaveSuggestion, saveSuggestionTools } from "./save-suggestion-review.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 import { isTaskExecution } from "./task-execution.js";
 import { forwardTaskExecutionMcp } from "./task-execution-client.js";
@@ -89,6 +90,7 @@ export async function startStdioServer(opts: {
       ...MEMORY_TOOL_DEFS,
       ...(tasksEnabled() ? taskTools : []),
       ...draftReviewTools,
+      ...saveSuggestionTools,
       ...validateArtifactTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
@@ -188,6 +190,10 @@ export async function startStdioServer(opts: {
       }
     }
 
+    if (name === "review_save_suggestion") {
+      try { return { content: [{type:"text",text:JSON.stringify(await reviewSaveSuggestion(projectForFilter(process.cwd()),args))}] }; }
+      catch(err) {return errorResult((err as Error).message);}
+    }
     if (name === "review_draft") {
       try { return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] }; }
       catch (err) { return errorResult((err as Error).message); }

@@ -1,3 +1,4 @@
+import { reviewSaveSuggestion } from "./save-suggestion-review.js";
 /**
  * The /api/v1 POST tool dispatcher: maps a tool name from the URL to the
  * shared MCP tool handlers (recall, save_memory, documents, floors, …).
@@ -88,6 +89,7 @@ async function dispatchTool(
   body = recoverCallArguments(tool, body, TOOL_ARG_EXPECTATIONS) as Record<string, unknown>;
 
   switch (tool) {
+    case "review_save_suggestion": return reviewSaveSuggestion(ctx.project !== undefined ? ctx.project : ctx.cwd ? projectForFilter(ctx.cwd) : null, body);
     case "review_draft": return reviewDraftHandler(toolDeps, body);
     case "validate_artifact": return await validateArtifactHandler(body, toolDeps);
     case "recall":

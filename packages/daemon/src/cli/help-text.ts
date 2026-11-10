@@ -49,6 +49,7 @@ Commands:
                              Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
+  suggestions <reject|reset>  Explicit decisions on exact project save proposals
   drafts <list|purge|undo|reject>  Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
@@ -280,6 +281,18 @@ Quittiert heißt gesehen, nicht erledigt. Kleine Hook-Karten: bastra tasks due.
 Private Owner-Schlüssel werden nur über /dev/tty entsperrt. Alle Domains müssen
 signieren. Notify/prepare funktionieren ohne Signing-Key. Kein Hintergrund-Wakeup;
 BASTRA_TASK_TOKEN überschreibt die private lokale Hook-Konfiguration.`,
+  suggestions: `bastra suggestions — exact save proposal decisions
+
+Usage:
+  bastra suggestions reject <proposal_id> user-directed "explicit user rejection"
+  bastra suggestions reset <proposal_id> user-directed
+
+Only report a user's explicit rejection of a displayed proposal. Silence,
+not saving and an agent's assessment do not count. Rejection suppresses only
+that proposal in this project; reset restores it. Other suggestions, trigger
+strength and binding rules stay unchanged. --dry-run prints the request.
+The agent attests user direction, as with rule proposal decisions.
+`,
   drafts: `bastra drafts — local session drafts
 
 Usage:

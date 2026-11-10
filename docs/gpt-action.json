@@ -1675,6 +1675,89 @@
         }
       }
     },
+    "/review_save_suggestion": {
+      "post": {
+        "operationId": "review_save_suggestion",
+        "summary": "review save suggestion",
+        "description": "Only after the user explicitly rejects a displayed save proposal: pass its proposal_id, decision:reject, write_origin:user-directed and evidence quoting the explicit rejection. Suppresses only this exact proposal in the current project. Silence, not saving, or an agent assessment are ne...",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "reject",
+                      "reset"
+                    ]
+                  },
+                  "write_origin": {
+                    "type": "string",
+                    "enum": [
+                      "user-directed"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "id",
+                  "decision",
+                  "write_origin"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful JSON result; fields depend on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
     "/rulebook_check": {
       "post": {
         "operationId": "rulebook_check",

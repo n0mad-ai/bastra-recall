@@ -1,3 +1,5 @@
+import { identifySaveSuggestions, visibleSaveSuggestions } from "./save-suggestion-review.js";
+import { projectForFilter } from "./scope-filter.js";
 import {refreshStopValidators} from './stop-validator-source.js';
 import { catalogFor, rulebookBoundary, takeDeferredRulebookStop, type CatalogProvider } from "./rulebook-check.js";
 import { spoolRulebookFailure } from "./rulebook-spool.js";
@@ -265,6 +267,8 @@ async function evaluateStop(
   if (payload.session_id && hookClientEvidence(payload) !== "codex" && !envOff("BASTRA_STOP_SAME_TURN")) {
     suggestions = currentCorrectionReminderSuggestions(last30, suggestions);
   }
+  const proposalProject = payload.cwd ? projectForFilter(payload.cwd) : null;
+  suggestions = await visibleSaveSuggestions(proposalProject, await identifySaveSuggestions(proposalProject, suggestions, JSON.stringify(last30)));
   // #1376: a save after a suggestion's evidence already did what it asks.
   const proposed = suggestions;
   suggestions = dropSuggestionsAfterSave(last30, suggestions);

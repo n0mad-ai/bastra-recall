@@ -1,3 +1,5 @@
+import { projectForFilter } from "./scope-filter.js";
+import { filterPendingSaveSuggestions } from "./save-suggestion-review.js";
 import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
 import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
@@ -593,6 +595,8 @@ export async function runSessionLane(
       sessionId: payload.session_id ?? null,
       countable: isCountableSessionStart(payload.session_id, payload.source),
     });
+    for (const row of relay.recency) row.blocks = await filterPendingSaveSuggestions(payload.cwd ? projectForFilter(payload.cwd) : null, row.blocks);
+    relay.recency = relay.recency.filter(row => row.blocks.trim());
     // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
     // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
