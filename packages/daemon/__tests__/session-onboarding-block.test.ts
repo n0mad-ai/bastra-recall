@@ -1,19 +1,4 @@
-/**
- * #308 — the session onboarding block is an instruction, not an offer.
- *
- * Delivery was never the problem: `/hook/onboarding` answered `{"needed":true}`,
- * the hook was registered, and the full block arrived as `additionalContext`.
- * The interview still never ran, because the text asked the model to decide
- * whether now was "a natural moment" — a judgement it has no basis for, that
- * fails silently, and that nothing records.
- *
- * These tests pin the properties of the WORDING that the old text lacked. They
- * cannot (and do not claim to) prove that a given client acts on it — that is
- * the client's property, not ours. What they prove is that the block no longer
- * asks the model to make the call.
- *
- * Run: npx tsx --test packages/daemon/__tests__/session-onboarding-block.test.ts
- */
+/** #308/#1411: instruction and delivery regression controls, not host behavior certification. */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
@@ -42,13 +27,10 @@ test("#308: the judgement call that made it fail is gone", () => {
 
 test("#308: the block states the action and the moment instead of asking for a verdict", () => {
   assert.match(block, /RUN THE ONBOARDING INTERVIEW NOW/);
-  assert.match(block, /FIRST thing you do in this session/);
-  assert.match(block, /in your first response/i);
-  assert.match(block, /before the user's request and before anything else/i);
+  assert.match(block, /When there is no active task, RUN THE ONBOARDING INTERVIEW NOW in your first response/);
   // The two escape hatches the old wording hid behind are named and closed.
   assert.match(block, /do not ask for permission first/i);
   assert.match(block, /do not wait for a better moment/i);
-  assert.match(block, /do not re-evaluate whether now is a good moment/i);
 });
 
 test("#308: the user can still decline — only the model's licence to decline for them is removed", () => {
@@ -85,4 +67,16 @@ test("#308: delivery stays measurable — the block is its own telemetry column"
     Math.ceil(block.trimStart().length / 4),
   );
   assert.ok(tokensByPart({ onboarding: block }).onboarding > 0);
+});
+
+test("#1411: explicit work defers onboarding without adding questions to its deliverable", () => {
+  assert.match(block, /If the user has given you a concrete task, complete that task without onboarding questions, offers or reminders in the task response/);
+  assert.match(block, /Defer the interview to a later turn with no active task/);
+  assert.match(block, /Deferral is not a decline: do not run `bastra onboard skip` or `bastra onboard done` for it/);
+  assert.doesNotMatch(block, /before the user's request and before anything else/);
+});
+
+test("#1411: first use without active work still starts the interview immediately", () => {
+  assert.match(block, /When there is no active task, RUN THE ONBOARDING INTERVIEW NOW in your first response/);
+  assert.match(block, /then ask question \(1\) in the same response/);
 });
