@@ -204,6 +204,7 @@ test("unrelated stub lanes and normal Stop keep the chat registry out of their e
 });
 
 test("the stub digest still includes the lazily loaded chat registry and its locks", async () => {
+  // @ts-expect-error — plain build script without declarations, as in the binary parity guard.
   const { stubSourceFiles } = await import("../scripts/stub-source-digest.mjs");
   const files: string[] = stubSourceFiles();
   assert.ok(files.some(file => file.endsWith("/task-chat-registry.ts")));
