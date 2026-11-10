@@ -112,7 +112,7 @@ let stdoutEmitted = false;
 /** #1303: what the kill switch needs to leave the gate's failure row. */
 let callStartedAt = Date.now();
 let callSessionId: string | null = null;
-let failureRowWritten = false;
+let failureWrite: Promise<void> | undefined;
 function emitOnce(payload: string): void {
   if (stdoutEmitted) return;
   stdoutEmitted = true;
@@ -282,27 +282,27 @@ async function main(): Promise<void> {
     const e = err as NodeJS.ErrnoException;
     emitOnce("{}");
     const status = classifyError(e);
-    if (failureRowWritten) return;
-    failureRowWritten = true;
-    if (lane === "gate" || lane === "stop") {
-      const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
-      await spoolRulebookFailure(payload.session_id ?? null);
-    }
-    await writeClientTelemetry(
-      lane,
-      {
-        daemon_url: url,
-        status,
-        error: status === "error" ? (e.message ?? String(err)) : null,
-        ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
-        ...(lane === "write"
-          ? { tool_name: payload.tool_name ?? "", file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null }
-          : {}),
-      },
-      startedAt,
-      payload.session_id ?? null,
-      STUB_VERSION,
-    );
+    failureWrite ??= (async () => {
+      if (lane === "gate" || lane === "stop") {
+        const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
+        await spoolRulebookFailure(payload.session_id ?? null);
+      }
+      await writeClientTelemetry(
+        lane,
+        {
+          daemon_url: url,
+          status,
+          error: status === "error" ? (e.message ?? String(err)) : null,
+          ...(lane === "gate" ? { non_conformance: status === "timeout" ? "gate_timeout" : "gate_unavailable" } : {}),
+          ...(lane === "write"
+            ? { tool_name: payload.tool_name ?? "", file_path: (payload.tool_input as { file_path?: string } | undefined)?.file_path ?? null }
+            : {}),
+        },
+        startedAt,
+        payload.session_id ?? null,
+        STUB_VERSION,
+      );
+    })();
   }
 }
 
@@ -323,32 +323,31 @@ if (process.argv[2] === "version") {
   // `deno compile` embeds the module in the binary.
   import("../../statusline/dist/index.mjs").catch(() => process.exit(0));
 } else {
+  const lane = process.argv[2];
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
-    if (failureRowWritten) process.exit(0);
-    if (process.argv[2] === "stop") {
-      failureRowWritten = true;
-      void import("../src/rulebook-spool.js").then(m => m.spoolRulebookFailure(callSessionId)).finally(() => process.exit(0));
-      return;
-    }
-    if (process.argv[2] !== "gate") process.exit(0);
-    // #1303: the gate passed the call without deciding — that is a
-    // non-conformance and must leave its row, like a transport timeout.
-    failureRowWritten = true;
-    void import("../src/rulebook-spool.js").then(m => m.spoolRulebookFailure(callSessionId)).then(() => writeClientTelemetry(
-      "gate",
-      { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
-      callStartedAt,
-      callSessionId,
-      STUB_VERSION,
-    )).finally(() => process.exit(0));
-  }, laneBudgetMs(process.argv[2] ?? "") + 50);
+    if (lane !== "gate" && lane !== "stop") process.exit(0);
+    failureWrite ??= (async () => {
+      const { spoolRulebookFailure } = await import("../src/rulebook-spool.js");
+      await spoolRulebookFailure(callSessionId);
+      // #1303: the gate passed the call without deciding.
+      if (lane === "gate") await writeClientTelemetry(
+        "gate",
+        { daemon_url: "", status: "timeout", error: "kill-switch", non_conformance: "gate_timeout" },
+        callStartedAt,
+        callSessionId,
+        STUB_VERSION,
+      );
+    })();
+    void exitAfterFailureWrite();
+  }, laneBudgetMs(lane ?? "") + 50);
   killSwitch.unref?.();
 
-  main()
-    .then(() => process.exit(0))
-    .catch(() => {
-      emitOnce("{}");
-      process.exit(0);
-    });
+  async function exitAfterFailureWrite(): Promise<never> {
+    clearTimeout(killSwitch);
+    try { await failureWrite; }
+    finally { process.exit(0); }
+  }
+
+  void main().catch(() => emitOnce("{}")).then(exitAfterFailureWrite);
 }

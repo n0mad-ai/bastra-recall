@@ -26,12 +26,10 @@ function emitOnce(payload: string): void {
 
 const startedAt = Date.now();
 let sessionId: string | null = null;
-let rowWritten = false;
+let failureWrite: Promise<void> | undefined;
 
 /** The one client row per failed call; the kill switch and the catch share it. */
-async function failureRow(status: string, error: string | null, url: string): Promise<void> {
-  if (rowWritten) return;
-  rowWritten = true;
+async function writeFailureRow(status: string, error: string | null, url: string): Promise<void> {
   const { spoolRulebookFailure } = await import("./rulebook-spool.js");
   await spoolRulebookFailure(sessionId);
   // Imported lazily: only a failure pays for it (#305).
@@ -62,7 +60,7 @@ async function main(): Promise<void> {
   } catch (err) {
     emitOnce("{}");
     const status = classifyTransportError(err as NodeJS.ErrnoException);
-    await failureRow(status, status === "error" ? ((err as Error).message ?? String(err)) : null, url);
+    failureWrite ??= writeFailureRow(status, status === "error" ? ((err as Error).message ?? String(err)) : null, url);
   }
 }
 
@@ -76,14 +74,17 @@ if (isCliEntry) {
   const killSwitch = setTimeout(() => {
     emitOnce("{}");
     // The call passes either way; the row says the gate never decided.
-    void failureRow("timeout", "kill-switch", daemonBaseUrl()).finally(() => process.exit(0));
+    failureWrite ??= writeFailureRow("timeout", "kill-switch", daemonBaseUrl());
+    void exitAfterFailureWrite();
   }, HOOK_TIMEOUT_MS + 50);
   killSwitch.unref();
 
-  main()
-    .then(() => process.exit(0))
-    .catch(() => {
-      emitOnce("{}");
-      process.exit(0);
-    });
+  // Whichever path finishes first owns the row. Both exits wait for it.
+  async function exitAfterFailureWrite(): Promise<never> {
+    clearTimeout(killSwitch);
+    try { await failureWrite; }
+    finally { process.exit(0); }
+  }
+
+  void main().catch(() => emitOnce("{}")).then(exitAfterFailureWrite);
 }

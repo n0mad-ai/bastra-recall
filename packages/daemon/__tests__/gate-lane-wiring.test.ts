@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,7 @@ import { recordRulebookLoad } from "../src/rulebook-check.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "..", "src");
 const STUB = resolve(HERE, "..", "stub", "bastra-hook.ts");
+const OVERLAP = resolve(HERE, "fixtures", "gate-timeout-overlap.mjs");
 
 const saved: Record<string, string | undefined> = {};
 function setEnv(key: string, value: string | undefined): void {
@@ -63,24 +64,29 @@ async function listen(server: Server): Promise<number> {
 }
 
 /** Run one gate client; `hangStdin` keeps stdin open so only the kill switch can end it. */
-async function runClient(argv: string[], port: number, sessionId: string, hangStdin = false) {
-  const logDir = await mkdtemp(join(tmpdir(), "bastra-gate-client-"));
+async function runClient(argv: string[], port: number, sessionId: string, hangStdin = false, preload?: string) {
+  const root = await mkdtemp(join(tmpdir(), "bastra-gate-client-"));
+  const logDir = join(root, "logs");
+  await mkdir(logDir);
   const started = Date.now();
-  const stdout = await new Promise<string>((ok, ko) => {
-    const child = spawn(process.execPath, ["--import", "tsx", ...argv], {
+  const result = await new Promise<{ stdout: string; stderr: string; code: number | null; signal: NodeJS.Signals | null }>((ok, ko) => {
+    const child = spawn(process.execPath, ["--import", "tsx", ...(preload ? ["--import", preload] : []), ...argv], {
       env: {
         ...process.env,
         BASTRA_LOG_PATH: logDir,
+        BASTRA_HOOK_STATE_DIR: join(root, "state"),
         BASTRA_DAEMON_URL: `http://127.0.0.1:${port}`,
         BASTRA_TELEMETRY: "on",
         BASTRA_HOOK_TIMEOUT_MS: "300",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
-    let out = "";
-    child.stdout.on("data", (c) => (out += c));
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c) => (stdout += c));
+    child.stderr.on("data", (c) => (stderr += c));
     child.on("error", ko);
-    child.on("close", () => ok(out));
+    child.on("close", (code, signal) => ok({ stdout, stderr, code, signal }));
     child.stdin.write(JSON.stringify({ session_id: sessionId, hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "/x" } }));
     if (!hangStdin) child.stdin.end();
   });
@@ -88,8 +94,8 @@ async function runClient(argv: string[], port: number, sessionId: string, hangSt
   for (const name of await readdir(logDir)) {
     for (const line of (await readFile(join(logDir, name), "utf8")).split("\n")) if (line.trim()) rows.push(JSON.parse(line));
   }
-  await rm(logDir, { recursive: true, force: true });
-  return { stdout, rows, ms: Date.now() - started };
+  await rm(root, { recursive: true, force: true });
+  return { ...result, rows, ms: Date.now() - started };
 }
 
 describe("#1303 gate clients fail open with a non-conformance row", () => {
@@ -102,13 +108,35 @@ describe("#1303 gate clients fail open with a non-conformance row", () => {
       for (const [shape, argv] of shapes) {
         const r = await runClient([...argv], port, `gate-timeout-${shape}`);
         assert.equal(r.stdout, "{}", shape);
-        assert.equal(r.rows.length, 1, `${shape}: one client row`);
+        assert.equal(r.rows.length, 1, `${shape}: one client row ${JSON.stringify(r)}`);
         assert.equal(r.rows[0]!.kind, "gate_hook_call", shape);
         assert.equal(r.rows[0]!.session_id, `gate-timeout-${shape}`, shape);
         assert.equal(r.rows[0]!.status, "timeout", shape);
         assert.equal(r.rows[0]!.non_conformance, "gate_timeout", shape);
         assert.equal(r.rows[0]!.outcome, "pass", shape);
       }
+    } finally {
+      hung.closeAllConnections();
+      await new Promise<void>((ok) => hung.close(() => ok()));
+    }
+  });
+
+  it("#1433 the kill switch lets an in-flight timeout row finish", async t => {
+    const hung = createServer(() => { /* never answers */ });
+    const port = await listen(hung);
+    try {
+      for (const [shape, argv] of shapes) await t.test(shape, async () => {
+        const r = await runClient([...argv], port, `gate-overlap-${shape}`, false, OVERLAP);
+        const evidence = `${shape}: ${JSON.stringify(r)}`;
+        assert.match(r.stderr, /kill-switch during failure spool/, evidence);
+        assert.equal(r.code, 0, evidence);
+        assert.equal(r.stdout, "{}", evidence);
+        assert.equal(r.rows.length, 1, evidence);
+        assert.equal(r.rows[0]!.session_id, `gate-overlap-${shape}`, evidence);
+        assert.equal(r.rows[0]!.status, "timeout", evidence);
+        assert.equal(r.rows[0]!.non_conformance, "gate_timeout", evidence);
+        assert.equal(r.rows[0]!.error, null, evidence);
+      });
     } finally {
       hung.closeAllConnections();
       await new Promise<void>((ok) => hung.close(() => ok()));
