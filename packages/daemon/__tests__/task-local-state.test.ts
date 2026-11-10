@@ -12,6 +12,7 @@ import { readTaskStore, transactTaskStore } from "../src/task-store.js";
 import { newOwnerKey, unlockOwnerKey, bytesHash, signTaskApproval, type ApprovalRegistry } from "../src/task-approval-keys.js";
 import { approvalBinding } from "../src/task-actions.js";
 import { assessTaskFreshness } from "../src/task-freshness.js";
+import { readLocalTaskState } from "../src/task-local-state.js";
 
 async function fixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "task-local-state-"))); let now = 1000;
@@ -44,6 +45,34 @@ test("entity/document project exact structured memory state, not unrelated body 
   await callTaskCrud(ctx,f.auth,"task_source_register",{...f.source,id:"public",kind:"entity",memory_id:"note",field:"status",sensitivity:"public"});
   await observeTaskSources(ctx); assert.equal((await readTaskStore(ctx.path)).events.filter(e=>e.source_id==="public").length,0);
 });
+for (const kind of ["entity", "document"] as const) test(`#1423: ${kind} refuses alias expansion before oversized JSON serialization`,async(t)=>{
+  const f=await fixture();
+  const raw="---\nid: note\ntype: doc\na: &a [x,x,x,x,x,x,x,x]\nb: &b [*a,*a,*a,*a,*a,*a,*a,*a]\nc: &c [*b,*b,*b,*b,*b,*b,*b,*b]\nstatus: [*c,*c,*c,*c,*c,*c,*c,*c]\n---\nBody";
+  const ctx={...f.ctx,memoryRead:async()=>({id:"note",raw,body:"Body",revision:"revision",sensitivity:"private"})};
+  await callTaskCrud(ctx,f.auth,"task_source_register",{...f.source,kind,memory_id:"note",...(kind==="entity"?{field:"status"}:{})});
+  const store=await readTaskStore(ctx.path), stringify=JSON.stringify;
+  let oversizedSerialization=false;
+  t.mock.method(JSON,"stringify",(value:unknown,replacer?:any,space?:any)=>{
+    const result=stringify(value,replacer,space);
+    if(result!==undefined && Buffer.byteLength(result)>4096) oversizedSerialization=true;
+    return result;
+  });
+  await assert.rejects(readLocalTaskState(ctx,store.sources[0],store,65536,1000),{code:"source_budget"});
+  assert.equal(oversizedSerialization,false,"alias graph reached unbounded JSON serialization");
+});
+
+test("#1423: bounded aliases preserve canonical key order and YAML dates; cycles/depth fail within the structural budget",async()=>{
+  const f=await fixture(); let raw="---\nid: note\na: &a [x]\nstatus: {z: *a, a: *a, when: 2026-11-10}\n---\nBody";
+  const ctx={...f.ctx,memoryRead:async()=>({id:"note",raw,body:"Body",revision:"revision",sensitivity:"private"})};
+  await callTaskCrud(ctx,f.auth,"task_source_register",{...f.source,kind:"entity",memory_id:"note",field:"status"});
+  const store=await readTaskStore(ctx.path);
+  assert.equal((await readLocalTaskState(ctx,store.sources[0],store,65536,1000)).value,'{"a":["x"],"when":"2026-11-10T00:00:00.000Z","z":["x"]}');
+  for(const status of ["&cycle [*cycle]","[".repeat(66)+"x"+"]".repeat(66)]) {
+    raw=`---\nid: note\nstatus: ${status}\n---\nBody`;
+    await assert.rejects(readLocalTaskState(ctx,store.sources[0],store,65536,1000),{code:"source_budget"});
+  }
+});
+
 test("task-phase observes bound task state and refuses cross-domain sources",async()=>{
   const f=await fixture(); const target=await callTaskCrud(f.ctx,f.auth,"task_create",f.task) as any;
   await callTaskCrud(f.ctx,f.auth,"task_source_register",{...f.source,kind:"task-phase",task_id:target.id});

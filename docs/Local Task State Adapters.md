@@ -30,7 +30,7 @@ Bind a task's event schedule to that `source_id`, with an exact reviewed `expect
 
 The journal, comparison identities and logical occurrences persist across restart. Unchanged values do not create new events, including when their display text is scrubbed. Clock rollback does not duplicate recorded occurrences; future-dated observations remain subject to the existing freshness checks. After offline time, a disabled source or an outage, observation records the latest available state. Intermediate changes that happened entirely between observations cannot be reconstructed, and returning to the same state can remain unseen. Re-enabling changes the source revision and rechecks its current state; it does not authorize execution or renew an approval. No universal wall-clock delivery guarantee is made.
 
-Known resource limit: deeply aliased YAML metadata can expand during serialization before the final output budget is checked; tracked as [P2 #1423](https://github.com/n0mad-ai/bastra-recall/issues/1423).
+Structured entity/document metadata is checked before JSON serialization: at most 4,096 visited nodes, nesting depth 64 and 4,096 cumulative string/key bytes. Canonical output remains limited to 4,096 bytes. Oversized or cyclic graphs report `source_budget` without recording a fabricated snapshot.
 
 See [Proactive Tasks](Proactive%20Tasks.md) and [owner approval key limits](Owner%20Approval%20Key%20Isolation.md).
 
@@ -59,6 +59,6 @@ Der Ereignisplan einer Aufgabe bindet diese `source_id` und einen exakt geprüft
 
 Journal, Vergleichsidentitäten und logische Fälligkeiten bleiben über Neustarts erhalten. Unveränderte Werte erzeugen keine neuen Ereignisse, auch bei bereinigtem Anzeigetext. Ein Uhrenrücksprung dupliziert keine erfassten Fälligkeiten; Beobachtungen aus der Zukunft unterliegen weiter den bestehenden Frischeprüfungen. Nach Offline-Zeit, abgeschalteter Quelle oder Ausfall wird der zuletzt verfügbare Zustand beobachtet. Vollständig zwischen Beobachtungen liegende Änderungen lassen sich nicht rekonstruieren; auch eine Rückkehr zum Ausgangszustand kann unbemerkt bleiben. Erneutes Einschalten ändert die Quellrevision und prüft den aktuellen Zustand neu; es erlaubt keine Ausführung und erneuert keine Freigabe. Eine allgemeine Zustellgarantie nach Wanduhr wird nicht behauptet.
 
-Bekannte Ressourcengrenze: Tief verschachtelte YAML-Aliase können bei der Serialisierung expandieren, bevor das abschließende Ausgabebudget geprüft wird; erfasst als [P2 #1423](https://github.com/n0mad-ai/bastra-recall/issues/1423).
+Strukturierte Entity-/Dokumentmetadaten werden vor der JSON-Serialisierung auf höchstens 4.096 besuchte Knoten, Tiefe 64 und insgesamt 4.096 String-/Schlüsselbytes begrenzt. Die kanonische Ausgabe bleibt auf 4.096 Bytes begrenzt. Zu große oder zyklische Graphen melden `source_budget`, ohne einen erfundenen Snapshot zu erfassen.
 
 Siehe [Proaktive Aufgaben](Proaktive%20Aufgaben.md) und [Grenzen der Freigabeschlüssel](Owner%20Approval%20Key%20Isolation.md#deutsch).

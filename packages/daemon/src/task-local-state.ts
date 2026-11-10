@@ -11,7 +11,26 @@ import { CODE_FILE_TYPE } from "./code-graph/limits.js";
 import type { TaskSource, TaskStore } from "./task-schema.js";
 import type { TaskServiceContext } from "./task-service.js";
 const exec = promisify(execFile);
-const structured=(value:unknown)=>canonicalTaskValue(JSON.parse(JSON.stringify(value)));
+function structured(value: unknown): string {
+  let nodes=0, bytes=0;
+  const budget=()=>{ throw Object.assign(new Error("source value budget"),{code:"source_budget"}); };
+  // YAML aliases share references. Visit each occurrence under fixed limits before
+  // JSON.stringify duplicates any subtree; cyclic aliases also stop at the depth limit.
+  const visit=(item:unknown,depth:number):void=>{
+    if(++nodes>4096 || depth>64) budget();
+    if(typeof item==="string") bytes+=Buffer.byteLength(item);
+    else if(item && typeof item==="object") {
+      if(Array.isArray(item)) for(const child of item) visit(child,depth+1);
+      else for(const key in item) if(Object.hasOwn(item,key)) {
+        bytes+=Buffer.byteLength(key); if(bytes>4096) budget();
+        visit((item as Record<string,unknown>)[key],depth+1);
+      }
+    }
+    if(bytes>4096) budget();
+  };
+  visit(value,0);
+  return canonicalTaskValue(JSON.parse(JSON.stringify(value)));
+}
 export const LOCAL_TASK_STATE_COVERAGE = {
   project: "Current Git HEAD, branch and porcelain working-directory status; no remote operations",
   worktree: "Current local Git worktree registry, including branch, detached, locked and prunable state",
