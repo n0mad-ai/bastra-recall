@@ -24,7 +24,6 @@
 import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
 import { decorateHookPayload } from "./hook-surface.js";
-import { registerChatHook } from "./task-chat-registry.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", 1000);
 
@@ -52,7 +51,6 @@ async function main(): Promise<void> {
     return emitOnce("{}");
   }
   payload = decorateHookPayload(payload);
-  await registerChatHook(payload).catch(() => {});
   callSessionId = (payload as { session_id?: string })?.session_id ?? null;
   const url = daemonBaseUrl();
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));

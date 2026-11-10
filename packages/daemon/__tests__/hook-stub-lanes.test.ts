@@ -180,3 +180,32 @@ test("stubLaneCommandPath accepts the forms a settings.json can carry", () => {
   assert.equal(stubLaneCommandPath("node /a/b/dist/stop-hook.js", "stop"), null, "the node client");
   assert.equal(stubLaneCommandPath("", "stop"), null);
 });
+
+test("unrelated stub lanes and normal Stop keep the chat registry out of their eager module graph", async () => {
+  const { resolve, dirname } = await import("node:path");
+  async function eagerImports(entry: string, seen = new Set<string>()): Promise<Set<string>> {
+    if (seen.has(entry)) return seen;
+    seen.add(entry);
+    const source = await readFile(entry, "utf8");
+    // Runtime imports only: literal dynamic imports belong to the guarded lane.
+    const imports = /^import\s+(?!type\b)(?:[\s\S]*?\sfrom\s*)?["'](\.[^"']+)["'];/gm;
+    for (const match of source.matchAll(imports)) {
+      const dependency = resolve(dirname(entry), match[1]).replace(/\.js$/, ".ts");
+      if (dependency.endsWith("build-info.ts")) continue;
+      await eagerImports(dependency, seen);
+    }
+    return seen;
+  }
+  for (const entry of [join(HERE, "..", "stub", "bastra-hook.ts"), join(HERE, "..", "src", "stop-hook.ts"), join(HERE, "..", "src", "prompt-hook.ts")]) {
+    const eager = [...await eagerImports(entry)];
+    assert.ok(!eager.some(file => file.endsWith("/task-chat-registry.ts")), "chat registration must be loaded only by its lifecycle path");
+    assert.ok(!eager.some(file => file.endsWith("/path-lock.ts")), "unrelated hooks must not load the registry's filesystem-lock implementation");
+  }
+});
+
+test("the stub digest still includes the lazily loaded chat registry and its locks", async () => {
+  const { stubSourceFiles } = await import("../scripts/stub-source-digest.mjs");
+  const files: string[] = stubSourceFiles();
+  assert.ok(files.some(file => file.endsWith("/task-chat-registry.ts")));
+  assert.ok(files.some(file => file.endsWith("/path-lock.ts")));
+});

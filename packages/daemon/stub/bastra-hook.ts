@@ -43,7 +43,6 @@ import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
 import { STUB_BUILD_INFO } from "./build-info.js";
-import { registerChatHook } from "../src/task-chat-registry.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
@@ -89,6 +88,7 @@ function laneBudgetMs(lane: string): number {
 }
 
 interface HookPayload {
+  bastra_client?: string;
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
@@ -218,8 +218,13 @@ async function main(): Promise<void> {
     return emitOnce("{}");
   }
   payload = decorateHookPayload(payload);
-  if (lane === "session" || lane === "prompt" || (lane === "stop" && payload.hook_event_name === "SessionEnd"))
+  const chatClient = payload.bastra_client ?? process.env.BASTRA_HOOK_CLIENT;
+  if (lane === "session" || (lane === "prompt" && chatClient && chatClient !== "claude-code")) {
+    // Registration owns filesystem locks. Loading it on gate/write/Bash or
+    // ordinary Stop would spend those lanes' startup budget unnecessarily.
+    const { registerChatHook } = await import("../src/task-chat-registry.js");
     await registerChatHook(payload).catch(() => {});
+  }
   if (lane === "session" && payload.hook_event_name === "SessionEnd") return emitOnce("{}");
   callSessionId = payload.session_id ?? null;
 
