@@ -15,6 +15,7 @@ import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { PathLockUnavailableError } from "./path-lock.js";
 
 const TASK_HELP: Partial<Record<TaskCrudOperation,string>> = {
+ task_source_register:"Owner registers exact local sources. New snapshot kinds: project/worktree require canonical Git root; task-phase requires task_id within owner_domains; symbol requires root/path and exact symbol_id in a local Graphify graph; entity requires memory_id and exact own frontmatter field; document requires a type=doc memory_id. Reserved producer task-source-reader. task_status reports per-adapter coverage. Snapshots retain latest observed state after offline time; intermediate transitions cannot be reconstructed. Local state adapters support notify/prepare, not execution authority. Disable/resume with task_controls.source; no clients are awakened and no agent or external connector is started.",
  task_result_get:"Read the attributed executor report plus local intent/receipt outcomes. Executor reports are separate from signed local action receipts and do not prove an external action.",
  task_result_report:"Persist an attributed executor report with expected_revision; at, actor and generation come from the server. This never executes an action, resolves a task or signs an approval.",
  task_pause:"Pause evaluation and delivery without ending or disarming the task.",

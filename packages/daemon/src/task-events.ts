@@ -1,4 +1,5 @@
 import { privateContentComparison } from "./task-private-comparison.js";
+import { isLocalTaskState, readLocalTaskState } from "./task-local-state.js";
 import { taskValidityExpired } from "./task-validity.js";
 import { checkTaskDecisions } from "./task-reconsideration.js";
 import { canonicalTaskValue } from "./task-canonical.js";
@@ -183,7 +184,7 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
     if (Date.now() - started >= 5000) break;
     if (allowedSources && !allowedSources.has(source.id)) continue;
     if (activeOnly && !snapshot.tasks.some(t => t.armed && !t.paused && !["resolved", "cancelled", "expired"].includes(t.state) && t.schedule.kind === "event" && t.schedule.source_id === source.id)) continue;
-    if (!source.enabled || !["file", "git", "memory"].includes(source.kind) || count++ >= 10) continue;
+    if (!source.enabled || (!isLocalTaskState(source.kind) && !["file", "git", "memory"].includes(source.kind)) || count++ >= 10) continue;
     const watchers=snapshot.tasks.filter(t=>t.armed&&!t.paused&&t.schedule.kind==="event"&&t.schedule.source_id===source.id&&!["resolved","cancelled","expired"].includes(t.state));
     const charged=watchers.filter(t=>!allowedTasks||allowedTasks.has(t.id));if(activeOnly&&!charged.length)continue;
     const maxBytes=charged.length?Math.max(...charged.map(t=>t.budget.max_source_bytes)):1024*1024;
@@ -194,6 +195,9 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
       let value: string;
       try {
         value = await Promise.race([(async () => {
+      if (isLocalTaskState(source.kind)) {
+        const state=await readLocalTaskState(ctx,source,snapshot,maxBytes,maxMs); observedBytes=state.bytes; return state.value;
+      }
       const root = source.kind === "memory" ? "" : await realpath(source.root!);
       if (source.kind !== "memory" && root !== source.root) throw new Error("registered root changed");
       if (source.kind === "memory") {
@@ -233,7 +237,9 @@ export async function observeTaskSources(ctx: TaskServiceContext, activeOnly = f
           delete task.last_failure; audit(task, now, "source-recovered");
         }
         const previous=[...s.events].reverse().find(e=>e.source_id===source.id);
-        if (current.last_value_hash === observed && previous?.value===value && previous.source_revision===String(current.revision)) {
+        // Journal prose may be scrubbed; the private exact comparison remains
+        // authoritative. Comparing scrubbed prose with raw state repeats events.
+        if (current.last_value_hash === observed && previous?.source_revision===String(current.revision)) {
           // Resource reinspection is metadata, never a new material event/age.
           if(previous.observation_bytes!==observedBytes||previous.observation_ms===undefined||charged.some(t=>(previous.observation_ms!>t.budget.timeout_ms)!==(observedMs>t.budget.timeout_ms))){previous.observation_bytes=observedBytes;previous.observation_ms=observedMs;}
           return;

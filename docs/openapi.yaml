@@ -6706,7 +6706,13 @@
                       "event",
                       "file",
                       "git",
-                      "memory"
+                      "memory",
+                      "project",
+                      "worktree",
+                      "task-phase",
+                      "symbol",
+                      "entity",
+                      "document"
                     ]
                   },
                   "producer_actor": {
@@ -6740,6 +6746,20 @@
                   },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "task_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
+                  },
+                  "symbol_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
                   },
                   "observation_number": {
                     "default": 0,
@@ -10087,7 +10107,13 @@
                       "event",
                       "file",
                       "git",
-                      "memory"
+                      "memory",
+                      "project",
+                      "worktree",
+                      "task-phase",
+                      "symbol",
+                      "entity",
+                      "document"
                     ]
                   },
                   "producer_actor": {
@@ -10121,6 +10147,20 @@
                   },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "task_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
+                  },
+                  "symbol_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
                   },
                   "observation_number": {
                     "default": 0,

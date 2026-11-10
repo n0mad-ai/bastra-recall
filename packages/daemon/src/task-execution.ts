@@ -49,6 +49,10 @@ async function freshSources(ctx: TaskServiceContext, task: Task, store: TaskStor
       if (realpathSync(source.root!) !== source.root) fail("approval_stale", "Git root changed");
       const value = (await promisify(execFile)("git", ["-C", source.root!, "rev-parse", "--verify", "--end-of-options", source.ref!], { timeout: 1000, maxBuffer: 4096 })).stdout.trim();
       if (value !== event.value) fail("approval_stale", "Git source changed");
+    } else if (source.kind !== "event") {
+      // These adapters supply notifications and preparation. Their multi-read
+      // snapshots do not establish a final atomic execution precondition.
+      fail("approval_stale", "Local state adapter does not support execution authority");
     }
     const verification = await verifyTaskSource(ctx, task, event, store, now);
     const matches = task.schedule.predicate === "equals" ? verification.outcome === "verified" : verification.outcome === "refuted";

@@ -132,13 +132,17 @@ const occurrenceSchema = z.strictObject({
 export const taskSourceSchema = z.strictObject({
   schema_version: z.literal(1), id: taskIdentitySchema, revision: revision,
   owner_domains: domains, sensitivity: z.enum(["public", "private", "restricted"]),
-  kind: z.enum(["event", "file", "git", "memory"]), producer_actor: taskIdentitySchema,
+  kind: z.enum(["event", "file", "git", "memory", "project", "worktree", "task-phase", "symbol", "entity", "document"]), producer_actor: taskIdentitySchema,
   root: z.string().min(1).max(4096).optional(), path: z.string().min(1).max(4096).optional(),
   ref: z.string().regex(/^refs\/(heads|tags)\/[a-zA-Z0-9._/-]+$/).max(256).optional(),
   memory_id: id.optional(), max_age_ms: instant, enabled: z.boolean(),
+  task_id: taskIdentitySchema.optional(), symbol_id: z.string().min(1).max(1024).optional(),
+  field: z.string().min(1).max(128).optional(),
   observation_number: revision.default(0), last_value_hash: comparison.optional(),
 }).superRefine((s, ctx) => {
-  if ((s.kind === "file" && (!s.root || !s.path)) || (s.kind === "git" && (!s.root || !s.ref)) || (s.kind === "memory" && !s.memory_id))
+  if ((["file", "symbol"].includes(s.kind) && (!s.root || !s.path)) || (s.kind === "symbol" && !s.symbol_id)
+    || (["project", "worktree"].includes(s.kind) && !s.root) || (s.kind === "task-phase" && !s.task_id)
+    || (s.kind === "entity" && !s.field) || (s.kind === "git" && (!s.root || !s.ref)) || (["memory", "entity", "document"].includes(s.kind) && !s.memory_id))
     ctx.addIssue({ code: "custom", message: "source registration incomplete" });
 });
 export type TaskSource = z.infer<typeof taskSourceSchema>;

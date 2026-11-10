@@ -20,10 +20,11 @@ export function taskBindingHash(task: Task): string {
   return taskValueHash(canonicalTaskValue({ generation: task.generation, schedule: task.schedule, evidence: task.evidence, decision: task.decision, domains: task.owner_domains,
     ...(task.expires_at !== undefined ? { expires_at: task.expires_at } : {}), ...(task.auto_resolve ? { auto_resolve: task.auto_resolve } : {}) }));
 }
-export async function boundedTaskRead(path: string, max: number, strictUtf8 = false): Promise<string> {
+export async function boundedTaskRead(path: string, max: number, strictUtf8 = false, singleLink = false): Promise<string> {
   const handle = await openTaskSourceFile(path);
   try {
     const info = await handle.stat(); // openTaskSourceFile already requires a regular file
+    if (singleLink && info.nlink !== 1) throw new Error("source has multiple hard links");
     if (info.size > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
     const bytes = Buffer.alloc(max + 1); const result = await handle.read(bytes, 0, bytes.length, 0);
     if (result.bytesRead > max) throw Object.assign(new Error("source byte budget"), { code: "source_budget" });
