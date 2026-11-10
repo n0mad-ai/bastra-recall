@@ -28,3 +28,7 @@ test("#1407 invalid draft survives navigation and reset explicitly clears it",as
  const nav=p.get("settings-nav");nav.children[1].handlers.click();await p.get("settings-save").handlers.click();assert.equal(p.writes.length,0);assert.equal(p.input().value,"{");assert.ok(p.input().focused);
  all(p.get("settings-fields")).find(n=>n.textContent==="Standard")!.handlers.click();await p.get("settings-save").handlers.click();assert.deepEqual(p.writes,[{changes:{"test.json":null}}]);
 });
+test("#1407 invalid-only edits block restart until explicitly corrected or reset",async()=>{
+ const p=await panel();p.input().value="{";p.input().handlers.change();await p.get("settings-restart").handlers.click();
+ assert.equal(p.get("settings-status").textContent,"Änderungen zuerst speichern.");
+});
