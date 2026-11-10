@@ -41,6 +41,10 @@
     "./platform-paths": {
       "types": "./dist/platform-paths.d.ts",
       "import": "./dist/platform-paths.js"
+    },
+    "./runtime-settings": {
+      "types": "./dist/runtime-settings.d.ts",
+      "import": "./dist/runtime-settings.js"
     }
   },
   "files": [

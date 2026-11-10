@@ -6,13 +6,18 @@ import { readFile } from "node:fs/promises";
 import { normalizeAssistantName } from "./assistant-address-name.js";
 import { managedAssistantHostsName } from "./assistant-address-files.js";
 import { gateLocalPost, isLoopback } from "./http-auth.js";
+import { readRuntimeSettingsRecord } from "./runtime-feature-settings.js";
 
 export const ASSISTANT_SOCKET_PROTOCOL=2;
 export interface AssistantGatewayOptions {
   runtimeStatePath?:string;runtimeVersion?:string;
-  helperPath?: string; settingsPath: string; hostsPath: string; daemonUrl: string; owner?: string; }
-export async function readAssistantGatewayConfig(path: string): Promise<{ name: string; enabled: boolean } | null> {
-  try { const data = JSON.parse(await readFile(path, "utf8")); return { name: normalizeAssistantName(data.assistant?.name), enabled: data.ui?.enabled === true }; }
+  helperPath?: string; settingsPath: string; databasePath?: string; hostsPath: string; daemonUrl: string; owner?: string; }
+export async function readAssistantGatewayConfig(path: string, databasePath?: string): Promise<{ name: string; enabled: boolean } | null> {
+  try {
+    const stored = readRuntimeSettingsRecord(path, databasePath);
+    const data = JSON.parse(stored === undefined ? await readFile(path, "utf8") : stored ?? "{}");
+    return { name: normalizeAssistantName(data.assistant?.name), enabled: data.ui?.enabled === true };
+  }
   catch { return null; }
 }
 function reply(res: ServerResponse, code: number, error: string) { res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify({ error })); }
@@ -30,9 +35,9 @@ export function assistantGatewayHandler(opts: AssistantGatewayOptions) {
     if (!isLoopback(req)) return reply(res, 403, "loopback only");
     if(opts.runtimeStatePath){
       const current=JSON.parse(await readFile(opts.runtimeStatePath,"utf8"));
-      if(current.protocol!==ASSISTANT_SOCKET_PROTOCOL||current.version!==opts.runtimeVersion||current.daemonUrl!==opts.daemonUrl){res.setHeader("Connection","close");return reply(res,503,"assistant runtime changed; retry the request");}
+      if(current.protocol!==ASSISTANT_SOCKET_PROTOCOL||current.version!==opts.runtimeVersion||current.daemonUrl!==opts.daemonUrl||current.databasePath!==opts.databasePath){res.setHeader("Connection","close");return reply(res,503,"assistant runtime changed; retry the request");}
     }
-    const config = await readAssistantGatewayConfig(opts.settingsPath);
+    const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath);
     if (!config?.enabled) return reply(res, 404, "assistant UI is disabled");
     const rawHost = req.headers.host?.toLowerCase() ?? "";
     const host = rawHost.replace(new RegExp(`:${req.socket.localPort}$`), "").replace(/\.$/, "");
@@ -82,7 +87,7 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
   return {
     refresh(): Promise<{ ready: boolean; port?: number; error?: string }> {
       const work = async () => {
-        const config = await readAssistantGatewayConfig(opts.settingsPath);
+        const config = await readAssistantGatewayConfig(opts.settingsPath, opts.databasePath);
         if (!config?.enabled) { await close(); return { ready: false }; }
         if (opts.helperPath) {
           try {

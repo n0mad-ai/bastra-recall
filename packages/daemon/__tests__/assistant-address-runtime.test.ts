@@ -8,20 +8,22 @@ import { createServer as createNetServer } from "node:net";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import ts from "typescript";
 import { ensureAssistantAddressRuntime } from "../src/assistant-address.js";
 
 async function fixture(t:test.TestContext){
  const root=await mkdtemp(join(tmpdir(),"assistant-runtime-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const source=join(root,"source");await mkdir(source);
- for(const name of ["assistant-address-bootstrap","assistant-address-gateway","assistant-address-name","assistant-address-files","http-auth"]){
+ for(const name of ["assistant-address-bootstrap","assistant-address-gateway","assistant-address-name","assistant-address-files","http-auth","runtime-feature-settings"]){
   const text=await readFile(new URL(`../src/${name}.ts`,import.meta.url),"utf8");await writeFile(join(source,name+".js"),ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
  }
+ const reader=await readFile(new URL("../../core/src/runtime-settings.ts",import.meta.url),"utf8");await writeFile(join(source,"runtime-settings.js"),ts.transpileModule(reader,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
  const o={runtimeDir:join(root,"runtime"),runtimeSourceDir:source,runtimeNode:process.execPath,home:root,uid:String(process.getuid?.()??501),username:"fixture",settingsPath:join(root,"settings"),hostsPath:join(root,"hosts"),helperPath:join(root,"helper"),firefoxRoot:join(root,"firefox"),daemonUrl:"http://127.0.0.1:9"};
  await writeFile(o.settingsPath,JSON.stringify({ui:{enabled:true},assistant:{name:"jarvis"}}));await writeFile(o.hostsPath,"");return o;
 }
 async function call(port:number,host="127.0.0.1",path="/ui/"){return new Promise<{status:number;body:string}>((resolve,reject)=>{const q=request({host,port,path,headers:{Host:`jarvis.localhost:${port}`,Connection:"close"}},r=>{let body="";r.on("data",c=>body+=c);r.on("end",()=>resolve({status:r.statusCode!,body}));});q.on("error",reject);q.setTimeout(8000,()=>q.destroy(Error("fixture timeout")));q.end();});}
-async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,host="127.0.0.1",port=0,env:Record<string,string>={}){
+async function accepted(t:test.TestContext,o:Awaited<ReturnType<typeof fixture>>,host="127.0.0.1",port=0,env:NodeJS.ProcessEnv={}){
  const children:ReturnType<typeof spawn>[]=[],sockets:any[]=[];
  const server=createNetServer({pauseOnConnect:true},socket=>{sockets.push(socket);const child=spawn("/bin/sh",[join(o.runtimeDir,"launch.sh")],{stdio:[socket,socket,"pipe"],env:{...process.env,BASTRA_ASSISTANT_ADDRESS_PROTOCOL:"2",...env}});child.stderr?.resume();children.push(child);child.on("exit",()=>socket.destroy());});
  await new Promise<void>(r=>server.listen(port,host,r));t.after(async()=>{for(const child of children)child.kill();for(const socket of sockets)socket.destroy();await new Promise<void>(r=>server.close(()=>r()));});return (server.address()as any).port as number;
@@ -71,6 +73,51 @@ test("final helper review: both loopback families serve the same guarded UI and 
 test("final helper review: publishing a new bound port preserves the installed code version",async t=>{
  const {publishAssistantAddressEndpoint}=await import("../src/assistant-address.js");const o=await fixture(t);await ensureAssistantAddressRuntime(o);const path=join(o.runtimeDir,"current.json"),before=JSON.parse(await readFile(path,"utf8")),launcher=await readFile(join(o.runtimeDir,"launch.sh"),"utf8");
  await publishAssistantAddressEndpoint({...o,daemonUrl:"http://127.0.0.1:23456"});const after=JSON.parse(await readFile(path,"utf8"));assert.equal(after.version,before.version);assert.equal(after.daemonUrl,"http://127.0.0.1:23456");assert.notEqual(after.generation,before.generation);assert.equal(await readFile(join(o.runtimeDir,"launch.sh"),"utf8"),launcher);
+});
+
+test("DB-only override settings serve UI through the copied runtime without inherited database environment",async t=>{
+ const o=await fixture(t),database=join(o.home,"selected-settings.db"),db=new DatabaseSync(database);
+ try{
+  db.exec("CREATE TABLE app_records(namespace TEXT,key TEXT,value TEXT,PRIMARY KEY(namespace,key))");
+  db.prepare("INSERT INTO app_records VALUES('settings',?,?)").run(o.settingsPath,JSON.stringify({text:JSON.stringify({ui:{enabled:true},assistant:{name:"jarvis"}})}));
+ }finally{db.close();}
+ await rm(o.settingsPath);
+ const backend=createServer((_q,r)=>r.end("database-only-ui"));await new Promise<void>(r=>backend.listen(0,"127.0.0.1",r));t.after(()=>new Promise<void>(r=>backend.close(()=>r())));
+ const previous=process.env.BASTRA_DB_PATH;process.env.BASTRA_DB_PATH=database;
+ try{await ensureAssistantAddressRuntime({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`});}
+ finally{if(previous===undefined)delete process.env.BASTRA_DB_PATH;else process.env.BASTRA_DB_PATH=previous;}
+ const current=JSON.parse(await readFile(join(o.runtimeDir,"current.json"),"utf8")),version=join(o.runtimeDir,"versions",current.version);
+ assert.equal(current.databasePath,database);
+ assert.equal(existsSync(join(version,"runtime-settings.js")),true);assert.doesNotMatch(await readFile(join(version,"runtime-feature-settings.js"),"utf8"),/@bastra-recall\/core\/runtime-settings/);
+ const port=await accepted(t,o,"127.0.0.1",0,{BASTRA_DB_PATH:undefined});
+ const response=await call(port);assert.equal(response.status,200);assert.equal(response.body,"database-only-ui");assert.equal(existsSync(o.settingsPath),false,"the standalone reader must not create legacy settings");assert.equal(existsSync(join(o.home,"recall.db")),false,"the override must not silently fall back to the default DB");
+});
+
+test("database selection changes refresh an unchanged runtime and endpoint publication",async t=>{
+ const o=await fixture(t),previous=process.env.BASTRA_DB_PATH,path=join(o.runtimeDir,"current.json");
+ const {migrateAssistantAddressRuntime,publishAssistantAddressEndpoint}=await import("../src/assistant-address.js");
+ try{
+  process.env.BASTRA_DB_PATH=join(o.home,"first.db");await ensureAssistantAddressRuntime(o);const first=JSON.parse(await readFile(path,"utf8"));
+  process.env.BASTRA_DB_PATH=join(o.home,"second.db");await migrateAssistantAddressRuntime(o);const second=JSON.parse(await readFile(path,"utf8"));
+  assert.equal(second.version,first.version);assert.equal(second.databasePath,process.env.BASTRA_DB_PATH);assert.notEqual(second.generation,first.generation);
+  process.env.BASTRA_DB_PATH=join(o.home,"third.db");await publishAssistantAddressEndpoint(o);const third=JSON.parse(await readFile(path,"utf8"));
+  assert.equal(third.version,second.version);assert.equal(third.daemonUrl,second.daemonUrl);assert.equal(third.databasePath,process.env.BASTRA_DB_PATH);assert.notEqual(third.generation,second.generation);
+ }finally{if(previous===undefined)delete process.env.BASTRA_DB_PATH;else process.env.BASTRA_DB_PATH=previous;}
+});
+
+test("daemon startup refreshes changed complete protocol-2 runtimes without system changes",async t=>{
+ const o=await fixture(t),gateway=join(o.runtimeSourceDir,"assistant-address-gateway.js"),fresh=await readFile(gateway,"utf8");
+ await writeFile(gateway,fresh+"\n// previous installed runtime\n");await ensureAssistantAddressRuntime(o);
+ const path=join(o.runtimeDir,"current.json"),before=JSON.parse(await readFile(path,"utf8"));await writeFile(gateway,fresh);
+ const helper=`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`;await writeFile(o.helperPath,helper);let admins=0;
+ const {Vault,SearchIndex}=await import("@bastra-recall/core"),{Telemetry}=await import("../src/telemetry.js"),{startHttpServer}=await import("../src/http.js");
+ const vaultPath=join(o.home,"vault");await mkdir(vaultPath);const vault=new Vault(vaultPath);await vault.init();const search=new SearchIndex(vault);search.start();t.after(async()=>{search.stop();await vault.stop?.();});
+ const address={...o,platform:"darwin" as const,port:0,runtimeProcesses:async()=>[],runAdmin:async()=>{admins++;throw Error("no admin allowed");}};
+ const handle=await startHttpServer({port:0,vault,search,telemetry:new Telemetry(),version:"new",toolDeps:{vault,search,telemetry:new Telemetry(),vaultPath},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"},assistantAddress:address});t.after(()=>handle.close());
+ const after=JSON.parse(await readFile(path,"utf8"));assert.notEqual(after.version,before.version);assert.equal(after.daemonUrl,`http://127.0.0.1:${handle.port}`);
+ assert.equal(await readFile(join(o.runtimeDir,"versions",after.version,"assistant-address-gateway.js"),"utf8"),fresh);
+ assert.equal(await readFile(o.helperPath,"utf8"),helper);assert.equal(admins,0);assert.equal(existsSync(join(o.runtimeDir,"protocol-1-backup.json")),false);
+ const {migrateAssistantAddressRuntime}=await import("../src/assistant-address.js"),unchanged=await readFile(path,"utf8");await migrateAssistantAddressRuntime({...address,daemonUrl:after.daemonUrl});assert.equal(await readFile(path,"utf8"),unchanged);
 });
 
 test("final helper review: retiring a helper drains an active request before exit",async t=>{

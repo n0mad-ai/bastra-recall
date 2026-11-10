@@ -24,7 +24,7 @@ if(process.argv.includes("--assistant-address-bootstrap")){
   if(state.protocol!==2||!/^[a-f0-9]{64}$/.test(state.version)||!/^\d+$/.test(state.owner))throw Error("runtime protocol mismatch");
   const module=await import(pathToFileURL(join(root,"versions",state.version,"assistant-address-gateway.js")).href);
   if(module.ASSISTANT_SOCKET_PROTOCOL!==2||typeof module.startAssistantSocket!=="function")throw Error("runtime protocol mismatch");
-  server=await module.startAssistantSocket({settingsPath:state.settingsPath,hostsPath:state.hostsPath,daemonUrl:state.daemonUrl,owner:state.owner,runtimeStatePath:statePath,runtimeVersion:state.version},listening);
+  server=await module.startAssistantSocket({settingsPath:state.settingsPath,databasePath:state.databasePath,hostsPath:state.hostsPath,daemonUrl:state.daemonUrl,owner:state.owner,runtimeStatePath:statePath,runtimeVersion:state.version},listening);
   monitor();
  }catch{
   // Wait=false jobs arrive with an already accepted socket. Compatibility for

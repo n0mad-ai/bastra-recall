@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { withPathLock, PathLockUnavailableError } from "./path-lock.js";
 import { readSettings, settingsFilePath } from "./settings-file.js";
+import { appRecordDatabasePath } from "./app-record-store.js";
 import { normalizeAssistantName, assistantUrls } from "./assistant-address-name.js";
 import { patchAssistantHosts, managedAssistantHostsName, patchFirefoxUserJs, retiredFirefoxPreference } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
@@ -113,11 +114,21 @@ async function retireLegacyAssistantHelpers(o:ReturnType<typeof assistantAddress
   try{(o.retireRuntime??(pid=>{process.kill(pid,"SIGTERM");}))(p.pid);}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")throw error;}
  }
 }
-export async function ensureAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{
- const o=assistantAddressOptions(options),source=o.runtimeSourceDir??dirname(fileURLToPath(import.meta.url));
- const files=["assistant-address-bootstrap.js","assistant-address-gateway.js","assistant-address-name.js","assistant-address-files.js","http-auth.js"];
- const contents=await Promise.all(files.map(async name=>[name,await readFile(join(source,name),"utf8")]as const));
+async function assistantRuntimeBundle(o:ReturnType<typeof assistantAddressOptions>){
+ const source=o.runtimeSourceDir??dirname(fileURLToPath(import.meta.url));
+ const files=["assistant-address-bootstrap.js","assistant-address-gateway.js","assistant-address-name.js","assistant-address-files.js","http-auth.js","runtime-feature-settings.js","runtime-settings.js"];
+ const contents=await Promise.all(files.map(async name=>{
+  const path=name==="runtime-settings.js"&&!o.runtimeSourceDir?fileURLToPath(import.meta.resolve("@bastra-recall/core/runtime-settings")):join(source,name);
+  const text=await readFile(path,"utf8");
+  // The private launchd runtime has no node_modules; retain the shared reader
+  // implementation and resolve the shim's exact package subpath locally.
+  return [name,name==="runtime-feature-settings.js"?text.replace(/(["'])@bastra-recall\/core\/runtime-settings\1/g,'"./runtime-settings.js"'):text]as const;
+ }));
  const digest=createHash("sha256").update(contents.map(([n,c])=>n+"\n"+c).join("\n")).digest("hex");
+ return {contents,digest};
+}
+export async function ensureAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{
+ const o=assistantAddressOptions(options),{contents,digest}=await assistantRuntimeBundle(o);
  const version=join(o.runtimeDir,"versions",digest);await mkdir(version,{recursive:true,mode:0o700});
  for(const [name,content]of contents)if(await optional(join(version,name))!==content)await atomic(join(version,name),content);
  await atomic(join(version,"package.json"),'{"type":"module"}\n');
@@ -132,7 +143,7 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  await withPathLock(path,async()=>{
   const previous=await optional(path).then(raw=>{try{return raw?JSON.parse(raw):null;}catch{return null;}});
   const endpoint=options.daemonUrl||resolveDaemonEndpoint().configured?o.daemonUrl:previous?.protocol===2?previous.daemonUrl:o.daemonUrl;
-  await atomic(path,JSON.stringify({protocol:2,generation:randomUUID(),version:digest,settingsPath:o.settingsPath,hostsPath:o.hostsPath,daemonUrl:endpoint,owner:o.uid})+"\n");
+  await atomic(path,JSON.stringify({protocol:2,generation:randomUUID(),version:digest,settingsPath:o.settingsPath,databasePath:appRecordDatabasePath(o.settingsPath),hostsPath:o.hostsPath,daemonUrl:endpoint,owner:o.uid})+"\n");
  },{strictLocal:true});
  const busyBody="Bastra-Adresse gerade ausgelastet. Bitte gleich erneut versuchen.\n";
  const busy=`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(busyBody)}\r\nRetry-After: 1\r\nConnection: close\r\n\r\n${busyBody}`;
@@ -144,8 +155,8 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
-/** Old updaters cannot call new update hooks. The first new daemon boot repairs
- * their user-owned launcher before publishing its endpoint. The root-owned
+/** Old updaters cannot call new update hooks. A new daemon boot repairs
+ * their user-owned launcher and refreshes changed runtime code before publishing its endpoint. The root-owned
  * Wait=true job remains valid through bootstrap's listening-socket compatibility. */
 export async function migrateAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{
  const o=assistantAddressOptions(options);
@@ -156,8 +167,12 @@ export async function migrateAssistantAddressRuntime(options:AssistantAddressOpt
   const current=await optional(join(o.runtimeDir,"current.json"));
   const backup=join(o.runtimeDir,"protocol-1-backup.json"),complete=join(o.runtimeDir,"protocol-2-migrated");
   const previousBackup=await optional(backup);
-  let protocol:unknown;try{protocol=current?JSON.parse(current).protocol:undefined;}catch{/* incomplete old publication */}
-  if(protocol===2&&launcher.includes("# Socket protocol 2:")&&(previousBackup===null||await optional(complete)==="2\n"))return;
+  let protocol:unknown,version:unknown,databasePath:unknown;try{const installed=current?JSON.parse(current):null;protocol=installed?.protocol;version=installed?.version;databasePath=installed?.databasePath;}catch{/* incomplete old publication */}
+  if(protocol===2&&launcher.includes("# Socket protocol 2:")&&(previousBackup===null||await optional(complete)==="2\n")){
+   const bundle=await assistantRuntimeBundle(o);
+   if(version!==bundle.digest||databasePath!==appRecordDatabasePath(o.settingsPath)){await ownHelper(o);await ensureAssistantAddressRuntime(o);}
+   return;
+  }
   await ownHelper(o); // Never migrate a runtime associated with a foreign service.
   if(previousBackup===null)await atomic(backup,JSON.stringify({launcher,current})+"\n");
   // Code and state become durable before the launcher rename. An interruption
@@ -166,14 +181,14 @@ export async function migrateAssistantAddressRuntime(options:AssistantAddressOpt
   await atomic(complete,"2\n"); // Retirement must complete before a retry may skip migration.
  },{strictLocal:true});
 }
-/** Publish only the endpoint of an already managed runtime; never recopy code from an old daemon. */
+/** Publish the endpoint and selected DB of an already managed runtime; never recopy code from an old daemon. */
 export async function publishAssistantAddressEndpoint(options:AssistantAddressOptions={}):Promise<void>{
  const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))!==`bastra-assistant-address:${o.uid}\n`)return;
  const path=join(o.runtimeDir,"current.json");
  await withPathLock(path,async()=>{
   const raw=await optional(path);if(!raw)return;
-  const current=JSON.parse(raw);if(current.protocol!==2||!current.version||current.daemonUrl===o.daemonUrl)return;
-  await atomic(path,JSON.stringify({...current,generation:randomUUID(),daemonUrl:o.daemonUrl})+"\n");
+  const current=JSON.parse(raw),databasePath=appRecordDatabasePath(o.settingsPath);if(current.protocol!==2||!current.version||(current.daemonUrl===o.daemonUrl&&current.databasePath===databasePath))return;
+  await atomic(path,JSON.stringify({...current,generation:randomUUID(),daemonUrl:o.daemonUrl,databasePath})+"\n");
  },{strictLocal:true});
 }
 async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions>,includeCompanion=false):Promise<boolean|null>{

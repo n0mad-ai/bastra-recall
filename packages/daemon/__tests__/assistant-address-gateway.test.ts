@@ -1,11 +1,46 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assistantGatewayHandler } from "../src/assistant-address-gateway.js";
 import { patchAssistantHosts } from "../src/assistant-address-files.js";
+import { writeAppRecord, deleteAppRecord, appRecordDatabasePath } from "../src/app-record-store.js";
+
+test("DB-only settings: gateway serves UI, reloads changes and honors tombstones", async t => {
+  assert.ok(process.env.BASTRA_TEST_RUN_ROOT, "gateway fixtures require the isolated test environment");
+  const dir = await mkdtemp(join(tmpdir(), "assistant-gateway-db-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const settingsPath = join(dir, "cli-settings.json"), hostsPath = join(dir, "hosts");
+  writeAppRecord("settings", settingsPath, JSON.stringify({ ui: { enabled: true }, assistant: { name: "jarvis" } }));
+  await assert.rejects(readFile(settingsPath), { code: "ENOENT" });
+  await writeFile(hostsPath, patchAssistantHosts("127.0.0.1 localhost\n", "jarvis", String(process.getuid?.() ?? 0)));
+  const backend = createServer((req, res) => { req.resume(); res.end("database-ui"); });
+  await new Promise<void>(resolve => backend.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => backend.close(() => resolve())));
+  const daemonUrl = `http://127.0.0.1:${(backend.address() as { port: number }).port}`;
+  const gateway = createServer(assistantGatewayHandler({ settingsPath, hostsPath, daemonUrl }));
+  await new Promise<void>(resolve => gateway.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => gateway.close(() => resolve())));
+  const port = (gateway.address() as { port: number }).port;
+  const call = (host: string) => new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const req = request({ hostname: "127.0.0.1", port, path: "/ui/", headers: { Host: `${host}:${port}` } }, res => {
+      let body = ""; res.on("data", chunk => { body += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode!, body }));
+    });
+    req.on("error", reject); req.end();
+  });
+  assert.deepEqual(await call("jarvis"), { status: 200, body: "database-ui" });
+  writeAppRecord("settings", settingsPath, JSON.stringify({ ui: { enabled: true }, assistant: { name: "ruby" } }));
+  assert.equal((await call("jarvis")).status, 403);
+  assert.deepEqual(await call("ruby.localhost"), { status: 200, body: "database-ui" });
+  deleteAppRecord("settings", settingsPath);
+  await writeFile(settingsPath, JSON.stringify({ ui: { enabled: true }, assistant: { name: "jarvis" } }));
+  assert.equal((await call("jarvis")).status, 404, "a DB tombstone must not revive a stale legacy opt-in");
+  await writeFile(appRecordDatabasePath(settingsPath), "not a SQLite database");
+  assert.equal((await call("jarvis")).status, 404, "an unreadable DB must not revive a stale legacy opt-in");
+});
 
 test("#1332: named gateway serves only UI, rejects rebinding/foreign origins, and reloads name", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "assistant-gateway-")); t.after(() => rm(dir, {recursive:true,force:true}));

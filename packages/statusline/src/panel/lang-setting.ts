@@ -2,12 +2,15 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { bastraDataDir } from '@bastra-recall/core/platform-paths';
+import { readRuntimeSettingsRecord } from '@bastra-recall/core/runtime-settings';
 import type { PanelLang } from './i18n';
 
-/** `language.primary` from the daemon's cli-settings.json (same path as its settingsFilePath()); undefined on any error. */
+/** `language.primary` from the daemon's settings record, with legacy fallback before migration. */
 export function readPrimaryLanguage(home: string = homedir()): string | undefined {
   try {
-    const primary = JSON.parse(readFileSync(join(bastraDataDir(home), 'cli-settings.json'), 'utf8'))?.language?.primary;
+    const path = join(bastraDataDir(home), 'cli-settings.json');
+    const stored = readRuntimeSettingsRecord(path);
+    const primary = JSON.parse(stored === undefined ? readFileSync(path, 'utf8') : stored ?? '{}')?.language?.primary;
     return typeof primary === 'string' ? primary.trim().toLowerCase() : undefined;
   } catch { return undefined; }
 }
