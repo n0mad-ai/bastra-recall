@@ -62,7 +62,7 @@ export function friendlyTaskCreate(options: Record<string, string | boolean>, no
 export const friendlyWhyNow=(why:string)=>why.startsWith("Registered condition") ? "Der Auslöser ist fällig. Zeitablauf bestätigt kein Messergebnis." : why;
 const reviewName:Record<string,string>={"Explicit owner review required":"Owner muss ausdrücklich scharf schalten.","Owner review required before arming":"Owner muss ausdrücklich scharf schalten.","Edited binding requires explicit owner review":"Bearbeitet; Owner muss neu prüfen.","Recovered snapshot requires owner review":"Wiederhergestellt; Owner muss neu prüfen."};
 const quote = (value: unknown) => JSON.stringify(String(value ?? ""));
-const levelName: Record<string,string> = { notify: "erinnern", prepare: "vorbereiten", execute: "ausführen (separat signieren)" };
+const levelName: Record<string,string> = { notify: "erinnern", prepare: "vorbereiten", execute: "ausführen (Anweisung im Chat)" };
 export const taskStateName: Record<string, string> = { pending: "offen", due: "fällig", snoozed: "zurückgestellt", resolved: "erledigt", cancelled: "abgebrochen", expired: "abgelaufen" };
 export function taskDisplayTime(value: number | undefined, timezone = "Europe/Madrid") { return value === undefined ? "noch keine" : new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(new Date(value)); }
 export function friendlyTaskError(code: string, sub: string | null, reason?: string): string {

@@ -5,7 +5,6 @@ import { loginOwnerTaskAccess, ownerTaskAuthorization } from "./task-owner-acces
 import { declareTaskBoundary, enableTaskExecution } from "./task-execution-enable.js";
 import { friendlyTaskCreate, friendlyTaskResult, friendlyTaskError, parseTaskOptions, taskWhen } from "./task-friendly.js";
 import { setupTaskHooks, taskClientCoverage } from "./task-setup.js";
-import { taskOwnerKeys, taskOwnerSign } from "./task-approval-cmd.js";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -42,6 +41,12 @@ export async function taskCliCall(sub: string, input: unknown, authorization: st
 }
 export async function cmdTasks(args: { sub: string | null; positional: string[]; argv?: string[]; json?: boolean }): Promise<number> {
   if (!tasksEnabled()) { process.stdout.write((args.json ? JSON.stringify({ code: "feature_disabled", preview: true, hint: TASKS_PREVIEW_HINT }) : TASKS_PREVIEW_HINT) + "\n"); return 0; }
+  // Compatibility notice only: retired commands never read credentials or keys.
+  if (["keys", "approve", "deny"].includes(args.sub ?? "")) {
+    const hint = "Die Anweisung im Chat ist die Freigabe. Schlüssel und separate Unterschriften werden nicht mehr benötigt.";
+    process.stderr.write((args.json ? JSON.stringify({ code: "retired_command", hint }) : hint) + "\n");
+    return 1;
+  }
   try {
     const parsed = parseTaskOptions(args.argv ?? args.positional);
     const words = parsed.words, options = parsed.options;
@@ -54,7 +59,6 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     }
     if (["recover","archive-restore", ...(options.agent || words[0] === "agent" ? [] : ["archive"])].includes(args.sub??"")) { await ownerTaskMaintenance(args.sub!,words,options,args.json); return 0; }
     if (args.sub === "targets") { await ownerTaskTargets(words,options,args.json); return 0; }
-    if (args.sub === "keys") { await taskOwnerKeys(words); return 0; }
     if (args.sub === "auth") {
       if (!process.stdin.isTTY || !await confirm("Zugang als Owner am Terminal verwalten? Token-Dateien müssen außerhalb des Agent-Zugriffs liegen."))
         throw Object.assign(new Error("Interactive owner command required"), { code: "forbidden" });
@@ -71,9 +75,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       return 0;
     }
     const agent = words[0] === "agent" || options.agent === true; if (words[0] === "agent") words.shift();
-    const signing = args.sub === "approve" || args.sub === "deny";
-    if (signing && agent) throw Object.assign(new Error("Owner signing terminal required"), { code: "forbidden" });
-    let input: any = signing ? {} : options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw Object.assign(new TaskCliInputError(error instanceof Error ? error.message : "Zeit/Optionen ungültig"),{reason:(error as any)?.reason}); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
+    let input: any = options.input ? await readTaskInputFile(String(options.input)) : args.sub === "create" && options.goal ? (() => { try { return friendlyTaskCreate(options); } catch (error) { throw Object.assign(new TaskCliInputError(error instanceof Error ? error.message : "Zeit/Optionen ungültig"),{reason:(error as any)?.reason}); } })() : words[0]?.endsWith(".json") ? await readTaskInputFile(words[0]) : {};
     if(args.sub==="release" && words[0] && !words[0].endsWith(".json")) input.lease_id=words[0];
     if (args.sub!=="release" && (options.id || (words[0] && !words[0].endsWith(".json")))) input.id = String(options.id ?? words[0]);
     if (options.revision) input.expected_revision = options.revision;
@@ -87,7 +89,6 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
     if ((args.sub === "execution-enable" || (args.sub === "resume" && !input.id))) { await enableTaskExecution(authorization); return 0; }
-    if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization,args.json); return 0; }
     if (agent && args.sub === "archive") {
       const { readTaskStore, tasksPath } = await import("../task-store.js");
       const snapshot = await readTaskStore(tasksPath());

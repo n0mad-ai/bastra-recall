@@ -129,7 +129,7 @@ Registry changes invalidate old target bindings. Prepare against the current reg
 
 ## 6 Chat authorization, execute, rollback and unknown outcomes
 
-Tell your connected agent what to do. The instruction itself authorizes the commissioned action, including the execute level. No key file, signature, passphrase, `tasks approve`, Touch ID or second confirmation is required. If the agent proposes a consequential action you did not request—sending, deleting or paying—it asks once in chat. Your Yes is recorded the same way. The trust boundary is your Mac account (and later your login).
+Tell your connected agent what to do. The instruction itself authorizes the commissioned action, including the execute level. No key file, signature, passphrase, `tasks approve`, Touch ID or second confirmation is required. The retired `tasks keys`, `tasks approve` and `tasks deny` commands only explain chat authorization and exit without reading credentials or writing anything. If the agent proposes a consequential action you did not request—sending, deleting or paying—it asks once in chat. Your Yes is recorded the same way. The trust boundary is your Mac account (and later your login).
 
 The agent interprets your intent and passes an `authorization` record with `write_origin: "user-directed"`, `session_id`, `program` and `user_request` (your wording). Recall records the time in `at`. Recall does not inspect wording to recognize approval. Supply this record with `task_prepare`; a later Yes uses `task_approval` with `proposal_id`, `decision: "approve"` and `authorization`. The board, proposal and status show the recorded origin, program, session, wording and time. Credentials identify the connected agent; they are not an additional per-action approval.
 
