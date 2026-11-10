@@ -85,12 +85,12 @@ export async function runProbe(): Promise<ProbeResult> {
   const catalog = await kernel(); assert.equal(catalog.entries.length,125);
   const correspondenceIds=catalog.entries.filter(e=>e.validator||e.rule_categories?.includes("correspondence")).map(e=>e.id);
   assert.equal(catalog.entries.filter(e=>e.rulebook==='always').length,10);
-  let lastGate:unknown;
+  let gateEvidence:unknown[]=[];
   const gate = async (sid:string, client:string, name='Write', input={}) => {
     const started=performance.now();
     let timing:PreparedGateTiming|undefined;
     const raw=await preparedGate({...common(sid,client), hook_event_name:'PreToolUse',tool_name:name,tool_input:input},{reflexPool:()=>[],kernel},value=>{timing=value;});
-    lastGate={session_id:sid,tool:name,raw,...timing,elapsed_with_preparation_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS};
+    gateEvidence.push({session_id:sid,tool:name,raw,...timing,elapsed_with_preparation_ms:performance.now()-started,catalog_budget_ms:RULEBOOK_CATALOG_BUDGET_MS,hook_budget_ms:FAST_BUDGET_MS});
     return parse(raw);
   };
   const prompt = async (sid:string, client:string, text:string) => checkedPrompt(await runPromptLane({...common(sid,client), hook_event_name:'UserPromptSubmit',prompt:text},null,server.url,undefined,()=>[],{kernel}));
@@ -100,8 +100,8 @@ export async function runProbe(): Promise<ProbeResult> {
   const check = (sid:string,input:object) => server.post('/api/v1/rulebook_check',{...input,session_id:sid},sid);
   const declare=(sid:string,applicable:string[]=[],extra:object={})=>check(sid,{applicable,not_applicable:correspondenceIds.filter(id=>!applicable.includes(id)).map(id=>({id,reason:'This fixture round is outside this rule’s correspondence scope.'})),...extra});
   const attempt = async (language:string,client:string,name:string,fn:()=>Promise<string|void>,gap=false) => {
-    try {lastGate=undefined;const detail=await fn(); rows.push({language,client,case:name,status:gap?'GAP':'PASS',detail:detail??'Verified'});}
-    catch(error) {rows.push({language,client,case:name,status:'FAIL',detail:String(error)+(lastGate?'\nLast gate evidence: '+JSON.stringify(lastGate):'')});}
+    try {gateEvidence=[];const detail=await fn(); rows.push({language,client,case:name,status:gap?'GAP':'PASS',detail:detail??'Verified'});}
+    catch(error) {rows.push({language,client,case:name,status:'FAIL',detail:String(error)+(gateEvidence.length?'\nLane evidence: '+JSON.stringify(gateEvidence):'')});}
   };
   try {
     for(const client of clients) {
@@ -263,7 +263,7 @@ export async function runProbe(): Promise<ProbeResult> {
     }
     // Real HTTP transport outage: kill only this disposable server, then restart it.
     for(const client of clients) await attempt('all',client,'autonomous-outage-reset',async()=>{
-      const observe=(evidence:unknown)=>{lastGate=evidence;};
+      const observe=(evidence:unknown)=>{gateEvidence.push(evidence);};
       let live=await serve(f.vault,observe);
       const sid=`autonomous-${client}`;
       try {
@@ -276,7 +276,7 @@ export async function runProbe(): Promise<ProbeResult> {
           }
           if(round===3){
             const restored=parse(await runSessionLane({...common(sid,client),hook_event_name:'SessionStart',source:'compact'},live.url,undefined,async()=>null));
-            lastGate={stage:'compact-session',session_id:sid,round,raw:restored};
+            gateEvidence.push({stage:'compact-session',session_id:sid,round,raw:restored});
             assert.ok(context(restored).includes('COMPLETE_ja_always'));
             assert.equal(denied(await live.post('/hook/gate',{payload:p})),true,'compact invalidates prior check');
           }

@@ -14,6 +14,7 @@ const lines=[
   '', '## Ergebnis und Grenzen', '',
   'PASS belegt technische Verträge im geskripteten Replay. GAP bedeutet reproduzierte Lücke, nicht bestandene Produktzusage. FAIL bedeutet unerwarteten Fehler im Prüfpaket.',
   'Produktionscode für Katalog, Suche, HTTP, Session/Prompt/Gate/Stop und Full-Load wird ausgeführt. Regeltexte liegen in einem temporären Vault; Floor-Registry, Einstellungen, Logs und Sitzungszustand sind isoliert. Es werden keine GitHub-Aktionen tatsächlich ausgeführt.',
+  'Vorbereitete direkte Gate-Aufrufe prüfen Entscheidungen mit einer Testuhr. HTTP-Aufrufe, die separate Fristkontrolle und die optionale Latenzmessung verwenden echte Zeit.',
   'Kein natives codex/claude gestartet, keine installierten Hooks verändert und keine echten Modellentscheidungen gemessen. Die beiden Host-Spalten sind Produktions-Lanes mit jeweiliger Hostkennung; Codex ist gezielt auf die belegte Version 0.162.1 gesetzt. Host-Installation, Toolspezifika außerhalb dieser Lanes und semantisches Verständnis beliebiger Wortlaute bleiben unbelegt. Die fünf Übersetzungen sind erfundene Testdaten, keine Wortliste im Produkt.',
   '', '## Matrix Sprache × Fall × Host', '', '| Sprache | Host | Fall | Ergebnis | Beleg |', '|---|---|---|---|---|',
   ...result.rows.map(r=>`| ${r.language} | ${r.client} | ${r.case} | ${r.status} | ${escape(r.detail)} |`),

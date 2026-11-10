@@ -41,3 +41,12 @@ test('#1412 prepared gate retains content projection for periodic full-rule deli
  assert.match(raw,/COMPLETE_PROJECTION_SPECIFIC_BODY/,'periodic delivery must receive full content, never the IDs projection');
  assert.deepEqual(modes,['ids','content']);
 });
+
+test('#1412 prepared mechanical denial is independent of runner wall time', async t => {
+  let wall = Date.now();
+  t.mock.method(Date, 'now', () => wall += RULEBOOK_CATALOG_BUDGET_MS + 1);
+  const deps = {kernel: async () => catalog, reflexPool: () => []};
+  const raw = await preparedGate(payload('phase5-clock-prepared'), deps);
+  assert.equal(denied(raw), true, `mechanical denial must deliver the rulebook check: ${raw}`);
+  assert.match(raw, /rulebook_check/);
+});
