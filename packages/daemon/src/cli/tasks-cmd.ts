@@ -86,7 +86,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
       const principal = await authenticateTask(authorization);
       if (principal.role !== "owner") throw Object.assign(new Error("Owner credential required"), { code: "forbidden" });
     }
-    if ((args.sub === "execution-enable" || (args.sub === "resume" && !input.id))) { if (agent) throw Object.assign(new Error("Owner required"), { code: "forbidden" }); await enableTaskExecution(authorization); return 0; }
+    if ((args.sub === "execution-enable" || (args.sub === "resume" && !input.id))) { await enableTaskExecution(authorization); return 0; }
     if (signing) { await taskOwnerSign(words, args.sub as "approve" | "deny", authorization,args.json); return 0; }
     if (agent && args.sub === "archive") {
       const { readTaskStore, tasksPath } = await import("../task-store.js");

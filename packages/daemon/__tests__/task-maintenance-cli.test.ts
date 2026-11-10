@@ -2,7 +2,7 @@ import { readAppRecord, writeAppRecord } from "../src/app-record-store.js";
 import "./tasks-opt-in.js";
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp,writeFile,readFile,realpath} from "node:fs/promises";
+import {mkdtemp,writeFile,readFile,realpath,mkdir} from "node:fs/promises";
 import {tmpdir,hostname} from "node:os";
 import {join} from "node:path";
 import {spawn} from "node:child_process";
@@ -47,5 +47,16 @@ test("real owner CLI recover --lock refuses live owner, repairs unknown owner, a
  const syntax=await run("syntax",["targets","register","artifact"]);assert.match(syntax,/Syntax: bastra tasks targets/);assert.ok(!syntax.includes("--after"));
  const missing=await run("missing",[...args.slice(0,4),join(work,"missing"),...args.slice(5)]);assert.match(missing,/Wurzel oder Zieldatei fehlt/);assert.ok(!missing.includes("Daemon oder Zugang"));
  assert.match(await run("register",args),/Ziel artifact registriert/);assert.match(await run("update",["targets","update","artifact","--root",work,"--path","second.txt","--domain","personal"]),/Ziel artifact geändert/);assert.match(await run("remove",["targets","remove","artifact"]),/Ziel entfernt/);
- const registry=await readApprovalRegistry(join(root,"task-approval-keys.json"));assert.equal(registry?.targets.length,0);assert.equal(registry?.protected_boundary,false);
+ const registry=await readApprovalRegistry(join(root,"task-action-registry.json"));assert.equal(registry?.targets.length,0);assert.equal(registry?.protected_boundary,false);
+});
+
+test("instructed agent CLI registers, lists and removes a target without an owner terminal or confirmation",async()=>{
+ const root=await realpath(await mkdtemp(join(tmpdir(),"task-target-agent-cli-"))),data=join(root,"data"),work=join(root,"work");await mkdir(work);await writeFile(join(work,"artifact.txt"),"synthetic before\n");
+ const path=join(data,"tasks.json"),authPath=join(data,"task-auth.json"),credential=await mintTaskCredential(authPath,{actor_id:"instructed-agent",role:"agent",domains:["personal"]});
+ const run=async(args:string[])=>{const p=spawn(process.execPath,[cli,"tasks","targets",...args,"--agent"],{env:{...process.env,BASTRA_TASKS_PATH:path,BASTRA_TASK_TOKEN:credential.token},stdio:["ignore","pipe","pipe"]});let out="",err="";p.stdout.on("data",c=>{out+=c});p.stderr.on("data",c=>{err+=c});const [code]=await once(p,"exit");assert.equal(code,0,err);assert.ok(!out.includes(credential.token));return out;};
+ assert.match(await run(["register","artifact","--root",work,"--path","artifact.txt","--domain","personal"]),/Ziel artifact registriert/);
+ const registry=await readApprovalRegistry(join(data,"task-action-registry.json"));assert.deepEqual(registry?.keys,[]);assert.equal(registry?.protected_boundary,false);
+ assert.match(await run(["list"]),/artifact/);
+ assert.match(await run(["remove","artifact"]),/Ziel entfernt/);
+ assert.equal((await readApprovalRegistry(join(data,"task-action-registry.json")))?.targets.length,0);
 });

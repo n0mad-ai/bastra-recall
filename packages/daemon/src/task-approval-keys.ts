@@ -1,7 +1,7 @@
 import { canonicalTaskValue } from "./task-canonical.js";
-/** Offline owner-held keys; transport credentials are never approval proof. */
+/** Account-local action targets; signing helpers only read historical proofs. */
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, mkdir, rename, lstat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { uptime } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -10,6 +10,8 @@ import { createPublicKey, generateKeyPairSync, createHash, scryptSync, randomByt
 import { z } from "zod";
 import { taskIdentitySchema as id } from "./task-schema.js";
 import { tasksPath } from "./task-store.js";
+import { atomicWrite } from "./task-store.js";
+import { withPathLock } from "./path-lock.js";
 const domains = z.array(id).min(1).max(32).refine(a => new Set(a).size === a.length);
 export const taskTargetSchema = z.strictObject({ id, root: z.string().min(1).max(4096), path: z.string().min(1).max(4096), owner_domains: domains,
   sensitivity: z.enum(["public", "private", "restricted"]), adapter: z.literal("local-artifact-v1") });
@@ -22,13 +24,47 @@ export const canonicalAction = canonicalTaskValue;
 export const actionHash = (value: unknown) => createHash("sha256").update(canonicalAction(value)).digest("hex");
 export const bytesHash = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 export const registryHash = (registry: ApprovalRegistry) => actionHash(["task-registry-v1", registry]);
-export function approvalRegistryPath() { return join(dirname(tasksPath()), "task-approval-keys.json"); }
-export async function privateJson(path: string) {
+export function approvalRegistryPath() { return join(dirname(tasksPath()), "task-action-registry.json"); }
+/** Preserve original bytes and legacy keys before retiring the signing registry.
+ * Does not touch task snapshots, private key files, approvals or receipts. */
+export async function migrateTaskApprovalRegistry(path = approvalRegistryPath()) {
+  const legacy = join(dirname(path), "task-approval-keys.json");
+  if (path === legacy) return;
+  try { await lstat(path); return; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  let source = legacy;
+  try { await lstat(source); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; source = legacy + ".legacy"; try { await lstat(source); } catch (archived) { if ((archived as NodeJS.ErrnoException).code === "ENOENT") return; throw archived; } }
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await withPathLock(path, async ownership => {
+    try { await lstat(path); return; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+    const fd = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let raw: string;
+    try { const info = await fd.stat(); if (!info.isFile() || info.mode & 0o077 || info.size > 1024 * 1024) throw new Error("Unsafe legacy registry"); raw = await fd.readFile("utf8"); }
+    finally { await fd.close(); }
+    const registry = approvalRegistrySchema.parse(JSON.parse(raw));
+    for (const key of registry.keys) if (key.fingerprint !== bytesHash(key.public_key) || createPublicKey(key.public_key).asymmetricKeyType !== "ed25519") throw new Error("Legacy key fingerprint mismatch");
+    // Exclusive backup: a prior interrupted migration is reused only byte-exactly.
+    const backup = legacy + ".pre-chat-approval.bak";
+    let saved;
+    try { saved = await open(backup, "wx", 0o600); await saved.writeFile(raw); await saved.sync(); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST" || await privateText(backup) !== raw) throw e; }
+    finally { await saved?.close(); }
+    // Write current config only after backup is durable; never overwrite legacy archive.
+    if (source === legacy) {
+      try { await lstat(legacy + ".legacy"); throw new Error("Legacy registry archive already exists"); }
+      catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+      await ownership(); await rename(legacy, legacy + ".legacy");
+    }
+    await atomicWrite(path, JSON.stringify({ ...registry, revision: registry.revision + 1, protected_boundary: false, keys: [] }), ownership);
+  }, { strictLocal: true });
+}
+async function privateText(path: string) {
   const fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try { const info = await fd.stat(); if (!info.isFile() || info.mode & 0o077 || info.size > 1024 * 1024) throw new Error("unsafe owner file"); return JSON.parse(await fd.readFile("utf8")); }
+  try { const info = await fd.stat(); if (!info.isFile() || info.mode & 0o077 || info.size > 1024 * 1024) throw new Error("unsafe owner file"); return await fd.readFile("utf8"); }
   finally { await fd.close(); }
 }
-export async function readApprovalRegistry(path = approvalRegistryPath()): Promise<ApprovalRegistry | undefined> {
+export async function privateJson(path: string) { return JSON.parse(await privateText(path)); }
+export async function readApprovalRegistry(path?: string): Promise<ApprovalRegistry | undefined> {
+  if (path === undefined) { path = approvalRegistryPath(); await migrateTaskApprovalRegistry(path); }
   try {
     const registry = approvalRegistrySchema.parse(await privateJson(path));
     for (const key of registry.keys) if (key.fingerprint !== bytesHash(key.public_key) || createPublicKey(key.public_key).asymmetricKeyType !== "ed25519") throw new Error("key fingerprint mismatch");
@@ -37,7 +73,7 @@ export async function readApprovalRegistry(path = approvalRegistryPath()): Promi
 }
 const pins = new Map<string, Promise<ApprovalRegistry | undefined>>();
 export function pinnedApprovalRegistry(path = approvalRegistryPath()) {
-  if (!pins.has(path)) pins.set(path, readApprovalRegistry(path).then(r => r ? structuredClone(r) : undefined).catch(() => undefined));
+  if (!pins.has(path)) pins.set(path, migrateTaskApprovalRegistry(path).then(() => readApprovalRegistry(path)).then(r => r ? structuredClone(r) : undefined).catch(() => undefined));
   return pins.get(path)!;
 }
 let bootId: string;

@@ -37,13 +37,13 @@ test("offline lock quarantine never removes a live local owner and preserves unk
  const f=await fixture(),lock=f.ctx.path+".lock";await writeFile(lock,JSON.stringify({pid:process.pid,host:hostname(),token:"live"}),{mode:0o600});await assert.rejects(async()=>quarantineOfflineTaskLock(f.ctx.path));assert.match(await readFile(lock,"utf8"),/live/);
  await writeFile(lock,"unknown interrupted owner");assert.equal(quarantineOfflineTaskLock(f.ctx.path).quarantined,1);await assert.rejects(readFile(lock),{code:"ENOENT"});
 });
-test("owner target registration rejects agents, domain drift, symlinks, nonreversible bytes and silent replacement",async()=>{
+test("mapped target registration accepts instructed agents and rejects domain drift, symlinks, unsafe bytes and silent replacement",async()=>{
  const f=await fixture(),previous=process.env.BASTRA_TASKS_PATH;process.env.BASTRA_TASKS_PATH=f.ctx.path;
  try{const work=join(f.root,"work");await mkdir(work);await writeFile(join(work,"artifact.txt"),"old\n");const input={id:"artifact",root:work,path:"artifact.txt",owner_domains:["personal"],sensitivity:"private",adapter:"local-artifact-v1"};
- await assert.rejects(registerOwnerTaskTarget(f.agent,input),{code:"forbidden"});await assert.rejects(registerOwnerTaskTarget(f.other,input),{code:"forbidden"});
+ await assert.rejects(registerOwnerTaskTarget(f.other,input),{code:"forbidden"});
  await symlink(join(work,"artifact.txt"),join(work,"link.txt"));await assert.rejects(registerOwnerTaskTarget(f.auth,{...input,path:"link.txt"}),{code:"validation"});
  await writeFile(join(work,"bad.txt"),"tab\t");await assert.rejects(registerOwnerTaskTarget(f.auth,{...input,path:"bad.txt"}),{code:"adapter_not_reversible"});
- await registerOwnerTaskTarget(f.auth,input);const registry=await readApprovalRegistry();assert.equal(registry?.targets.length,1);assert.equal(registry?.protected_boundary,false);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);await assert.rejects(registerOwnerTaskTarget(f.auth,input),{code:"conflict"});
+ await registerOwnerTaskTarget(f.agent,input);const registry=await readApprovalRegistry();assert.equal(registry?.targets.length,1);assert.equal(registry?.protected_boundary,false);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);await assert.rejects(registerOwnerTaskTarget(f.auth,input),{code:"conflict"});
  }finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;}
 });
 
@@ -59,7 +59,7 @@ test("protected paths and encompassing roots reject before registry writes; expl
  const alias=join(f.root,"alias");await symlink(work,alias);const {normalizedOwnerTarget}=await import("../src/cli/task-target-safety.js");assert.equal((await normalizedOwnerTarget({...input,root:alias})).root,work);
  await writeFile(join(work,"package.json"),JSON.stringify({scripts:{test:"echo synthetic"}}));assert.match((await normalizedOwnerTarget({...input,path:"package.json"})).execution_warning!,/Skripte/);
  await registerOwnerTaskTarget(f.auth,input);await writeFile(join(work,"second.txt"),"second\n");await registerOwnerTaskTarget(f.auth,{...input,path:"second.txt"},true);assert.equal((await readApprovalRegistry())?.targets[0].path,"second.txt");
- const {removeOwnerTaskTarget}=await import("../src/cli/task-targets.js");await assert.rejects(removeOwnerTaskTarget(f.agent,"artifact"),{code:"forbidden"});await removeOwnerTaskTarget(f.auth,"artifact");assert.equal((await readApprovalRegistry())?.targets.length,0);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);
+ const {removeOwnerTaskTarget}=await import("../src/cli/task-targets.js");await assert.rejects(removeOwnerTaskTarget(f.other,"artifact"),{code:"forbidden"});await removeOwnerTaskTarget(f.agent,"artifact");assert.equal((await readApprovalRegistry())?.targets.length,0);assert.equal((await readTaskStore(f.ctx.path)).controls.execution_stopped,true);
  }finally{if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(vaultPrevious===undefined)delete process.env.BASTRA_VAULT_PATH;else process.env.BASTRA_VAULT_PATH=vaultPrevious;}
 });
 test("older backup recovery discovers the exact cold export and reports restored active history",async()=>{
