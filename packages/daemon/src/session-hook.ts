@@ -23,6 +23,8 @@ import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
  */
 import { envInt } from "./env.js";
 import { readStdin, daemonBaseUrl, postLane, classifyTransportError } from "./thin-client.js";
+import { decorateHookPayload } from "./hook-surface.js";
+import { registerChatHook } from "./task-chat-registry.js";
 
 const LANE_BUDGET_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", SESSION_START_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_TIMEOUT_MS = LANE_BUDGET_MS + 100;
@@ -43,6 +45,9 @@ async function main(): Promise<void> {
   } catch {
     return emitOnce("{}");
   }
+  payload = decorateHookPayload(payload);
+  await registerChatHook(payload).catch(() => {});
+  if ((payload as { hook_event_name?: string })?.hook_event_name === "SessionEnd") return emitOnce("{}");
   const url = daemonBaseUrl();
   const remainingMs = Math.max(60, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
   try {

@@ -301,6 +301,7 @@ test("claude-code: disableAllHooks, a missing Stop hook and a missing skill reac
     disableAllHooks: true,
     hooks: {
       SessionStart: [{ matcher: "startup|resume|clear|compact|fork", ...lane("session") }],
+      SessionEnd: [lane("session")],
       UserPromptSubmit: [lane("prompt")],
       PreToolUse: [
         { matcher: "Write|Edit|MultiEdit|NotebookEdit", ...lane("write") },

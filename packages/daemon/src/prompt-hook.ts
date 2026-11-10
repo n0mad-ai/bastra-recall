@@ -42,6 +42,7 @@ import { envFirst, envOff, envInt, testRunLogDir } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { PROMPT_ASSERTION_BUDGET_MS } from "./hook-budgets.js";
 import { decorateHookPayload } from "./hook-surface.js";
+import { registerChatHook } from "./task-chat-registry.js";
 
 // #305: the trigger class is decided daemon-side, AFTER this POST, so the
 // client cannot know whether it is serving the 600ms quiet path or the 1000ms
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
   } catch {
     return emitOnce("{}");
   }
+  await registerChatHook(decorateHookPayload(payload)).catch(() => {});
 
   // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
   // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the

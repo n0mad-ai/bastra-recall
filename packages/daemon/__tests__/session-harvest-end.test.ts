@@ -184,15 +184,18 @@ function commandsOf(entries: unknown[] | undefined): string[] {
   return (entries ?? []).flatMap((e) => ((e as { hooks?: unknown[] }).hooks ?? []).map((h) => (h as { command?: string }).command ?? ""));
 }
 
-test("adapter: SessionEnd is registered with Stop, on the Stop client, and kept with a preserved Stop", () => {
+test("adapter: chat SessionEnd stays required and the harvest companion follows the Stop opt-in", () => {
   const withStop = planHookEntries("install", {}, { includeStop: true, stubPresent: false });
   const end = commandsOf(withStop.after.SessionEnd);
-  assert.equal(end.length, 1);
-  assert.match(end[0], /stop-hook\.js$/);
-  assert.match(end[0], /^BASTRA_HOOK_CLIENT=claude-code /);
+  assert.equal(end.length, 2);
+  assert.equal(end.filter(command => /session-hook\.js$/.test(command)).length, 1);
+  assert.equal(end.filter(command => /stop-hook\.js$/.test(command)).length, 1);
+  assert.ok(end.every(command => command.startsWith("BASTRA_HOOK_CLIENT=claude-code ")));
 
   const without = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
-  assert.equal(commandsOf(without.after.SessionEnd).length, 0);
+  const lifecycle = commandsOf(without.after.SessionEnd);
+  assert.equal(lifecycle.length, 1);
+  assert.match(lifecycle[0], /session-hook\.js$/);
 
   // An earlier opt-in to Stop, written before SessionEnd existed: the rerun keeps Stop and adds SessionEnd.
   const preserved = planHookEntries(
@@ -201,7 +204,9 @@ test("adapter: SessionEnd is registered with Stop, on the Stop client, and kept 
     { includeStop: false, stubPresent: false },
   );
   assert.equal(preserved.stopPreserved, true);
-  assert.equal(commandsOf(preserved.after.SessionEnd).length, 1);
+  const kept = commandsOf(preserved.after.SessionEnd);
+  assert.equal(kept.length, 2);
+  assert.equal(kept.filter(command => /stop-hook\.js$/.test(command)).length, 1);
 
   const removed = planHookEntries("uninstall", { SessionEnd: withStop.after.SessionEnd }, { includeStop: false, stubPresent: false });
   assert.equal(commandsOf(removed.after.SessionEnd).length, 0);

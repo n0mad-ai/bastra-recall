@@ -136,7 +136,7 @@ wordings are frozen per version in `packages/core/src/scrub.ts`
 (`FROZEN_FRAME_NOTES`), which is also what the ingest scrub (#149) uses to drop
 quoted note lines from transcripts before capture heuristics run.
 
-There are ten Claude Code hook registrations by default: eight core entries plus Stop and SessionEnd. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves eight. The PostToolUse write-tool entry supplies save notices.
+There are twelve Claude Code hook registrations by default: ten required entries plus optional Stop and its SessionEnd harvest companion. The required SessionEnd entry only closes the chat endpoint registration. Several share a binary; registrations and binary counts are different. `--no-stop-hook` leaves ten. The PostToolUse write-tool entry supplies save notices.
 
 ### Installed binaries
 
@@ -144,7 +144,7 @@ After `npm run build` the daemon package exposes these bin entries:
 
 | Bin name                          | Event              | Matcher                                   | Purpose                                                   |
 | --------------------------------- | ------------------ | ----------------------------------------- | --------------------------------------------------------- |
-| `bastra-recall-session-hook`      | `SessionStart`     | — (every session)                         | Preload user-preferences + active project context         |
+| `bastra-recall-session-hook`      | `SessionStart` / `SessionEnd` | — (every session)                 | Preload context at start; close the private chat registration at end (#1421) |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Topic-aware recall before file mutations (#20 #28 #32)    |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
@@ -213,6 +213,9 @@ Default shape written by `bastra install claude-code`:
     ],
     "SessionEnd": [
       {
+        "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 2 }]
+      },
+      {
         "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
       }
     ]
@@ -235,8 +238,9 @@ Re-install also keeps a shell wrapper around a Bastra hook runner and foreign
 handlers placed beside it in the same entry; quoted wrapper labels stay intact.
 
 The Stop hook is registered by default, together with its `SessionEnd`
-companion (#675). Leave both out with `bastra install claude-code
---no-stop-hook` (`--with-stop-hook` is still accepted). If you remove only
+harvest companion (#675). Leave these two optional entries out with `bastra install claude-code
+--no-stop-hook` (`--with-stop-hook` is still accepted). The separate required
+`SessionEnd` entry remains and closes only the private chat registration (#1421). If you remove only
 `bastra-recall-stop-hook`, Doctor reports it as intentionally disabled instead
 of broken.
 
@@ -2018,7 +2022,7 @@ eingefroren. Darauf greift auch der Ingest-Scrub (#149) zurück, um zitierte
 Notizzeilen aus Transkripten zu entfernen, bevor die Capture-Heuristiken
 laufen.
 
-Standardmäßig gibt es zehn Claude-Code-Hook-Registrierungen: acht Kerneinträge plus Stop und SessionEnd. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt acht. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
+Standardmäßig gibt es zwölf Claude-Code-Hook-Registrierungen: zehn Pflichteinträge plus optionalen Stop und dessen SessionEnd-Harvest-Begleiter. Der verpflichtende SessionEnd-Eintrag schließt nur die Chat-Endpunktregistrierung. Mehrere teilen ein Programm; Registrierungen und Programmzahl sind verschieden. `--no-stop-hook` lässt zehn. Der PostToolUse-Eintrag für Schreibwerkzeuge liefert Speicherhinweise.
 
 ### Installierte Programme
 
@@ -2026,7 +2030,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 
 | Bin-Name                          | Event              | Matcher                                   | Zweck                                                     |
 | --------------------------------- | ------------------ | ----------------------------------------- | --------------------------------------------------------- |
-| `bastra-recall-session-hook`      | `SessionStart`     | — (jede Session)                          | Lädt Nutzerpräferenzen und aktiven Projektkontext vorab   |
+| `bastra-recall-session-hook`      | `SessionStart` / `SessionEnd` | — (jede Session)                  | Lädt beim Start Kontext; schließt am Ende die private Chat-Registrierung (#1421) |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Themenbezogener Recall vor Dateiänderungen (#20 #28 #32)  |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (jede Nutzernachricht)                  | Lookup-Reflex (#33)                                       |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
@@ -2095,6 +2099,9 @@ Standardform, die `bastra install claude-code` schreibt:
     ],
     "SessionEnd": [
       {
+        "hooks": [{ "type": "command", "command": "bastra-recall-session-hook", "timeout": 2 }]
+      },
+      {
         "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
       }
     ]
@@ -2121,8 +2128,9 @@ Bastra-Hook und fremde Handler im selben Eintrag erhalten; gequotete
 Wrapper-Argumente werden nicht verändert.
 
 Der Stop-Hook wird standardmäßig registriert, zusammen mit seinem
-`SessionEnd`-Begleiter (#675). Beide lässt `bastra install claude-code
---no-stop-hook` weg (`--with-stop-hook` wird weiter angenommen). Wenn du nur
+`SessionEnd`-Harvest-Begleiter (#675). Diese beiden optionalen Einträge lässt `bastra install claude-code
+--no-stop-hook` weg (`--with-stop-hook` wird weiter angenommen). Der separate
+verpflichtende `SessionEnd`-Eintrag bleibt und schließt nur die private Chat-Registrierung (#1421). Wenn du nur
 `bastra-recall-stop-hook` entfernst, meldet Doctor ihn als absichtlich
 deaktiviert statt als defekt.
 

@@ -122,8 +122,8 @@ test("README hook registration counts match the Claude Code installer in both la
   const readme = read("README.md");
   const withStop = hookDefinitions({ includeStop: true }).length;
   const withoutStop = hookDefinitions({ includeStop: false }).length;
-  assert.ok(readme.includes(`${withStop} hook registrations (${withoutStop} without Stop/SessionEnd)`));
-  assert.ok(readme.includes(`${withStop} Hook-Registrierungen (${withoutStop} ohne Stop/SessionEnd)`));
+  assert.ok(readme.includes(`${withStop} hook registrations (${withoutStop} without optional Stop/harvest)`));
+  assert.ok(readme.includes(`${withStop} Hook-Registrierungen (${withoutStop} ohne optionalen Stop/Harvest)`));
 });
 
 test("Codex 0.166.0 certifies only the probed paths",()=>{

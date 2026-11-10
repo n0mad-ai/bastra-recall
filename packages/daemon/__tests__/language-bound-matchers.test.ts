@@ -120,6 +120,7 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/boot-observers.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/daemon/src/app-database.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect the local DB path; not conversation language",
   "packages/daemon/src/app-record-store.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1339 technical sync-provider directory names protect legacy state sources; not conversation language",
+  "packages/daemon/src/task-chat-registry.ts :: words /CloudStorage|Google Drive|GoogleDrive[^\\\\/]*/": "#1421 technical OS sync-folder names keep private inbox tokens outside synced storage; never matched against user text",
   "packages/daemon/src/documents-write-shared.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/core/src/vault.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/daemon/src/pending-suggestions.ts :: words /eval|test|synthetic/": "#679 fixture/session-id markers",

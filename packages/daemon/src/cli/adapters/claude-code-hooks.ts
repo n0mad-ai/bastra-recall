@@ -82,6 +82,9 @@ const STOP_HOOK_DEF: HookDef = {
 const SESSION_END_HOOK_DEF: HookDef = {
   event: "SessionEnd", bin: STOP_HOOK_BIN, timeout: 2, note: "bastra-recall SessionEnd hook (after-session harvest, #675)", stubSubcommand: "stop",
 };
+const CHAT_SESSION_END_HOOK_DEF: HookDef = {
+  event: "SessionEnd", bin: SESSION_HOOK_BIN, timeout: 2, note: "bastra-recall chat endpoint lifecycle (#1421)", stubSubcommand: "session",
+};
 
 // Single source of truth for the reflex layer. The Stop hook is ON by default
 // since the #48 redesign made it SILENT: suggestions go to
@@ -90,6 +93,7 @@ const SESSION_END_HOOK_DEF: HookDef = {
 // into the chat. Live-validated → default on; opt out with --no-stop-hook.
 export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
   const defs: HookDef[] = [
+    CHAT_SESSION_END_HOOK_DEF,
     // #1303: `fork` too — a forked session is a new session id that starts
     // from a copied transcript (code.claude.com/docs/en/hooks, SessionStart).
     { event: "SessionStart", matcher: "startup|resume|clear|compact|fork", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
@@ -457,7 +461,7 @@ export function planHookEntries(
   if (action === "install") {
     for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def), opts.platform));
     // #675: a preserved Stop opt-in brings its SessionEnd companion along.
-    if (stopPreserved) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
+    if (stopPreserved && !defs.some(d => d.event === "SessionEnd" && d.bin === STOP_HOOK_BIN)) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef), opts.platform));
   }
   return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }
