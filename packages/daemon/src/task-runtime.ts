@@ -1,5 +1,6 @@
 import { reconcilePendingTaskIntents } from "./task-execution.js";
 import { notifyDueTasks, taskNotificationStatus } from "./task-notification.js";
+import { deliverTaskChats } from "./task-chat-delivery.js";
 /** Task job logic hosted by daemon-jobs; contact reads only a cached projection. */
 import { watch, existsSync, statSync, type FSWatcher } from "node:fs";
 import { basename, dirname, relative, sep } from "node:path";
@@ -61,8 +62,10 @@ export class TaskRuntime {
   }
   get hasWork(): boolean { return this.snapshot.controls.enabled && (this.snapshot.tasks.some(t => !["resolved", "cancelled", "expired"].includes(t.state) && ((t.armed && !t.paused) || t.expires_at !== undefined))
     || (this.ctx.executionHost === true && (this.snapshot.intents.some(i => i.state === "pending")
+      || this.snapshot.occurrences.some(o => o.chat_delivery && o.chat_delivery.processed_at === undefined
+        && (this.ctx.now ?? Date.now)() - o.chat_delivery.claimed_at < 24 * 60 * 60 * 1000)
       || (this.notificationsEnabled && !this.snapshot.controls.muted && this.snapshot.occurrences.some(o => o.kind === "expired" && !o.acknowledgement && !o.resolution
-        && !o.attempts.some(a => a.outcome === "attempted") && (!o.notification || o.notification.failed_at !== undefined)
+        && (!o.notification || o.notification.failed_at !== undefined)
         && this.snapshot.tasks.some(t => t.id === o.task_id && t.generation === o.generation && !t.notification_policy.muted)))))); }
   contact(): void {
     if (this.stopped) return;
@@ -94,7 +97,12 @@ export class TaskRuntime {
           if (Date.now() - started < 5000) assessed = await assessTaskFreshness(this.ctx, selected, 5000 - (Date.now() - started));
         }
         if (Date.now() - started < 5000) { this.snapshot = await reconcileTaskTime(this.ctx); this.invalidBindings.clear(); }
-        if (this.ctx.executionHost) { this.notificationsEnabled = (await taskNotificationStatus()).enabled; await notifyDueTasks(this.ctx); }
+        if (this.ctx.executionHost) {
+          this.notificationsEnabled = (await taskNotificationStatus()).enabled;
+          await notifyDueTasks(this.ctx);
+          // Chat transport failure must not suppress the independent OS alert.
+          await deliverTaskChats(this.ctx).catch(() => undefined);
+        }
         this.lastTick = now; this.backoff = 0; this.lastError = null;
         for (const id of selected) {
           const task = this.snapshot.tasks.find(t => t.id === id); if (!task || !assessed.has(id)) continue;

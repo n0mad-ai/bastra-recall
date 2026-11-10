@@ -35,6 +35,10 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
     const action = store.intents.filter(i => i.task_id === task.id).at(-1);
     const actionKey = action && createHash("sha256").update(JSON.stringify(["action-review-v1", action.id, action.state])).digest("hex");
     const unseenReview = action && ["pending", "unknown"].includes(action.state) && attempts.at(-1)?.last_action_key !== actionKey;
+    // An inbox claim may already be visible even without a receipt. Never
+    // repeat an ambiguous chat announcement through the next-contact lane.
+    // Explicit owner inspection still exposes every unresolved occurrence.
+    if (!ownerInspect && !unseenReview && occurrence.chat_delivery) { retryBlocked++; continue; }
     const latest = Math.max(occurrence.acknowledgement?.at ?? 0, attempts.at(-1)?.at ?? 0);
     const quietMs = occurrence.acknowledgement ? 24 * 60 * 60 * 1000 : Math.max(60000, task.notification_policy.retry_interval_ms);
     if (passive && !unseenReview && latest && now - latest < quietMs) { retryBlocked++; continue; }
@@ -48,6 +52,7 @@ export function taskDueProjection(store: TaskStore, principal: TaskPrincipal, in
       due_at: occurrence.due_at, timezone: task.timezone, action_level: task.action_level, acknowledged: !!occurrence.acknowledgement,
       already_notified: occurrence.notification?.submitted_at !== undefined,
       notification: occurrence.notification,
+      chat_delivery: occurrence.chat_delivery,
       source_status: task.verification?.outcome ?? "clock", evidence: task.evidence.slice(0, 3).map(e => ({ id: e.id, revision: e.revision, observed_at: e.observed_at, state_updated_at: e.state_updated_at })),
       presentation: ownerInspect && (!store.controls.enabled || store.controls.muted || task.notification_policy.muted) ? "owner-inspection-delivery-paused" : "active",
       controls: ["acknowledge", "snooze", "resolve", "cancel"],

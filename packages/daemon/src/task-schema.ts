@@ -125,6 +125,9 @@ const occurrenceSchema = z.strictObject({
   attempts: z.array(z.strictObject({ attempt_id: id.optional(), count: revision.optional(), first_at: instant.optional(), actor: taskIdentitySchema.optional(), role: z.enum(["owner", "agent"]).optional(), last_session: taskIdentitySchema.optional(), last_action_key: hash.optional(), channel: id.optional(), at: instant, client: id, outcome: id })).max(100),
   compacted_attempts: revision.optional(),
   notification: z.strictObject({ claimed_at: instant, submitted_at: instant.optional(), failed_at: instant.optional() }).optional(),
+  chat_delivery: z.strictObject({ event_id: id, session_id: id, generation: id, content_hash: hash,
+    claimed_at: instant, submitted_at: instant.optional(), failed_at: instant.optional(), processed_at: instant.optional(),
+    peer_uuid: id.optional(), assistant_uuid: id.optional() }).optional(),
   acknowledgement: z.strictObject({ at: instant, actor: taskIdentitySchema, proof_id: id }).optional(),
   resolution: z.strictObject({ at: instant, actor: taskIdentitySchema, reason: text }).optional(),
 });

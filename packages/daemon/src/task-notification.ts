@@ -27,9 +27,8 @@ function eligible(store: TaskStore, task: Task | undefined, occurrence: TaskStor
   if (!store.controls.enabled || store.controls.muted || !task || task.notification_policy.muted
     || (!isTaskExpiryNotice(task, occurrence) && (!task.armed || task.paused || task.state !== "due"))
     || task.generation !== occurrence.generation || occurrence.acknowledgement || occurrence.resolution) return false;
-  // The conversation is the primary surface. Never submit a second OS alert
-  // after a contact has already attempted delivery of this occurrence.
-  if (occurrence.attempts.some(a => a.outcome === "attempted")) return false;
+  // The owner explicitly keeps the OS notification in addition to chat.
+  // Its independent durable claim prevents duplicate OS submissions.
   const receipt = occurrence.notification;
   return !receipt || (receipt.failed_at !== undefined && now - receipt.failed_at >= task.notification_policy.retry_interval_ms);
 }

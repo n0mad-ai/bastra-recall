@@ -1,6 +1,7 @@
 import { taskAgentAccessStatus } from "./task-auto-setup.js";
 import { LOCAL_TASK_STATE_COVERAGE, isLocalTaskState } from "./task-local-state.js";
 import { taskNotificationStatus } from "./task-notification.js";
+import { taskChatSettings } from "./task-chat-settings.js";
 import { taskBindingHash } from "./task-freshness.js";
 import { TaskApprovalError, taskActionRegistry, taskApprovalStatus } from "./task-actions.js";
 import { z } from "zod";
@@ -16,8 +17,13 @@ export async function taskStatus(ctx: TaskServiceContext, authorization: string 
   taskStatusInput.parse(raw); const principal = await authenticateTask(authorization, ctx.authPath), store = await readTaskStore(ctx.path), registry = await ctx.approvalRegistry;
   const tasks = store.tasks.filter(t => t.owner_domains.every(d => principal.domains.includes(d))), job = taskRuntime(ctx.path);
   const notifications = { ...await taskNotificationStatus(), running: job?.ctx.executionHost === true };
+  const chatSettings = await taskChatSettings();
+  const chat = { client: "claude-code", consent: chatSettings.consent, active_minutes: chatSettings.activeMinutes,
+    running: job?.ctx.executionHost === true, coverage: "conditional-latest-registered-human-chat",
+    receipt: "peer-frame-and-visible-assistant-event-id-not-human-read" };
   return { agent_access: await taskAgentAccessStatus(ctx.path, ctx.authPath), agent_reminders: { enabled: process.env.BASTRA_CONVERSATIONAL_REMINDERS !== "0", limits: "none" }, budgets:{max_assessments_per_turn:10,source_turn_ms:5000,max_source_timeout_ms:1000,poll_ms:60000,max_failure_backoff_ms:3600000,snapshot_bytes:4194304,normal_capacity_ratio:0.75}, store_revision:store.revision,recovery_epoch:store.recovery_epoch,archives:store.archives.filter(a=>a.owner_domains.every(d=>principal.domains.includes(d))).map(a=>({id:a.id,at:a.at,task_count:a.task_ids.filter(id=>!a.deleted_task_ids?.includes(id)).length})), coverage: notifications.enabled && notifications.running ? "local-macos-and-next-contact" : "next-contact-only", notifications, controls: store.controls, role: principal.role, domains: principal.domains,
-    tasks: tasks.map(t => ({ ...t, next_check_at: t.armed && !t.paused && store.controls.enabled ? (job?.checks.get(t.id)?.next || job?.nextTick || t.next_check_at || (t.schedule.kind !== "event" ? t.schedule.at : undefined)) : undefined, expected_revision: `${store.recovery_epoch}:${t.revision}`, deliveries: store.occurrences.filter(o => o.task_id === t.id && o.generation === t.generation).map(o => ({ occurrence_id: o.id, due_at: o.due_at, acknowledged: !!o.acknowledgement, notification: o.notification, resolved: !!o.resolution, last_attempt: o.attempts.at(-1)?.at, attempt_count: o.attempts.reduce((n, a) => n + (a.count ?? 1), o.compacted_attempts ?? 0) })) })),
+    chat,
+    tasks: tasks.map(t => ({ ...t, next_check_at: t.armed && !t.paused && store.controls.enabled ? (job?.checks.get(t.id)?.next || job?.nextTick || t.next_check_at || (t.schedule.kind !== "event" ? t.schedule.at : undefined)) : undefined, expected_revision: `${store.recovery_epoch}:${t.revision}`, deliveries: store.occurrences.filter(o => o.task_id === t.id && o.generation === t.generation).map(o => ({ occurrence_id: o.id, due_at: o.due_at, acknowledged: !!o.acknowledgement, notification: o.notification, chat_delivery: o.chat_delivery, resolved: !!o.resolution, last_attempt: o.attempts.at(-1)?.at, attempt_count: o.attempts.reduce((n, a) => n + (a.count ?? 1), o.compacted_attempts ?? 0) })) })),
     sources: store.sources.filter(s => s.owner_domains.every(d => principal.domains.includes(d))).map(s=>({...s,...(isLocalTaskState(s.kind)?{coverage:{mode:"local-snapshot",observes:LOCAL_TASK_STATE_COVERAGE[s.kind],offline:"latest-observed-state-only",intermediate_transitions:false}}:{})})),
     adapters: registry?.targets.filter(t => t.owner_domains.every(d => principal.domains.includes(d))).map(t => ({ id: t.id, adapter: t.adapter, enabled: store.controls.adapters[t.adapter]?.enabled === true })) ?? [],
     capacity: { intents: store.intents.length, intent_limit: 1000, receipts: store.receipts.length, receipt_limit: 10000, proposals: store.proposals.length, proposal_limit: 1000, review_required: store.intents.filter(i => ["pending", "unknown"].includes(i.state)).length },

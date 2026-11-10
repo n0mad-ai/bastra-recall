@@ -49,14 +49,18 @@ test("an interrupted claimed submission is not sent twice after restart",async()
  const f=await fixture();await transactTaskStore(f.ctx.path,undefined,s=>{s.occurrences[0].notification={claimed_at:2500};});
  f.setNow(999999);await notifyDueTasks(f.ctx,{platform:"darwin",enabled:true,send:async()=>assert.fail("claim must survive restart")});
 });
-test("muted, paused, acknowledged and conversation-delivered occurrences do not notify",async()=>{
- for(const mode of ["muted","paused","acknowledged","conversation"]){
+test("muted, paused and acknowledged occurrences do not notify",async()=>{
+ for(const mode of ["muted","paused","acknowledged"]){
   const f=await fixture();await transactTaskStore(f.ctx.path,undefined,s=>{
    if(mode==="muted")s.controls.muted=true;
    if(mode==="paused"){s.tasks[0].paused=true;s.tasks[0].revision++;s.tasks[0].history.push({at:3000,actor:"owner",operation:"pause",before_revision:s.tasks[0].revision-1,after_revision:s.tasks[0].revision,reason:"pause"});}
    if(mode==="acknowledged")s.occurrences[0].acknowledgement={at:3000,actor:"owner",proof_id:"fixture"};
-   if(mode==="conversation")s.occurrences[0].attempts.push({at:3000,client:"fixture",outcome:"attempted",channel:"mcp"});
   });
   await notifyDueTasks(f.ctx,{platform:"darwin",enabled:true,send:async()=>assert.fail(mode)});
  }
+});
+test("conversation delivery keeps the additional Mac notification",async()=>{
+ const f=await fixture();await transactTaskStore(f.ctx.path,undefined,s=>{s.occurrences[0].attempts.push({at:3000,client:"fixture",outcome:"attempted",channel:"mcp"});});
+ let sent=0;const options={platform:"darwin" as const,enabled:true,send:async()=>{sent++;}};
+ await notifyDueTasks(f.ctx,options);await notifyDueTasks(f.ctx,options);assert.equal(sent,1);
 });

@@ -37,10 +37,12 @@ const TURN_ABORTED = /^<turn_aborted>\r?\n[^\r\n]+\r?\n<\/turn_aborted>\s*$/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
 const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message(?:[\s>]|$)/i;
+// Our renderer-owned transport envelope, not a vocabulary of task wording.
+const RECALL_CHAT_EVENT = /^<bastra-chat-event(?:[\s>]|$)/;
 
 function isAgentMail(head: string): boolean {
   const body = head.startsWith(AGENT_MAIL_WRAPPER) ? head.slice(AGENT_MAIL_WRAPPER.length).trimStart() : head;
-  return AGENT_MAIL_TAG.test(body);
+  return AGENT_MAIL_TAG.test(body) || RECALL_CHAT_EVENT.test(body);
 }
 
 /**
