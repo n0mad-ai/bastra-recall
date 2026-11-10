@@ -147,20 +147,34 @@ a rulebook round (#1376). Task notifications, agent mail and harness-only
 context preserve the current round, its check and loaded-rule evidence; they
 produce no fresh rulebook notice. Actual owner prompts still start a round.
 This adapter test does not certify a new native host version.
-For save-suggestion suppression, an opaque Codex `functions.exec` source and
-its aggregate output do not prove that a nested save/edit actually ran. This
-remaining #1376 path needs trustworthy executed-subtool evidence; parsing the
-JavaScript source would also count comments, strings and unreachable calls.
+Opaque Codex `functions.exec` source and aggregate output are never execution
+evidence. Successful daemon save/edit executions now produce a bounded receipt
+bound before execution to session, actor, context and round. Known transport
+identity wins; without it the agent supplies `session_id` and its worker
+`agent_id` (main omits the latter), as for rule loads. This is attribution,
+not independent authentication. Stop suppresses covered suggestions only when
+native event timestamps establish that the write completed after the evidence;
+unknown/equal timestamps retain the work. Failed writes, holds, diversions,
+other actors and changed contexts/rounds cannot clear it. Native save calls
+also require matching successful write results. No JavaScript is evaluated or
+parsed as proof; a daemon restart retains the session ledger.
 
 `UserPromptSubmit` prüft vor einer neuen Regelbuchrunde dieselbe strukturelle
 Nutzerherkunft (#1376). Task-Benachrichtigungen, Agentennachrichten und reiner
 Harness-Kontext erhalten die aktuelle Runde samt Prüfung und Ladebelegen;
 sie erzeugen keinen neuen Regelbuchhinweis. Echte Nutzerprompts beginnen
 weiterhin eine Runde. Der Adaptertest zertifiziert keine neue Host-Version.
-Für das Unterdrücken von Speicherhinweisen beweisen opaker Codex-Quelltext in
-`functions.exec` und dessen Sammelausgabe keinen ausgeführten Save/Edit-Aufruf.
-Dieser Rest von #1376 braucht verlässliche Belege ausgeführter Untertools;
-Quelltextauswertung würde auch Kommentare, Strings und unerreichbare Aufrufe zählen.
+Opaker Codex-Quelltext in `functions.exec` und dessen Sammelausgabe sind keine
+Ausführungsbelege. Erfolgreiche Save/Edit-Handler buchen jetzt begrenzte Belege,
+vor Ausführung an Sitzung, Akteur, Kontext und Runde gebunden. Bekannte
+Transportherkunft gewinnt; andernfalls meldet der Agent wie beim Laden
+`session_id` und seine Worker-`agent_id` (Main lässt diese weg). Das ist Zuordnung,
+keine unabhängige Authentifizierung. Nur eine durch native Zeitstempel belegte
+Speicherung nach dem auslösenden Ereignis unterdrückt den Hinweis; unbekannte
+oder gleiche Zeiten lassen die Arbeit offen. Fehler, Holds, Konfliktumleitungen,
+fremde Akteure und gewechselte Kontexte/Runden zählen nicht. Native Saves brauchen
+ebenfalls ein passendes erfolgreiches Schreibresultat. JavaScript wird niemals
+als Beweis ausgewertet; das Sitzungsjournal bleibt beim Daemon-Neustart erhalten.
 
 | Stop path | Evidence and requested work | Bound / no-evidence behavior |
 |---|---|---|
@@ -173,7 +187,7 @@ Quelltextauswertung würde auch Kommentare, Strings und unerreichbare Aufrufe z�
 | Feature/topology save | Current native shell call containing one unambiguous direct, synchronous git commit command, matched by call ID to git's successful result; existing source-file/cwd checks also apply. | Compound or conditional sources stay unknown even when their overall shell call succeeds. Mentioned, echoed, unreachable, failed and dry-run commands do not prove completion. A successful different call cannot answer for a failed commit. Simple commits including `git commit -n` remain supported. |
 | Product documentation | The same evidenced feature-completion event plus enabled product-doc mode. | No independent trigger from prose or old commits. |
 | Pending save relay | The same current evidenced save candidates when the host cannot deliver them in the same turn. | Existing post-save suppression and once-per-session heuristic booking remain. |
-| Taxonomy drift relay | Global monitoring returns a cluster whose sampled memory ID matches a successfully completed current native save/edit call and result. | Unrelated global clusters request no work at Stop; global drift monitoring remains available. |
+| Taxonomy drift relay | Global monitoring returns a cluster whose sampled memory ID matches a successful current native save/edit result or an executed handler receipt for this actor/context/round. | Unrelated global clusters request no work at Stop; global drift monitoring remains available. |
 | Codegraph boundary / refresh | Confirmed touched files and proven reads; enabled repository refresh. | Boundary facts are parked/deduplicated for the next prompt; no invented edit or immediate agent task. |
 | SessionEnd / telemetry | The actual lifecycle event or observed bounded repair outcome. | Books harvest/observations; no extra agent assignment. |
 

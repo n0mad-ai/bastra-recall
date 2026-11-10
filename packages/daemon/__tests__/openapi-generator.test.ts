@@ -21,6 +21,16 @@ test("drift gate catches edited and missing artifacts", () => {
   assert.deepEqual(checkArtifacts(artifacts, () => "hand edit"), Object.keys(artifacts));
   assert.deepEqual(checkArtifacts(artifacts, () => { throw new Error("missing"); }), Object.keys(artifacts));
 });
+test('#1376 save/edit HTTP contracts declare the transport-only session and actor fields',()=>{
+  const {api}=generateDocuments();
+  for(const tool of ['save_memory','edit_memory']){
+    const operation:any=api.paths[`/${tool}`].post;
+    const schema=operation.requestBody.content['application/json'].schema;
+    const parts=schema.allOf??[schema];
+    assert.ok(parts.some((part:any)=>part.properties?.session_id?.maxLength===200));
+    assert.ok(parts.some((part:any)=>part.properties?.agent_id?.maxLength===200));
+  }
+});
 test("actual dispatcher branches determine coverage and shared tool schemas determine requests", () => {
   const { api, action } = generateDocuments();
   for (const name of discoverPostTools().keys()) assert.ok(api.paths[`/${name}`]?.post, name);

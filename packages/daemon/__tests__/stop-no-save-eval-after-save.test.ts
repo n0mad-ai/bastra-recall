@@ -24,9 +24,16 @@ const user = (content: string): TranscriptTurn => ({ role: "user", content });
 const assistant = (content: string, tools?: string[], commands?: string[]): TranscriptTurn =>
   ({ role: "assistant", content, ...(tools ? { tools } : {}), ...(commands ? { commands } : {}) });
 const tool = (content: string): TranscriptTurn => ({ role: "tool", content });
+const saved = (name='save_memory'): TranscriptTurn[] => [{role:'assistant',content:'',calls:[{id:'save-fixture',name}]},{role:'tool',content:'',results:[{id:'save-fixture',content:JSON.stringify({id:'fixture',file_path:'/fixture'})}]}];
 const notification = (): TranscriptTurn => ({ role: "system-injected", content: "<task-notification>done</task-notification>" });
 
 describe("#1376: dropSuggestionsAfterSave", () => {
+  it('keeps work after failed, held, unreturned or unlinked native save calls',()=>{
+    const base=[user('2'),{role:'assistant',content:'',calls:[{id:'native',name:'save_memory'}]}];
+    for(const results of [[],[{id:'native',failed:true,content:'failed'}],[{id:'other',content:JSON.stringify({id:'fixture',file_path:'/fixture'})}],[{id:'native',content:JSON.stringify({id:'fixture',hold:true})}]]){
+      assert.deepEqual(dropSuggestionsAfterSave([...base,{role:'tool',content:'',results}],[DECISION]),[DECISION]);
+    }
+  });
   it("keeps every suggestion when no save tool ran after the latest user turn", () => {
     const turns = [user("we decided on option B"), assistant("ok", ["Read"])];
     const all = [DECISION, FEATURE, FRUSTRATION, CORRECTION];
@@ -35,13 +42,13 @@ describe("#1376: dropSuggestionsAfterSave", () => {
 
   for (const name of ["save_memory", "mcp__bastra-recall__save_memory", "edit_memory", "mcp__bastra-recall__edit_memory"]) {
     it(`drops user-turn suggestions when ${name} ran after the latest user turn`, () => {
-      const turns = [user("we decided on option B"), assistant("saved", [name])];
+      const turns = [user("we decided on option B"), ...saved(name)];
       assert.deepEqual(dropSuggestionsAfterSave(turns, [DECISION, FRUSTRATION, CORRECTION]), []);
     });
   }
 
   it("keeps the suggestion when the save belongs to an earlier round", () => {
-    const turns = [user("a"), assistant("saved", ["save_memory"]), user("we decided on option B"), assistant("ok")];
+    const turns = [user("a"), ...saved(), user("we decided on option B"), assistant("ok")];
     assert.deepEqual(dropSuggestionsAfterSave(turns, [DECISION]), [DECISION]);
   });
 
@@ -51,26 +58,30 @@ describe("#1376: dropSuggestionsAfterSave", () => {
   });
 
   it("a task notification does not end the round", () => {
-    const turns = [user("ship it"), assistant("", [], ["git commit -m x"]), assistant("", ["save_memory"]), notification(), assistant("done")];
+    const turns = [user("ship it"), assistant("", [], ["git commit -m x"]), ...saved(), notification(), assistant("done")];
     assert.deepEqual(dropSuggestionsAfterSave(turns, [FEATURE]), []);
   });
 
   it("feature-completion: a save after the commit drops it, a commit after the save keeps it", () => {
-    const commitThenSave = [user("go"), assistant("", [], ["git commit -m a"]), tool("[main abc1234] a"), assistant("", ["save_memory"])];
+    const commitThenSave = [user("go"), assistant("", [], ["git commit -m a"]), tool("[main abc1234] a"), ...saved()];
     assert.deepEqual(dropSuggestionsAfterSave(commitThenSave, [FEATURE]), []);
-    const saveThenCommit = [user("go"), assistant("", ["save_memory"]), assistant("", [], ["git commit -m b"])];
+    const saveThenCommit = [user("go"), ...saved(), assistant("", [], ["git commit -m b"])];
     assert.deepEqual(dropSuggestionsAfterSave(saveThenCommit, [FEATURE]), [FEATURE]);
-    const saveThenCommitOutput = [user("go"), assistant("", ["save_memory"]), tool("[main abc1234] b")];
+    const saveThenCommitOutput = [user("go"), ...saved(), tool("[main abc1234] b")];
     assert.deepEqual(dropSuggestionsAfterSave(saveThenCommitOutput, [FEATURE]), [FEATURE]);
   });
 
   it("architecture-decision: an AskUserQuestion answer after the save keeps it", () => {
-    const turns = [user("go"), assistant("", ["save_memory"]), assistant("", ["AskUserQuestion"]), tool('"Queue or polling?"="Queue"')];
+    const turns = [user("go"), ...saved(), assistant("", ["AskUserQuestion"]), tool('"Queue or polling?"="Queue"')];
     assert.deepEqual(dropSuggestionsAfterSave(turns, [DECISION]), [DECISION]);
+  });
+  it('an answer arriving after a completed save remains new evidence',()=>{
+    const turns=[user('go'),{role:'assistant',content:'',tools:['AskUserQuestion'],calls:[{id:'ask-late',name:'AskUserQuestion'}]},...saved(),{role:'tool',content:'',results:[{id:'ask-late',content:'{"choice":"B"}'}]}];
+    assert.deepEqual(dropSuggestionsAfterSave(turns,[DECISION]),[DECISION]);
   });
 
   it("drops only the suggestions whose evidence the save came after", () => {
-    const turns = [user("decided: the queue"), assistant("", ["save_memory"]), assistant("", [], ["git commit -m c"])];
+    const turns = [user("decided: the queue"), ...saved(), assistant("", [], ["git commit -m c"])];
     assert.deepEqual(dropSuggestionsAfterSave(turns, [DECISION, FEATURE]), [FEATURE]);
   });
 });
@@ -83,7 +94,7 @@ describe("#1376: the correction reminder counts edit_memory as a save", () => {
   ];
   it("reminds without a save, stays quiet after edit_memory", () => {
     assert.deepEqual(correctionReminderSuggestions(correction, []).map((s) => s.heuristic), ["correction-without-save"]);
-    assert.deepEqual(correctionReminderSuggestions([...correction, assistant("", ["mcp__bastra-recall__edit_memory"])], []), []);
+    assert.deepEqual(correctionReminderSuggestions([...correction, ...saved("mcp__bastra-recall__edit_memory")], []), []);
   });
 });
 
@@ -95,7 +106,7 @@ const SAVE_ROW = {
   type: "assistant",
   message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__bastra-recall__save_memory", input: { title: "queue over polling" } }] },
 };
-const SAVE_RESULT = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "saved" }] } };
+const SAVE_RESULT = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: JSON.stringify({id:"fixture",file_path:"/fixture"}) }] } };
 
 async function withSandbox<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-1376-"));
@@ -135,14 +146,14 @@ async function deliveries(dir: string): Promise<unknown[]> {
 describe("#1376: runStopLane", () => {
   it("sends nothing when the decision was saved in the same round", async () => {
     await withSandbox(async (dir) => {
-      assert.equal(await stop([DECIDED, SAVE_ROW, SAVE_RESULT, { role: "assistant", content: "saved" }], { session_id: "cc-1376-a" }), "{}");
+      assert.equal(await stop([DECIDED, SAVE_ROW, SAVE_RESULT, { role: "assistant", content: JSON.stringify({id:"fixture",file_path:"/fixture"}) }], { session_id: "cc-1376-a" }), "{}");
       assert.deepEqual(await deliveries(dir), ["already-saved"]);
     });
   });
 
   it("does not send the saved decision on the next round either", async () => {
     await withSandbox(async (dir) => {
-      const round1 = [DECIDED, SAVE_ROW, SAVE_RESULT, { role: "assistant", content: "saved" }];
+      const round1 = [DECIDED, SAVE_ROW, SAVE_RESULT, { role: "assistant", content: JSON.stringify({id:"fixture",file_path:"/fixture"}) }];
       assert.equal(await stop(round1, { session_id: "cc-1376-b" }), "{}");
       const round2 = [...round1, { role: "user", content: "thanks, now rename the file" }, { role: "assistant", content: "renamed" }];
       assert.equal(await stop(round2, { session_id: "cc-1376-b" }), "{}", "the decision cue is still in the window");

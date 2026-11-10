@@ -89,6 +89,8 @@ export interface SessionState {
   githubAdvisory?: { delivered: true } | { token: string; deadline: number };
   /** Round rulebook self-report; parsed by rulebook-check.ts, independent of delivery cadence. */
   rulebookCheck?: string;
+  /** #1376: bounded successful handler execution receipts, never source-text claims. */
+  executedVaultWrites?: string;
   draftShown?: string[];
   /** #161: keyed by hook source ("write-edit", "bash-tripwire", …) */
   sources?: Record<string, SourceBackoff>;
@@ -252,6 +254,7 @@ export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
   readonly githubAdvisory?: Readonly<NonNullable<SessionState["githubAdvisory"]>>;
   readonly rulebookCheck?: string;
+  readonly executedVaultWrites?: string;
   readonly draftShown?: readonly string[];
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
   readonly boundary?: Readonly<ParkedBoundary>;
@@ -346,6 +349,7 @@ function decodeSessionState(sessionId: string, raw: string): SessionState {
       state.githubAdvisory = { token: advisory.token, deadline: advisory.deadline };
     }
     if (typeof parsed.rulebookCheck === "string") state.rulebookCheck = parsed.rulebookCheck;
+    if (typeof parsed.executedVaultWrites === "string") state.executedVaultWrites = parsed.executedVaultWrites;
     if (Array.isArray(parsed.draftShown)) {
       state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
       claimDraftHints(sessionId, [], state.draftShown, 0);

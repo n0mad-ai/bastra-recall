@@ -221,6 +221,8 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const obj = item as Record<string, unknown>;
+    const parsedAt=typeof obj.timestamp==='string'?Date.parse(obj.timestamp):typeof obj.at==='number'?obj.at:Number.NaN;
+    const timing=Number.isFinite(parsedAt)&&parsedAt>=0?{at:parsedAt}:{};
     // Codex rollout JSONL wraps conversation messages as
     // `{type:"response_item", payload:{type:"message", role, content}}`.
     // Upstream documents this file format as unstable, so this parser remains
@@ -230,7 +232,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const p = payload as Record<string, unknown>;
       if (p.type === "message" && typeof p.role === "string") {
         const role = effectiveRole(p.role, p.content, nonOwnerSource(obj)||nonOwnerSource(p));
-        out.push({ role, content: turnContent(role, p.content), ...(nonTextOwnerBoundary(p.role,p.content,nonOwnerSource(obj)||nonOwnerSource(p))?{ownerBoundary:true}:{}) });
+        out.push({ role, content: turnContent(role, p.content), ...timing, ...(nonTextOwnerBoundary(p.role,p.content,nonOwnerSource(obj)||nonOwnerSource(p))?{ownerBoundary:true}:{}) });
         continue;
       }
       // Codex: `{type:"function_call", name:"shell", arguments:"{\"command\":[…]}"}`.
@@ -244,6 +246,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
           let input:Record<string,unknown>|undefined;
           try { const value=JSON.parse(String(p.arguments)); if(value&&typeof value==='object'&&!Array.isArray(value))input=value; } catch {}
           const turn=out[out.length-1];
+          if(timing.at!==undefined)turn.at=timing.at;
           (turn.calls??=[]).push({name:p.name,...(typeof p.call_id==='string'?{id:p.call_id}:{}),...(input?{input}:{})});
         }
         continue;
@@ -255,7 +258,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
           else if(typeof value.stdout==='string')content=value.stdout;
           if(typeof value.exit_code==='number')failed=value.exit_code!==0;
         }}catch{}
-        out.push({role:'tool',content,failed,results:[{...(typeof p.call_id==='string'?{id:p.call_id}:{}),content,failed}]});
+        out.push({role:'tool',content,failed,...timing,results:[{...(typeof p.call_id==='string'?{id:p.call_id}:{}),content,failed}]});
         continue;
       }
       // Current Codex desktop rollouts use a free-form `custom_tool_call`
@@ -272,7 +275,7 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     const directContent = obj.content;
     if (typeof directRole === "string") {
       const role = effectiveRole(directRole, directContent, nonOwnerSource(obj));
-      out.push({ role, content: turnContent(role, directContent), ...(nonTextOwnerBoundary(directRole, directContent, nonOwnerSource(obj)) ? {ownerBoundary:true} : {}) });
+      out.push({ role, content: turnContent(role, directContent), ...timing, ...(nonTextOwnerBoundary(directRole, directContent, nonOwnerSource(obj)) ? {ownerBoundary:true} : {}) });
       continue;
     }
     const msg = obj.message;

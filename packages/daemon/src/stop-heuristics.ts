@@ -195,6 +195,21 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
 
 const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory)$/u;
 
+/** Handler receipts supplement native transcript calls for opaque Codex exec.
+ * Unknown or equal timestamps cannot establish order and never suppress work. */
+export function dropSuggestionsAfterExecutedSave(turns:TranscriptTurn[],suggestions:SaveSuggestion[],writes:readonly {at:number}[]):SaveSuggestion[]{
+ const boundary=lastOwnerBoundary(turns),current=currentRoundTurns(turns);
+ const commits=successfulCommitIndices(current).map(i=>current[i]);
+ const answers=current.filter(t=>t.role==='assistant'&&t.tools?.includes(ASK_TOOL));
+ const askIds=new Set(answers.flatMap(t=>(t.calls??[]).filter(c=>c.name===ASK_TOOL&&c.id).map(c=>c.id)));
+ const answerResults=current.filter(t=>t.role==='tool'&&t.results?.some(r=>r.id&&askIds.has(r.id)));
+ return suggestions.filter(s=>{
+  const evidence=[turns[boundary],...(s.heuristic==='feature-completion'?commits:s.heuristic==='architecture-decision'?[...answers,...answerResults]:[])];
+  if(evidence.some(t=>!t||t.at===undefined))return true;
+  return !writes.some(w=>evidence.every(t=>w.at>t.at!));
+ });
+}
+
 /** #1376: a save or edit already did what a suggestion asks when it came after
  * the newest turn the suggestion's heuristic reads: the latest user turn, plus
  * the latest commit for feature-completion and the latest AskUserQuestion for
@@ -203,11 +218,19 @@ const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory)$/u;
 export function dropSuggestionsAfterSave(turns: TranscriptTurn[], suggestions: SaveSuggestion[]): SaveSuggestion[] {
   if (suggestions.length === 0) return suggestions;
   let user = -1, commit = -1, ask = -1, save = -1;
+  const pending=new Set<string>();
+  const pendingAsks=new Set<string>();
   turns.forEach((t, i) => {
-    if (t.role === "user") user = i;
+    if (t.role === "user") { user = i; pending.clear(); }
     if (isCommitTurn(t)) commit = i;
     if (t.role === "assistant" && t.tools?.includes(ASK_TOOL)) ask = i;
-    if (t.tools?.some((name) => SAVE_TOOL_RE.test(name))) save = i;
+    for(const call of t.role==='assistant'?t.calls??[]:[])if(call.id&&call.name===ASK_TOOL)pendingAsks.add(call.id);
+    for(const call of t.role==='assistant'?t.calls??[]:[])if(call.id&&SAVE_TOOL_RE.test(call.name))pending.add(call.id);
+    for(const result of t.role==='tool'?t.results??[]:[]){
+      if(result.id&&pendingAsks.delete(result.id)&&!result.failed)ask=i;
+      if(!result.id||!pending.delete(result.id)||result.failed)continue;
+      try{const r=JSON.parse(result.content);if(typeof r.id==='string'&&typeof r.file_path==='string'&&r.conflict_marked!==true&&r.hold!==true)save=i;}catch{}
+    }
   });
   const evidence = (h: string) =>
     h === "feature-completion" ? Math.max(user, commit) : h === "architecture-decision" ? Math.max(user, ask) : user;
@@ -226,7 +249,7 @@ export function correctionReminderSuggestions(turns: TranscriptTurn[], suggestio
   // The existing frustration suggestion describes this same correction. A
   // save clears both; without one, replace it rather than reminding twice.
   const other = suggestions.filter((s) => s.heuristic !== "frustration-density");
-  if (turns.slice(correctionIndex + 1).some((t) => t.tools?.some((name) => SAVE_TOOL_RE.test(name)))) return other;
+  if (dropSuggestionsAfterSave(turns.slice(correctionIndex),[correction]).length===0) return other;
   return [...other, {
     ...correction,
     heuristic: "correction-without-save",

@@ -42,6 +42,8 @@ import { appendProductDocHint, currentCorrectionReminderSuggestions, dropSuggest
 import { formatRepairBlock, formatSameTurnBlock, repairNotice, sameTurnNotice } from "./stop-lane-same-turn.js";
 import { checkStopRepair, REPAIR_MAX_ATTEMPTS } from "./stop-repair.js";
 import {currentVaultWriteIds} from "./stop-evidence.js";
+import {currentExecutedVaultWrites} from './executed-vault-write.js';
+import {dropSuggestionsAfterExecutedSave} from './stop-heuristics.js';
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -266,6 +268,8 @@ async function evaluateStop(
   // #1376: a save after a suggestion's evidence already did what it asks.
   const proposed = suggestions;
   suggestions = dropSuggestionsAfterSave(last30, suggestions);
+  const executedWrites=await currentExecutedVaultWrites(payload);
+  suggestions = dropSuggestionsAfterExecutedSave(last30,suggestions,executedWrites);
   const answered = proposed.filter((s) => !suggestions.includes(s));
 
   // Produkt-Doku (docs.mode): feature-completion ist auch der Trigger für
@@ -282,6 +286,7 @@ async function evaluateStop(
   // bilden. Best-effort mit hartem Budget; Daemon weg → still.
   const observedDrift = await fetchDrift(selfBaseUrl, 250);
   const writtenIds=currentVaultWriteIds(turns);
+  for(const write of executedWrites)writtenIds.add(write.id);
   // Global monitoring remains available; Stop requests only cluster work
   // directly connected to a successfully written memory in this round.
   const drift=observedDrift.filter(cluster=>cluster.examples.some(id=>writtenIds.has(id)));

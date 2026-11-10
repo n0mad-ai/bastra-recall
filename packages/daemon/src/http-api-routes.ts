@@ -44,6 +44,7 @@ import { recoverCallArguments } from "./call-corruption.js";
 import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
 import { projectForFilter } from "./scope-filter.js";
 import { callerSessionStore } from "./caller-session.js";
+import { withExecutedVaultWrite } from "./executed-vault-write.js";
 
 // ─── /api/v1 dispatcher ──────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export async function dispatchApi(
 ): Promise<unknown | undefined> {
   // #708: every MCP tool event a forwarded call writes carries the caller's
   // Claude Code session — see caller-session.ts. `null` = forwarded, no header.
-  return callerSessionStore.run(ctx.ccSessionId ?? null, () => dispatchTool(tool, body, ctx));
+  return callerSessionStore.run(ctx.ccSessionId ?? null, () => withExecutedVaultWrite(tool, ctx, () => dispatchTool(tool, body, ctx), body));
 }
 
 async function dispatchTool(

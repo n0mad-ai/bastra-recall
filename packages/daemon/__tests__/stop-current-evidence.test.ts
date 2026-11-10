@@ -130,7 +130,7 @@ test('#1390 drift requests only clusters containing a successfully written curre
   const run=(transcript:unknown[])=>runStopLane({session_id:sid,bastra_client:'claude-code',hook_event_name:'Stop',transcript},base);
   assert.equal(await run([user('Status'),assistant('Done')]),'{}');
   assert.throws(()=>readAppRecord('pending-suggestions',process.env.BASTRA_PENDING_SUGGESTIONS_PATH!),{code:'ENOENT'});
-  await run([user('Work'),call('mcp__bastra_recall__save_memory'),result(JSON.stringify({id:'written-id'})),assistant('Saved')]);
+  await run([user('Work'),call('mcp__bastra_recall__save_memory'),result(JSON.stringify({id:'written-id',file_path:'/invented/written-id.md'})),assistant('Saved')]);
   const pending=readAppRecord('pending-suggestions',process.env.BASTRA_PENDING_SUGGESTIONS_PATH!);
   assert.match(pending,/written-id/);assert.doesNotMatch(pending,/old-id/);
  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}

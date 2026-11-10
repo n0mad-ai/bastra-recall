@@ -62,7 +62,7 @@ export function currentVaultWriteIds(turns:readonly TranscriptTurn[]):Set<string
   for(const call of turn.role==='assistant'?turn.calls??[]:[])if(call.id&&/(?:^|__)(?:save_memory|edit_memory)$/u.test(call.name))pending.add(call.id);
   for(const result of turn.role==='tool'?turn.results??[]:[]){
    if(!result.id||!pending.delete(result.id)||result.failed)continue;
-   try{const response=JSON.parse(result.content);if(typeof response.id==='string')ids.add(response.id);}catch{}
+   try{const response=JSON.parse(result.content);if(typeof response.id==='string'&&typeof response.file_path==='string'&&response.conflict_marked!==true&&response.hold!==true)ids.add(response.id);}catch{}
   }
  }
  return ids;

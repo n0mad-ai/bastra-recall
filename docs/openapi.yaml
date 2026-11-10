@@ -87,7 +87,7 @@
       "post": {
         "operationId": "edit_memory",
         "summary": "edit memory",
-        "description": "#519 — change PART of an existing memory without re-sending it. Use this for every ordinary update: a one-line addendum, a corrected sentence, a sharpened summary or an extra trigger. \n\nNEVER edit a vault .md file directly. A direct file edit skips the audit log, the `updated` stamp, th...",
+        "description": "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. #519 — change PART of an existing memory without re-sending it. Use this for every ordinary update: a one-line addendu...",
         "requestBody": {
           "required": true,
           "content": {
@@ -337,6 +337,16 @@
                   "expected_revision": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "agent_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
                   }
                 },
                 "required": [
@@ -1921,7 +1931,7 @@
       "post": {
         "operationId": "save_memory",
         "summary": "save memory",
-        "description": "Persist a new memory into the vault as a markdown file with YAML frontmatter. This is YOUR long-term memory — save autonomously when a memory-worthy moment occurs, do not wait to be asked.\n\nSTRONG SIGNALS — save without confirmation, then 1-line ack. The cues below are EXAMPLES in whate...",
+        "description": "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. Persist a new memory into the vault as a markdown file with YAML frontmatter. This is YOUR long-term memory — save aut...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2358,6 +2368,16 @@
                   },
                   "source_app": {
                     "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "agent_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
                   }
                 },
                 "required": [

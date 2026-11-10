@@ -232,6 +232,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
   {
     name: "save_memory",
     description:
+      "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. " +
       "Persist a new memory into the vault as a markdown file with YAML " +
       "frontmatter. This is YOUR long-term memory — save autonomously " +
       "when a memory-worthy moment occurs, do not wait to be asked.\n" +
@@ -350,6 +351,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       type: "object",
       additionalProperties: false,
       properties: {
+        session_id: { type: "string", minLength: 1, maxLength: 200 },
+        agent_id: { type: "string", minLength: 1, maxLength: 200 },
         title: {
           type: "string",
           description: "Short, specific title (becomes the slug/id).",
@@ -651,6 +654,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     name: "edit_memory",
     annotations: { readOnlyHint: false, destructiveHint: false },
     description:
+      "When transport attribution is absent, pass session_id and your worker agent_id (main omits agent_id) for current Stop execution evidence. These are not memory metadata. " +
       "#519 — change PART of an existing memory without re-sending it. " +
       "Use this for every ordinary update: a one-line addendum, a corrected " +
       "sentence, a sharpened summary or an extra trigger. " +
@@ -688,6 +692,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
+        session_id: { type: "string", minLength: 1, maxLength: 200 },
+        agent_id: { type: "string", minLength: 1, maxLength: 200 },
         id: {
           type: "string",
           description: "Id of the memory to change. It must already exist.",

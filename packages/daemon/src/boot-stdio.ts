@@ -40,6 +40,7 @@ import {
   type ToolDeps,
 } from "./tool-handlers.js";
 import { editMemoryHandler } from "./edit-memory-handler.js";
+import { withExecutedVaultWrite } from './executed-vault-write.js';
 import {
   documentTools,
   FindDocumentArgs,
@@ -199,7 +200,7 @@ export async function startStdioServer(opts: {
 
     if (name === "save_memory") {
       try {
-        const result = await saveMemoryHandler(toolDeps, args);
+        const result = await withExecutedVaultWrite(name, {}, () => saveMemoryHandler(toolDeps, args), args ?? {});
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -212,7 +213,7 @@ export async function startStdioServer(opts: {
       try {
         // #519/#464: ohne Capability — der stdio-Server ist ein öffentlicher
         // Transport (siehe private-access.ts).
-        const result = await editMemoryHandler(toolDeps, args ?? {});
+        const result = await withExecutedVaultWrite(name, {}, () => editMemoryHandler(toolDeps, args ?? {}), args ?? {});
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
