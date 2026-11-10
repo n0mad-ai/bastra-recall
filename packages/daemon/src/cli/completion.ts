@@ -34,6 +34,7 @@ export const COMMANDS = [
   "skills",
   "rules",
   "tasks",
+  "codex",
   "drafts",
   "suggestions",
   "patches",

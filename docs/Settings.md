@@ -12,7 +12,7 @@ The Access section masks secrets, edits browser CORS origins and lists OAuth cli
 
 Invalid JSON edits keep settings unsaved. Save returns to and focuses the invalid editor; correcting or resetting it permits saving. Restart remains blocked while any unsaved edit exists.
 
-`tasks.chatActiveMinutes` sets the genuine-human activity window for Claude Code chat delivery (default 30 minutes, integer 1–1440). `tasks.chatConsent` records the one-time setup answer and is read-only here. Only an explicit Yes during interactive setup may enable Claude's account-wide incoming messages; No, held/refused or managed receiving settings keep notification and board delivery. [Chat setup and limits](active-chat-tasks.md#english).
+`tasks.chatActiveMinutes` sets the shared genuine-human activity window for Claude Code and attached Codex CLI chats (default 30 minutes, integer 1–1440). Only the chat where you last entered input is selected; an unavailable latest chat never redirects to an older one. Start a task-receiving Codex terminal with `bastra codex`; this changes no Codex settings and requires no additional approval. `tasks.chatConsent` records the one-time **Claude** setup answer and is read-only here. Only an explicit Yes during interactive setup may enable Claude's account-wide incoming messages; No, held/refused or managed receiving settings leave Claude on notification and board delivery without disabling the separately launched Codex bridge. [Chat setup and limits](active-chat-tasks.md#english).
 
 ### Local API
 
@@ -38,7 +38,7 @@ Der Zugangsbereich maskiert Geheimnisse, bearbeitet erlaubte Browser-CORS-Urspr�
 
 Ungültige JSON-Änderungen bleiben ungespeichert. Speichern führt zum fehlerhaften Feld und fokussiert es; Korrigieren oder Zurücksetzen erlaubt das Speichern. Bei ungespeicherten Änderungen bleibt der Neustart gesperrt.
 
-`tasks.chatActiveMinutes` setzt die Aktivitätsgrenze seit der letzten echten Nutzernachricht für Claude-Code-Chat-Zustellung (Standard 30 Minuten, ganze Zahl 1–1440). `tasks.chatConsent` hält die einmalige Einrichtungsantwort fest und ist hier nur lesbar. Nur ein ausdrückliches Ja in der interaktiven Einrichtung darf Claude Codes kontoweiten Nachrichteneingang aktivieren; bei Nein, gehaltenem/abgewiesenem oder verwaltetem Empfang bleiben Mitteilung und Brett. [Chat-Einrichtung und Grenzen](active-chat-tasks.md#deutsch).
+`tasks.chatActiveMinutes` setzt die gemeinsame Aktivitätsgrenze seit der letzten echten Nutzernachricht für Claude Code und angebundene Codex-CLI-Chats (Standard 30 Minuten, ganze Zahl 1–1440). Gewählt wird nur der Chat mit deiner letzten Eingabe; ist er nicht erreichbar, wird nie auf einen älteren ausgewichen. Starte ein Codex-Terminal für Aufgabenmeldungen mit `bastra codex`; dabei ändern sich keine Codex-Einstellungen und eine zusätzliche Freigabe entfällt. `tasks.chatConsent` hält die einmalige **Claude**-Einrichtungsantwort fest und ist hier nur lesbar. Nur ein ausdrückliches Ja in der interaktiven Einrichtung darf Claude Codes kontoweiten Nachrichteneingang aktivieren; bei Nein, gehaltenem/abgewiesenem oder verwaltetem Empfang bleibt Claude bei Mitteilung und Brett, ohne die gesondert gestartete Codex-Verbindung abzuschalten. [Chat-Einrichtung und Grenzen](active-chat-tasks.md#deutsch).
 
 ### Lokale API
 

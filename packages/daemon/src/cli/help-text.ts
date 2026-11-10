@@ -49,6 +49,7 @@ Commands:
                              Enabled by default; disable in Settings or with BASTRA_TASKS=0.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
+  codex [Codex options]      Start a Codex CLI chat with active task delivery.
   suggestions <reject|reset>  Explicit decisions on exact project save proposals
   drafts <list|purge|undo|reject>  Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
@@ -222,6 +223,21 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  codex: `bastra codex — Start an attached Codex CLI chat with active task delivery
+
+Usage:
+  bastra codex [Codex options and prompt]
+  bastra codex resume <thread-id>
+  bastra codex -- -m <model>
+
+Uses its own private local App Server and authenticated terminal connection.
+No Codex settings are changed. Existing Codex, desktop and IDE chats are not
+attached. The last real human-used chat wins globally with Claude Code within
+tasks.chatActiveMinutes (default 30). Tasks remain data, never execution approval.
+macOS notification and the board remain available. Requires Codex CLI 0.167.0
+with App Server Unix transport and --remote support on macOS/Linux.
+Codex options pass through unchanged; an alternative --remote is refused.
+More: https://github.com/n0mad-ai/bastra-recall/wiki/Active-Chat-Notifications`,
   address: `bastra address — lokale Assistenten-Adresse
 Usage:
   bastra config set assistant.name Jarvis

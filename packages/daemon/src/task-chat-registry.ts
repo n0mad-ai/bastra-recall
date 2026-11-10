@@ -6,6 +6,7 @@ import { lstat, mkdir, open, opendir, rename, realpath, readFile, unlink } from 
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { withPathLock } from './path-lock.js';
+import { codexChatRequest } from './task-chat-codex.js';
 
 export interface ChatSession {
   sessionId: string; client: string; generation: string; registeredAt: number; expiresAt: number;
@@ -13,6 +14,7 @@ export interface ChatSession {
   socketPath?: string; socketDev?: number; socketIno?: number; token?: string;
   lastHumanAt?: number; lastUnknownAt?: number; closed?: boolean; unread?: boolean;
   receiveBlocked?: boolean; configDir?: string; cwd?: string;
+  codexBridge?: boolean;
 }
 export interface ChatRegistryOptions { dir?: string; now?: number; activeMinutes?: number }
 const MAX_READ = 2 * 1024 * 1024;
@@ -86,6 +88,9 @@ export async function registerChatHook(payload:unknown, env:NodeJS.ProcessEnv=pr
   const path=join(dir,key(client,p.session_id));
   await withPathLock(path,async()=>{
     const old=await readRecord(path);
+    // The bridge owns its generation and provenance journal. Ordinary hooks
+    // cannot replace it with rollout metadata or count inbound task messages.
+    if(client==='codex' && old?.codexBridge && !old.closed && old.token && env.BASTRA_CODEX_CHAT_TOKEN===old.token)return;
     if(p.hook_event_name==='UserPromptSubmit' && client!=='claude-code') {
       // This hook does not establish human provenance. Nevertheless an input
       // in an unsupported host must block fallback, even without SessionStart.
@@ -121,6 +126,34 @@ export async function registerChatHook(payload:unknown, env:NodeJS.ProcessEnv=pr
     }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')r.receiveBlocked=true;}
     await writeRecord(dir,r);
   },{crossProcess:true,strictLocal:true});
+}
+
+export interface CodexChatRegistration {
+  sessionId:string; generation:string; socketPath:string; token:string; transcriptPath:string; source?:string;
+}
+/** Only the local launcher invokes this, for its own connected terminal UI. */
+export async function registerCodexChat(input:CodexChatRegistration,opts:ChatRegistryOptions={}):Promise<void> {
+  if(!input.sessionId||input.sessionId.length>256||!input.generation||input.generation.length>256||!input.token)throw new Error('invalid_codex_registration');
+  const dir=opts.dir??chatSessionsPath(),now=opts.now??Date.now();await privateDir(dir);
+  const socket=await safeFile(input.socketPath,'socket'),transcript=await safeFile(input.transcriptPath,'file');
+  if((transcript.stat.mode&0o077)!==0)throw new Error('unsafe_codex_journal');
+  const path=join(dir,key('codex',input.sessionId));
+  await withPathLock(path,async()=>{
+    const old=await readRecord(path);
+    const r:ChatSession={sessionId:input.sessionId,client:'codex',codexBridge:true,generation:input.generation,registeredAt:now,expiresAt:now+LEASE_MS,
+      socketPath:socket.path,socketDev:socket.stat.dev,socketIno:socket.stat.ino,token:input.token,
+      transcriptPath:transcript.path,transcriptDev:transcript.stat.dev,transcriptIno:transcript.stat.ino,generationOffset:transcript.stat.size,offset:transcript.stat.size};
+    if(old?.lastUnknownAt!==undefined)r.lastUnknownAt=old.lastUnknownAt;
+    if(input.source==='resume')r.lastHumanAt=old?.lastHumanAt;
+    await writeRecord(dir,r);
+  },{crossProcess:true,strictLocal:true});
+}
+export async function closeCodexChat(input:Pick<CodexChatRegistration,'sessionId'|'generation'>,opts:ChatRegistryOptions={}):Promise<void> {
+  // Preserve an unread last human turn as a closed-chat barrier, even if the
+  // UI exits before the daemon's next registry poll.
+  await refreshChatRegistry(opts);
+  const dir=opts.dir??chatSessionsPath(),path=join(dir,key('codex',input.sessionId));
+  await withPathLock(path,async()=>{const r=await readRecord(path);if(r?.codexBridge&&r.generation===input.generation){r.closed=true;await writeRecord(dir,r);}}, {crossProcess:true,strictLocal:true});
 }
 
 async function readEvents(r:ChatSession,from:number): Promise<{events:Record<string,unknown>[];offset:number}> {
@@ -191,7 +224,7 @@ export async function refreshChatRegistry(opts:ChatRegistryOptions={}): Promise<
         const {events,offset}=await readEvents(r,r.offset);
         let newestHuman:number|undefined;
         for(const e of events) {
-          const at=chatHumanTimestamp(r.client,e,now);if(at!==null&&at>=r.registeredAt) {
+          const at=chatHumanTimestamp(r.client==='codex'&&r.codexBridge?'claude-code':r.client,e,now);if(at!==null&&at>=r.registeredAt) {
             r.lastHumanAt=Math.max(r.lastHumanAt??0,at);
             newestHuman=Math.max(newestHuman??0,at);
           }
@@ -227,7 +260,7 @@ export async function latestChatTarget(opts:ChatRegistryOptions={}): Promise<Cha
   const newest=all.filter(r=>r.lastHumanAt!==undefined).sort((a,b)=>b.lastHumanAt!-a.lastHumanAt! || b.registeredAt-a.registeredAt);
   const target=newest[0];
   // Equal activity times across distinct chats are ambiguous, never guessed.
-  if(!target || all.some(r=>(r.lastUnknownAt??0)>=target.lastHumanAt!) || (newest[1] && newest[1].lastHumanAt===target.lastHumanAt) || target.closed || target.receiveBlocked || target.expiresAt<=now || target.client!=='claude-code' || !target.socketPath || now-target.lastHumanAt!>(opts.activeMinutes??30)*60000)return null;
+  if(!target || all.some(r=>(r.lastUnknownAt??0)>=target.lastHumanAt!) || (newest[1] && newest[1].lastHumanAt===target.lastHumanAt) || target.closed || target.receiveBlocked || target.expiresAt<=now || !(target.client==='claude-code'||target.client==='codex'&&target.codexBridge) || !target.socketPath || now-target.lastHumanAt!>(opts.activeMinutes??30)*60000)return null;
   return await validateChatTarget(target,opts)?target:null;
 }
 export async function validateChatTarget(target:ChatSession,opts:ChatRegistryOptions={}): Promise<boolean> {
@@ -244,12 +277,14 @@ export async function validateChatTarget(target:ChatSession,opts:ChatRegistryOpt
       if(other && !other.closed && other.expiresAt>(opts.now??Date.now()) && other.socketPath===r.socketPath
         && (other.sessionId!==r.sessionId || other.generation!==r.generation))return false;
     }
-    if(r.cwd)for(const name of ['settings.json','settings.local.json'])try {
+    if(r.client==='claude-code'&&r.cwd)for(const name of ['settings.json','settings.local.json'])try {
       const settings=JSON.parse(await readFile(join(r.cwd,'.claude',name),'utf8'));
       if(settings.crossSessionInbound==='hold'||settings.crossSessionInbound==='refuse')return false;
     }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')return false;}
     const {stat}=await safeFile(r.socketPath,'socket');
-    return stat.dev===target.socketDev && stat.ino===target.socketIno && r.socketDev===target.socketDev && r.socketIno===target.socketIno;
+    if(!(stat.dev===target.socketDev && stat.ino===target.socketIno && r.socketDev===target.socketDev && r.socketIno===target.socketIno))return false;
+    if(r.client==='codex')return !!r.codexBridge&&r.token===target.token&&await codexChatRequest(r,'validate');
+    return true;
   }catch{return false;}
 }
 export async function invalidateChatTarget(target:ChatSession,opts:ChatRegistryOptions={}): Promise<void> {

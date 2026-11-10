@@ -41,6 +41,7 @@ import { cmdLogStats } from "./cli/log-stats.js";
 import { cmdCompletion } from "./cli/completion.js";
 import { cmdRules } from "./cli/rules-cmd.js";
 import { cmdTasks } from "./cli/tasks-cmd.js";
+import { cmdCodexChat } from "./cli/codex-chat.js";
 import { cmdSaveSuggestions } from "./cli/save-suggestions-cmd.js";
 import { cmdDrafts } from "./cli/drafts-cmd.js";
 import { cmdPatches } from "./cli/patches-cmd.js";
@@ -105,6 +106,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
     case "reconcile": return cmdReconcile(args);
     case "rules": return cmdRules(args);
     case "tasks": return cmdTasks({ sub: args.surface, positional: args.positional, argv: process.argv.slice(2), json: args.json });
+    case "codex": return cmdCodexChat(process.argv.slice(3));
     case "suggestions": return cmdSaveSuggestions(args);
     case "drafts": return cmdDrafts(args);
     case "patches": return cmdPatches(args);
@@ -143,6 +145,8 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
 }
 
 async function main(): Promise<number> {
+  // This launcher passes Codex's own option grammar through byte-for-byte.
+  if(process.argv[2]==='codex')return cmdCodexChat(process.argv.slice(3));
   const args = parseArgs(process.argv.slice(2));
 
   // #536 — a usage error ends the run here, before dispatch() can mutate

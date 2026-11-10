@@ -71,11 +71,13 @@
     "@clack/prompts": "^1.8.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "web-tree-sitter": "0.27.1",
+    "ws": "^8.22.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
     "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },

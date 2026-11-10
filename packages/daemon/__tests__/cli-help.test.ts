@@ -64,6 +64,7 @@ function expectedHelp(cmd: string): string {
 // thing that fails — a broken guard then prints a diff instead of restarting
 // the daemon on whoever's machine runs the suite.
 const SAFE_ARGS: Record<string, string[]> = {
+  codex: ['-m','fixture-help-only'],
   status: [],
   doctor: [],
   update: ["--dry-run"],

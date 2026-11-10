@@ -54,6 +54,14 @@ Coverage is bounded: `write_stdin` input/polls of an existing process do not cre
 
 The prompt hook also carries the [task contract and active conventions](./hooks.md#task-contract-and-active-conventions-prompt-hook-1306) across short follow-ups. The [host capability matrix](../packages/daemon/src/host-capabilities.ts) records the evidence and limits for each surface; a task-state block does not itself deny tools or validate an answer.
 
+### Due tasks in the open terminal (prepared v1.2.0)
+
+Start a Codex terminal with `bastra codex`, passing your usual CLI options, for example `bastra codex -C /path/to/project`. The launcher starts a private App Server and attaches the real terminal UI to it; it changes no Codex configuration and requires no extra approval. Codex retains its existing OpenAI authentication. The local bridge uses a separate private transport credential.
+
+That terminal joins the same latest-human-input selection as Claude Code, within `tasks.chatActiveMinutes` (default 30 minutes). Only input through the connected UI counts; Recall messages and server events do not. Recall starts a turn when idle or steers the exact running turn when busy. Closing the UI disables its generation; resume registers a new generation and a fork does not inherit activity. One durable delivery attempt per occurrence is shared across both clients, and processing requires a correlated visible answer with the event ID. The macOS notification and board remain available.
+
+The isolated runtime baseline is Codex CLI 0.167.0 with the [App Server remote-terminal contract](https://learn.chatgpt.com/docs/app-server). An ordinary `codex` process, already open windows, desktop and IDE chats are not automatically attached. Observed input in an unattached client blocks fallback to an older chat; Recall never takes over an existing window. Claude's one-time `crossSessionInbound` setup answer applies only to Claude. [Full setup, settings and limits](active-chat-tasks.md#english).
+
 ### Status display
 
 While a hook is running, the adapter uses Codex's native blinking status line through `statusMessage`, for example `Bastra Recall · loading context`, `Bastra Recall · recalling for patch`, or `Bastra Recall · evaluating memory save`. The message is deliberately brief and disappears when the hook finishes.
@@ -154,6 +162,14 @@ Auf 0.162.1 und 0.166.0 transportieren Node- und kompilierte Stub-Hooks neben de
 Die Abdeckung bleibt begrenzt: `write_stdin`-Eingaben und Abfragen eines bestehenden Prozesses erzeugen keine neue PreToolUse-Grenze. Hosted WebSearch liegt [laut Dokumentation außerhalb der Tool-Hooks](https://learn.chatgpt.com/docs/hooks#tool-coverage). `apply_patch`, MCP und andere lokale Werkzeuge sind aktuell offiziell dokumentiert, wurden in #1300 aber nicht einzeln zur Laufzeit geprüft. Catch-all erfasst jedes **unterstützte** Ereignis; es erweitert die Host-Abdeckung nicht. Desktop-/IDE-Gates wurden nicht zur Laufzeit geprüft. Siehe [offiziellen Hook-Vertrag](https://learn.chatgpt.com/docs/hooks#pretooluse) und [Vertrauensregeln](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
 
 Der Prompt-Hook erhält außerdem den [Aufgabenvertrag und aktive Konventionen](./hooks.md#aufgabenvertrag-und-aktive-konventionen-prompt-hook-1306) bei kurzen Folgeprompts. Die [Host-Capability-Matrix](../packages/daemon/src/host-capabilities.ts) nennt Belege und Grenzen pro Oberfläche; der Aufgabenblock selbst verweigert keine Tools und prüft keine fertige Antwort.
+
+### Fällige Aufgaben im offenen Terminal (vorbereitet für v1.2.0)
+
+Starte ein Codex-Terminal mit `bastra codex` und gib deine gewohnten CLI-Optionen weiter, etwa `bastra codex -C /pfad/zum/projekt`. Der Starter öffnet einen privaten App Server und verbindet die echte Terminaloberfläche damit. Er ändert keine Codex-Konfiguration und verlangt keine zusätzliche Freigabe. Die vorhandene OpenAI-Anmeldung bleibt bei Codex; die lokale Verbindung verwendet einen eigenen privaten Transportzugang.
+
+Dieses Terminal nimmt an derselben Auswahl nach der letzten menschlichen Eingabe teil wie Claude Code, innerhalb von `tasks.chatActiveMinutes` (Standard 30 Minuten). Nur Eingaben über die verbundene Oberfläche zählen; Recall-Meldungen und Serverereignisse nicht. Recall startet bei Leerlauf eine Runde oder ergänzt die exakt laufende Runde. Schließen der Oberfläche deaktiviert ihre Generation; Resume registriert eine neue Generation, ein Fork übernimmt die Aktivität nicht. Beide Clients teilen einen dauerhaften Zustellversuch je Vorkommen; Verarbeitung gilt erst mit einer zugehörigen sichtbaren Antwort samt Ereignis-ID als belegt. Mac-Mitteilung und Brett bleiben verfügbar.
+
+Die isolierte Laufzeitgrundlage ist Codex CLI 0.167.0 mit dem [App-Server-Vertrag für Remote-Terminals](https://learn.chatgpt.com/docs/app-server). Ein gewöhnlicher `codex`-Prozess, bereits offene Fenster, Desktop- und IDE-Chats werden nicht automatisch angebunden. Beobachtete Eingaben in einem nicht angebundenen Client blockieren das Ausweichen auf einen älteren Chat; Recall übernimmt kein bestehendes Fenster. Claudes einmalige Einrichtungsantwort für `crossSessionInbound` gilt nur für Claude. [Vollständige Einrichtung, Einstellungen und Grenzen](active-chat-tasks.md#deutsch).
 
 ### Statusanzeige
 

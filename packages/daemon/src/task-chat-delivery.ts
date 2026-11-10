@@ -8,6 +8,7 @@ import { readTaskStore, transactTaskStore } from "./task-store.js";
 import { isTaskExpiryNotice } from "./task-validity.js";
 import { latestChatTarget, refreshChatRegistry, validateChatTarget, invalidateChatTarget, readChatTranscriptEvents, type ChatSession } from "./task-chat-registry.js";
 import { taskChatSettings } from "./task-chat-settings.js";
+import { codexChatRequest } from "./task-chat-codex.js";
 
 type Occurrence = TaskStore["occurrences"][number];
 export interface TaskChatDeliveryOptions {
@@ -34,6 +35,10 @@ export function taskChatMessage(task: Task, occurrence: Occurrence, eventId: str
 /** No shell, text-derived endpoint or positive acknowledgement on socket close. */
 async function sendInbox(target: ChatSession, content: string): Promise<void> {
   if (!target.socketPath || !target.token) throw new Error("chat_endpoint_unavailable");
+  if(target.client==='codex') {
+    if(!await validateChatTarget(target)||!await codexChatRequest(target,'deliver',content))throw new Error('codex_chat_not_submitted');
+    return;
+  }
   const payload = JSON.stringify({ type: "auth", token: target.token }) + "\n"
     + JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
   await new Promise<void>((resolve, reject) => {
@@ -114,11 +119,11 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
   const now = (ctx.now ?? Date.now)();
   await collectReceipts(ctx, options, now);
   const settings = await (options.settings ?? taskChatSettings)();
-  if (!settings.consent) return;
   const select = options.latest ?? latestChatTarget;
   const selection = { now, activeMinutes: settings.activeMinutes };
   const target = await select(selection);
-  if (!target || target.receiveBlocked || target.client !== "claude-code" || target.lastHumanAt === undefined || target.lastHumanAt > now
+  const allowed=(target:ChatSession,consent:boolean)=>target.client==='codex'?target.codexBridge===true:target.client==='claude-code'&&consent;
+  if (!target || !allowed(target,settings.consent) || target.receiveBlocked || target.lastHumanAt === undefined || target.lastHumanAt > now
     || now - target.lastHumanAt > settings.activeMinutes * 60000 || !target.socketPath || !target.token
     || !await (options.validate ?? validateChatTarget)(target)) return;
   const snapshot = await readTaskStore(ctx.path);
@@ -137,8 +142,8 @@ export async function deliverTaskChats(ctx: TaskServiceContext, options: TaskCha
     let submitted = false;
     try {
       const current = await select(selection);
-      if (current?.sessionId !== target.sessionId || current.generation !== target.generation
-        || !await (options.validate ?? validateChatTarget)(target) || !(await (options.settings ?? taskChatSettings)()).consent) throw new Error("chat_target_changed");
+      if (current?.sessionId !== target.sessionId || current.generation !== target.generation || current.client!==target.client
+        || !await (options.validate ?? validateChatTarget)(target) || !allowed(target,(await (options.settings ?? taskChatSettings)()).consent)) throw new Error("chat_target_changed");
       const live = await readTaskStore(ctx.path), occurrence = live.occurrences.find(o => o.id === candidate.id);
       if (!occurrence || occurrence.chat_delivery?.event_id !== eventId
         || !eligible(live, live.tasks.find(t => t.id === occurrence.task_id), occurrence)) throw new Error("chat_occurrence_changed");

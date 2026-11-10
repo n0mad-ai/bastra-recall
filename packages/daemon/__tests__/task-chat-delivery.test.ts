@@ -37,6 +37,19 @@ test("atomic chat claim survives concurrent dispatch and restart, without acknow
   assert.ok(!JSON.stringify(delivery).includes("private")); assert.ok(!JSON.stringify(delivery).includes("/test/socket"));
   assert.match(f.sent[0], /DATA/); assert.match(f.sent[0], new RegExp(delivery.event_id));
 });
+test('Codex bridge uses the same durable claim without requiring Claude settings consent',async()=>{
+ const f=await fixture();Object.assign(f.target,{client:'codex',codexBridge:true});
+ f.options.settings=async()=>({consent:false,activeMinutes:30});
+ await deliverTaskChats(f.ctx,f.options);await deliverTaskChats(f.ctx,f.options);
+ assert.equal(f.sent.length,1);const claim=(await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery!;
+ assert.equal(claim.session_id,f.target.sessionId);assert.equal(claim.generation,f.target.generation);
+ f.events.push({type:'user',uuid:'peer',origin:{kind:'peer'},message:{content:f.sent[0]}},{type:'assistant',uuid:'reply',parentUuid:'peer',message:{content:claim.event_id}});
+ await deliverTaskChats(f.ctx,f.options);
+ assert.equal((await readTaskStore(f.ctx.path)).occurrences[0].chat_delivery?.processed_at,3000);
+ // A newer Claude tab cannot announce the same occurrence after a restart.
+ f.target.client='claude-code';f.options.settings=async()=>({consent:true,activeMinutes:30});
+ await deliverTaskChats(f.ctx,f.options);assert.equal(f.sent.length,1);
+});
 test("processing receipt needs exact peer payload and an assistant descendant, never a socket write or human text", async () => {
   const f = await fixture(); await deliverTaskChats(f.ctx, f.options);
   f.events.push({ type: "user", uuid: "human", origin: { kind: "human" }, message: { content: f.sent[0] } }, { type: "assistant", parentUuid: "human", uuid: "assistant-human" });
