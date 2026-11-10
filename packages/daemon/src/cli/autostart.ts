@@ -43,7 +43,8 @@ import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { tasksEnabled } from "../tasks-enabled.js";
+import { tasksEnabled, TASKS_DEFAULT } from "../tasks-enabled.js";
+import { runtimeFeatureSetting } from "../runtime-feature-settings.js";
 import { cleanManagedEnv, safeLaunchAgentSnapshot, legacySnapshotWarning } from "./autostart-env.js";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
@@ -771,11 +772,17 @@ async function managedServiceWarning(service: AutostartService | null, clientEnv
     return `an autostart service is installed at ${state.path} but not running — run 'bastra autostart on'.`;
   }
   if (state.managed && state.loaded) {
+    // All snapshots belong to this account's settings. tasksEnabled deliberately
+    // ignores persistence for arbitrary env objects; diagnostics must instead
+    // give each snapshot the same stored fallback, without leaking a client's
+    // explicit BASTRA_TASKS override into the service comparison.
+    const storedTasks = runtimeFeatureSetting("tasks", TASKS_DEFAULT);
+    const effectiveTasks = (env: NodeJS.ProcessEnv) => env.BASTRA_TASKS === undefined ? storedTasks : tasksEnabled(env);
     const loaded = state.loadedEnv;
-    if (loaded && tasksEnabled(loaded) !== tasksEnabled(state.env)) {
+    if (loaded && effectiveTasks(loaded) !== effectiveTasks(state.env)) {
       return "BASTRA_TASKS in the plist differs from launchd: reload with bootout + bootstrap (kickstart does not reload plist env).";
     }
-    if (tasksEnabled(clientEnv) !== tasksEnabled(loaded ?? state.env)) {
+    if (effectiveTasks(clientEnv) !== effectiveTasks(loaded ?? state.env)) {
       return "BASTRA_TASKS differs between this client environment and the managed daemon service — align the task setting and reload the service with bootout + bootstrap.";
     }
   }
