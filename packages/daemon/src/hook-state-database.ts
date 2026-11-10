@@ -2,7 +2,7 @@
  * Lanes only mutate through a short SQLite transaction; no vault I/O occurs.
  * Legacy tmpdir files are imported once and retained for downgrade recovery. */
 import { constants } from "node:fs";
-import { chmod, copyFile, lstat, readFile, readdir, rename, stat } from "node:fs/promises";
+import { open, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -50,33 +50,45 @@ async function hydrate(dir: string, dbPath: string): Promise<HookSnapshot> {
       if (error.code === "ENOENT") return [];
       throw error;
     });
-    const imports: { file: string; namespace: string; key: string; value: StoredState | number }[] = [];
+    const imports: { file: string; bytes: Buffer; namespace: string; key: string; value: StoredState | number }[] = [];
     for (const name of files) {
       const session = /^([a-zA-Z0-9_-]+)\.json$/.exec(name);
       const marker = /^loaded-([a-zA-Z0-9_.-]+)\.touch$/.exec(name);
       const throttle = /^fail-throttle-([a-zA-Z0-9_-]+)\.ts$/.exec(name);
       if (!session && !marker && !throttle) continue;
       const file = join(dir, name);
-      if (!(await lstat(file)).isFile()) continue;
+      // Read and inspect the same descriptor: a path swap cannot import a
+      // symlink target or give its contents a different file's timestamp.
+      let handle;
+      try { handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+      catch (error) {
+        if (["ENOENT", "ELOOP"].includes((error as NodeJS.ErrnoException).code ?? "")) continue;
+        throw error;
+      }
+      let bytes: Buffer, at: number;
+      try {
+        const info = await handle.stat();
+        if (!info.isFile()) continue;
+        bytes = await handle.readFile(); at = info.mtimeMs;
+      } finally { await handle.close(); }
       if (session) {
-        const raw = await readFile(file, "utf8");
+        const raw = bytes.toString("utf8");
         try {
           const parsed: unknown = JSON.parse(raw);
           if (!parsed || typeof parsed !== "object" || !("shown" in parsed)) continue;
         } catch { continue; } // Corruption stays untouched for diagnosis.
-        imports.push({ file, namespace: snapshot.sessionsNamespace, key: session[1], value: { raw, at: (await stat(file)).mtimeMs } });
+        imports.push({ file, bytes, namespace: snapshot.sessionsNamespace, key: session[1], value: { raw, at } });
       } else if (marker) {
-        imports.push({ file, namespace: snapshot.markersNamespace, key: marker[1], value: (await stat(file)).mtimeMs });
+        imports.push({ file, bytes, namespace: snapshot.markersNamespace, key: marker[1], value: at });
       } else if (throttle) {
-        imports.push({ file, namespace: snapshot.throttlesNamespace, key: throttle[1], value: (await stat(file)).mtimeMs });
+        imports.push({ file, bytes, namespace: snapshot.throttlesNamespace, key: throttle[1], value: at });
       }
     }
     if (imports.length) {
       // Keep a byte-for-byte file backup before touching database contents.
       for (const row of imports) {
         try {
-          await copyFile(row.file, `${row.file}.pre-sqlite.backup`, constants.COPYFILE_EXCL);
-          await chmod(`${row.file}.pre-sqlite.backup`, 0o600);
+          await writeFile(`${row.file}.pre-sqlite.backup`, row.bytes, { flag: "wx", mode: 0o600 });
         }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
       }

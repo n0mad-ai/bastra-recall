@@ -1,6 +1,7 @@
+import { copyAuthSource } from './auth-source.js';
 /** #1090: production delivery → isolated native CLI generation → captured bytes.
  * This controlled bridge is not installed-native-hook certification. */
-import { mkdtemp, mkdir, writeFile, readFile, rm, lstat, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, chmod } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -59,7 +60,7 @@ async function main(){
    let copiedAuth=false;
    if(host.name==='codex'){
     env.CODEX_HOME=config;
-    if(authSource){const stat=await lstat(authSource);if(!stat.isFile()||stat.isSymbolicLink())throw Error('Auth source must be a regular file.');await writeFile(join(config,'auth.json'),await readFile(authSource),{mode:0o600});copiedAuth=true;}
+    if(authSource){await copyAuthSource(authSource,join(config,'auth.json'));copiedAuth=true;}
     await writeFile(join(config,'config.toml'),'');
    }else{env.CLAUDE_CONFIG_DIR=config;env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1';}
    const versionRun=await run(host.name==='codex'?'codex':'claude',['--version'],env,hostRoot);

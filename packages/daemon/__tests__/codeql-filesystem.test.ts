@@ -59,3 +59,27 @@ test("hostile session IDs keep state and lock artifacts below the configured dir
   assert.ok(saved.length > 0);
   assert.ok(saved.every(name => dirname(join(root, "state", name)) === join(root, "state")));
 });
+
+
+test("legacy hook migration refuses a file replaced with a symlink before opening", async (t) => {
+  const fs = await import("node:fs/promises");
+  const { readHookState } = await import("../src/hook-state-database.js");
+  const root = await mkdtemp(join(tmpdir(), "bastra-hook-import-race-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "legacy.json"), outside = join(root, "outside.txt");
+  await writeFile(file, JSON.stringify({ shown: {} }));
+  await writeFile(outside, JSON.stringify({ shown: { stolen: { count: 1, at: 1 } } }));
+  let swapped = false;
+  const swap = async () => { if (!swapped) { swapped = true; await fs.unlink(file); await symlink(outside, file); } };
+  const originalLstat = fs.default.lstat, originalOpen = fs.default.open;
+  t.mock.method(fs.default, "lstat", async (...args: Parameters<typeof originalLstat>) => {
+    const result = await originalLstat(...args); if (args[0] === file) await swap(); return result;
+  });
+  t.mock.method(fs.default, "open", async (...args: Parameters<typeof originalOpen>) => {
+    if (args[0] === file) await swap(); return originalOpen(...args);
+  });
+  syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  assert.equal(await readHookState(root, "legacy"), undefined);
+  assert.equal(swapped, true);
+  assert.equal(await readFile(outside, "utf8"), JSON.stringify({ shown: { stolen: { count: 1, at: 1 } } }));
+});
