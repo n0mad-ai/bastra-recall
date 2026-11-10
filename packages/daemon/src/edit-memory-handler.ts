@@ -68,6 +68,7 @@ import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimG
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
 import { rulebookDelivery } from "./rulebook-status.js";
+import { ruleTextReview, type RuleTextReview } from "./rule-text-review.js";
 import type { ToolDeps } from "./tool-deps.js";
 
 /**
@@ -146,6 +147,8 @@ export interface EditMemoryResult {
   /** Welche Operationen gelaufen sind — `["str_replace", "frontmatter"]`. */
   operations: string[];
   save_quality: SaveQualityResult;
+  /** #1378: review the complete resulting rule after every successful edit. */
+  rule_text_review?: RuleTextReview;
   /** #661: Listeneinträge, die der Frontmatter-Patch ENTFERNT hat. Ein
    *  Listenfeld im Patch ersetzt die Liste — wer nur einen neuen Trigger
    *  schickt, löscht die alten. Das muss in der Antwort stehen, nicht erst
@@ -496,6 +499,7 @@ export async function editMemoryHandler(
     revision: outcome.revision,
     operations,
     save_quality: saveQuality,
+    rule_text_review: ruleTextReview(outcome.after as Memory["fm"]),
     ...(dropped ? { dropped } : {}),
     // #1395: from the frontmatter this write committed, the same outcome as `revision` —
     // the index may already hold a later writer's state.

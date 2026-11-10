@@ -59,6 +59,8 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 
 1.1.8 adds the rulebook: your saved rules reach the assistant in full, with bounded checks on supported hook hosts. It also adds remote MCP with OAuth, Windows setup improvements and English status panels. Reliability targets remain unmeasured. After updating, rerun `bastra install claude-code` or `bastra install codex`. Node 22.22–26 are supported. [Changelog](./CHANGELOG.md) · [rulebook](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [remote access](./docs/REMOTE-ACCESS.md).
 
+On `main`, rule saves and edits request a review of the complete lasting guidance, without classifying wording. [Rulebook guide](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook).
+
 ### Install
 
 **macOS — guided setup:**
@@ -230,6 +232,8 @@ https://github.com/user-attachments/assets/58e68703-8b0d-46c3-b468-33063e8ebf83
 </details>
 
 1.1.8 bringt das Regelbuch: Deine gespeicherten Regeln erreichen den Assistenten vollständig, mit begrenzten Prüfungen auf unterstützten Hook-Hosts. Dazu kommen Remote-MCP mit OAuth, eine verbesserte Windows-Einrichtung und englische Status-Panels. Zuverlässigkeitsziele sind weiterhin ungemessen. Nach dem Update `bastra install claude-code` oder `bastra install codex` erneut ausführen. Node 22.22–26 werden unterstützt. [Changelog](./CHANGELOG.md) · [Regelbuch](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook) · [Fernzugriff](./docs/REMOTE-ACCESS.md) (Englisch).
+
+Auf `main` bitten Regel-Saves und -Edits um Prüfung der vollständigen dauerhaften Vorgabe, ohne Wortlauterkennung. [Regelbuch-Anleitung](https://github.com/n0mad-ai/bastra-recall/wiki/Rulebook).
 
 ### Installation
 

@@ -23,6 +23,7 @@ import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-ac
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
 import { rulebookDelivery } from "./rulebook-status.js";
+import { ruleTextReview, type RuleTextReview } from "./rule-text-review.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
 import {
   callCorruptionMessage,
@@ -40,6 +41,8 @@ export interface SaveMemoryResult {
   /** Advisory save-time quality signal for the agent; not persisted.
    *  Absent on a #205 conflict diversion — nothing was saved to score. */
   save_quality?: SaveQualityResult;
+  /** #1378: semantic review request, not a text-derived finding. */
+  rule_text_review?: RuleTextReview;
   /** #1384: rule state of the written memory — rule, proposal or note only.
    *  Absent when nothing was written (#205 conflict diversion). */
   delivery?: string;
@@ -435,6 +438,6 @@ async function saveMemoryInner(
   // gehen, der `save_memory` ruft.
   const { audit_before: _b, audit_after: _a, ...payload } = result;
   // #1395: from the frontmatter this save wrote, not from the index a later writer may have changed.
-  return { ...payload, save_quality: saveQuality, delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
+  return { ...payload, save_quality: saveQuality, rule_text_review: ruleTextReview(result.audit_after as Memory["fm"]), delivery: rulebookDelivery(result.audit_after as Memory["fm"]),
     ...(warning ? { warning } : {}) };
 }
