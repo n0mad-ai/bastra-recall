@@ -189,7 +189,7 @@ export function rulebookPage(c: KernelCandidates, cursor?: string, maxChars = RU
     ...(offset < c.entries.length ? { next_cursor: rulebookCursor(c, offset) } : {}),
     end: offset === c.entries.length, ...(restarted ? { restarted: true as const } : {}) };
 }
-export const ListRulesArgs = z.object({ cursor: z.string().max(2048).optional() });
+export const ListRulesArgs = z.object({ cursor: z.string().max(2048).optional(), proposals: z.boolean().optional() });
 export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { sessionId?: string | null; project?: string | null } = {}) {
   const input = ListRulesArgs.parse(args ?? {});
   const sid = ctx.sessionId ?? callerSessionStore.getStore();
@@ -203,6 +203,21 @@ export async function listRulesHandler(deps: ToolDeps, args: unknown, ctx: { ses
       const decoded = JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8"));
       if (decoded.project === null || typeof decoded.project === "string") project = decoded.project;
     } catch { /* malformed cursor restarts from the caller scope */ }
+  }
+  if (input.proposals) {
+    const memories = deps.vault.list().filter(m => servable(m) && m.fm.rulebook_proposed &&
+      (!m.fm.scope || (project ? isScopeCompatible(m.fm.scope, project) : GLOBAL_SCOPES.has(normalizeScopeKey(m.fm.scope)))))
+      .sort((a, b) => a.fm.id.localeCompare(b.fm.id));
+    const pending: KernelCandidates = { project, omitted: 0, entries: memories.map(m => ({
+      id: m.fm.id, title: m.fm.title, scope: m.fm.scope, group: "explicit", revision: m.revision ?? null,
+      updated: m.fm.updated ?? null, stale_status: "unknown", body: "",
+      rulebook: m.fm.rulebook_proposed!.rulebook, applies_when: m.fm.rulebook_proposed!.applies_when,
+      rule_categories: m.fm.rulebook_proposed!.rule_categories,
+      binding_hash: hash(["proposal", m.fm.id, m.revision, m.fm.rulebook_proposed]),
+    })) };
+    const page = rulebookPage(pending, input.cursor);
+    return { ...page, proposals: true, rules: page.rules.map(rule => ({ ...rule,
+      rulebook_proposed: memories.find(m => m.fm.id === rule.id)!.fm.rulebook_proposed })) };
   }
   return rulebookPage(await cachedRulebookCatalog(deps.vault, { project,
     active: state?.activeConventions ?? [], mode: "content", budgetMs: RULEBOOK_TOOL_BUDGET_MS }), input.cursor);

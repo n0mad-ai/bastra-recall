@@ -11,6 +11,7 @@
  * into a working directory the user did not name.
  */
 
+import { cmdRulebookProposals } from "./rulebook-proposals-cmd.js";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { CURSOR_RULES_RELATIVE, CURSOR_RULES_SOURCE_PATH } from "./paths.js";
@@ -22,7 +23,9 @@ const SURFACES = ["cursor"] as const;
 function usage(): void {
   process.stderr.write(
     [
-      "usage: bastra rules cursor [path]        install the rules file into a project",
+      "usage: bastra rules proposals            show pending proposals with full text and revision",
+      "       bastra rules confirm|reject <id> <revision> user-directed",
+      "       bastra rules cursor [path]        install the rules file into a project",
       "       bastra rules cursor [path] --dry-run",
       "       bastra rules remove cursor [path] remove it again",
       "",
@@ -106,6 +109,7 @@ async function remove(projectDir: string, dryRun: boolean): Promise<number> {
 }
 
 export async function cmdRules(args: ParsedArgs): Promise<number> {
+  if (["proposals", "confirm", "reject"].includes(args.positional[1])) return cmdRulebookProposals(args.positional.slice(1), args.dryRun);
   // `rules cursor [path]` and `rules remove cursor [path]`
   const [, second, third, fourth] = args.positional;
   const removing = second === "remove";

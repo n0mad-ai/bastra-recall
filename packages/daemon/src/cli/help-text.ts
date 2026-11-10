@@ -759,6 +759,12 @@ Declaration only: no path, no scan, no sync.
 Usage:
   bastra rules cursor [path]
   bastra rules remove cursor [path]
+  bastra rules proposals
+  bastra rules confirm|reject <id> <revision> user-directed
+
+Proposals prints the full rule text and current revision. Confirm or reject only
+on the user's explicit decision in chat. user-directed attests that instruction;
+it does not authenticate a human. Stale revisions are refused.
 
 Writes .cursor/rules/bastra-recall.mdc into the project (default: the current
 directory). Cursor keeps rules per repository — there is no global equivalent,

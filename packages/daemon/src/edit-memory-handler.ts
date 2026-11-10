@@ -112,6 +112,8 @@ export const EditMemoryArgs = z
     /** Text ans Ende des authored body — nie in den Auto-Related-Block. */
     append: z.string().min(1).optional(),
     frontmatter: FrontmatterPatch.optional(),
+    /** Explicit agent attestation of the user's chat decision, never inferred from text. */
+    rulebook_decision: z.object({ decision: z.enum(["accept", "reject"]), write_origin: z.literal("user-directed") }).strict().optional(),
     /**
      * Optimistische Nebenläufigkeit: die `revision`, die `load_memory` beim
      * Laden geliefert hat. Steht auf der Platte etwas anderes, wird nichts
@@ -129,9 +131,13 @@ export const EditMemoryArgs = z
     expected_revision: z.string().min(1).optional(),
   })
   .refine(
-    (a) => a.str_replace !== undefined || a.append !== undefined || a.frontmatter !== undefined,
-    { message: "edit_memory needs at least one of str_replace, append or frontmatter" },
-  );
+    (a) => a.str_replace !== undefined || a.append !== undefined || a.frontmatter !== undefined || a.rulebook_decision !== undefined,
+    { message: "edit_memory needs at least one of str_replace, append, frontmatter or rulebook_decision" },
+  ).superRefine((a, ctx) => {
+    if (!a.rulebook_decision) return;
+    if (!a.expected_revision) ctx.addIssue({ code: "custom", message: "rulebook_decision requires expected_revision from load_memory" });
+    if (a.frontmatter || a.append || a.str_replace) ctx.addIssue({ code: "custom", message: "rulebook_decision cannot be combined with other edits" });
+  });
 export type EditMemoryArgs = z.infer<typeof EditMemoryArgs>;
 
 export interface EditMemoryResult {
@@ -420,6 +426,18 @@ export async function editMemoryHandler(
           const rest = unboundProposal(next.rulebook_proposed as Record<string, unknown>, next, covered);
           if (rest) next.rulebook_proposed = rest; else delete next.rulebook_proposed;
         }
+        if (args.rulebook_decision) {
+          const proposed = RulebookProposalSchema.safeParse(fm.rulebook_proposed);
+          if (!proposed.success) throw new Error("no pending rulebook proposal — NOTHING was written");
+          if (args.rulebook_decision.decision === "accept") {
+            // Legacy archive proposals need the dedicated archive operation, not an invented frontmatter flag.
+            if (proposed.data.archive) throw new Error("archive proposal requires archive_memory on the user's instruction — NOTHING was written");
+            const { archive: _archive, ...binding } = proposed.data;
+            Object.assign(next, binding, { write_origin: "user-directed" });
+            if (next.superseded_by === null) delete next.superseded_by;
+          }
+          delete next.rulebook_proposed;
+        }
         if (next.validator === null) delete next.validator;
         return next;
       },
@@ -461,6 +479,7 @@ export async function editMemoryHandler(
     ...(args.str_replace ? ["str_replace"] : []),
     ...(args.append !== undefined ? ["append"] : []),
     ...(args.frontmatter ? ["frontmatter"] : []),
+    ...(args.rulebook_decision ? [`rulebook_${args.rulebook_decision.decision}`] : []),
   ];
   // Der Beleg. `operation: "update"`, weil `AuditOperation` eine geschlossene
   // Menge ist und eine Teiländerung nichts anderes ist als eine Änderung; WAS

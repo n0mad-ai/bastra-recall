@@ -311,6 +311,29 @@
                     },
                     "additionalProperties": false
                   },
+                  "rulebook_decision": {
+                    "type": "object",
+                    "properties": {
+                      "decision": {
+                        "type": "string",
+                        "enum": [
+                          "accept",
+                          "reject"
+                        ]
+                      },
+                      "write_origin": {
+                        "type": "string",
+                        "enum": [
+                          "user-directed"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "decision",
+                      "write_origin"
+                    ],
+                    "additionalProperties": false
+                  },
                   "expected_revision": {
                     "type": "string",
                     "minLength": 1
@@ -1045,6 +1068,9 @@
                   "cursor": {
                     "type": "string",
                     "maxLength": 2048
+                  },
+                  "proposals": {
+                    "type": "boolean"
                   }
                 }
               }

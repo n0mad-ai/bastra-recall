@@ -49,8 +49,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Returns total, catalog_hash, rule IDs/titles/applies_when, next_cursor and an explicit end marker. " +
       "Continue with the returned cursor until end=true. A changed catalog restarts at page one with restarted=true. " +
       "Descriptions are facts; decide applicability yourself and read bodies with load_memory(id). " +
-      "Unconfirmed legacy candidates are counted, never silently promoted. No write or approval is involved.",
-    inputSchema: { type: "object", properties: { cursor: { type: "string", maxLength: 2048,
+      "Unconfirmed legacy candidates are counted, never silently promoted. Set proposals:true to list pending proposals in the same scope; load_memory(id) gives the complete proposed text and current revision. No write or approval is involved.",
+    inputSchema: { type: "object", properties: { proposals: { type: "boolean", description: "List pending proposals instead of binding rules. Continue with proposals:true on every page." }, cursor: { type: "string", maxLength: 2048,
       description: "Opaque next_cursor from the preceding page or rulebook hook; omit for the first page." } } },
   },
   {
@@ -679,7 +679,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "plus the new one. Entries a patch removed are named in the response " +
       "under `dropped` (#661).\n" +
       "\n" +
-      "expected_revision is optional optimistic concurrency: pass the " +
+      "- rulebook_decision: after an explicit user chat decision, load the proposal then pass {decision:accept|reject, write_origin:user-directed} with expected_revision. This attests user direction, not independent authentication. Never self-confirm. Cannot combine with other edits. Accept binds the proposal; reject removes only the proposal and preserves any existing rule.\n" +
+      "expected_revision is optional optimistic concurrency for ordinary edits: pass the " +
       "`revision` load_memory gave you, and the edit is refused if the file " +
       "changed meanwhile — by another edit or by a hand edit in Obsidian. " +
       "Do NOT pass the `updated` stamp: it has day precision, so two edits on " +
@@ -737,6 +738,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             rulebook_proposed: RULEBOOK_PROPOSED_INPUT,
             validator: VALIDATOR_INPUT,
           },
+        },
+        rulebook_decision: {
+          type: "object", additionalProperties: false, required: ["decision", "write_origin"],
+          properties: { decision: { type: "string", enum: ["accept", "reject"] }, write_origin: { type: "string", enum: ["user-directed"] } },
+          description: "The user's explicit decision on the exact proposal loaded. Requires expected_revision. Never infer consent or accept your own proposal. Legacy archive:true proposals use archive_memory separately.",
         },
         expected_revision: {
           type: "string",

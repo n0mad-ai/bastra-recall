@@ -236,3 +236,103 @@ test("#1395: delivery describes the same write as the returned revision, even wh
   g.release.resolve();
   assert.match((await saveA).delivery ?? "", /^rule \(on-demand\)/);
 });
+
+
+test("#1387: chat-authorized proposal decisions bind exact loaded proposals or reject without changing an existing rule", async (t) => {
+  const deps = await fixture(t);
+  const proposal = { rulebook: "always", applies_when: "Für erfundene Prüfungen", rule_categories: ["github-issues-prs"],
+    validator: { tool: "validate_artifact", channel: "fixture", limit: 400, unit: "utf16" } };
+  await saveMemoryHandler(deps, { ...base, id: "chat-proposal", type: "lesson", recall_when: ["invented chat proposal"], rulebook_proposed: proposal });
+  const revision = deps.vault.get("chat-proposal")!.revision!;
+  const original = await readFile(deps.vault.get("chat-proposal")!.filePath, "utf8");
+  const decide = (extra: Record<string, unknown>) => editMemoryHandler(deps, { id: "chat-proposal", expected_revision: revision, ...extra });
+  await assert.rejects(decide({ rulebook_decision: { decision: "accept" } }), /user-directed/);
+  await assert.rejects(decide({ rulebook_decision: { decision: "accept", write_origin: "agent-session" } }), /user-directed/);
+  await assert.rejects(decide({ expected_revision: undefined, rulebook_decision: { decision: "accept", write_origin: "user-directed" } }), /expected_revision/);
+  assert.equal(await readFile(deps.vault.get("chat-proposal")!.filePath, "utf8"), original);
+  const result = await decide({ rulebook_decision: { decision: "accept", write_origin: "user-directed" } }) as EditMemoryResult;
+  assert.match(result.delivery ?? "", /^rule \(always\): active now/);
+  const fm = deps.vault.get("chat-proposal")!.fm;
+  assert.equal(fm.rulebook, "always"); assert.equal(fm.write_origin, "user-directed");
+  assert.deepEqual(fm.validator, proposal.validator); assert.deepEqual(fm.rule_categories, proposal.rule_categories);
+  assert.equal(fm.rulebook_proposed, undefined);
+  await assert.rejects(decide({ rulebook_decision: { decision: "reject", write_origin: "user-directed" } }), /expected_revision/);
+  await editMemoryHandler(deps, { id: "chat-proposal", frontmatter: { rulebook_proposed: { rulebook: "on-demand", applies_when: "Andere Prüfung" } } });
+  const reject = await editMemoryHandler(deps, { id: "chat-proposal", expected_revision: deps.vault.get("chat-proposal")!.revision,
+    rulebook_decision: { decision: "reject", write_origin: "user-directed" } }) as EditMemoryResult;
+  assert.match(reject.delivery ?? "", /^rule \(always\): active now/);
+  assert.equal(deps.vault.get("chat-proposal")!.fm.rulebook, "always");
+  assert.equal(deps.vault.get("chat-proposal")!.fm.rulebook_proposed, undefined);
+  await assert.rejects(editMemoryHandler(deps, { id: "chat-proposal", expected_revision: reject.revision,
+    rulebook_decision: { decision: "accept", write_origin: "user-directed" } }), /no pending rulebook proposal/);
+});
+
+test("#1387: proposal listing is scoped, excludes private/inactive proposals and preserves ordinary catalog", async (t) => {
+  const { listRulesHandler } = await import("../src/rulebook-catalog.js");
+  const deps = await fixture(t);
+  const proposal = { rulebook: "on-demand", applies_when: "عند كتابة المثال" };
+  for (const [id, scope, sensitivity] of [["listed-proposal", "all-projects", "public"], ["other-project", "other-project", "public"], ["private-proposal", "all-projects", "private"]]) {
+    await saveMemoryHandler(deps, { ...base, id, scope, sensitivity, type: "lesson", recall_when: [`invented ${id}`], rulebook_proposed: proposal });
+  }
+  const listed = await listRulesHandler(deps, { proposals: true });
+  assert.deepEqual(listed.rules.map(r => r.id), ["listed-proposal"]);
+  assert.deepEqual((listed.rules[0] as any).rulebook_proposed, proposal);
+  assert.equal((await listRulesHandler(deps, {})).rules.length, 0);
+  const raw = await readFile(deps.vault.get("listed-proposal")!.filePath, "utf8");
+  const parsed = matter(raw); parsed.data.obsolete = true;
+  await writeFile(deps.vault.get("listed-proposal")!.filePath, matter.stringify(parsed.content, parsed.data));
+  await deps.vault.reindexFile(deps.vault.get("listed-proposal")!.filePath);
+  assert.equal((await listRulesHandler(deps, { proposals: true })).rules.length, 0);
+});
+
+test("#1387: CLI displays full proposal then sends the exact revision over the existing HTTP contract", async (t) => {
+  const { cmdRules } = await import("../src/cli/rules-cmd.js");
+  const cmdRulebookProposals = (words: string[], dryRun: boolean) => cmdRules({ positional: ["rules", ...words], dryRun } as any);
+  const { dispatchApi } = await import("../src/http-api-routes.js");
+  const { projectForFilter } = await import("../src/scope-filter.js");
+  const deps = await fixture(t);
+  await saveMemoryHandler(deps, { ...base, id: "cli-proposal", type: "lesson", recall_when: ["invented cli proposal"],
+    scope: projectForFilter(process.cwd())!, body: "完整的虚构规则。".repeat(300), rulebook_proposed: { rulebook: "always", applies_when: "In invented CLI fixtures" } });
+  const token = process.env.BASTRA_API_TOKEN; process.env.BASTRA_API_TOKEN = "invented-token";
+  t.after(() => { if (token === undefined) delete process.env.BASTRA_API_TOKEN; else process.env.BASTRA_API_TOKEN = token; });
+  const output: string[] = [], errors: string[] = [];
+  t.mock.method(process.stdout, "write", (text: string) => { output.push(text); return true; });
+  t.mock.method(process.stderr, "write", (text: string) => { errors.push(text); return true; });
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    assert.equal((init.headers as Record<string, string>).Authorization, "Bearer invented-token");
+    const project = decodeURIComponent((init.headers as Record<string, string>)["x-bastra-project"]);
+    assert.equal(project, projectForFilter(process.cwd()));
+    const tool = new URL(url).pathname.split("/").at(-1)!;
+    try { return new Response(JSON.stringify(await dispatchApi(tool, JSON.parse(String(init.body)), { toolDeps: deps, documentWriteEnabled: false, project }))); }
+    catch (e) { return new Response(JSON.stringify({ error: (e as Error).message }), { status: 400 }); }
+  });
+  assert.equal(await cmdRulebookProposals(["proposals"], false), 0);
+  const loaded = JSON.parse(output.pop()!).proposals[0];
+  assert.equal(loaded.body.trim(), "完整的虚构规则。".repeat(300));
+  assert.equal(loaded.frontmatter.rulebook_proposed.rulebook, "always");
+  assert.ok(loaded.revision);
+  assert.equal(await cmdRulebookProposals(["confirm", "cli-proposal", loaded.revision], false), 1);
+  await editMemoryHandler(deps, { id: "cli-proposal", append: "A new revision." });
+  assert.equal(await cmdRulebookProposals(["confirm", "cli-proposal", loaded.revision, "user-directed"], false), 1);
+  assert.match(errors.at(-1)!, /expected_revision/);
+  assert.equal(deps.vault.get("cli-proposal")!.fm.rulebook, undefined);
+  assert.equal(await cmdRulebookProposals(["confirm", "cli-proposal", deps.vault.get("cli-proposal")!.revision!, "user-directed"], false), 0);
+  assert.match(JSON.parse(output.pop()!).delivery, /^rule \(always\): active now/);
+});
+
+
+test("#1387: accepting removal metadata keeps the memory valid; archival proposals never silently mutate it", async (t) => {
+  const deps = await fixture(t);
+  for (const [id, additions] of [["remove-fields", { validator: null, superseded_by: null }], ["legacy-archive", { archive: true }]] as const) {
+    await saveMemoryHandler(deps, { ...base, id, type: "lesson", recall_when: [`invented ${id}`],
+      rulebook_proposed: { rulebook: "on-demand", applies_when: "When testing removal", ...additions } });
+  }
+  await editMemoryHandler(deps, { id: "remove-fields", expected_revision: deps.vault.get("remove-fields")!.revision,
+    rulebook_decision: { decision: "accept", write_origin: "user-directed" } });
+  const fm = deps.vault.get("remove-fields")!.fm;
+  assert.equal(fm.rulebook, "on-demand"); assert.equal(fm.validator, undefined); assert.equal(fm.superseded_by, undefined);
+  const memory = deps.vault.get("legacy-archive")!, before = await readFile(memory.filePath, "utf8");
+  await assert.rejects(editMemoryHandler(deps, { id: "legacy-archive", expected_revision: memory.revision,
+    rulebook_decision: { decision: "accept", write_origin: "user-directed" } }), /archive_memory/);
+  assert.equal(await readFile(memory.filePath, "utf8"), before);
+});

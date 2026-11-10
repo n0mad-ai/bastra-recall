@@ -23,4 +23,4 @@ export const RULEBOOK_PROPOSED_INPUT = { type: "object", additionalProperties: f
   properties: { rulebook: RULEBOOK_INPUT, applies_when: APPLIES_WHEN_INPUT, rule_categories:RULE_CATEGORIES_INPUT,
     validator:VALIDATOR_INPUT,archive:{type:'boolean'},obsolete:{type:'boolean'},superseded_by:{type:['string','null']},sensitivity:{type:'string',enum:['public','team','private']} },
   required: ["rulebook", "applies_when"],
-  description: "Unconfirmed proposal. Excluded from the binding catalog and catalog hash until user confirmation in CLI/UI." };
+  description: "Unconfirmed proposal. Excluded from the binding catalog and catalog hash until the user accepts it in chat: load_memory(id), then edit_memory({id, expected_revision: revision, rulebook_decision:{decision:\"accept\",write_origin:\"user-directed\"}}). Use decision:\"reject\" for an explicit rejection. The agent attests user direction; never accept your own proposal without it." };
