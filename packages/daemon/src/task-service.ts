@@ -4,7 +4,7 @@ import { callTaskResult, taskResultGetInput, taskResultReportInput } from "./tas
 import { reminderDuplicate, reminderFingerprint } from "./task-conversation.js";
 import { privateContentComparison, privateTaskComparison, publicTaskResult } from "./task-private-comparison.js";
 import { recoverTasks,taskRecoverInput } from "./task-maintenance.js";
-import { archiveTasks, restoreTaskArchive, archivedTask, readTaskArchive, taskArchiveInput } from "./task-archive.js";
+import { archiveTasks, deleteArchivedTask, restoreTaskArchive, archivedTask, readTaskArchive, taskArchiveInput } from "./task-archive.js";
 import { executeTaskAction, TASK_EXECUTION_INPUTS, isTaskExecution } from "./task-execution.js";
 import { taskStatus, taskControls, taskStatusInput, taskControlsInput } from "./task-status.js";
 import { callTaskAction, TASK_ACTION_INPUTS } from "./task-actions.js";
@@ -44,6 +44,7 @@ export const taskCreateInputSchema = editableSchema.extend({
 });
 const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
+const deleteInput = mutationInput.extend({ archive_id: z.string().uuid().optional() });
 const editInput = mutationInput.extend({ patch: editableSchema.extend({ expires_at: fields.expires_at.nullable(), auto_resolve: fields.auto_resolve.nullable() }).partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
 export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series", "task_result_get", "task_result_report"] as const;
@@ -206,7 +207,8 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
     return archived && !store.tasks.some(t=>t.id===id) ? {...view(archived.snapshot,archived.task),archived:true,archive_id:archived.entry.id} : view(store, findTask(store, id, principal));
   }
   if (operation === "task_delete") {
-    const input = mutationInput.parse(raw);
+    const input = deleteInput.parse(raw);
+    if (input.archive_id) return deleteArchivedTask(ctx, authorization, { ...input, archive_id: input.archive_id });
     await transactTaskStore(ctx.path, undefined, s => {
       const task = findTask(s, input.id, principal);
       if (taskRevision(s, task) !== input.expected_revision) throw new TaskStoreError("conflict", "task revision changed or recovered");
@@ -279,7 +281,7 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
 export const TASK_INPUT_SCHEMAS = {task_result_get:taskResultGetInput, task_result_report:taskResultReportInput, task_recover:taskRecoverInput, task_archive: taskArchiveInput, task_archive_restore:z.strictObject({archive_id:z.string().uuid()}), ...TASK_EXECUTION_INPUTS, task_status: taskStatusInput, task_controls: taskControlsInput, ...TASK_ACTION_INPUTS,
   task_reconsider: taskReconsiderInput, task_due: taskDueInput, task_source_register: taskSourceInput, task_event: taskEventInput, task_reconcile: z.strictObject({}),
   task_create: taskCreateInputSchema, task_list: z.strictObject({ archive_id: z.string().uuid().optional() }), task_get: getInput,
-  task_delete: mutationInput, task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
+  task_delete: deleteInput, task_review: mutationInput, task_edit: editInput, task_snooze: lifecycleInput,
   task_pause: lifecycleInput, task_resume: lifecycleInput, task_end_series: lifecycleInput,
   task_acknowledge: lifecycleInput, task_resolve: lifecycleInput, task_cancel: lifecycleInput, task_rearm: lifecycleInput,
 };

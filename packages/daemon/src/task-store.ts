@@ -1,4 +1,4 @@
-import { validateTaskDeletePrune } from "./task-delete.js";
+import { deleteTaskRows, validateTaskDeletePrune } from "./task-delete.js";
 import { bastraDataDir } from "./platform-paths.js";
 import { dropLegacyTaskComparisons, migrateTaskComparisons } from "./task-private-comparison.js";
 import { discoverTaskArchiveExports,validateTaskArchivePrune } from "./task-archive.js";
@@ -190,7 +190,7 @@ export async function withTaskStoreGuard<T>(path: string, run: (guard: {
       for (const [name, limit] of Object.entries({ tasks: 1000, sources: 1000, proposals: 1000, intents: 1000, archives:1000, consumed_approval_ids:10000, recovery_history:1000, events: 10000, occurrences: 10000, challenges: 10000, approvals: 10000, receipts: 10000 }))
         if ((draft[name as keyof TaskStore] as unknown[]).length > limit) throw new TaskStoreError("capacity", `${name} capacity reached; owner archive required`);
       const next = cleanStore(draft);
-      const predecessor = kind === "archive" ? await validateTaskArchivePrune(path,store,next) : kind === "delete" ? validateTaskDeletePrune(store,next) : store;
+      const predecessor = kind === "archive" ? await validateTaskArchivePrune(path,store,next) : kind === "delete" ? await validateTaskDeletePrune(path,store,next) : store;
       assertTaskProgress(predecessor, next);
       if (canonicalTaskValue(next) === canonicalTaskValue(store)) return structuredClone(store);
       next.revision = store.revision + 1;
@@ -237,8 +237,11 @@ export async function recoverTaskStore(path: string, actor: string, authorize?: 
     for(const {entry,snapshot} of cold){await authorize?.({...snapshot,archives:[entry]});const known=backup.archives.find(a=>a.id===entry.id)??current?.archives.find(a=>a.id===entry.id);
       if(known&&known.hash!==entry.hash)throw new TaskStoreError("corrupt","Indexed archive differs; original preserved");
       if(!backup.archives.some(a=>a.id===entry.id)){backup.archives.push(known??entry);recoveredArchiveExports++;}
+      const recoveredEntry=backup.archives.find(a=>a.id===entry.id)!,liveEntry=current?.archives.find(a=>a.id===entry.id);
+      if(liveEntry?.deleted_task_ids?.length)recoveredEntry.deleted_task_ids=[...new Set([...(recoveredEntry.deleted_task_ids??[]),...liveEntry.deleted_task_ids])];
       backup.consumed_approval_ids=[...new Set([...backup.consumed_approval_ids,...snapshot.consumed_approval_ids])];backup.fencing_counter=Math.max(backup.fencing_counter,snapshot.fencing_counter);
     }
+    deleteTaskRows(backup,new Set(backup.archives.flatMap(a=>a.deleted_task_ids??[])));
     if(current){for(const entry of current.archives)if(!backup.archives.some(a=>a.id===entry.id))throw new TaskStoreError("corrupt","Current archive export missing; original preserved");backup.consumed_approval_ids=[...new Set([...backup.consumed_approval_ids,...current.consumed_approval_ids])];backup.fencing_counter=Math.max(backup.fencing_counter,current.fencing_counter);}
     backup.controls.execution_stopped=true;
     let quarantine: string | null = `${path}.corrupt-${randomUUID()}`;

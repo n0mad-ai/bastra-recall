@@ -1,4 +1,5 @@
 /** Private cold snapshots retain idempotency and audit; nothing unresolved is evicted. */
+import { deleteTaskRows } from "./task-delete.js";
 import { exportTaskComparisons } from "./task-private-comparison.js";
 import { constants } from "node:fs";
 import { mkdir, open } from "node:fs/promises";
@@ -14,21 +15,25 @@ const sha=(v:string)=>createHash("sha256").update(v).digest("hex");
 export const archiveIntentKey=(actor:string,key:string)=>sha(canonicalTaskValue(["archive-intent-v1",actor,key]));
 const bundleSchema=z.strictObject({schema_version:z.literal(1),id:z.string().uuid(),snapshot:z.preprocess(value => decodeTaskStore(JSON.stringify(value)),taskStoreSchema)});
 export function taskArchivePath(path:string,id:string){return join(dirname(path),"task-archives",`${z.string().uuid().parse(id)}.json`);}
-export async function readTaskArchive(path:string,entry:TaskStore["archives"][number]):Promise<TaskStore>{
+export async function readTaskArchive(path:string,entry:TaskStore["archives"][number],includeDeleted=false):Promise<TaskStore>{
   try {
     const fd=await open(taskArchivePath(path,entry.id),constants.O_RDONLY|constants.O_NOFOLLOW);let raw:string;
     try{const info=await fd.stat();if(!info.isFile()||info.mode&0o077||info.size>TASK_MAX_BYTES+1024)throw new Error("unsafe archive");const bytes=Buffer.alloc(TASK_MAX_BYTES+1025),read=await fd.read(bytes,0,bytes.length,0);if(read.bytesRead>TASK_MAX_BYTES+1024)throw new Error("archive too large");raw=bytes.subarray(0,read.bytesRead).toString("utf8");}finally{await fd.close();}
     if(sha(raw)!==entry.hash)throw new Error("archive hash differs");const b=bundleSchema.parse(JSON.parse(raw));
     if(b.id!==entry.id||canonicalTaskValue(b.snapshot.tasks.map(t=>t.id).sort())!==canonicalTaskValue([...entry.task_ids].sort()))throw new Error("archive index differs");
+    if (!includeDeleted) deleteTaskRows(b.snapshot, new Set(entry.deleted_task_ids ?? []));
     return b.snapshot;
   }catch{throw new TaskStoreError("corrupt","Private task archive missing or altered; no idempotency reuse");}
 }
 export async function archivedTask(path:string,s:TaskStore,id:string){
   const entry=[...s.archives].reverse().find(a=>a.task_ids.includes(id));if(!entry)return;
+  if(entry.deleted_task_ids?.includes(id))throw new TaskStoreError("conflict","Archived task was explicitly deleted; use a new request identity");
   const snapshot=await readTaskArchive(path,entry);const task=snapshot.tasks.find(t=>t.id===id)!;return {entry,snapshot,task:{...task,creation_hash:entry.creation_bindings?.[id]}};
 }
 export async function archivedIntent(path:string,s:TaskStore,actor:string,key:string){
   const digest=archiveIntentKey(actor,key),entry=[...s.archives].reverse().find(a=>a.intent_keys.includes(digest));if(!entry)return;
+  const original=await readTaskArchive(path,entry,true);
+  if(original.intents.some(i=>i.actor===actor&&i.idempotency_key===key&&entry.deleted_task_ids?.includes(i.task_id)))throw new TaskStoreError("conflict","Archived task was explicitly deleted");
   const snapshot=await readTaskArchive(path,entry),intent=snapshot.intents.find(i=>i.actor===actor&&i.idempotency_key===key);
   if(!intent)throw new TaskStoreError("corrupt","Archived intent index differs");return {entry,snapshot,intent};
 }
@@ -72,12 +77,27 @@ export async function archiveTasks(ctx:TaskServiceContext,authorization:string|u
     return {archive_id:id,task_count:ids.size,history_retained:true,spent_approvals_retained:true};
   });
 }
+/** Logical deletion retains the original verified private export as a backup. */
+export async function deleteArchivedTask(ctx:TaskServiceContext,authorization:string|undefined,input:{id:string;expected_revision:string;archive_id:string}) {
+ return withTaskStoreGuard(ctx.path,async guard=>{
+  const s=guard.snapshot(),principal=await authenticateTask(authorization,ctx.authPath);
+  const entry=s.archives.find(a=>a.id===input.archive_id&&a.owner_domains.every(d=>principal.domains.includes(d)));
+  if(!entry||!entry.task_ids.includes(input.id))throw Object.assign(new Error("Archived task absent"),{code:"not_found"});
+  const original=await readTaskArchive(ctx.path,entry,true),task=original.tasks.find(t=>t.id===input.id)!;
+  if(`${original.recovery_epoch}:${task.revision}`!==input.expected_revision)throw new TaskStoreError("conflict","Archived task revision changed");
+  if(s.tasks.some(t=>t.id===input.id))throw new TaskStoreError("conflict","Delete the restored active task first");
+  const copies=s.archives.filter(a=>a.task_ids.includes(input.id));
+  for(const copy of copies){requireTaskDomains(principal,copy.owner_domains);await readTaskArchive(ctx.path,copy,true);}
+  if(copies.some(a=>!a.deleted_task_ids?.includes(input.id)))await guard.commit(next=>{for(const copy of next.archives.filter(a=>a.task_ids.includes(input.id)))copy.deleted_task_ids=[...new Set([...(copy.deleted_task_ids??[]),input.id])];},"delete");
+  return{id:input.id,archive_id:entry.id,deleted:true,backup_retained:true};
+ });
+}
 export async function restoreTaskArchive(ctx:TaskServiceContext,authorization:string|undefined,archiveId:string){
  const owner=await authenticateTask(authorization,ctx.authPath);requireTaskOwner(owner);
  return withTaskStoreGuard(ctx.path,async guard=>{const s=guard.snapshot(),entry=s.archives.find(a=>a.id===archiveId);if(!entry)throw Object.assign(new Error("Archive absent"),{code:"not_found"});
  const current=await authenticateTask(authorization,ctx.authPath);requireTaskOwner(current);requireTaskDomains(current,entry.owner_domains);const archived=await readTaskArchive(ctx.path,entry);
- if(entry.task_ids.every(id=>s.tasks.some(t=>t.id===id)))return{restored:false,archive_id:entry.id};
- if(entry.task_ids.some(id=>s.tasks.some(t=>t.id===id)))throw new TaskStoreError("conflict","Partial archive restore forbidden");
+ if(archived.tasks.every(t=>s.tasks.some(active=>active.id===t.id)))return{restored:false,archive_id:entry.id};
+ if(archived.tasks.some(t=>s.tasks.some(active=>active.id===t.id)))throw new TaskStoreError("conflict","Partial archive restore forbidden");
  await guard.commit(next=>{for(const name of groupRows){for(const row of archived[name]){if((next[name] as {id:string}[]).some(r=>r.id===row.id))throw new TaskStoreError("conflict","Archived identity reused");(next[name] as unknown[]).push(name==="tasks"?{...structuredClone(row),creation_hash:entry.creation_bindings?.[row.id]}:structuredClone(row));}}next.controls.execution_stopped=true;},"control");
  return{restored:true,archive_id:entry.id,unarmed:true,execution_stopped:true};});
 }

@@ -152,7 +152,7 @@ export const taskStoreSchema = z.strictObject({
   proposals: z.array(proposalSchema).max(1000), challenges: z.array(challengeSchema).max(10000), approvals: z.array(approvalSchema).max(10000),
   leases: z.array(leaseSchema).max(1000), intents: z.array(intentSchema).max(1000), receipts: z.array(receiptSchema).max(10000),
   consumed_approval_ids: z.array(id).max(10000),
-  archives: z.array(z.strictObject({id:z.string().uuid(),hash,at:instant,actor:taskIdentitySchema,task_ids:z.array(id).min(1).max(1000),intent_keys:z.array(hash).max(1000),owner_domains:domains,creation_bindings:z.record(id,comparison).optional()})).max(1000).default([]),
+  archives: z.array(z.strictObject({id:z.string().uuid(),hash,at:instant,actor:taskIdentitySchema,task_ids:z.array(id).min(1).max(1000),intent_keys:z.array(hash).max(1000),owner_domains:domains,creation_bindings:z.record(id,comparison).optional(),deleted_task_ids:z.array(id).max(1000).optional()})).max(1000).default([]),
   recovery_history: z.array(z.strictObject({
     id, at: instant, from_revision: revision, actor: id, reason: text,
   })).max(1000),

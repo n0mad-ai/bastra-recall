@@ -11,7 +11,7 @@ import { callTaskMcp, dispatchTaskHttp, taskFailure, taskTools } from "../src/ta
 import { taskCliCall } from "../src/cli/tasks-cmd.js";
 import { dispatchApiSurface, type ApiSurfaceCtx } from "../src/http-api-surface.js";
 import { TASK_CRUD_OPERATIONS } from "../src/task-service.js";
-import { readTaskStore } from "../src/task-store.js";
+import { readTaskStore, transactTaskStore } from "../src/task-store.js";
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "task-transports-"));
   const ctx = { path: join(root, "tasks.json"), authPath: join(root, "auth.json"), now: () => 1000 };
@@ -150,4 +150,103 @@ test('agent delete shares MCP, HTTP DELETE and CLI revision semantics', async ()
     }
     assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 0);
   } finally { await f.close(); }
+});
+
+test('#1408: explicit cold deletion shares MCP, HTTP and CLI semantics without restoring siblings', async () => {
+  const f = await fixture();
+  try {
+    const auth = `Bearer ${f.owner.token}`;
+    const rows: any[] = [];
+    for (let i = 0; i < 3; i++) {
+      let row: any = await taskCliCall('create', { ...f.input, idempotency_key: `cold-delete-${i}` }, auth, f.base);
+      row = await taskCliCall('resolve', { id: row.id, expected_revision: row.expected_revision }, auth, f.base);
+      rows.push(row);
+    }
+    await transactTaskStore(f.ctx.path, undefined, s => { s.consumed_approval_ids.push('spent-cold-proof'); s.fencing_counter = 17; });
+    const before = await readTaskStore(f.ctx.path);
+    const archive: any = await taskCliCall('archive', { task_ids: rows.map(r => r.id), expected_revision: before.revision, recovery_epoch: before.recovery_epoch }, auth, f.base);
+    const list: any = await taskCliCall('list', { archive_id: archive.archive_id }, auth, f.base);
+    const selections = list.tasks.map((r: any) => ({ id: r.id, expected_revision: r.expected_revision, archive_id: archive.archive_id }));
+    const mcp = await callTaskMcp('task_delete', selections[0], auth, f.ctx);
+    assert.notEqual(mcp.isError, true);
+    assert.equal(JSON.parse(mcp.content[0].text).deleted, true);
+    assert.equal((await taskCliCall('list', { archive_id: archive.archive_id }, auth, f.base) as any).tasks.length, 2);
+    const retry = await callTaskMcp('task_delete', selections[0], auth, f.ctx);
+    assert.notEqual(retry.isError, true);
+    assert.equal((await taskCliCall('delete', selections[1], auth, f.base) as any).deleted, true);
+    const response = await fetch(`${f.base}/api/v1/tasks/${selections[2].id}`, { method: 'DELETE', headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(selections[2]) });
+    assert.equal(response.status, 200);
+    assert.equal((await taskCliCall('list', { archive_id: archive.archive_id }, auth, f.base) as any).tasks.length, 0);
+    const after = await readTaskStore(f.ctx.path);
+    assert.equal(after.tasks.length, 0);
+    assert.deepEqual(after.consumed_approval_ids, before.consumed_approval_ids);
+    assert.equal(after.fencing_counter, before.fencing_counter);
+  } finally { await f.close(); }
+});
+
+test('#1408: cold deletion verifies integrity, exact revision and domains; restoration cannot revive deleted tasks', async () => {
+  const f=await fixture();
+  try {
+    const auth=`Bearer ${f.owner.token}`;
+    const inputs=[{...f.input,idempotency_key:'deleted'},{...f.input,idempotency_key:'sibling'}];
+    const rows:any[]=[];
+    for(const input of inputs){let row:any=await taskCliCall('create',input,auth,f.base);row=await taskCliCall('resolve',{id:row.id,expected_revision:row.expected_revision},auth,f.base);rows.push(row);}
+    const before=await readTaskStore(f.ctx.path);
+    const archive:any=await taskCliCall('archive',{task_ids:rows.map(t=>t.id),expected_revision:before.revision,recovery_epoch:before.recovery_epoch},auth,f.base);
+    const selection={id:rows[0].id,expected_revision:rows[0].expected_revision,archive_id:archive.archive_id};
+    const mcpCode=async(input:unknown,authorization=auth)=>JSON.parse((await callTaskMcp('task_delete',input,authorization,f.ctx)).content[0].text).code;
+    assert.equal(await mcpCode({...selection,expected_revision:'initial:999'}),'conflict');
+    assert.equal(await mcpCode({...selection,id:'absent'}),'not_found');
+    const other=await mintTaskCredential(f.ctx.authPath,{actor_id:'foreign',domains:['other'],role:'agent'});
+    assert.equal(await mcpCode(selection,`Bearer ${other.token}`),'not_found');
+    const {readFile,writeFile}=await import('node:fs/promises');
+    const {taskArchivePath}=await import('../src/task-archive.js');
+    const path=taskArchivePath(f.ctx.path,archive.archive_id),original=await readFile(path,'utf8');
+    await writeFile(path,original+' ');
+    assert.equal(await mcpCode(selection),'corrupt');
+    assert.equal((await readTaskStore(f.ctx.path)).archives[0].deleted_task_ids,undefined);
+    await writeFile(path,original);
+    assert.equal((await taskCliCall('delete',selection,auth,f.base) as any).deleted,true);
+    assert.equal(await readFile(path,'utf8'),original,'private original remains a verified backup');
+    const retryCreate=await callTaskMcp('task_create',inputs[0],auth,f.ctx);
+    assert.equal(JSON.parse(retryCreate.content[0].text).code,'conflict','idempotency cannot resurrect a deleted cold task');
+    await taskCliCall('archive_restore',{archive_id:archive.archive_id},auth,f.base);
+    const restored=await readTaskStore(f.ctx.path);
+    assert.deepEqual(restored.tasks.map(t=>t.id),[rows[1].id]);
+    const getDeleted=await callTaskMcp('task_get',{id:rows[0].id},auth,f.ctx);
+    assert.equal(JSON.parse(getDeleted.content[0].text).code,'not_found');
+    assert.deepEqual(restored.consumed_approval_ids,before.consumed_approval_ids);
+    assert.equal(restored.fencing_counter,before.fencing_counter);
+  }finally{await f.close();}
+});
+
+test('#1408: friendly CLI archive flag deletes cold tasks and older backup recovery retains deletion', async () => {
+  const f=await fixture();
+  const previousPath=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN,previousUrl=process.env.BASTRA_DAEMON_URL;
+  try {
+    const auth=`Bearer ${f.owner.token}`;
+    let row:any=await taskCliCall('create',f.input,auth,f.base);
+    row=await taskCliCall('resolve',{id:row.id,expected_revision:row.expected_revision},auth,f.base);
+    const before=await readTaskStore(f.ctx.path);
+    const archive:any=await taskCliCall('archive',{task_ids:[row.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch},auth,f.base);
+    process.env.BASTRA_TASKS_PATH=f.ctx.path;process.env.BASTRA_TASK_TOKEN=f.agent.token;process.env.BASTRA_DAEMON_URL=f.base;
+    const {cmdTasks}=await import('../src/cli/tasks-cmd.js');
+    const stdout=process.stdout.write;let output='';process.stdout.write=((chunk:any)=>{output+=String(chunk);return true;}) as any;
+    try {assert.equal(await cmdTasks({sub:'delete',positional:[],argv:['tasks','delete',row.id,'--archive',archive.archive_id,'--agent','--json'],json:true}),0);}
+    finally{process.stdout.write=stdout;}
+    assert.equal(JSON.parse(output).deleted,true);
+    const {writeTaskSnapshotText}=await import('../src/task-database.js');
+    writeTaskSnapshotText(`${f.ctx.path}.backup`,JSON.stringify(before),()=>{});
+    await taskCliCall('recover',{},auth,f.base);
+    const recovered=await readTaskStore(f.ctx.path);
+    assert.equal(recovered.tasks.length,0,'older active backup cannot revive a cold-deleted task');
+    assert.deepEqual(recovered.archives[0].deleted_task_ids,[row.id]);
+    assert.equal((await taskCliCall('list',{archive_id:archive.archive_id},auth,f.base) as any).tasks.length,0);
+    assert.equal((await taskCliCall('status',{},auth,f.base) as any).archives[0].task_count,0);
+  }finally{
+    if(previousPath===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previousPath;
+    if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;
+    if(previousUrl===undefined)delete process.env.BASTRA_DAEMON_URL;else process.env.BASTRA_DAEMON_URL=previousUrl;
+    await f.close();
+  }
 });

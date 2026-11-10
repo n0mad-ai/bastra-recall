@@ -77,6 +77,7 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     if(args.sub==="release" && words[0] && !words[0].endsWith(".json")) input.lease_id=words[0];
     if (args.sub!=="release" && (options.id || (words[0] && !words[0].endsWith(".json")))) input.id = String(options.id ?? words[0]);
     if (options.revision) input.expected_revision = options.revision;
+    if (options.archive) input.archive_id = String(options.archive);
     if (options.occurrence) input.occurrence_id = options.occurrence;
     const authorization = agent ? await taskClientAuthorization() : await ownerTaskAuthorization();
     if (!authorization) throw Object.assign(new Error("Agent task credential required"), { code: "unauthorized" });
@@ -94,7 +95,11 @@ export async function cmdTasks(args: { sub: string | null; positional: string[];
     }
     const baseUrl = resolveDaemonEndpoint().baseUrl;
     if (input.id && !["get", "create"].includes(args.sub ?? "list") && (!input.expected_revision || options.until || options.expires)) {
-      const task = await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any; input.expected_revision ??= task.expected_revision;
+      const task = input.archive_id && args.sub === "delete"
+        ? (await taskCliCall("list", { archive_id: input.archive_id }, authorization, baseUrl) as any).tasks.find((t:any)=>t.id===input.id)
+        : await taskCliCall("get", { id: input.id }, authorization, baseUrl) as any;
+      if (!task) throw Object.assign(new Error("Task absent"), { code: "not_found" });
+      input.expected_revision ??= task.expected_revision;
       if (options.until) { try { input.until = taskWhen(String(options.until), task.timezone); } catch { throw new TaskCliInputError("Zeit nicht lesbar"); } }
       if (args.sub === "edit" && options.expires) input.patch = { ...input.patch, expires_at: options.expires === "none" ? null : taskWhen(String(options.expires), task.timezone) };
     }

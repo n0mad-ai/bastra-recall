@@ -29,7 +29,7 @@ const TASK_HELP: Partial<Record<TaskCrudOperation,string>> = {
  task_reconsider:"Fresh attributable versioned premise change invites Keep/Change/Snooze/Stop, never auto-reverses. Keep disarms until Owner rebinding; unknown/stale is not refutation.",
  task_status:"Actual controls, source state, next check/error, budgets, receipts and next-contact coverage. Do not hide capacity/unknown/recovery state.",
  task_recover:"Owner backup repair disarms/stops and changes epoch. Original retained; newer changes may be missing; private cold exports reconciled. Offline lock repair is CLI-only.",
- task_delete:"Delete a task and its related rows using expected_revision. In-flight/unknown execution must be reconciled first. Global spent proof identities and fences remain retained.",
+ task_delete:"Delete a task and its related rows using expected_revision. For cold tasks explicitly supply archive_id from task_list; logical deletion excludes them from browsing, restore and retries, retaining the verified original export as a private backup. In-flight/unknown execution must be reconciled first. Global spent proof identities and fences remain retained.",
  task_archive:"Agent or Owner exact private export before retiring terminal rows. No unresolved occurrences/unknown intents/active leases. Cold idempotency, history and spent IDs retained.",
  task_archive_restore:"Owner imports terminal history for inspection/fresh rollback, execution stopped. No old proof or task silently rearmed.",
 };
