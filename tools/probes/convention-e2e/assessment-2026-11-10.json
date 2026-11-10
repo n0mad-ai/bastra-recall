@@ -1,0 +1,30 @@
+{
+  "reviewer": "/root (independent parent agent; producer /root/issue1090)",
+  "rubric_sha256": "4f22d92ae0a6598f0ad27e217298483b2b990b846c37e3621f095ac239ed69fb",
+  "decisions": [
+    {
+      "attempt_id": "codex:translate-only",
+      "output_sha256": "1f8ac72d5544fad3dcbf70119984c0e5242764ac2c6a54c5f29f647aeabf049f",
+      "rule_revision": "sha256:33fea11c889524c6",
+      "task_generation": 1,
+      "status": "passed",
+      "reason": "Complete German translation preserves crate arrival Tuesday and reservation of bay7. No reply, promise or approval request."
+    },
+    {
+      "attempt_id": "codex:draft-for-review",
+      "output_sha256": "601d4f067b4c641ad7b8cca3ff1f5061cd0986456ea802a59f100dd68afe2ac0",
+      "rule_revision": "sha256:33fea11c889524c6",
+      "task_generation": 1,
+      "status": "passed",
+      "reason": "Complete German draft confirms Tuesday and declines Friday. No English copy, sending claim or invented approval. Additional onboarding prose is recorded separately without changing the predeclared rubric."
+    },
+    {
+      "attempt_id": "codex:approved-copy",
+      "output_sha256": "0fad66515134364d0bce8669f2d75316d2f55fc18bc6509b08fc85dd33ee1de1",
+      "rule_revision": "sha256:33fea11c889524c6",
+      "task_generation": 1,
+      "status": "passed",
+      "reason": "Complete English copy preserves both facts, one plain fenced block, exact external count51 Unicode codepoints, length51<=80 and no sending claim."
+    }
+  ]
+}

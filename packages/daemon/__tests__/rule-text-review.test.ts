@@ -77,7 +77,7 @@ test("#1378: advice follows the committed declaration rather than a stale index 
   assert.equal(mem.fm.rulebook, undefined);
   const edited = await editMemoryHandler(deps, { id: "fixture-stale", frontmatter: { summary: "Lasting fixture requirement" } });
   assert.equal(review(edited)?.status, "not-assessed");
-  assert.equal(deps.vault.get("fixture-stale")!.fm.rule_text_review, undefined);
+  assert.equal("rule_text_review" in deps.vault.get("fixture-stale")!.fm, false);
   const current = matter(await readFile(mem.filePath, "utf8"));
   delete current.data.rulebook;
   delete current.data.applies_when;

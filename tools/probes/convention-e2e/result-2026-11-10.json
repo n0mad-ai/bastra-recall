@@ -1,0 +1,686 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic controlled production-lane/native-CLI bridge",
+  "planned_attempt_ids": [
+    "codex:arithmetic",
+    "codex:translate-only",
+    "codex:draft-for-review",
+    "codex:approved-copy",
+    "codex:rule-change",
+    "claude-code:arithmetic",
+    "claude-code:translate-only",
+    "claude-code:draft-for-review",
+    "claude-code:approved-copy",
+    "claude-code:rule-change"
+  ],
+  "rubric_sha256": "4f22d92ae0a6598f0ad27e217298483b2b990b846c37e3621f095ac239ed69fb",
+  "no_native_hook_certification": true,
+  "model_selection": "Requested CLI identifiers are recorded; confirmed model is null unless emitted by the host.",
+  "rows": [
+    {
+      "attempt_id": "codex:arithmetic",
+      "cluster_id": "e2e-codex-arithmetic",
+      "host": {
+        "name": "codex",
+        "version": "codex-cli 0.167.0"
+      },
+      "model": {
+        "requested": "gpt-6.1-sol",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-arithmetic",
+        "revision": "sha256:64fb42500e0c5437"
+      },
+      "task": {
+        "kind": "arithmetic",
+        "generation": 1,
+        "prompt": "Berechne 3 + 4 und gib das Ergebnis gemäß der geltenden Rechenregel aus.",
+        "criteria": [
+          "Exactly one JSON object, no prose or fence, with precisely answer:7 and label:blue."
+        ]
+      },
+      "context_generation": "68c929b7256ef334e4820599a238e3a25a84993f41daa048b180b46c1433c7c7",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "2644965372ae6062e12d808de63e16df85f3b783e971d07eabc4350228f29f88",
+        "bridge_supplied_context_bytes": 4635,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "passed",
+        "oracle": "exact arithmetic JSON fixture v1",
+        "text": "{\"answer\":7,\"label\":\"blue\"}",
+        "sha256": "4685ef245c3c4680acf296afde00946ce21d90a23e32848112ede7eb11ce6cae"
+      },
+      "repaired": null,
+      "duration_ms": 4115.588791,
+      "exit": 0,
+      "timed_out": false,
+      "native_event_types": [
+        "thread.started",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 378
+      },
+      "repair_not_attempted_reason": "not-needed: first output satisfies the predeclared fixture rubric"
+    },
+    {
+      "attempt_id": "codex:translate-only",
+      "cluster_id": "e2e-codex-translate-only",
+      "host": {
+        "name": "codex",
+        "version": "codex-cli 0.167.0"
+      },
+      "model": {
+        "requested": "gpt-6.1-sol",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "translate-only",
+        "generation": 1,
+        "prompt": "Übersetze nur diese erfundene eingehende Nachricht ins Deutsche: \"The crate arrives on Tuesday. Please reserve bay 7.\"",
+        "criteria": [
+          "Complete German translation preserves crate arrival on Tuesday and request to reserve bay 7.",
+          "No invented reply, promise or approval request."
+        ]
+      },
+      "context_generation": "caca37afa45cf1d22276ad7b33792509bd5b052f54eff8230eb5e9667dfd9a0d",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "2644965372ae6062e12d808de63e16df85f3b783e971d07eabc4350228f29f88",
+        "bridge_supplied_context_bytes": 4635,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "passed",
+        "reason": "Semantic fixture requires independent assessment of actual final bytes.",
+        "text": "Die Kiste kommt am Dienstag an. Bitte reservieren Sie Ladebucht 7.",
+        "sha256": "1f8ac72d5544fad3dcbf70119984c0e5242764ac2c6a54c5f29f647aeabf049f",
+        "assessment": {
+          "reviewer": "/root (independent parent agent; producer /root/issue1090)",
+          "reason": "Complete German translation preserves crate arrival Tuesday and reservation of bay7. No reply, promise or approval request.",
+          "rubric_sha256": "4f22d92ae0a6598f0ad27e217298483b2b990b846c37e3621f095ac239ed69fb"
+        }
+      },
+      "repaired": null,
+      "duration_ms": 4536.687082999999,
+      "exit": 0,
+      "timed_out": false,
+      "native_event_types": [
+        "thread.started",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 411
+      },
+      "repair_not_attempted_reason": "not-needed: first output satisfies the predeclared fixture rubric"
+    },
+    {
+      "attempt_id": "codex:draft-for-review",
+      "cluster_id": "e2e-codex-draft-for-review",
+      "host": {
+        "name": "codex",
+        "version": "codex-cli 0.167.0"
+      },
+      "model": {
+        "requested": "gpt-6.1-sol",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "draft-for-review",
+        "generation": 1,
+        "prompt": "Erfundene eingehende Nachricht: \"Can you deliver on Tuesday or Friday?\" Entwirf eine deutsche Antwort: Dienstag zusagen, Freitag ablehnen. Noch nicht übersetzen oder versenden.",
+        "criteria": [
+          "Complete German reply draft confirms Tuesday and declines Friday.",
+          "No English copy, sending claim or invented approval."
+        ]
+      },
+      "context_generation": "39658e43dec2a75288af81788c44020a25061d643051be148903c1f901c73b07",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "2644965372ae6062e12d808de63e16df85f3b783e971d07eabc4350228f29f88",
+        "bridge_supplied_context_bytes": 4635,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "passed",
+        "reason": "Semantic fixture requires independent assessment of actual final bytes.",
+        "text": "Der Speicher ist noch leer; etwa fünf Minuten Fragen helfen, ihn zu füllen. Was soll er hauptsächlich enthalten: Code und Projekte, Firma und Entscheidungen, Persönliches und Wissen oder eine Mischung?\n\nDeutscher Antwortentwurf:\n„Dienstag kann ich liefern. Freitag ist leider nicht möglich.“",
+        "sha256": "601d4f067b4c641ad7b8cca3ff1f5061cd0986456ea802a59f100dd68afe2ac0",
+        "assessment": {
+          "reviewer": "/root (independent parent agent; producer /root/issue1090)",
+          "reason": "Complete German draft confirms Tuesday and declines Friday. No English copy, sending claim or invented approval. Additional onboarding prose is recorded separately without changing the predeclared rubric.",
+          "rubric_sha256": "4f22d92ae0a6598f0ad27e217298483b2b990b846c37e3621f095ac239ed69fb"
+        }
+      },
+      "repaired": null,
+      "duration_ms": 9761.8795,
+      "exit": 0,
+      "timed_out": false,
+      "native_event_types": [
+        "thread.started",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 650
+      },
+      "repair_not_attempted_reason": "not-needed: first output satisfies the predeclared fixture rubric"
+    },
+    {
+      "attempt_id": "codex:approved-copy",
+      "cluster_id": "e2e-codex-approved-copy",
+      "host": {
+        "name": "codex",
+        "version": "codex-cli 0.167.0"
+      },
+      "model": {
+        "requested": "gpt-6.1-sol",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "approved-copy",
+        "generation": 1,
+        "prompt": "Ich habe diesen erfundenen deutschen Entwurf freigegeben: \"Wir liefern am Dienstag. Freitag geht nicht.\" Gib jetzt die vollständige englische Kopierfassung gemäß der Korrespondenzregel aus.",
+        "criteria": [
+          "Complete English copy preserves delivery Tuesday and impossibility Friday.",
+          "Exactly one plain fenced copy block, no quote prefixes and no labels/count inside payload.",
+          "Outside the copy block state the exact Unicode codepoint count of its payload; payload is at most 80 codepoints.",
+          "No sending claim."
+        ]
+      },
+      "context_generation": "35d435596c64705ed208a4522dd1bdb9834acd4ebbee7bb30fe9b32a7d9cd89c",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "2644965372ae6062e12d808de63e16df85f3b783e971d07eabc4350228f29f88",
+        "bridge_supplied_context_bytes": 4635,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "passed",
+        "reason": "Semantic fixture requires independent assessment of actual final bytes.",
+        "text": "```\nWe will deliver on Tuesday. Friday is not possible.\n```\n\n51 Unicode-Codepoints.",
+        "sha256": "0fad66515134364d0bce8669f2d75316d2f55fc18bc6509b08fc85dd33ee1de1",
+        "assessment": {
+          "reviewer": "/root (independent parent agent; producer /root/issue1090)",
+          "reason": "Complete English copy preserves both facts, one plain fenced block, exact external count51 Unicode codepoints, length51<=80 and no sending claim.",
+          "rubric_sha256": "4f22d92ae0a6598f0ad27e217298483b2b990b846c37e3621f095ac239ed69fb"
+        }
+      },
+      "repaired": null,
+      "duration_ms": 9028.824125,
+      "exit": 0,
+      "timed_out": false,
+      "native_event_types": [
+        "thread.started",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 434
+      },
+      "repair_not_attempted_reason": "not-needed: first output satisfies the predeclared fixture rubric"
+    },
+    {
+      "attempt_id": "codex:rule-change",
+      "cluster_id": "e2e-codex-rule-change",
+      "host": {
+        "name": "codex",
+        "version": "codex-cli 0.167.0"
+      },
+      "model": {
+        "requested": "gpt-6.1-sol",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-arithmetic",
+        "revision": "sha256:f4fff5bbd51fdae1"
+      },
+      "task": {
+        "kind": "rule-change",
+        "generation": 2,
+        "prompt": "Die gespeicherte Rechenregel wurde geändert und der Fixture-Kontext neu aufgebaut. Berechne erneut 3 + 4 gemäß der jetzt geltenden Regel.",
+        "criteria": [
+          "Exactly one JSON object with precisely answer:7 and label:orange; no stale blue label."
+        ]
+      },
+      "context_generation": "20a4df0398fe7bd5720f487849b80bdd260eee7933d425a96159c939a88e94c4",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "bf946015556eb729f591a31b01adb92e93ce685052f96a37d74e40f5ad64694e",
+        "bridge_supplied_context_bytes": 4637,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:f4fff5bbd51fdae1"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "passed",
+        "oracle": "exact arithmetic JSON fixture v1",
+        "text": "{\"answer\":7,\"label\":\"orange\"}",
+        "sha256": "9eca86ef0985c007ed1634867119fd5ee8ef847ff941f4eecf2e118ead83005f"
+      },
+      "repaired": null,
+      "duration_ms": 5046.382582999999,
+      "exit": 0,
+      "timed_out": false,
+      "native_event_types": [
+        "thread.started",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 380
+      },
+      "repair_not_attempted_reason": "not-needed: first output satisfies the predeclared fixture rubric"
+    },
+    {
+      "attempt_id": "claude-code:arithmetic",
+      "cluster_id": "e2e-claude-code-arithmetic",
+      "host": {
+        "name": "claude-code",
+        "version": "2.1.321 (Claude Code)"
+      },
+      "model": {
+        "requested": "opus",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-arithmetic",
+        "revision": "sha256:64fb42500e0c5437"
+      },
+      "task": {
+        "kind": "arithmetic",
+        "generation": 1,
+        "prompt": "Berechne 3 + 4 und gib das Ergebnis gemäß der geltenden Rechenregel aus.",
+        "criteria": [
+          "Exactly one JSON object, no prose or fence, with precisely answer:7 and label:blue."
+        ]
+      },
+      "context_generation": "bdbfe68c73f9c4809f90c942295587f8f97656cbb9ecb71d7d043c521c883ace",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "027c754aa385ee020acc6cb24bbe871babed13c24478a330e886bf66f0d6b615",
+        "bridge_supplied_context_bytes": 4641,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "blocked",
+        "reason": "native CLI produced no final assistant bytes"
+      },
+      "repaired": null,
+      "duration_ms": 457.4432500000039,
+      "exit": 1,
+      "timed_out": false,
+      "native_event_types": [
+        "result"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 1213
+      },
+      "repair_not_attempted_reason": "host-blocked: no final bytes and no assessed incorrect output"
+    },
+    {
+      "attempt_id": "claude-code:translate-only",
+      "cluster_id": "e2e-claude-code-translate-only",
+      "host": {
+        "name": "claude-code",
+        "version": "2.1.321 (Claude Code)"
+      },
+      "model": {
+        "requested": "opus",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "translate-only",
+        "generation": 1,
+        "prompt": "Übersetze nur diese erfundene eingehende Nachricht ins Deutsche: \"The crate arrives on Tuesday. Please reserve bay 7.\"",
+        "criteria": [
+          "Complete German translation preserves crate arrival on Tuesday and request to reserve bay 7.",
+          "No invented reply, promise or approval request."
+        ]
+      },
+      "context_generation": "8caf53ed31764659fe461770dae526d99bce4c87121f2aef41e63acfb3657d6f",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "027c754aa385ee020acc6cb24bbe871babed13c24478a330e886bf66f0d6b615",
+        "bridge_supplied_context_bytes": 4641,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "blocked",
+        "reason": "native CLI produced no final assistant bytes"
+      },
+      "repaired": null,
+      "duration_ms": 159.42933400000038,
+      "exit": 1,
+      "timed_out": false,
+      "native_event_types": [
+        "result"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 1213
+      },
+      "repair_not_attempted_reason": "host-blocked: no final bytes and no assessed incorrect output"
+    },
+    {
+      "attempt_id": "claude-code:draft-for-review",
+      "cluster_id": "e2e-claude-code-draft-for-review",
+      "host": {
+        "name": "claude-code",
+        "version": "2.1.321 (Claude Code)"
+      },
+      "model": {
+        "requested": "opus",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "draft-for-review",
+        "generation": 1,
+        "prompt": "Erfundene eingehende Nachricht: \"Can you deliver on Tuesday or Friday?\" Entwirf eine deutsche Antwort: Dienstag zusagen, Freitag ablehnen. Noch nicht übersetzen oder versenden.",
+        "criteria": [
+          "Complete German reply draft confirms Tuesday and declines Friday.",
+          "No English copy, sending claim or invented approval."
+        ]
+      },
+      "context_generation": "730532b6a197a62e63c71e2fb0572daeb7c33a8098dcc25813af2c23bf057592",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "027c754aa385ee020acc6cb24bbe871babed13c24478a330e886bf66f0d6b615",
+        "bridge_supplied_context_bytes": 4641,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "blocked",
+        "reason": "native CLI produced no final assistant bytes"
+      },
+      "repaired": null,
+      "duration_ms": 159.07675000000017,
+      "exit": 1,
+      "timed_out": false,
+      "native_event_types": [
+        "result"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 1213
+      },
+      "repair_not_attempted_reason": "host-blocked: no final bytes and no assessed incorrect output"
+    },
+    {
+      "attempt_id": "claude-code:approved-copy",
+      "cluster_id": "e2e-claude-code-approved-copy",
+      "host": {
+        "name": "claude-code",
+        "version": "2.1.321 (Claude Code)"
+      },
+      "model": {
+        "requested": "opus",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-correspondence",
+        "revision": "sha256:33fea11c889524c6"
+      },
+      "task": {
+        "kind": "approved-copy",
+        "generation": 1,
+        "prompt": "Ich habe diesen erfundenen deutschen Entwurf freigegeben: \"Wir liefern am Dienstag. Freitag geht nicht.\" Gib jetzt die vollständige englische Kopierfassung gemäß der Korrespondenzregel aus.",
+        "criteria": [
+          "Complete English copy preserves delivery Tuesday and impossibility Friday.",
+          "Exactly one plain fenced copy block, no quote prefixes and no labels/count inside payload.",
+          "Outside the copy block state the exact Unicode codepoint count of its payload; payload is at most 80 codepoints.",
+          "No sending claim."
+        ]
+      },
+      "context_generation": "9fad4fb94f58efad0364f54d87766d4dc608b5ca3af82c90b9cd0c027514849a",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "027c754aa385ee020acc6cb24bbe871babed13c24478a330e886bf66f0d6b615",
+        "bridge_supplied_context_bytes": 4641,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:64fb42500e0c5437"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "blocked",
+        "reason": "native CLI produced no final assistant bytes"
+      },
+      "repaired": null,
+      "duration_ms": 158.4563330000019,
+      "exit": 1,
+      "timed_out": false,
+      "native_event_types": [
+        "result"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 1213
+      },
+      "repair_not_attempted_reason": "host-blocked: no final bytes and no assessed incorrect output"
+    },
+    {
+      "attempt_id": "claude-code:rule-change",
+      "cluster_id": "e2e-claude-code-rule-change",
+      "host": {
+        "name": "claude-code",
+        "version": "2.1.321 (Claude Code)"
+      },
+      "model": {
+        "requested": "opus",
+        "confirmed": null,
+        "effort": "medium"
+      },
+      "rule": {
+        "id": "e2e-arithmetic",
+        "revision": "sha256:f4fff5bbd51fdae1"
+      },
+      "task": {
+        "kind": "rule-change",
+        "generation": 2,
+        "prompt": "Die gespeicherte Rechenregel wurde geändert und der Fixture-Kontext neu aufgebaut. Berechne erneut 3 + 4 gemäß der jetzt geltenden Regel.",
+        "criteria": [
+          "Exactly one JSON object with precisely answer:7 and label:orange; no stale blue label."
+        ]
+      },
+      "context_generation": "c7eb15368fce14f3b0d7b2c6b5790a51e9ca3b0ca744aa0e37355d71355841ed",
+      "delivery": {
+        "surface": "native CLI final assistant output",
+        "bridge_supplied_context_sha256": "b8957bcf39b623ad13e64b8a5c7b15abcbe304f7af0f74ef58f273116351cc62",
+        "bridge_supplied_context_bytes": 4643,
+        "loaded": [
+          {
+            "id": "e2e-arithmetic",
+            "revision": "sha256:f4fff5bbd51fdae1"
+          },
+          {
+            "id": "e2e-correspondence",
+            "revision": "sha256:33fea11c889524c6"
+          }
+        ],
+        "native_hooks": false
+      },
+      "first": {
+        "status": "blocked",
+        "reason": "native CLI produced no final assistant bytes"
+      },
+      "repaired": null,
+      "duration_ms": 157.3317090000055,
+      "exit": 1,
+      "timed_out": false,
+      "native_event_types": [
+        "result"
+      ],
+      "diagnostic": {
+        "stderr_bytes": 0,
+        "stdout_bytes": 1213
+      },
+      "repair_not_attempted_reason": "host-blocked: no final bytes and no assessed incorrect output"
+    }
+  ],
+  "summary": {
+    "attempts": 10,
+    "first_correct": 5,
+    "eventual_correct": 5,
+    "repaired_correct": 0,
+    "first_failed": 0,
+    "first_blocked": 5,
+    "first_unverified": 0,
+    "eventual_failed": 0,
+    "eventual_blocked": 5,
+    "eventual_unverified": 0,
+    "initial_correct_fraction": 0.5,
+    "eventual_correct_fraction": 0.5
+  },
+  "all_planned_attempts_present": true,
+  "executed_harness_sha256": "cb36a434b08ac749fbc729bc48690b7d7ffe43fa5402b84bb35b21a141b52767",
+  "observations": [
+    {
+      "attempt_id": "codex:draft-for-review",
+      "type": "unrelated-onboarding-prose",
+      "classification": "P2 proposal",
+      "outcome_effect": "separate observation; no post-hoc rubric change",
+      "detail": "Before the complete correct German draft, the actual final response includes an unrelated empty-vault onboarding question."
+    }
+  ],
+  "measurement_limits": [
+    "Controlled production-lane/CLI bridge, not installed native hook certification or autonomous rule selection.",
+    "Model identifiers are requested configuration; no independent backend model-version confirmation was retained.",
+    "Token counts and native compaction/fork were not measured.",
+    "Claude blocked due to missing isolated authentication; it remains in the denominator.",
+    "No incorrect first output under the fixed rubric; no repair generation was needed.",
+    "No baseline error-reduction estimate or 99.9% claim."
+  ],
+  "measured_at_utc": "2026-11-10T00:40:56.588548+00:00",
+  "post_run_harness_changes": "Added a unit-tested optional one-repair branch, independent assessment helper and future full-input size fields after the measured run. First output bytes/hashes and the fixed rubric are unchanged."
+}
