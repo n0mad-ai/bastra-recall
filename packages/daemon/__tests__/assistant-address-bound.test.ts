@@ -103,7 +103,7 @@ test('#1335: both inherited listeners use two real processes for 24 connections,
 
 test('#1427: a failed overload assertion settles its fixture process',()=>{
  let failure:any;
- const env={...process.env,BASTRA_FIXTURE_OVERLOAD_FAILURE:'1'};delete env.NODE_TEST_CONTEXT;
+ const env:NodeJS.ProcessEnv={...process.env,BASTRA_FIXTURE_OVERLOAD_FAILURE:'1'};delete env.NODE_TEST_CONTEXT;
  try{execFileSync(process.execPath,['--import','tsx','--import','./scripts/test-env.mjs','--test','--test-reporter=tap','--test-name-pattern=^#1335: both inherited',new URL(import.meta.url).pathname],{
   // Allow the existing 8 s request budget, bounded cleanup and process startup.
   env,timeout:12000,stdio:'pipe',encoding:'utf8',
