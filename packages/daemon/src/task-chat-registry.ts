@@ -2,7 +2,7 @@
  * establishes activity. Unknown/newer clients block fallback to an older chat. */
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, type Stats } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, realpath, readFile } from 'node:fs/promises';
+import { lstat, mkdir, open, opendir, rename, realpath, readFile, unlink } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { withPathLock } from './path-lock.js';
@@ -17,6 +17,8 @@ export interface ChatSession {
 export interface ChatRegistryOptions { dir?: string; now?: number; activeMinutes?: number }
 const MAX_READ = 2 * 1024 * 1024;
 const LEASE_MS = 24 * 60 * 60 * 1000;
+const MAX_SESSIONS = 256;
+const MAX_HISTORY = 4096;
 const uid = () => process.getuid?.();
 export function chatSessionsPath(): string {
   if (process.env.BASTRA_CHAT_SESSIONS_PATH) return process.env.BASTRA_CHAT_SESSIONS_PATH;
@@ -142,20 +144,57 @@ export function chatHumanTimestamp(client:string,e:Record<string,unknown>,now:nu
   const at=typeof e.timestamp==='string'?Date.parse(e.timestamp):NaN;
   return claude&&Number.isFinite(at)&&at<=now&&at>=0?at:null;
 }
+async function registryNames(dir:string): Promise<{names:string[];complete:boolean}> {
+  const names:string[]=[];
+  for await(const entry of await opendir(dir))if(/^[a-f0-9]{64}\.json$/.test(entry.name)) {
+    if(names.length===MAX_HISTORY)return {names,complete:false};
+    names.push(entry.name);
+  }
+  return {names,complete:true};
+}
+async function retireRecord(path:string,r:ChatSession,now:number,activeMinutes:number): Promise<boolean> {
+  // Keep recent human/unknown barriers and the 24-hour processing-receipt
+  // window, including for ended chats. Unread transcripts are never discarded.
+  const keepSince=now-Math.max(LEASE_MS,activeMinutes*60000);
+  if(Math.max(r.registeredAt,r.lastHumanAt??0,r.lastUnknownAt??0)>=keepSince)return false;
+  if(!r.closed) {
+    if(r.expiresAt>now)return false;
+    try {
+      const s=await lstat(r.transcriptPath);
+      if(!s.isFile()||s.isSymbolicLink()||!owned(s)||s.dev!==r.transcriptDev||s.ino!==r.transcriptIno||s.size!==r.offset)return false;
+    }catch{return false;}
+  }
+  await unlink(path);return true;
+}
 export async function refreshChatRegistry(opts:ChatRegistryOptions={}): Promise<ChatSession[]> {
   const dir=opts.dir??chatSessionsPath(),now=opts.now??Date.now();
   try {await privateDir(dir);}catch{return [];}
   const records:ChatSession[]=[];
-  const names=(await readdir(dir)).filter(n=>/^[a-f0-9]{64}\.json$/.test(n));
-  if(names.length>256)return []; // Unknown omitted chats must never permit fallback.
+  const {names,complete}=await registryNames(dir);
+  // Inspect only small private records during history retirement. The existing
+  // bound on transcript work still applies after this cheap first pass.
+  const retained:string[]=[];
   for(const name of names) {
+    const path=join(dir,name);
+    await withPathLock(path,async()=>{
+      const r=await readRecord(path);
+      if(r&&!await retireRecord(path,r,now,opts.activeMinutes??30))retained.push(name);
+    },{crossProcess:true,strictLocal:true});
+  }
+  // An incomplete sweep may retire old records but can never choose a chat.
+  if(!complete||retained.length>MAX_SESSIONS)return [];
+  for(const name of retained) {
     const path=join(dir,name);
     await withPathLock(path,async()=>{
       const r=await readRecord(path);if(!r)return;
       if(!r.closed)try {
         const {events,offset}=await readEvents(r,r.offset);
+        let newestHuman:number|undefined;
         for(const e of events) {
-          const at=chatHumanTimestamp(r.client,e,now);if(at!==null&&at>=r.registeredAt)r.lastHumanAt=Math.max(r.lastHumanAt??0,at);
+          const at=chatHumanTimestamp(r.client,e,now);if(at!==null&&at>=r.registeredAt) {
+            r.lastHumanAt=Math.max(r.lastHumanAt??0,at);
+            newestHuman=Math.max(newestHuman??0,at);
+          }
           const eventBody=e.payload as Record<string,unknown>|undefined;
           const origin=e.origin as Record<string,unknown>|undefined;
           const content=(e.message as {content?:unknown}|undefined)?.content;
@@ -165,6 +204,12 @@ export async function refreshChatRegistry(opts:ChatRegistryOptions={}): Promise<
             if(Number.isFinite(unknownAt)&&unknownAt>=r.registeredAt&&unknownAt<=now)r.lastUnknownAt=Math.max(r.lastUnknownAt??0,unknownAt);
           }
         }
+        // A transcript turn can renew only this still-current endpoint;
+        // a replaced socket never inherits the old generation's lease.
+        if(newestHuman!==undefined&&r.socketPath)try {
+          const {stat}=await safeFile(r.socketPath,'socket');
+          if(stat.dev===r.socketDev&&stat.ino===r.socketIno)r.expiresAt=Math.max(r.expiresAt,newestHuman+LEASE_MS);
+        }catch{/* Keep the old lease; delivery validation fails closed. */}
         r.offset=offset;r.unread=(await lstat(r.transcriptPath)).size>offset;await writeRecord(dir,r);
       }catch(error) {
         if((error as NodeJS.ErrnoException).code!=='ENOENT'||r.transcriptDev!==-1)r.closed=true;
@@ -192,8 +237,8 @@ export async function validateChatTarget(target:ChatSession,opts:ChatRegistryOpt
     if(!r || r.closed || r.receiveBlocked || r.generation!==target.generation || r.expiresAt<=(opts.now??Date.now()) || !r.socketPath || r.socketPath!==target.socketPath)return false;
     // A pathname registered by two current generations cannot prove which
     // session owns it, even if the OS has recycled the socket inode.
-    const names=(await readdir(dir)).filter(n=>/^[a-f0-9]{64}\.json$/.test(n));
-    if(names.length>256)return false;
+    const {names,complete}=await registryNames(dir);
+    if(!complete||names.length>MAX_SESSIONS)return false;
     for(const name of names) {
       const other=await readRecord(join(dir,name));
       if(other && !other.closed && other.expiresAt>(opts.now??Date.now()) && other.socketPath===r.socketPath

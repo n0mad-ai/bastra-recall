@@ -1,6 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, appendFile, stat, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, appendFile, stat, symlink, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
@@ -119,4 +120,75 @@ test('two supported chats select the last real human turn and reject a shared so
  await registerChatHook(start('reused-path',second.transcript),{CLAUDE_CODE_MESSAGING_SOCKET:first.socket},{...opts,now:now+4});
  assert.equal(await validateChatTarget(selected!,{...opts,now:now+4}),false);
  assert.equal(await latestChatTarget({...opts,now:now+4}),null);
+});
+
+test('#1426: proven human activity renews a current generation beyond its initial 24-hour lease',async t=>{
+ const f=await fixture(t),later=f.now+25*60*60*1000;
+ await registerChatHook({hook_event_name:'SessionStart',session_id:'long',transcript_path:f.transcript,bastra_client:'claude-code'},{CLAUDE_CODE_MESSAGING_SOCKET:f.socket},f);
+ await appendFile(f.transcript,human(later));
+ const selected=await latestChatTarget({...f,now:later});
+ assert.equal(selected?.sessionId,'long');assert.equal(selected?.expiresAt,later+24*60*60*1000);
+ await registerChatHook({hook_event_name:'SessionEnd',session_id:'long',bastra_client:'claude-code'},{},{...f,now:later});
+ await appendFile(f.transcript,human(later+1));
+ assert.equal(await latestChatTarget({...f,now:later+1}),null);
+});
+
+test('#1426: 257 historical sessions retire without dropping a recent ended/unknown activity barrier',async t=>{
+ const f=await fixture(t),old=f.now-49*60*60*1000;
+ await registerChatHook({hook_event_name:'SessionStart',session_id:'current',transcript_path:f.transcript,bastra_client:'claude-code'},{CLAUDE_CODE_MESSAGING_SOCKET:f.socket},f);
+ const [currentName]=await readdir(f.dir);const base=JSON.parse(await readFile(join(f.dir,currentName),'utf8'));
+ for(let i=0;i<257;i++) {
+  const id='history-'+i,name=createHash('sha256').update(JSON.stringify(['claude-code',id])).digest('hex')+'.json';
+  await writeFile(join(f.dir,name),JSON.stringify({...base,sessionId:id,closed:true,registeredAt:old,expiresAt:old+24*60*60*1000,lastHumanAt:old}),{mode:0o600});
+ }
+ await appendFile(f.transcript,human(f.now));
+ assert.equal((await latestChatTarget(f))?.sessionId,'current');
+ assert.equal((await readdir(f.dir)).filter(n=>n.endsWith('.json')).length,1);
+ await registerChatHook({hook_event_name:'UserPromptSubmit',session_id:'unsupported',bastra_client:'other-client'},{},{...f,now:f.now+1});
+ assert.equal(await latestChatTarget({...f,now:f.now+1}),null);
+ assert.ok((await refreshChatRegistry({...f,now:f.now+1})).some(r=>r.sessionId==='unsupported'));
+});
+
+test('#1426: expired history retains recent unknown barriers and new unread human evidence',async t=>{
+ const f=await fixture(t),old=f.now-49*60*60*1000;
+ await registerChatHook({hook_event_name:'SessionStart',session_id:'long',transcript_path:f.transcript,bastra_client:'claude-code'},{CLAUDE_CODE_MESSAGING_SOCKET:f.socket},{...f,now:old});
+ await appendFile(f.transcript,human(f.now));
+ assert.equal((await latestChatTarget(f))?.sessionId,'long','new unread turn must be read before retirement');
+ await registerChatHook({hook_event_name:'UserPromptSubmit',session_id:'unknown',bastra_client:'unsupported'},{},{...f,now:old});
+ const names=await readdir(f.dir);
+ for(const name of names) {
+  const path=join(f.dir,name),r=JSON.parse(await readFile(path,'utf8'));
+  if(r.sessionId==='unknown')await writeFile(path,JSON.stringify({...r,lastUnknownAt:f.now+1}),{mode:0o600});
+ }
+ assert.equal(await latestChatTarget({...f,now:f.now+1}),null);
+ assert.ok((await refreshChatRegistry({...f,now:f.now+1})).some(r=>r.sessionId==='unknown'));
+});
+
+test('#1426: peer/unknown activity and replaced endpoints never renew a lease',async t=>{
+ const f=await fixture(t),replacement=await fixture(t),later=f.now+25*60*60*1000;
+ await registerChatHook({hook_event_name:'SessionStart',session_id:'old',transcript_path:f.transcript,bastra_client:'claude-code'},{CLAUDE_CODE_MESSAGING_SOCKET:f.socket},f);
+ await appendFile(f.transcript,JSON.stringify({type:'user',timestamp:new Date(later).toISOString(),origin:{kind:'peer'}})+'\n');
+ const original=(await refreshChatRegistry({...f,now:later}))[0];
+ assert.equal(original.expiresAt,f.now+24*60*60*1000);
+ const [name]=await readdir(f.dir),path=join(f.dir,name);
+ await writeFile(path,JSON.stringify({...original,socketPath:replacement.socket}),{mode:0o600});
+ await appendFile(f.transcript,human(later+1));
+ assert.equal(await latestChatTarget({...f,now:later+1}),null);
+ assert.equal((await refreshChatRegistry({...f,now:later+1}))[0].expiresAt,original.expiresAt);
+});
+
+test('#1426: a bounded incomplete history sweep blocks selection and a later complete sweep recovers',async t=>{
+ const f=await fixture(t),old=f.now-49*60*60*1000;
+ await registerChatHook({hook_event_name:'SessionStart',session_id:'current',transcript_path:f.transcript,bastra_client:'claude-code'},{CLAUDE_CODE_MESSAGING_SOCKET:f.socket},f);
+ const [currentName]=await readdir(f.dir),base=JSON.parse(await readFile(join(f.dir,currentName),'utf8'));
+ for(let i=0;i<4097;i++) {
+  const id='history-'+i,name=createHash('sha256').update(JSON.stringify(['claude-code',id])).digest('hex')+'.json';
+  await writeFile(join(f.dir,name),JSON.stringify({...base,sessionId:id,closed:true,registeredAt:old,expiresAt:old+24*60*60*1000}),{mode:0o600});
+ }
+ await appendFile(f.transcript,human(f.now));
+ assert.equal(await latestChatTarget(f),null,'omitted records must prevent fallback during an incomplete sweep');
+ const remaining=(await readdir(f.dir)).filter(n=>n.endsWith('.json')).length;
+ assert.ok(remaining>=2&&remaining<=3,'one bounded sweep retires only the inspected history');
+ assert.equal((await latestChatTarget(f))?.sessionId,'current');
+ assert.equal((await readdir(f.dir)).filter(n=>n.endsWith('.json')).length,1);
 });
