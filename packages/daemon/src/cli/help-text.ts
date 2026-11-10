@@ -46,7 +46,7 @@ Commands:
                              down after 30 min idle). 'on' installs a service;
                              a hand-written one is never replaced without --force
   tasks <list|get|create|review|edit|snooze|acknowledge|resolve|cancel|rearm|delete>
-                             Opt-in preview: BASTRA_TASKS=1 in daemon and clients/hooks.
+                             Enabled by default; disable in Settings or with BASTRA_TASKS=0.
                              Owner token prompt; JSON input file. Add agent before
                              the file to use explicit BASTRA_TASK_TOKEN.
   suggestions <reject|reset>  Explicit decisions on exact project save proposals
@@ -234,7 +234,7 @@ Nach Einrichtung wird http://<name>/ einmal im Standardbrowser geöffnet.
 Pur <name> ist Such-/Verlaufsheuristik: <name>/ oder <name>.localhost ist eindeutig.
 Windows/Linux: Port-80-/hosts-Einrichtung durch Administrator; keine automatische Elevation.
 `,
-  tasks: `Vorschau: standardmäßig aus. BASTRA_TASKS=1 im Daemon und in Clients/Hooks setzen; Prozesse neu starten.
+  tasks: `Ab v1.2.0 standardmäßig an. Abschalten: tasks.enabled=false oder BASTRA_TASKS=0; Daemon und Clients/Hooks neu starten.
 
 bastra tasks — Aufgaben und Erinnerungen (bei nächstem Kontakt)
 Usage: bastra tasks <create|list|due|status|setup-hooks|client-status|ui> [options]

@@ -103,9 +103,9 @@ test("ein fehlender plist ist einfach 'aus'", async (t) => {
   assert.equal(state.danglingProgram, false);
 });
 
-test("#1329: doctor distinguishes persisted tasks opt-in from launchd's loaded environment", async () => {
+test("#1329: doctor distinguishes explicit tasks environment drift between plist, launchd and client", async () => {
   const { autostartWarning } = await import("../src/cli/autostart.js");
-  const state = { exists: true, managed: true, loaded: true, path: "fixture", program: [], env: { BASTRA_TASKS: "1" }, loadedEnv: {} as Record<string, string>, endpoint: null, danglingProgram: false, missingProgramPath: null };
+  const state = { exists: true, managed: true, loaded: true, path: "fixture", program: [], env: { BASTRA_TASKS: "1" }, loadedEnv: { BASTRA_TASKS: "0" } as Record<string, string>, endpoint: null, danglingProgram: false, missingProgramPath: null };
   const service = { status: async () => state, install: async () => ({ ok: true, detail: "" }), uninstall: async () => ({ ok: true, detail: "" }), kickstart: async () => ({ ok: true, detail: "" }) };
   assert.match((await autostartWarning(service, { BASTRA_TASKS: "1" }))!, /BASTRA_TASKS.*bootout.*bootstrap/);
   state.loadedEnv = { BASTRA_TASKS: "1" };

@@ -18,7 +18,7 @@ const cookieHeader = (value: string) => `${cookie}=${value}; HttpOnly; SameSite=
 function reject(code: string): never { throw Object.assign(new Error("Task UI access denied"), { code }); }
 export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method: string, url: string, ctx: TaskServiceContext = defaultTaskContext(undefined, true)): boolean {
   if (!url.startsWith("/ui/tasks/")) return false;
-  if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks preview disabled; opt in with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
+  if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks disabled; enable in Settings or with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
   void (async () => {
     try {
       res.setHeader("Cache-Control", "no-store");

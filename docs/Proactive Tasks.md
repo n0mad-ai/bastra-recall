@@ -1,16 +1,16 @@
 # Tasks and reminders
 
-## Opt-in preview (v1.1.1)
+## Enabled by default (v1.2.0)
 
-Tasks are **off by default until v1.2.0**, on fresh installs and upgrades. Enable the preview with `BASTRA_TASKS=1` in the environment of the daemon **and** every MCP client/hook/CLI process, then restart those processes. For a shell-launched installation, export it before starting the daemon and clients:
+This describes prepared main for v1.2.0. Published v1.1.8 keeps the opt-in preview.
 
-```sh
-export BASTRA_TASKS=1
-```
+Tasks are **on by default from v1.2.0**, on fresh installs and upgrades. An explicit earlier opt-out (`tasks.enabled=false` or `BASTRA_TASKS=0`) is preserved. No environment variable is needed for the default. Remote MCP never lists or accepts `task_*` tools.
 
-For service-managed daemons, add the same environment variable to the service configuration and to clients/hooks. All instructions below require this opt-in. Remove the variable (or set `BASTRA_TASKS=0`) and restart to disable the preview. Existing task data and credentials remain untouched; no migration or deletion happens. Disabling does not cancel tasks: enabling again restores the existing behaviour, including catch-up for due work.
+Disable tasks in Settings or with `bastra config set tasks.enabled false`, or set `BASTRA_TASKS=0` in the daemon and clients/hooks. Restart those processes after changing the switch. An explicit `BASTRA_TASKS` takes precedence: `1` enables; every other value disables. Re-enable in Settings or with `BASTRA_TASKS=1` and restart.
 
-While disabled there is no task runtime, polling, delivery, source checking or automatic Agent credential setup. The Tasks tab and `task_*` MCP tools are hidden; task HTTP routes, including UI session routes, return 404 with `feature_disabled`. `bastra tasks …` only explains how to enable the preview. `BASTRA_CONVERSATIONAL_REMINDERS=0` is a separate, narrower switch inside the enabled preview; it does not enable tasks.
+Existing task data and credentials remain untouched. Disabling does not cancel tasks: enabling again restores the existing behaviour, including catch-up for due work. The startup settings snapshot is read-only: an old explicit opt-out is read without importing the legacy file. Inaccessible, deleted or malformed settings keep tasks disabled until repaired or explicitly overridden.
+
+While disabled there is no task runtime, polling, delivery, source checking or automatic Agent credential setup. The Tasks tab and `task_*` MCP tools are hidden; task HTTP routes, including UI session routes, return 404 with `feature_disabled`. `bastra tasks …` only explains how to enable tasks. `BASTRA_CONVERSATIONAL_REMINDERS=0` is a separate, narrower switch inside enabled tasks; it does not enable tasks.
 
 ## Tasks in conversation
 

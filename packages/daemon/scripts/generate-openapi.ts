@@ -161,7 +161,7 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
       ...(queries.length ? { parameters: queries.map(name => ({ name, in: "query", required: false, schema: { type: "string" } })) } : {}) };
   }
   // Task aliases are the SAME table that dispatchTaskHttp matches. Tool-style
-  // task endpoints derive from taskTools, including the disabled-by-default preview.
+  // task endpoints derive from taskTools, including tasks enabled by default from v1.2.0.
   const taskRoutes = [
     ...taskTools.map(tool => ({ path: `/${tool.name}`, method: "POST", operation: tool.name })),
     ...TASK_HTTP_ROUTES,
@@ -179,7 +179,7 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
     }
     paths[route.path] ??= {};
     paths[route.path]![route.method.toLowerCase()] = {
-      ...operation(`local_${route.method.toLowerCase()}_${route.path.slice(1).replaceAll(/[/{}/]/g, "_")}`, `Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. ${def.description}`, route.method === "GET" ? undefined : schema),
+      ...operation(`local_${route.method.toLowerCase()}_${route.path.slice(1).replaceAll(/[/{}/]/g, "_")}`, `Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. ${def.description}`, route.method === "GET" ? undefined : schema),
       "x-local-only": true,
       security: [{ taskCredential: [] }],
       ...(parameters.length ? { parameters } : {}),
@@ -207,7 +207,7 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
   const api: ApiDocument = {
     openapi: "3.0.3",
     info: { title: "Bastra.Recall REST API", version: JSON.parse(readFileSync(resolve(root, "packages/daemon/package.json"), "utf8")).version,
-      description: "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and disabled by default." },
+      description: "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and enabled by default from v1.2.0; BASTRA_TASKS=0 disables them." },
     servers: [{ url: "http://127.0.0.1:6723/api/v1" }], security: [{ bearerAuth: [] }],
     paths: Object.fromEntries(Object.entries(paths).sort(([a], [b]) => a.localeCompare(b, "en"))),
     components: {

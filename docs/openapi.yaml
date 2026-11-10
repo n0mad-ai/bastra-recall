@@ -4,7 +4,7 @@
   "info": {
     "title": "Bastra.Recall REST API",
     "version": "1.1.8",
-    "description": "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and disabled by default."
+    "description": "Generated from HTTP dispatchers and shared input schemas. JSON syntax is valid YAML 1.2. Result bodies are intentionally open objects: handlers have no shared response schemas. Public clients require an HTTPS tunnel and BASTRA_API_TOKEN. Task routes are local-only and enabled by default from v1.2.0; BASTRA_TASKS=0 disables them."
   },
   "servers": [
     {
@@ -2617,7 +2617,7 @@
       "post": {
         "operationId": "local_post_task_acknowledge",
         "summary": "local post task acknowledge",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_acknowledge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, reso...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_acknowledge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rea...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2701,7 +2701,7 @@
       "post": {
         "operationId": "local_post_task_approval",
         "summary": "local post task approval",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_approval: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_approval: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2785,7 +2785,7 @@
       "post": {
         "operationId": "local_post_task_archive",
         "summary": "local post task archive",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2873,7 +2873,7 @@
       "post": {
         "operationId": "local_post_task_archive_restore",
         "summary": "local post task archive restore",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive_restore: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive_restore: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -2944,7 +2944,7 @@
       "post": {
         "operationId": "local_post_task_cancel",
         "summary": "local post task cancel",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_cancel: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_cancel: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3028,7 +3028,7 @@
       "post": {
         "operationId": "local_post_task_challenge",
         "summary": "local post task challenge",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_challenge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolv...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_challenge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3103,7 +3103,7 @@
       "post": {
         "operationId": "local_post_task_controls",
         "summary": "local post task controls",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_controls: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_controls: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3211,7 +3211,7 @@
       "post": {
         "operationId": "local_post_task_create",
         "summary": "local post task create",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_create: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_create: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3795,7 +3795,7 @@
       "post": {
         "operationId": "local_post_task_delete",
         "summary": "local post task delete",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_delete: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_delete: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3875,7 +3875,7 @@
       "post": {
         "operationId": "local_post_task_due",
         "summary": "local post task due",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_due: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sno...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_due: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ackn...",
         "requestBody": {
           "required": true,
           "content": {
@@ -3965,7 +3965,7 @@
       "post": {
         "operationId": "local_post_task_edit",
         "summary": "local post task edit",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_edit: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sn...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_edit: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ack...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4507,7 +4507,7 @@
       "post": {
         "operationId": "local_post_task_end_series",
         "summary": "local post task end series",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_end_series: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_end_series: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4591,7 +4591,7 @@
       "post": {
         "operationId": "local_post_task_event",
         "summary": "local post task event",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_event: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_event: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4722,7 +4722,7 @@
       "post": {
         "operationId": "local_post_task_execute",
         "summary": "local post task execute",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_execute: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_execute: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4814,7 +4814,7 @@
       "post": {
         "operationId": "local_post_task_get",
         "summary": "local post task get",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sno...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ackn...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4884,7 +4884,7 @@
       "post": {
         "operationId": "local_post_task_intent_reconcile",
         "summary": "local post task intent reconcile",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_intent_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_intent_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review...",
         "requestBody": {
           "required": true,
           "content": {
@@ -4954,7 +4954,7 @@
       "post": {
         "operationId": "local_post_task_lease",
         "summary": "local post task lease",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_lease: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_lease: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5024,7 +5024,7 @@
       "post": {
         "operationId": "local_post_task_list",
         "summary": "local post task list",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_list: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sn...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_list: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ack...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5092,7 +5092,7 @@
       "post": {
         "operationId": "local_post_task_pause",
         "summary": "local post task pause",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_pause: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_pause: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5176,7 +5176,7 @@
       "post": {
         "operationId": "local_post_task_prepare",
         "summary": "local post task prepare",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_prepare: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_prepare: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5261,7 +5261,7 @@
       "post": {
         "operationId": "local_post_task_proposal",
         "summary": "local post task proposal",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_proposal: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_proposal: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5331,7 +5331,7 @@
       "post": {
         "operationId": "local_post_task_rearm",
         "summary": "local post task rearm",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rearm: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rearm: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5415,7 +5415,7 @@
       "post": {
         "operationId": "local_post_task_reconcile",
         "summary": "local post task reconcile",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolv...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5477,7 +5477,7 @@
       "post": {
         "operationId": "local_post_task_reconsider",
         "summary": "local post task reconsider",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconsider: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconsider: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5609,7 +5609,7 @@
       "post": {
         "operationId": "local_post_task_recover",
         "summary": "local post task recover",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_recover: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_recover: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5671,7 +5671,7 @@
       "post": {
         "operationId": "local_post_task_release",
         "summary": "local post task release",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_release: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_release: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5750,7 +5750,7 @@
       "post": {
         "operationId": "local_post_task_resolve",
         "summary": "local post task resolve",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resolve: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resolve: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -5834,7 +5834,7 @@
       "post": {
         "operationId": "local_post_task_result_get",
         "summary": "local post task result get",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6047,7 +6047,7 @@
       "post": {
         "operationId": "local_post_task_result_report",
         "summary": "local post task result report",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_report: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, re...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_report: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, r...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6288,7 +6288,7 @@
       "post": {
         "operationId": "local_post_task_resume",
         "summary": "local post task resume",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resume: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resume: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6372,7 +6372,7 @@
       "post": {
         "operationId": "local_post_task_review",
         "summary": "local post task review",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_review: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_review: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6447,7 +6447,7 @@
       "post": {
         "operationId": "local_post_task_revoke_approval",
         "summary": "local post task revoke approval",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_revoke_approval: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_revoke_approval: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6517,7 +6517,7 @@
       "post": {
         "operationId": "local_post_task_rollback_prepare",
         "summary": "local post task rollback prepare",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rollback_prepare: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rollback_prepare: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6587,7 +6587,7 @@
       "post": {
         "operationId": "local_post_task_snooze",
         "summary": "local post task snooze",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_snooze: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_snooze: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6671,7 +6671,7 @@
       "post": {
         "operationId": "local_post_task_source_register",
         "summary": "local post task source register",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_source_register: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_source_register: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6815,7 +6815,7 @@
       "post": {
         "operationId": "local_post_task_status",
         "summary": "local post task status",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_status: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_status: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -6877,7 +6877,7 @@
       "get": {
         "operationId": "local_get_tasks",
         "summary": "local get tasks",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_list: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sn...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_list: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ack...",
         "responses": {
           "200": {
             "description": "Successful JSON result; fields depend on the operation.",
@@ -6925,7 +6925,7 @@
       "post": {
         "operationId": "local_post_tasks",
         "summary": "local post tasks",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_create: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_create: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -7509,7 +7509,7 @@
       "get": {
         "operationId": "local_get_tasks__id_",
         "summary": "local get tasks  id ",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sno...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ackn...",
         "responses": {
           "200": {
             "description": "Successful JSON result; fields depend on the operation.",
@@ -7568,7 +7568,7 @@
       "delete": {
         "operationId": "local_delete_tasks__id_",
         "summary": "local delete tasks  id ",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_delete: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_delete: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -7652,7 +7652,7 @@
       "patch": {
         "operationId": "local_patch_tasks__id_",
         "summary": "local patch tasks  id ",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_edit: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sn...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_edit: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ack...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8200,7 +8200,7 @@
       "post": {
         "operationId": "local_post_tasks__id__acknowledge",
         "summary": "local post tasks  id  acknowledge",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_acknowledge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, reso...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_acknowledge: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rea...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8290,7 +8290,7 @@
       "post": {
         "operationId": "local_post_tasks__id__cancel",
         "summary": "local post tasks  id  cancel",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_cancel: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_cancel: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8380,7 +8380,7 @@
       "post": {
         "operationId": "local_post_tasks__id__end_series",
         "summary": "local post tasks  id  end series",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_end_series: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_end_series: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8470,7 +8470,7 @@
       "post": {
         "operationId": "local_post_tasks__id__pause",
         "summary": "local post tasks  id  pause",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_pause: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_pause: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8560,7 +8560,7 @@
       "post": {
         "operationId": "local_post_tasks__id__rearm",
         "summary": "local post tasks  id  rearm",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rearm: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_rearm: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8650,7 +8650,7 @@
       "post": {
         "operationId": "local_post_tasks__id__reconsider",
         "summary": "local post tasks  id  reconsider",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconsider: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconsider: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8788,7 +8788,7 @@
       "post": {
         "operationId": "local_post_tasks__id__resolve",
         "summary": "local post tasks  id  resolve",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resolve: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resolve: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -8878,7 +8878,7 @@
       "get": {
         "operationId": "local_get_tasks__id__result",
         "summary": "local get tasks  id  result",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resol...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_get: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rear...",
         "responses": {
           "200": {
             "description": "Attributed executor report and signed local execution records; reporting never performs or proves an external action.",
@@ -9080,7 +9080,7 @@
       "post": {
         "operationId": "local_post_tasks__id__result",
         "summary": "local post tasks  id  result",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_report: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, re...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_result_report: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, r...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9327,7 +9327,7 @@
       "post": {
         "operationId": "local_post_tasks__id__resume",
         "summary": "local post tasks  id  resume",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resume: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_resume: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9417,7 +9417,7 @@
       "post": {
         "operationId": "local_post_tasks__id__review",
         "summary": "local post tasks  id  review",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_review: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_review: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9498,7 +9498,7 @@
       "post": {
         "operationId": "local_post_tasks__id__snooze",
         "summary": "local post tasks  id  snooze",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_snooze: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_snooze: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, a...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9588,7 +9588,7 @@
       "post": {
         "operationId": "local_post_tasks_archive",
         "summary": "local post tasks archive",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9676,7 +9676,7 @@
       "post": {
         "operationId": "local_post_tasks_archive_restore",
         "summary": "local post tasks archive restore",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive_restore: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_archive_restore: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review,...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9747,7 +9747,7 @@
       "get": {
         "operationId": "local_get_tasks_due",
         "summary": "local get tasks due",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_due: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, sno...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_due: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ackn...",
         "responses": {
           "200": {
             "description": "Successful JSON result; fields depend on the operation.",
@@ -9797,7 +9797,7 @@
       "post": {
         "operationId": "local_post_tasks_events",
         "summary": "local post tasks events",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_event: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve, s...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_event: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ac...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9928,7 +9928,7 @@
       "post": {
         "operationId": "local_post_tasks_reconcile",
         "summary": "local post tasks reconcile",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolv...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_reconcile: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm...",
         "requestBody": {
           "required": true,
           "content": {
@@ -9990,7 +9990,7 @@
       "post": {
         "operationId": "local_post_tasks_recovery",
         "summary": "local post tasks recovery",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_recover: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, resolve,...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_recover: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, ...",
         "requestBody": {
           "required": true,
           "content": {
@@ -10052,7 +10052,7 @@
       "post": {
         "operationId": "local_post_tasks_sources",
         "summary": "local post tasks sources",
-        "description": "Local-only tasks preview (BASTRA_TASKS=1). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_source_register: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review, rearm, acknowledge, ...",
+        "description": "Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. task_source_register: persisted commitment; mapped credential required. Agents may manage tasks of every level: create, edit, review,...",
         "requestBody": {
           "required": true,
           "content": {

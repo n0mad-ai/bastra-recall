@@ -19,10 +19,10 @@ async function fixture() {
  await callTaskCrud(ctx,auth,"task_create",{idempotency_key:"notify",original_request:"Synthetic due request",goal:"Synthetic $(not a command)",resolution_condition:"Done",schedule:{kind:"instant",at:2000},timezone:"Europe/Berlin",scope:{kind:"personal",name:"fixture"},owner_domains:["personal"],arm:true});
  await reconcileTaskTime(ctx);return {ctx,auth,setNow:(v:number)=>now=v};
 }
-test("notification setting defaults on independently of the unchanged tasks opt-in",()=>{
+test("notification setting defaults on independently of the tasks switch",()=>{
  const entry=settingEntry("tasks.notifications")!;assert.ok(entry);assert.equal(entry.default,true);
  assert.equal(effectiveSetting(entry,parseStoredSettings({update:{mode:"notify"},tasks:{enabled:true,notifications:false}}),{}).value,false);
- assert.equal(settingEntry("tasks.enabled")!.default,false);
+ assert.equal(settingEntry("tasks.enabled")!.default,true);
 });
 test("native task notification is durable, race-safe and never acknowledges or resolves",async()=>{
  const f=await fixture();let sent=0;const options={platform:"darwin" as const,enabled:true,send:async(message:{title:string;body:string})=>{sent++;assert.equal(message.title,"Bastra Recall");assert.match(message.body,/Synthetic/);}};

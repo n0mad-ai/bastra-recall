@@ -237,8 +237,11 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   });
 
   const empty = await collectFeatureState([], vault, {});
-  assert.equal(empty.proactive, undefined, "disabled preview must not suggest missing task setup");
-  assert.ok(!featureLines(empty).join("\n").includes("proactive task cards"));
+  assert.ok(empty.proactive, "tasks are available by default from v1.2.0");
+  assert.ok(featureLines(empty).join("\n").includes("proactive task cards"));
+  const tasksOff = await collectFeatureState([], vault, { BASTRA_TASKS: "0" });
+  assert.equal(tasksOff.proactive, undefined, "explicitly disabled tasks must not suggest missing task setup");
+  assert.ok(!featureLines(tasksOff).join("\n").includes("proactive task cards"));
   assert.equal(empty.primaryLanguage, undefined);
   assert.equal(empty.onboardingDone, false);
   assert.equal(empty.semanticRecall.state, "off");

@@ -23,7 +23,7 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 [What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
 
-Proactive tasks remain an **opt-in preview, off by default until v1.2.0**. To try them, set `BASTRA_TASKS=1` in daemon and clients/hooks, then restart them. On current main, agents manage all task levels, recurring tasks can pause, and optional macOS notifications surface due work. [Instructions and limits](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
+This describes prepared main for v1.2.0; published v1.1.8 keeps the opt-in preview. Proactive tasks are **on by default from v1.2.0**, for new and existing installations. An explicit earlier opt-out is preserved. Disable them in Settings (`tasks.enabled=false`) or with `BASTRA_TASKS=0`, then restart the daemon and clients/hooks. Remote MCP does not expose `task_*` tools. On current main, agents manage all task levels, recurring tasks can pause, and optional macOS notifications surface due work. [Instructions and limits](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
 On current main, local app state uses SQLite while memories remain Markdown. The web UI includes shared [settings](./docs/Settings.md#english), including stored task and telemetry switches; invalid JSON blocks saving, and environment overrides still win. [Database and rollback](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 
@@ -197,7 +197,7 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 [Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
 
-Proaktive Aufgaben bleiben eine **Opt-in-Vorschau, bis v1.2.0 standardmäßig aus**. Zum Ausprobieren `BASTRA_TASKS=1` bei Daemon und Clients/Hooks setzen und diese neu starten. Auf aktuellem main verwalten Agenten alle Aufgabenstufen; Serien sind pausierbar und optionale Mac-Mitteilungen melden Fälliges. [Anleitung und Grenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
+Dies beschreibt das vorbereitete main für v1.2.0; die veröffentlichte v1.1.8 bleibt bei der Opt-in-Vorschau. Proaktive Aufgaben sind **ab v1.2.0 standardmäßig an**, bei neuen und bestehenden Installationen. Eine ausdrücklich frühere Abschaltung bleibt erhalten. In den Einstellungen (`tasks.enabled=false`) oder mit `BASTRA_TASKS=0` ausschalten, danach Daemon und Clients/Hooks neu starten. Die MCP-Fernzugangstür bietet keine `task_*`-Werkzeuge. Auf aktuellem main verwalten Agenten alle Aufgabenstufen; Serien sind pausierbar und optionale Mac-Mitteilungen melden Fälliges. [Anleitung und Grenzen](https://github.com/n0mad-ai/bastra-recall/wiki/Proactive-Tasks).
 
 Auf dem aktuellen main verwendet lokaler App-Zustand SQLite; Erinnerungen bleiben Markdown. Die Web-UI enthält gemeinsame [Einstellungen](./docs/Settings.md#deutsch), einschließlich gespeicherter Aufgaben- und Telemetrieschalter; ungültiges JSON blockiert Speichern, Umgebungsvariablen gewinnen weiter. [Datenbank und Rückweg](https://github.com/n0mad-ai/bastra-recall/wiki/Local-App-Database).
 

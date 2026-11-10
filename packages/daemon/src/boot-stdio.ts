@@ -118,7 +118,7 @@ export async function startStdioServer(opts: {
     markActivity();
     const { name, arguments: rawArgs } = req.params;
 
-    if (isTaskTool(name) && !tasksEnabled()) return { isError: true, content: [{ type: "text" as const, text: "Tasks preview disabled; opt in with BASTRA_TASKS=1" }] };
+    if (isTaskTool(name) && !tasksEnabled()) return { isError: true, content: [{ type: "text" as const, text: "Tasks disabled; enable in Settings or with BASTRA_TASKS=1" }] };
     if (name.startsWith("task_") && !ownsVault) return errorResult("Vault account required");
     if (isTaskExecution(name)) return forwardTaskExecutionMcp(name, rawArgs ?? {}, await taskClientAuthorization());
     if (isTaskTool(name)) return callTaskMcp(name, rawArgs ?? {}, await taskClientAuthorization(), defaultTaskContext(toolDeps));

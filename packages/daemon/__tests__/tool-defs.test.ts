@@ -8,6 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { taskTools } from "../src/task-transport.js";
 import {
   ALL_TOOL_DEFS,
   filterToolDefsForSurface,
@@ -117,12 +118,13 @@ test("the write surface adds save and draft review tools and keeps lifecycle out
       "save_memory",
       "save_product_doc",
       "validate_artifact",
+      ...taskTools.map(tool => tool.name),
     ].sort(),
     // #519: edit_memory joined the save tools. It changes one memory in place
     // and moves nothing, so it is not lifecycle — and leaving it out of the
     // surface a fresh install gets would push agents back to editing vault
     // files by hand, which is the hole it closes.
-    "write is search + save and draft review tools",
+    "write is search + save, draft review and local task tools",
   );
   for (const t of LIFECYCLE_TOOLS) {
     assert.equal(isToolAllowed(t, "write"), false, `${t} is full-only — it reshapes the vault`);
@@ -156,7 +158,7 @@ test("the refusal names the surface and how to widen it", () => {
 test("#1238: a task tool denied by the preview switch says how to opt in, not to widen the surface", async () => {
   const { toolSurfaceDenial } = await import("../src/tool-defs.js");
   const prev = process.env.BASTRA_TASKS;
-  delete process.env.BASTRA_TASKS;
+  process.env.BASTRA_TASKS = "0";
   try {
     const text = toolSurfaceDenial("task_list", "full");
     assert.match(text, /BASTRA_TASKS=1/);

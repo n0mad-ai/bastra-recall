@@ -2,7 +2,7 @@
 
 ## English
 
-This contract is the local foundation for a future app or executor. It does not launch an agent, expose remote access, pair devices, send mobile push messages or implement provider actions. Tasks remain an opt-in preview. The generated [OpenAPI contract](openapi.yaml) is the machine-readable reference; all paths below are relative to `http://127.0.0.1:6723/api/v1`.
+This contract is the local foundation for a future app or executor. It does not launch an agent, expose remote access, pair devices, send mobile push messages or implement provider actions. On prepared main for v1.2.0 tasks are on by default, preserving explicit opt-outs; published v1.1.8 remains an opt-in preview. The generated [OpenAPI contract](openapi.yaml) is the machine-readable reference; all paths below are relative to `http://127.0.0.1:6723/api/v1`.
 
 Use a mapped task credential in `Authorization: Bearer …`. The existing local Host/Origin protections and enrolled ownership domains apply. Tokens in URLs are unsupported. A browser uses a streaming `fetch` with the bearer header; native `EventSource` cannot attach that header. The board's HttpOnly/CSRF session is separate and cannot authenticate these endpoints.
 
@@ -32,7 +32,7 @@ The task verifier already distinguishes `verified`, `refuted`, `stale`, `unavail
 
 ## Deutsch
 
-Dieser Vertrag ist die lokale Grundlage für eine spätere App oder einen Ausführer. Er startet keinen Agenten, baut keinen Fernzugang, koppelt keine Geräte, verschickt keine Handy-Push-Nachrichten und implementiert keine Anbieteraktionen. Aufgaben bleiben eine Opt-in-Vorschau. Der erzeugte [OpenAPI-Vertrag](openapi.yaml) ist die maschinenlesbare Referenz; alle folgenden Pfade beziehen sich auf `http://127.0.0.1:6723/api/v1`.
+Dieser Vertrag ist die lokale Grundlage für eine spätere App oder einen Ausführer. Er startet keinen Agenten, baut keinen Fernzugang, koppelt keine Geräte, verschickt keine Handy-Push-Nachrichten und implementiert keine Anbieteraktionen. Auf dem vorbereiteten main für v1.2.0 sind Aufgaben standardmäßig an; ausdrückliche Abschaltungen bleiben erhalten. Die veröffentlichte v1.1.8 bleibt bei der Opt-in-Vorschau. Der erzeugte [OpenAPI-Vertrag](openapi.yaml) ist die maschinenlesbare Referenz; alle folgenden Pfade beziehen sich auf `http://127.0.0.1:6723/api/v1`.
 
 Ein zugeordnetes Aufgaben-Zugangstoken gehört in `Authorization: Bearer …`. Die bestehenden lokalen Host-/Origin-Prüfungen und eingeschriebenen Zuständigkeitsbereiche gelten weiter. Token in URLs werden nicht unterstützt. Ein Browser verwendet einen streamenden `fetch` mit Bearer-Header; natives `EventSource` kann diesen Header nicht setzen. Die HttpOnly-/CSRF-Sitzung des Bretts ist getrennt und kann diese Endpunkte nicht authentifizieren.
 

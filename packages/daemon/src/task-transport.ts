@@ -58,7 +58,7 @@ export function taskFailure(error: unknown): { status: number; body: { error: st
 export async function callTaskMcp(name: TaskCrudOperation, input: unknown,
   authorization: string | undefined, ctx = defaultTaskContext()) {
   try {
-    if (!tasksEnabled()) throw Object.assign(new Error("Tasks preview disabled"), { code: "feature_disabled" });
+    if (!tasksEnabled()) throw Object.assign(new Error("Tasks disabled"), { code: "feature_disabled" });
     const result = await callTaskCrud(ctx, authorization, name, input);
     return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
   } catch (error) {
@@ -74,7 +74,7 @@ export function dispatchTaskHttp(req: IncomingMessage, res: ServerResponse, meth
   ctx = defaultTaskContext()): boolean {
   const pathname = new URL(url, "http://127.0.0.1").pathname;
   if (!pathname.startsWith("/api/v1/tasks") && !pathname.startsWith("/api/v1/task_")) return false;
-  if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks preview disabled; opt in with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
+  if (!tasksEnabled()) { sendJson(res, 404, { error: "Tasks disabled; enable in Settings or with BASTRA_TASKS=1", code: "feature_disabled" }); return true; }
   if (pathname === "/api/v1/tasks/stream") { void dispatchTaskStream(req, res, ctx); return true; }
   void (async () => {
     try {

@@ -21,7 +21,9 @@ async function toolsBySurface(): Promise<{ search: string[]; write: string[]; fu
   const match = frontmatter.match(/Tools: search=([^;]+); write=([^;]+); full=([^\n.]+)/);
   assert.ok(match, "SKILL.md frontmatter has no tiered Tools: list");
   const names = (group: string) => group.split(",").map((name) => name.trim());
-  return { search: names(match[1]), write: names(match[2]), full: names(match[3]) };
+  const localTasks = body.match(/additional write tools available: ([^.]+)\./);
+  assert.ok(localTasks, "SKILL.md must list local task tools separately from remote-capable tools");
+  return { search: names(match[1]), write: [...names(match[2]), ...names(localTasks[1])], full: names(match[3]) };
 }
 
 test("the SKILL.md tool list follows every registered tool and its minimum surface", async () => {
@@ -36,11 +38,15 @@ test("the SKILL.md tool list follows every registered tool and its minimum surfa
   assert.equal(new Set([...listed.search, ...listed.write, ...listed.full]).size, registered.length);
 });
 
-test("the skill lists the preview tools conditionally, matching the enabled registry", async () => {
+test("the skill lists default-on local task tools conditionally, matching the enabled registry", async () => {
   const { taskTools } = await import("../src/task-transport.js");
   const body = await readFile(join(REPO, "packages/skill/SKILL.md"), "utf8");
   const optional = body.match(/additional write tools available: ([^.]+)\./);
-  assert.ok(optional, "preview tools must be distinguished from the default tool list");
+  assert.ok(optional, "local task tools must be distinguished from the remote-capable tool list");
   assert.deepEqual(optional[1].split(", ").sort(), taskTools.map(t => t.name).sort());
   assert.match(body, /Only when the server lists `task_\*` tools/);
+  assert.match(body, /tasks are on by default/);
+  assert.match(body, /Remote MCP never exposes task_\* tools/);
+  assert.ok(taskTools.every(tool => (toolNamesForSurface("write") ?? []).includes(tool.name)));
+  assert.ok(!(toolNamesForSurface("search") ?? []).some(name => name.startsWith("task_")));
 });

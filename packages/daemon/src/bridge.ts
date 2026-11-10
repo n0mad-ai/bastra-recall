@@ -305,7 +305,7 @@ async function main(): Promise<void> {
     try {
       let result: unknown;
       if (isTaskTool(method)) {
-        if (!tasksEnabled()) throw Object.assign(new Error("Tasks preview disabled; opt in with BASTRA_TASKS=1"), { code: "feature_disabled" });
+        if (!tasksEnabled()) throw Object.assign(new Error("Tasks disabled; enable in Settings or with BASTRA_TASKS=1"), { code: "feature_disabled" });
         const result = isTaskExecution(method) ? await forwardTaskExecution(method, params ?? {}, await taskClientAuthorization()) : await callTaskCrud(defaultTaskContext({ vault, vaultPath: VAULT_PATH! }), await taskClientAuthorization(), method, params ?? {});
         process.stdout.write(JSON.stringify({ id, result }) + "\n");
         return;

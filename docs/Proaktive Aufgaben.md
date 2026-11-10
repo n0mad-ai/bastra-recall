@@ -1,16 +1,16 @@
 # Aufgaben und Erinnerungen
 
-## Opt-in-Vorschau (v1.1.1)
+## Standardmäßig an (v1.2.0)
 
-Aufgaben sind bei Neuinstallation und Update **bis v1.2.0 standardmäßig aus**. Setze für die Vorschau `BASTRA_TASKS=1` in der Umgebung des Daemons **und** aller MCP-Clients/Hooks/CLI-Prozesse. Starte diese Prozesse anschließend neu. Bei Start aus einer Shell exportierst du die Variable vor dem Start von Daemon und Clients:
+Dies beschreibt das vorbereitete main für v1.2.0. Die veröffentlichte v1.1.8 bleibt bei der Opt-in-Vorschau.
 
-```sh
-export BASTRA_TASKS=1
-```
+Aufgaben sind bei Neuinstallation und Update **ab v1.2.0 standardmäßig an**. Eine ausdrücklich frühere Abschaltung (`tasks.enabled=false` oder `BASTRA_TASKS=0`) bleibt erhalten. Für den Standard ist keine Umgebungsvariable nötig. Die MCP-Fernzugangstür bietet keine `task_*`-Werkzeuge an und nimmt solche Aufrufe nicht an.
 
-Bei einem Dienst trägst du dieselbe Umgebungsvariable in dessen Konfiguration und bei Clients/Hooks ein. Alle folgenden Anleitungen setzen dieses Opt-in voraus. Entferne die Variable (oder setze `BASTRA_TASKS=0`) und starte die Prozesse neu, um die Vorschau auszuschalten. Bestehende Aufgabendaten und Zugänge bleiben unangetastet; es gibt keine Migration oder Löschung. Ausschalten bricht Aufgaben nicht ab: Beim erneuten Einschalten gilt das bisherige Verhalten einschließlich Nachholen fälliger Arbeit.
+In den Einstellungen oder mit `bastra config set tasks.enabled false` ausschalten, alternativ `BASTRA_TASKS=0` im Daemon und in Clients/Hooks setzen. Nach einer Änderung diese Prozesse neu starten. Ein ausdrücklich gesetztes `BASTRA_TASKS` gewinnt: `1` schaltet ein, jeder andere Wert schaltet aus. Zum erneuten Einschalten die Einstellung aktivieren oder `BASTRA_TASKS=1` setzen und neu starten.
 
-Ausgeschaltet laufen weder Aufgaben-Laufzeit, Polling, Zustellung, Quellenprüfung noch automatische Agent-Einrichtung. Aufgaben-Tab und `task_*`-MCP-Werkzeuge sind verborgen; Aufgaben-HTTP-Routen einschließlich UI-Sitzungsrouten antworten mit 404 und `feature_disabled`. `bastra tasks …` erklärt nur das Einschalten. `BASTRA_CONVERSATIONAL_REMINDERS=0` ist ein separater, engerer Schalter innerhalb der eingeschalteten Vorschau und aktiviert Aufgaben nicht.
+Bestehende Aufgabendaten und Zugänge bleiben unangetastet. Ausschalten bricht Aufgaben nicht ab: Beim erneuten Einschalten gilt das bisherige Verhalten einschließlich Nachholen fälliger Arbeit. Der Start-Schnappschuss der Einstellungen liest nur: Eine alte ausdrückliche Abschaltung wird ohne Import der Legacydatei berücksichtigt. Unzugängliche, gelöschte oder fehlerhafte Einstellungen halten Aufgaben ausgeschaltet, bis sie repariert oder ausdrücklich übersteuert werden.
+
+Ausgeschaltet laufen weder Aufgaben-Laufzeit, Polling, Zustellung, Quellenprüfung noch automatische Agent-Einrichtung. Aufgaben-Tab und `task_*`-MCP-Werkzeuge sind verborgen; Aufgaben-HTTP-Routen einschließlich UI-Sitzungsrouten antworten mit 404 und `feature_disabled`. `bastra tasks …` erklärt nur das Einschalten. `BASTRA_CONVERSATIONAL_REMINDERS=0` ist ein separater, engerer Schalter innerhalb der eingeschalteten Aufgaben und aktiviert Aufgaben nicht.
 
 ## Aufgaben im Gespräch
 

@@ -776,7 +776,7 @@ async function managedServiceWarning(service: AutostartService | null, clientEnv
       return "BASTRA_TASKS in the plist differs from launchd: reload with bootout + bootstrap (kickstart does not reload plist env).";
     }
     if (tasksEnabled(clientEnv) !== tasksEnabled(loaded ?? state.env)) {
-      return "BASTRA_TASKS differs between this client environment and the managed daemon service — align the opt-in and reload the service with bootout + bootstrap.";
+      return "BASTRA_TASKS differs between this client environment and the managed daemon service — align the task setting and reload the service with bootout + bootstrap.";
     }
   }
   return null;
