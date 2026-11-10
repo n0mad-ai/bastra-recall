@@ -102,7 +102,7 @@ test("paused real executor cannot be displaced; expired approval/lease prevents 
 test("actual compiled daemon hosts authenticated execute and returns the durable receipt over HTTP",async()=>{
  const f=await fixture();const {mkdir}=await import("node:fs/promises"),{createServer}=await import("node:net"),{fileURLToPath}=await import("node:url"),{actionClock}=await import("../src/task-approval-keys.js");
  f.ctx.now=Date.now;f.ctx.actionClock=actionClock;await f.approve(f.prepared.proposal.id);
- await writeFile(join(f.root,"task-auth.json"),await readFile(f.ctx.authPath),{mode:0o600});await writeFile(join(f.root,"task-approval-keys.json"),JSON.stringify(f.registry),{mode:0o600});const vault=join(f.root,"vault");await mkdir(vault);
+ await writeFile(join(f.root,"task-auth.json"),await readFile(f.ctx.authPath),{mode:0o600});await writeFile(join(f.root,"task-action-registry.json"),JSON.stringify(f.registry),{mode:0o600});const vault=join(f.root,"vault");await mkdir(vault);
  const probe=createServer();probe.listen(0,"127.0.0.1");await once(probe,"listening");const port=(probe.address() as any).port;await new Promise<void>(r=>probe.close(()=>r()));assert.notEqual(port,6723);const base=`http://127.0.0.1:${port}`;
  const child=spawn(process.execPath,["--import",fileURLToPath(new URL("../../../scripts/test-env.mjs",import.meta.url)),fileURLToPath(new URL("../dist/index.js",import.meta.url))],{env:{...process.env,BASTRA_VAULT_PATH:vault,BASTRA_TASKS_PATH:f.ctx.path,BASTRA_HTTP_PORT:String(port),BASTRA_DAEMON_URL:base,BASTRA_AUTO_UPDATE:"0",BASTRA_EMBEDDING_PROVIDER:"none",BASTRA_BM25_ONLY:"1"},stdio:["pipe","ignore","pipe"]});let errors="";child.stderr!.on("data",c=>{errors=(errors+c).slice(-2000);});const closed=once(child,"close");
  const call=async(name:string,input:unknown)=>{const response=await fetch(`${base}/api/v1/${name}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:f.auth},body:JSON.stringify(input)});const body=await response.json() as any;assert.equal(response.status,200,JSON.stringify(body));return body;};
@@ -156,34 +156,16 @@ test("second validation after durable intent rejects late content/symlink change
  const child=spawn(process.execPath,["--input-type=module","-e",script],{env:{...process.env,CTX:JSON.stringify({path:f.ctx.path,authPath:f.ctx.authPath,executionHost:true}),REG:JSON.stringify(f.registry),AUTH:f.auth,INPUT:JSON.stringify(f.input),STORE:f.ctx.path,TARGET:join(f.root,"artifact.txt"),OUTSIDE:outside,MODE:mode},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");assert.ok(!output.includes("wrong"));const s=await readTaskStore(f.ctx.path);assert.equal(s.intents.length,1);assert.equal(s.intents[0].state,"pending");assert.equal(s.consumed_approval_ids.length,1);assert.equal(await readFile(outside,"utf8"),"old\n");
  }
 });
-test("resume uses readable owner confirmation; Enter leaves stop and adapter unchanged",async()=>{
- const f=await fixture();await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{execution_stopped:true,adapter:{id:"local-artifact-v1",enabled:false}});await writeFile(join(f.root,"task-auth.json"),await readFile(f.ctx.authPath),{mode:0o600});
- const py=`import os,pty,subprocess,select,time,sys
-master,slave=pty.openpty()
-p=subprocess.Popen(sys.argv[1:],stdin=slave,stdout=slave,stderr=slave,start_new_session=True,preexec_fn=lambda: __import__('fcntl').ioctl(0,__import__('termios').TIOCSCTTY,0))
-os.close(slave);out=b'';sent=set();deadline=time.time()+15
-pairs=[('Owner-Aufgaben-Token (verborgen): '.encode(),os.environ['SYNTHETIC_OWNER'].encode()+b'\\n'),(b'Lokalen Referenzadapter aktivieren',b'\\n')]
-while p.poll() is None and time.time()<deadline:
- if select.select([master],[],[],0.1)[0]:
-  try:
-   chunk=os.read(master,65536)
-   if not chunk:break
-   out+=chunk
-  except OSError:break
- for label,reply in pairs:
-  if label in out and label not in sent:os.write(master,reply);sent.add(label)
-if p.poll() is None:p.kill()
-p.wait()
-try:
- drain=time.time()+1
- while time.time()<drain and select.select([master],[],[],0.05)[0]:
-  chunk=os.read(master,65536)
-  if not chunk:break
-  out+=chunk
-except OSError:pass
-os.close(master);sys.stdout.buffer.write(out)
-`;
- const {fileURLToPath}=await import("node:url");const child=spawn("python3",["-c",py,process.execPath,fileURLToPath(new URL("../dist/cli.js",import.meta.url)),"tasks","resume","--json"],{env:{...process.env,BASTRA_TASKS_PATH:f.ctx.path,SYNTHETIC_OWNER:f.ownerAuth.slice(7)},stdio:["ignore","pipe","pipe"]});let output="";child.stdout.on("data",c=>{output+=c;});await once(child,"exit");assert.match(output,/Lokalen Referenzadapter aktivieren/);assert.match(output,/forbidden/);const store=await readTaskStore(f.ctx.path);assert.equal(store.controls.execution_stopped,true);assert.equal(store.controls.adapters["local-artifact-v1"].enabled,false);assert.ok(!output.includes(f.ownerAuth.slice(7)));
+test("commissioned CLI resume uses mapped agent access without a terminal or another confirmation",async()=>{
+ const f=await fixture();await callTaskCrud(f.ctx,f.ownerAuth,"task_controls",{execution_stopped:true,adapter:{id:"local-artifact-v1",enabled:false}});
+ const before=await readTaskStore(f.ctx.path);
+ const {createServer}=await import("node:http"),{dispatchTaskHttp}=await import("../src/task-transport.js"),{fileURLToPath}=await import("node:url");
+ const server=createServer((req,res)=>{if(!dispatchTaskHttp(req,res,req.method!,req.url!,f.ctx)){res.writeHead(404);res.end();}});server.listen(0,"127.0.0.1");await once(server,"listening");
+ try{
+  const child=spawn(process.execPath,[fileURLToPath(new URL("../dist/cli.js",import.meta.url)),"tasks","resume","--agent"],{env:{...process.env,BASTRA_TASKS_PATH:f.ctx.path,BASTRA_TASK_TOKEN:f.auth.slice(7),BASTRA_DAEMON_URL:`http://127.0.0.1:${(server.address() as any).port}`},stdio:["ignore","pipe","pipe"]});
+  let output="",errors="";child.stdout.on("data",c=>{output+=c;});child.stderr.on("data",c=>{errors+=c;});const [code]=await once(child,"exit");assert.equal(code,0,errors);assert.match(output,/Ausführungsstopp aufgehoben/);assert.doesNotMatch(output,/Passphrase|Token \(verborgen\)|\[y\/N\]/);
+  const after=await readTaskStore(f.ctx.path);assert.equal(after.controls.execution_stopped,false);assert.equal(after.controls.adapters["local-artifact-v1"].enabled,true);assert.deepEqual(after.approvals,before.approvals);assert.deepEqual(after.consumed_approval_ids,before.consumed_approval_ids);assert.ok(!output.includes(f.auth.slice(7)));
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
 test("execute handles UTF-8/size/mode/hardlink boundaries explicitly and no pre-state is lost",async()=>{
  const {chmod,link}=await import("node:fs/promises");

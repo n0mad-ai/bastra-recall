@@ -91,7 +91,11 @@ test("loopback skip and legacy API token cannot authorize task routes; foreign O
 });
 test("every CRUD operation has a canonical strict MCP definition", () => {
   assert.deepEqual(taskTools.map(t => t.name), [...TASK_CRUD_OPERATIONS]);
-  for (const def of taskTools) assert.equal((def.inputSchema as any).additionalProperties, false);
+  for (const def of taskTools) {
+    const schema = def.inputSchema as any;
+    assert.equal(schema.type, "object", `${def.name} must satisfy the MCP inputSchema contract`);
+    for (const variant of schema.anyOf ?? [schema]) assert.equal(variant.additionalProperties, false);
+  }
 });
 test("malformed and oversized request bodies are non-retryable validation errors", async () => {
   const f = await fixture(); try {

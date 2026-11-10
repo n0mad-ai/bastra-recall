@@ -2,6 +2,7 @@ import { privateContentComparison } from "./task-private-comparison.js";
 import { archivedIntent } from "./task-archive.js";
 /** Reviewed local execution: one lock, durable spend, exact UTF-8 CAS, receipts. */
 import { z } from "zod";
+import { taskAuthorizationSchema } from "./task-action-schema.js";
 import { randomUUID } from "node:crypto";
 import { fstatSync, closeSync, lstatSync, realpathSync, readFileSync, renameSync } from "node:fs";
 import { openTaskSourceFileSync } from "./task-source-file.js";
@@ -10,14 +11,14 @@ import { dirname, join, resolve, relative } from "node:path";
 import { authenticateTask, requireTaskDomains, requireTaskOwner } from "./task-auth.js";
 import { taskIdentitySchema as id, type TaskStore, type Task } from "./task-schema.js";
 import { cleanText, withTaskStoreGuard, TaskStoreError } from "./task-store.js";
-import { taskActionRegistry, requireReversiblePayload, requireTaskActionEnabled, validateTaskProposal, taskApprovalStatus, liveActionDeadline, readTaskTarget, TaskApprovalError } from "./task-actions.js";
+import { taskActionRegistry, requireReversiblePayload, requireTaskActionEnabled, validateTaskProposal, taskApprovalStatus, liveActionDeadline, readTaskTarget, TaskApprovalError, recordChatAuthorization } from "./task-actions.js";
 import { bytesHash, registryHash, actionHash } from "./task-approval-keys.js";
 import { taskBindingHash, boundedTaskRead, verifyTaskSource, verifyBoundEvidence } from "./task-freshness.js";
 import type { TaskServiceContext } from "./task-service.js";
 export const TASK_EXECUTION_INPUTS = {
   task_execute: z.strictObject({ proposal_id: id, lease_id: id, holder_token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), fence: z.number().int().positive().safe(), idempotency_key: id }),
   task_intent_reconcile: z.strictObject({ intent_id: id }),
-  task_rollback_prepare: z.strictObject({ receipt_id: id }),
+  task_rollback_prepare: z.strictObject({ receipt_id: id, authorization: taskAuthorizationSchema.optional() }),
 };
 export type TaskExecutionOperation = keyof typeof TASK_EXECUTION_INPUTS;
 export const isTaskExecution = (name: string): name is TaskExecutionOperation => Object.hasOwn(TASK_EXECUTION_INPUTS, name);
@@ -135,8 +136,13 @@ export async function executeTaskAction(ctx: TaskServiceContext, authorization: 
         rollback_of: receipt.id, task_revision: task.revision, generation: task.generation, task_binding: taskBindingHash(task), binding_version: 2 as const, source_revisions: [], registry_hash: registryHash(registry),
         required_domains: [...new Set([...original.required_domains, ...task.owner_domains, ...target.target.owner_domains])].sort(), scope: task.scope, sensitivity: [original.sensitivity, task.sensitivity, target.target.sensitivity].sort((a,b) => ({public:0,private:1,restricted:2}[a] - {public:0,private:1,restricted:2}[b])).at(-1)!, recovery_epoch: store.recovery_epoch, target_hash: receipt.after_hash, payload: backup.payload, payload_hash: receipt.before_hash, status: "prepared" as const };
       await validateTaskProposal(ctx, store, proposal, registry);
-      store = await guard.commit(s => { if (!s.proposals.some(p => p.id === proposal.id)) s.proposals.push(proposal); });
-      return { proposal, rollback_of: receipt.id, preview: { before: target.payload, after: backup.payload }, executes: false, new_owner_approvals_required: true };
+      store = await guard.commit(s => {
+        const existing = s.proposals.find(p => p.id === proposal.id); if (!existing) s.proposals.push(proposal);
+        if (input.authorization) recordChatAuthorization(ctx, s, existing ?? proposal, registry, principal, input.authorization, "approve", now);
+      });
+      const approval = taskApprovalStatus(ctx, store, proposal, registry);
+      return { proposal, rollback_of: receipt.id, preview: { before: target.payload, after: backup.payload }, executes: false,
+        new_owner_approvals_required: !approval.approved, ...approval };
     }
     const input = TASK_EXECUTION_INPUTS.task_execute.parse(raw);
     const archived = await archivedIntent(ctx.path,store,principal.actor_id,input.idempotency_key);

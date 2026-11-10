@@ -179,14 +179,14 @@ export function generateDocuments(options: { postSource?: string; getSource?: st
     }
     paths[route.path] ??= {};
     paths[route.path]![route.method.toLowerCase()] = {
-      ...operation(`local_${route.method.toLowerCase()}_${route.path.slice(1).replaceAll(/[/{}/]/g, "_")}`, `Local-only tasks (enabled by default; BASTRA_TASKS=0 disables). Requires a mapped task credential and a loopback Host; a tunnel cannot access this route. ${def.description}`, route.method === "GET" ? undefined : schema),
+      ...operation(`local_${route.method.toLowerCase()}_${route.path.slice(1).replaceAll(/[/{}/]/g, "_")}`, `${route.operation === "task_approval" || route.operation === "task_prepare" || route.operation === "task_execute" ? "The user's chat instruction is approval: user-directed authorization records session_id, program, user_request and at. No extra signature or confirmation. " : ""}Local-only tasks; mapped task credential and loopback Host required. ${def.description}`, route.method === "GET" ? undefined : schema),
       "x-local-only": true,
       security: [{ taskCredential: [] }],
       ...(parameters.length ? { parameters } : {}),
     };
     if (route.operation === "task_result_get" || route.operation === "task_result_report") {
       (paths[route.path]![route.method.toLowerCase()].responses as Schema)["200"] = {
-        description: "Attributed executor report and signed local execution records; reporting never performs or proves an external action.",
+        description: "Attributed executor report and local execution records; reporting never performs or proves an external action.",
         content: { "application/json": { schema: z.toJSONSchema(taskResultResponseSchema, { target: "openapi-3.0" }) } },
       };
     }

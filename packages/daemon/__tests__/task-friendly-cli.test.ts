@@ -55,25 +55,28 @@ test("one owner setup gives hooks a private separate agent credential; missing/r
     await chmod(taskHookConfigPath(), 0o644); assert.equal(taskClientToken(), undefined);
   } finally { if(previousPath===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previousPath;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken; }
 });
-test("global controls require owner/all domains, pause preserves obligations and resume does not renew authority", async () => {
+test("mapped agents control enrolled domains, pause preserves obligations and resume does not renew authority", async () => {
   const root=await mkdtemp(join(tmpdir(),"task-controls-")),ctx={path:join(root,"tasks.json"),authPath:join(root,"auth.json")};
   const owner=await mintTaskCredential(ctx.authPath,{actor_id:"owner",role:"owner",domains:["personal"]}),agent=await mintTaskCredential(ctx.authPath,{actor_id:"agent",role:"agent",domains:["personal"]});
   await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_create",friendlyTaskCreate({goal:"Task",after:"1m",arm:true}));
-  await assert.rejects(callTaskCrud(ctx,`Bearer ${agent.token}`,"task_controls",{muted:true}),/owner/);
+  await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_controls",{muted:true});
+  const other=await mintTaskCredential(ctx.authPath,{actor_id:"other",role:"agent",domains:["other"]});
+  await assert.rejects(callTaskCrud(ctx,`Bearer ${other.token}`,"task_controls",{muted:false}),{code:"forbidden"});
   await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{enabled:false,muted:true});const paused=await readTaskStore(ctx.path);
   await callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{enabled:true,muted:false});const resumed=await readTaskStore(ctx.path);
   assert.deepEqual(resumed.tasks,paused.tasks);assert.deepEqual(resumed.approvals,paused.approvals);assert.deepEqual(resumed.leases,paused.leases);
-  await assert.rejects(callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{execution_stopped:false}),/Protected/);
+  await assert.rejects(callTaskCrud(ctx,`Bearer ${owner.token}`,"task_controls",{execution_stopped:false}),/target configuration/);
 });
 test("readable states, local times, controls, off-status and errors keep machine JSON separate",()=>{
  const task:any={id:"task",goal:"Prüfen",schedule:{kind:"instant",at:Date.parse("2026-10-12T16:00:00Z")},timezone:"Europe/Madrid",armed:false,state:"snoozed",action_level:"notify",snoozed_until:Date.parse("2026-10-13T16:00:00Z"),deliveries:[]};
  assert.match(friendlyTaskResult("snooze",task),/zurückgestellt/);assert.match(friendlyTaskResult("snooze",task),/18:00/);assert.match(friendlyTaskResult("rearm",task),/UNSCHARF/);
  const base={controls:{enabled:false,muted:true,execution_stopped:true},runtime:{running:true,next_tick:0,last_error:null,backoff_ms:0},tasks:[task],sources:[],adapters:[],approval:{enrolled_domains:[],protected_boundary:false},capacity:{intents:0,intent_limit:1000,receipts:0,receipt_limit:10000},intents:[],receipts:[]};
- const status=friendlyTaskResult("status",base);assert.match(status,/Funktion: aus/);assert.match(status,/Automatik: aus/);assert.match(status,/Letzte Zustellung: noch keine/);assert.match(status,/Letzter Job-Fehler: keiner/);
+ const provenance={authorization:{write_origin:"user-directed",session_id:"chat-session",program:"codex",user_request:"Bitte diese Änderung ausführen.",at:1000},task_id:"task",decision:"approve"};
+ const status=friendlyTaskResult("status",{...base,authorizations:[provenance]});assert.match(status,/Bitte diese Änderung ausführen/);assert.match(status,/chat-session/);assert.match(status,/codex/);assert.match(status,/Funktion: aus/);assert.match(status,/Automatik: aus/);assert.match(status,/Letzte Zustellung: noch keine/);assert.match(status,/Letzter Job-Fehler: keiner/);
  task.verification={outcome:"inconclusive",reason:"irrelevant_claim",checked_at:123};
  assert.match(friendlyTaskResult("status",base),/unklar\/strittig.*andere Prämisse/);
  assert.match(friendlyTaskResult("mute",{controls:base.controls,resumed_authority:false}),/Stumm geschaltet/);assert.ok(!friendlyTaskResult("stop",{controls:base.controls,resumed_authority:false}).startsWith("{"));
- assert.match(friendlyTaskError("not_found","cancel"),/unbekannt/);assert.match(friendlyTaskError("protected_boundary_required","resume"),/standardmäßig gestoppt/);
+ assert.match(friendlyTaskError("not_found","cancel"),/unbekannt/);assert.match(friendlyTaskError("protected_boundary_required","resume"),/Nutzeranweisung/);
 });
 test("human recurrence supports optional bounds and ambiguous autumn time stays visibly unarmed",()=>{
  const repeating=friendlyTaskCreate({goal:"Täglich",when:"2026-10-12T18:00",timezone:"Europe/Madrid",every:"1d",count:"3"}) as any;assert.equal(repeating.recurrence.kind,"calendar");assert.equal(repeating.recurrence.count,3);

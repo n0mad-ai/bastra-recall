@@ -1,11 +1,12 @@
+import { readApprovalRegistry, migrateTaskApprovalRegistry } from "./task-approval-keys.js";
 import { taskAgentAccessStatus } from "./task-auto-setup.js";
 import { LOCAL_TASK_STATE_COVERAGE, isLocalTaskState } from "./task-local-state.js";
 import { taskNotificationStatus } from "./task-notification.js";
 import { taskChatSettings } from "./task-chat-settings.js";
 import { taskBindingHash } from "./task-freshness.js";
-import { TaskApprovalError, taskActionRegistry, taskApprovalStatus } from "./task-actions.js";
+import { taskActionRegistry, taskApprovalStatus } from "./task-actions.js";
 import { z } from "zod";
-import { authenticateTask, requireTaskOwner, requireTaskDomains } from "./task-auth.js";
+import { authenticateTask, requireTaskDomains } from "./task-auth.js";
 import { readTaskStore, transactTaskStore } from "./task-store.js";
 import { taskRuntime } from "./task-runtime.js";
 import { taskIdentitySchema as id } from "./task-schema.js";
@@ -14,7 +15,9 @@ export const taskStatusInput = z.strictObject({});
 export const taskControlsInput = z.strictObject({ enabled: z.boolean().optional(), muted: z.boolean().optional(), execution_stopped: z.boolean().optional(),
   source: z.strictObject({ id, enabled: z.boolean() }).optional(), adapter: z.strictObject({ id: z.literal("local-artifact-v1"), enabled: z.boolean() }).optional() }).refine(i => Object.keys(i).length > 0);
 export async function taskStatus(ctx: TaskServiceContext, authorization: string | undefined, raw: unknown) {
-  taskStatusInput.parse(raw); const principal = await authenticateTask(authorization, ctx.authPath), store = await readTaskStore(ctx.path), registry = await ctx.approvalRegistry;
+  taskStatusInput.parse(raw); const principal = await authenticateTask(authorization, ctx.authPath), store = await readTaskStore(ctx.path);
+  if (ctx.approvalRegistryPath) await migrateTaskApprovalRegistry(ctx.approvalRegistryPath);
+  const registry = ctx.approvalRegistryPath ? await readApprovalRegistry(ctx.approvalRegistryPath) : await ctx.approvalRegistry;
   const tasks = store.tasks.filter(t => t.owner_domains.every(d => principal.domains.includes(d))), job = taskRuntime(ctx.path);
   const notifications = { ...await taskNotificationStatus(), running: job?.ctx.executionHost === true };
   const chatSettings = await taskChatSettings();
@@ -31,15 +34,15 @@ export async function taskStatus(ctx: TaskServiceContext, authorization: string 
     receipts: store.receipts.filter(r => tasks.some(t => t.id === r.task_id)).slice(-100).map(r => ({ id: r.id, intent_id: r.intent_id, task_id: r.task_id, outcome: r.outcome, at: r.at, target_id: store.proposals.find(p => p.id === r.proposal_id)?.target_id, before_hash: r.before_hash, after_hash: r.after_hash, rollback_available: ["succeeded", "reconciled"].includes(r.outcome), review_hint: r.outcome === "unknown" ? "Abgleich nötig" : undefined })),
     proposals: store.proposals.filter(p => tasks.some(t => t.id === p.task_id)).map(p => ({ id: p.id, task_id: p.task_id, status: p.status, target_id: p.target_id, binding_current: tasks.some(t => t.id === p.task_id && t.armed && t.revision === p.task_revision && t.generation === p.generation && taskBindingHash(t) === p.task_binding && store.recovery_epoch === p.recovery_epoch), target_check: "on-demand", required_domains: p.required_domains, ...(registry ? taskApprovalStatus(ctx, store, p, registry) : { approved: false, missing_domains: p.required_domains }) })),
     leases: store.leases.filter(l => tasks.some(t => t.id === l.task_id)).map(l => ({ id: l.id, task_id: l.task_id, state: l.state, fence: l.fence, expires_at: l.expires_at })),
-    approval: { configured: !!registry, protected_boundary: registry?.protected_boundary ?? false, enrolled_domains: registry?.keys.filter(k => principal.domains.includes(k.domain)).map(k => k.domain) ?? [] },
+    authorizations: store.approvals.filter(a => a.authorization && tasks.some(t => store.proposals.some(p => p.id === a.proposal_id && p.task_id === t.id))).map(a => ({ approval_id: a.id, task_id: store.proposals.find(p => p.id === a.proposal_id)!.task_id, proposal_id: a.proposal_id, domain: a.domain, authorization: a.authorization, actor: a.actor, credential_id: a.credential_id, decision: a.decision, created_at: a.created_at, revoked_at: a.revoked_at, consumed: store.consumed_approval_ids.includes(a.id) })),
+    approval: { configured: !!registry, mode: "user-directed-chat", trust_boundary: "local-account", protected_boundary: registry?.protected_boundary ?? false, enrolled_domains: [...new Set(registry?.targets.flatMap(t => t.owner_domains).filter(d => principal.domains.includes(d)) ?? [])] },
     runtime: job ? { running: true, last_tick: job.lastTick, next_tick: job.nextTick, last_error: job.lastError, backoff_ms: job.backoff } : { running: false },
   };
 }
 export async function taskControls(ctx: TaskServiceContext, authorization: string | undefined, raw: unknown) {
-  const input = taskControlsInput.parse(raw), principal = await authenticateTask(authorization, ctx.authPath); requireTaskOwner(principal);
+  const input = taskControlsInput.parse(raw), principal = await authenticateTask(authorization, ctx.authPath);
   if (input.execution_stopped === false) {
-    const registry = await taskActionRegistry(ctx).catch(error => { if (error.code === "approval_stale") throw error; throw new TaskApprovalError("protected_boundary_required", "Protected owner configuration required; prepare/notify remain usable"); });
-    if (!registry.protected_boundary) throw new TaskApprovalError("protected_boundary_required", "Protected owner configuration required; prepare/notify remain usable");
+    await taskActionRegistry(ctx);
   }
   const store = await transactTaskStore(ctx.path, undefined, s => {
     if (input.enabled !== undefined || input.muted !== undefined || input.execution_stopped !== undefined || input.adapter) requireTaskDomains(principal, [...new Set(s.tasks.flatMap(t => t.owner_domains))]);

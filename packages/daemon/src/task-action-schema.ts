@@ -3,6 +3,10 @@ import { z } from "zod";
 const id = z.string().regex(/^[a-z0-9][a-z0-9._:-]{0,95}$/);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const number = z.number().int().nonnegative().safe();
+/** The connected agent records the user's instruction; no text classifier or extra approval ceremony. */
+export const taskAuthorizationSchema = z.strictObject({ write_origin: z.literal("user-directed"),
+  session_id: z.string().min(1).max(160), program: z.string().min(1).max(160),
+  user_request: z.string().min(1).max(16384), at: number });
 export const proposalSchema = z.strictObject({ id, revision: number, task_id: id, task_revision: number, generation: number,
   recovery_epoch: z.string().min(1).max(160), actor: id, created_at: number, target_id: id, target_hash: hash,
   operation: z.literal("replace-utf8"), rollback_of: id.optional(), payload: z.string().max(16384), payload_hash: hash,
@@ -16,6 +20,7 @@ export const challengeSchema = z.strictObject({ id, proposal_id: id, domain: id,
   consumed_at: number.optional() });
 export const approvalSchema = z.strictObject({ id, proposal_id: id, domain: id, challenge_id: id, key_id: id,
   binding_hash: hash.optional(), registry_hash: hash, signature: z.string().max(256).optional(), decision: z.enum(["approve", "deny"]),
+  authorization: taskAuthorizationSchema.optional(), actor: id.optional(), credential_id: id.optional(),
   created_at: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(), revoked_at: number.optional() });
 export const leaseSchema = z.strictObject({ id, task_id: id, proposal_id: id, actor: id, holder_token_hash: hash,
   fence: number, expires_at: number, boot_id: z.string().max(160), monotonic_deadline: z.number().nonnegative(), state: z.enum(["active", "released", "expired"]) });

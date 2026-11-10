@@ -127,3 +127,20 @@ test("protocol endpoints are explicitly excluded from the REST contract", () => 
   assert.throws(() => discoverGetRoutes(`${known} if (u.pathname === "/.well-known/unknown") {}`), /Unexpected API path/);
   assert.ok(discoverGetRoutes(`${known} if (u.pathname === "/api/v1/oauth/new_rest_tool") {}`).has("/oauth/new_rest_tool"));
 });
+
+
+test("#1424 local task contracts accept chat authorization without a signature", () => {
+  const { api } = generateDocuments();
+  const prepare: any = api.paths["/task_prepare"].post;
+  const schema = prepare.requestBody.content["application/json"].schema;
+  const authorization = schema.properties.authorization;
+  assert.equal(authorization.properties.write_origin.enum[0], "user-directed");
+  for (const name of ["session_id", "program", "user_request", "at"]) assert.ok(authorization.required.includes(name), name);
+  assert.ok(!schema.required.includes("authorization"), "preparation alone remains possible");
+  const rollback: any = api.paths["/task_rollback_prepare"].post;
+  assert.deepEqual(rollback.requestBody.content["application/json"].schema.properties.authorization, authorization);
+  const approval: any = api.paths["/task_approval"].post;
+  const variants = approval.requestBody.content["application/json"].schema.anyOf;
+  assert.ok(variants.some((variant: any) => variant.required.includes("authorization") && variant.required.includes("proposal_id") && !variant.required.includes("signature")));
+  assert.match(approval.description, /chat|user-directed/i);
+});
