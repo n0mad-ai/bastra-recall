@@ -18,6 +18,28 @@ of API paths exists. If the dispatcher syntax changes, update the discovery
 visitor and its tests together. Query parameters are discovered from the GET
 handler's `searchParams.get` calls.
 
+Route discovery fails closed: unsupported `u.pathname` conditions (including
+string bracket access such as `u["pathname"]`) stop generation and make
+`openapi:check` fail, even if other known routes remain. Ordinary dot access
+with whitespace is supported. By owner decision, template-literal bracket
+access and parenthesized receivers are outside this check's supported scope.
+The exact OAuth `register`, `authorize` and `token` endpoints, OAuth
+well-known metadata documents (including the MCP protected-resource suffix),
+and `/api/v1/mcp` are explicitly excluded: OAuth 2.1 and MCP Streamable HTTP
+have protocol contracts rather than REST tool schemas. Other paths sharing
+those prefixes are not excluded.
+
+Die Routenerkennung bricht bei nicht sicher auflösbaren `u.pathname`-Bedingungen
+ab. Dazu gehört String-Klammerzugriff wie `u["pathname"]`. Damit wird auch
+`openapi:check` rot, wenn daneben bekannte Routen bestehen bleiben. Normaler
+Punktzugriff mit Leerraum wird unterstützt. Nach Daniels Entscheidung liegen
+Template-Literal-Klammerzugriff und eingeklammerte Empfänger außerhalb des
+unterstützten Prüfumfangs. Ausdrücklich ausgenommen sind genau die OAuth-Routen
+`register`, `authorize` und `token`, die OAuth-Well-known-Metadaten (einschließlich
+des MCP-Suffixes für geschützte Ressourcen) und `/api/v1/mcp`. OAuth 2.1 und
+MCP Streamable HTTP haben eigene Protokollverträge statt REST-Werkzeugschemas.
+Andere Pfade mit denselben Präfixen bleiben von der Ausnahme unberührt.
+
 Input contracts come from the same Zod validators called by the handlers.
 Cross-field refinements and filesystem/permission checks still run at request
 time; JSON Schema cannot express every handler check. Result bodies are intentionally open JSON objects because handlers

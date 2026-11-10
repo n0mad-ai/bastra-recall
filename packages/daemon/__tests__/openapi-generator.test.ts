@@ -90,3 +90,40 @@ test("GET discovery rejects unfamiliar pathname guards even when known routes re
     assert.throws(() => discoverGetRoutes(`${known} if (${guard}) {}`), /Unsupported HTTP GET pathname guard/, guard);
   }
 });
+
+
+test("GET discovery rejects unresolved element-access guards (#1265)", () => {
+  const known = 'if (u.pathname === "/api/v1/health") {}';
+  for (const guard of [
+    'u["pathname"].startsWith("/api/v1/new")',
+    'u["pathname"] === NEW_ROUTE',
+    'u . pathname === NEW_ROUTE',
+    'u["pathname"] === "/api/v1/new"',
+  ]) {
+    assert.throws(() => generateDocuments({ getSource: `${known} if (${guard}) {}` }), /Unsupported HTTP GET pathname guard/, guard);
+  }
+});
+
+test("GET discovery resolves ordinary property guards independent of whitespace", () => {
+  assert.deepEqual([...discoverGetRoutes('if (u . pathname === "/api/v1/new") {}').keys()], ["/new"]);
+});
+
+test("protocol endpoints are explicitly excluded from the REST contract", () => {
+  const paths = [
+    "/api/v1/oauth/register", "/api/v1/oauth/authorize", "/api/v1/oauth/token", "/api/v1/mcp",
+    "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource",
+    "/.well-known/oauth-protected-resource/api/v1/mcp",
+  ];
+  const known = 'if (u.pathname === "/api/v1/health") {}';
+  const getSource = known + paths.map(path => `if (u.pathname === ${JSON.stringify(path)}) {}`).join(" ");
+  const { api } = generateDocuments({ getSource });
+  assert.deepEqual([...discoverGetRoutes(getSource).keys()], ["/health"]);
+  for (const path of paths) assert.equal(api.paths[path.replace(/^\/api\/v1/, "")], undefined, path);
+  // The real protocol handlers run before the REST tool dispatcher. Their
+  // POST operations must stay out of both generated contracts as well.
+  for (const document of Object.values(generateDocuments())) {
+    for (const path of paths) assert.equal(document.paths[path.replace(/^\/api\/v1/, "")], undefined, path);
+  }
+  assert.throws(() => discoverGetRoutes(`${known} if (u.pathname === "/.well-known/unknown") {}`), /Unexpected API path/);
+  assert.ok(discoverGetRoutes(`${known} if (u.pathname === "/api/v1/oauth/new_rest_tool") {}`).has("/oauth/new_rest_tool"));
+});

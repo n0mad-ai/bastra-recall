@@ -72,9 +72,11 @@ export function discoverGetRoutes(text?: string): Map<string, string[]> {
   walk(file, node => {
     // Fail closed when route syntax changes: otherwise one new guard could be
     // skipped while the remaining known routes still make generation succeed.
-    if (ts.isPropertyAccessExpression(node) && node.getText(file) === "u.pathname") {
+    if ((ts.isPropertyAccessExpression(node) && node.expression.getText(file) === "u" && node.name.text === "pathname") ||
+        (ts.isElementAccessExpression(node) && node.expression.getText(file) === "u" &&
+          ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "pathname")) {
       const comparison = node.parent;
-      if (!ts.isBinaryExpression(comparison) || comparison.left !== node ||
+      if (!ts.isPropertyAccessExpression(node) || !ts.isBinaryExpression(comparison) || comparison.left !== node ||
           comparison.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken ||
           !ts.isStringLiteral(comparison.right) || !ts.isIfStatement(comparison.parent) ||
           comparison.parent.expression !== comparison) {
@@ -84,8 +86,17 @@ export function discoverGetRoutes(text?: string): Map<string, string[]> {
     if (!ts.isIfStatement(node) || !ts.isBinaryExpression(node.expression)) return;
     const condition = node.expression;
     if (condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken ||
-        condition.left.getText(file) !== "u.pathname" || !ts.isStringLiteral(condition.right)) return;
+        !ts.isPropertyAccessExpression(condition.left) || condition.left.expression.getText(file) !== "u" ||
+        condition.left.name.text !== "pathname" || !ts.isStringLiteral(condition.right)) return;
     const path = condition.right.text;
+    // OAuth 2.1 metadata/login and MCP Streamable HTTP have their own protocol
+    // contracts (oauth-server.ts/http-mcp.ts), not REST tool schemas. Keep the
+    // exception exact so a future ordinary REST route cannot vanish by prefix.
+    if (path === "/api/v1/oauth/register" || path === "/api/v1/oauth/authorize" ||
+        path === "/api/v1/oauth/token" || path === "/api/v1/mcp" ||
+        path === "/.well-known/oauth-authorization-server" ||
+        path === "/.well-known/oauth-protected-resource" ||
+        path === "/.well-known/oauth-protected-resource/api/v1/mcp") return;
     if (!path.startsWith("/api/v1/")) throw new Error(`Unexpected API path: ${path}`);
     const queries = new Set<string>();
     walk(node.thenStatement, child => {
