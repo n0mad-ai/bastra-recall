@@ -155,6 +155,8 @@ Confirm the whole readable binding and enter the hidden passphrase. Refresh and 
 
 For rollback, select a successful receipt under **Wirkungen und Abgleich**, prepare rollback, separately sign its new proposal and execute it. Rollback is another newly signed exact CAS operation; intervening target edits block it. It remains available after resolution/cancellation/snooze. A crash yields exact-hash reconciliation or visible unknown/review, never blind retry. Only own hash-bound temp files are cleaned; foreign remnants stay visible and can be safely revisited.
 
+The [macOS key-isolation investigation](Owner%20Approval%20Key%20Isolation.md) documents file-key limits, the native implementation stop, Apple mechanisms, the transport threat model and required independent verification. It does not deliver OS key isolation.
+
 ## 7 Resource limits, archives and repair
 
 Per-task intervals, timeout and byte allowance apply to source intake and evidence checks. Global turns have at most 10 assessments/5 s, source reads at most 1 s and 1 MiB, poll 60 s, unchanged failure backoff up to 1 h, active snapshot 4 MiB (normal admission 75 %). Shared source admission follows eligible consumers and each task independently rejects results above its limit. Memory intake includes the unique-file locator: the byte limit covers the sum of scanned Markdown files. Too-small byte allowance reports source_budget / “Quell-Bytegrenze überschritten”, timeout reports source_timeout, with no trigger. Deadlines prevent accepting late results; they do not promise atomic interruption of arbitrary OS I/O. New accepted events bypass old backoff; errors/lock/capacity/process suspension prevent a universal wallclock guarantee.
@@ -211,3 +213,6 @@ For a one-off task with nonempty registered `evidence`, opt in to `auto_resolve:
 ## Local app integration
 
 The [local task app API](Local%20Task%20App%20API.md) documents the SSE stream, explicit read receipt, execution-result retrieval and attributed executor reports. The generated [OpenAPI contract](openapi.yaml) specifies local routes. Each reconnect resynchronizes current durable state; the stream is not a historical replay log. No remote access, device pairing, phone push, provider action or agent launcher is included. General non-task freshness remains outside this task contract.
+
+
+Local snapshot sources for projects, worktrees, task phases, symbols and metadata are documented in [Local Task State Adapters](Local%20Task%20State%20Adapters.md).

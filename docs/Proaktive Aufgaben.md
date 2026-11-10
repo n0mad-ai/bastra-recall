@@ -113,6 +113,8 @@ Das normale lokale Brett verbindet sich ohne Token-Eingabe. Ein separat eingegeb
 
 Vorbereiten zeigt einen exakten Datei-Vorschlag und schreibt das Ziel nicht. Die CLI entsperrt Signing-Schlüssel und signiert die ganze Bindung; die Browser-Kennung und automatische Klicks ersetzen diese Signatur nicht. Jede betroffene Domäne muss zustimmen. Für Execute sind zusätzlich ein aktivierter registrierter lokaler Adapter, eine lebende Lease und eine fällige scharfe Aufgabe erforderlich. Die geschützte Grenze ist eine ausdrückliche, technisch nicht geprüfte Owner-Zusicherung über fehlenden Agent-Zugriff auf Daten, Schlüssel und Laufzeit. Ohne diese Grenze bleibt Execute gesperrt. Agenten mit uneingeschränkten Rechten unter derselben OS-Benutzerkennung erfüllen diese Grenze nicht. Das Speichern einer Entscheidung allein schaltet keine Überwachung scharf. Unbekannte, strittige, veraltete oder nicht erreichbare Evidenz widerlegt keine Prämisse. Ändern braucht eine ausdrückliche Owner-Wahl und eine echte CAS-Memoryrevision; gewöhnliche Memoryfelder werden nicht ergänzt. Der nächste Abschnitt richtet den Referenzadapter ein; die vollständige Wegwerf-Demo steht in `docs/design/proactive-tasks-demo.md`.
 
+Die [Untersuchung zur macOS-Schlüsselisolation](Owner%20Approval%20Key%20Isolation.md#deutsch) dokumentiert Grenzen der Dateischlüssel, den Stopp vor nativer Umsetzung, Apple-Verfahren, Transport-Bedrohungsmodell und nötige unabhängige Prüfung. Sie liefert keine OS-Schlüsselisolation.
+
 ## Ein lokales Ziel registrieren
 
 Unterstützt wird genau ein Referenzadapter: eine vorhandene, registrierte UTF-8-Datei exakt ersetzen. Kein Versand, keine Anbieter-Nachrichten, keine E-Mail-, Slack-, GitHub-, Cloud- oder Shell-Aktionen. Der Vorzustand muss rückrollbar sein: höchstens 16384 Zeichen, keine Tabs/CRLF/BOM/Steuerzeichen oder Inhalte, die sich nicht sicher unverändert darstellen lassen.
@@ -221,3 +223,6 @@ Für eine einmalige Aufgabe mit nichtleerer registrierter `evidence` lässt sich
 ## Lokale App-Anbindung
 
 Die [lokale Aufgaben-App-Schnittstelle](Local%20Task%20App%20API.md#deutsch) beschreibt SSE-Strom, ausdrückliche Lesebestätigung, Abruf von Ausführungsergebnissen und zugeordnete Ausführerberichte. Der erzeugte [OpenAPI-Vertrag](openapi.yaml) legt lokale Routen fest. Jede erneute Verbindung gleicht aktuellen dauerhaften Zustand ab; der Strom ist kein historisches Replay-Journal. Fernzugriff, Gerätekopplung, Handy-Push, Provider-Aktionen und Agentenstarter sind nicht enthalten. Allgemeine Frische außerhalb der Aufgaben bleibt außerhalb dieses Aufgabenvertrags.
+
+
+Lokale Zustandsquellen für Projekte, Worktrees, Aufgabenphasen, Symbole und Metadaten beschreibt [Lokale Aufgaben-Zustandsadapter](Local%20Task%20State%20Adapters.md#deutsch).
