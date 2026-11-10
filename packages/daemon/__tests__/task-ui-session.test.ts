@@ -54,3 +54,36 @@ test("cold archive browsing is read-only, domain-filtered and hash-verified",asy
  const input={idempotency_key:"archive-ui",original_request:"Synthetic",goal:"Finished",resolution_condition:"Done",schedule:{kind:"instant",at:1000},timezone:"Europe/Madrid",scope:{kind:"personal",name:"ui"},owner_domains:["personal"]};let task=await callTaskCrud(ctx,auth,"task_create",input) as any;await callTaskCrud(ctx,auth,"task_resolve",{id:task.id,expected_revision:task.expected_revision});const before=await readTaskStore(ctx.path);const archive=await callTaskCrud(ctx,auth,"task_archive",{task_ids:[task.id],expected_revision:before.revision,recovery_epoch:before.recovery_epoch}) as any;
  const bytes=await readAppRecord("tasks", ctx.path);const rows=await callTaskCrud(ctx,`Bearer ${agent.token}`,"task_list",{archive_id:archive.archive_id}) as any;assert.equal(rows.tasks[0].state,"resolved");assert.equal(rows.tasks[0].archived,true);assert.equal(await readAppRecord("tasks", ctx.path),bytes);await assert.rejects(callTaskCrud(ctx,`Bearer ${other.token}`,"task_list",{archive_id:archive.archive_id}),{code:"not_found"});
 });
+
+test('#1410: new browsers reclaim abandoned sessions while authenticated activity keeps its session', async () => {
+ const root=await mkdtemp(join(tmpdir(),'task-ui-reclaim-')),ctx={path:join(root,'tasks.json'),authPath:join(root,'task-auth.json')};
+ const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;
+ process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;
+ await setUiEnabled(true);await ensureLocalTaskAgent();
+ const server=createServer((req,res)=>dispatchTaskUi(req,res,req.method!,req.url!,ctx));server.listen(0,'127.0.0.1');await once(server,'listening');
+ const base=`http://127.0.0.1:${(server.address() as any).port}`,realNow=Date.now;let now=realNow();Date.now=()=>now;
+ const post=(path:string,headers:Record<string,string>={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:base,...headers},body:'{}'});
+ try {
+  const first=await post('/ui/tasks/session');assert.equal(first.status,200);const data=await first.json() as any;
+  const active={Cookie:first.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':data.csrf};
+  // No automatic TTL: an old cookie still works before another browser needs its slot.
+  now+=25*3600000;assert.equal((await post('/ui/tasks/api/task_status',active)).status,200);
+  let abandoned:Record<string,string>|undefined;
+  for(let i=0;i<150;i++) {
+   now+=3600000;
+   assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'used session remains valid');
+   if(abandoned) assert.equal((await post('/ui/tasks/api/task_status',{...abandoned,Origin:'https://foreign.invalid'})).status,403);
+   const fresh=await post('/ui/tasks/session');assert.equal(fresh.status,200,'abandoned browsers cannot exhaust the daemon');
+   const grant=await fresh.json() as any;
+   if(i===0)abandoned={Cookie:fresh.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':grant.csrf};
+  }
+  assert.equal((await post('/ui/tasks/api/task_status',abandoned!)).status,401,'denied foreign requests do not keep an abandoned session alive');
+  assert.equal((await post('/ui/tasks/api/task_status',{...active,'x-bastra-task-csrf':'x'.repeat(43)})).status,403);
+  let saturated=false;
+  for(let i=0;i<101;i++) {const fresh=await post('/ui/tasks/session');if(fresh.status===503){saturated=true;break;}assert.equal(fresh.status,200);}
+  assert.equal(saturated,true,'recently active sessions retain the bounded capacity guard');
+  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'capacity never displaces active grants');
+  assert.equal((await post('/ui/tasks/logout',active)).status,200);
+  assert.equal((await post('/ui/tasks/api/task_status',active)).status,401,'logout invalidates copied cookies');
+ }finally{Date.now=realNow;await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
+});

@@ -10,7 +10,9 @@ import { callTaskCrud, type TaskServiceContext } from "./task-service.js";
 import { defaultTaskContext, isTaskTool, taskFailure } from "./task-transport.js";
 import { readJsonBody, sendJson, MAX_BODY_BYTES } from "./http-util.js";
 // Deliberately process-local: a daemon restart invalidates every browser grant.
-const sessions = new Map<string, { authorization: string; csrf: string; path: string }>();
+const sessions = new Map<string, { authorization: string; csrf: string; path: string; lastUsed: number }>();
+// Reclaim only under capacity pressure. Existing cookies have no automatic TTL.
+const abandonedAfterMs = 24 * 60 * 60 * 1000;
 const cookie = "bastra_task_session";
 const cookieHeader = (value: string) => `${cookie}=${value}; HttpOnly; SameSite=Strict; Path=/ui/tasks/${value ? "" : "; Max-Age=0"}`;
 function reject(code: string): never { throw Object.assign(new Error("Task UI access denied"), { code }); }
@@ -32,11 +34,16 @@ export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method
         if (principal.role !== "agent") reject("forbidden");
         const existing = id && sessions.get(id);
         if (existing && existing.path === ctx.path && existing.authorization === authorization) {
+          existing.lastUsed = Date.now();
           sendJson(res,200,{ role: "agent", csrf: existing.csrf, expires_in: null }); return;
+        }
+        if (sessions.size >= 100) {
+          const cutoff = Date.now() - abandonedAfterMs;
+          for (const [key, session] of sessions) if (session.lastUsed < cutoff) sessions.delete(key);
         }
         if (sessions.size >= 100) reject("capacity");
         const sessionId = randomBytes(32).toString("base64url"), csrf = randomBytes(32).toString("base64url");
-        sessions.set(sessionId, { authorization, csrf, path: ctx.path });
+        sessions.set(sessionId, { authorization, csrf, path: ctx.path, lastUsed: Date.now() });
         res.setHeader("Set-Cookie", cookieHeader(sessionId)); sendJson(res,200,{ role: "agent", csrf, expires_in: null }); return;
       }
       const session = id && sessions.get(id); if (!session || session.path !== ctx.path) reject("unauthorized");
@@ -48,6 +55,7 @@ export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method
       // Recheck revocation/role on every request; API never inherits an Owner.
       if ((await authenticateTask(session.authorization, ctx.authPath)).role !== "agent") reject("forbidden");
       const input = await readJsonBody(req, MAX_BODY_BYTES);
+      session.lastUsed = Date.now();
       sendJson(res,200,await callTaskCrud(ctx,session.authorization,operation as any,input));
     } catch (error) { const failure=taskFailure(error); sendJson(res,failure.status,failure.body); }
   })();
