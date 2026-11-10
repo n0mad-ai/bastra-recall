@@ -5,6 +5,7 @@ name: CI
 # nothing about malicious code, dependency tampering, or whether the
 # change makes sense. PRs still get reviewed by a maintainer (CODEOWNERS).
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
