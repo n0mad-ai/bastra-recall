@@ -62,6 +62,7 @@ import {
   type DocsMode,
 } from "../settings.js";
 import type { InstallResult, ParsedArgs } from "./types.js";
+import { askTaskChatConsent, finishTaskChatConsent } from "./task-chat-setup.js";
 
 /**
  * Pure gate — exported for tests. The wizard replaces the bare-`install`
@@ -318,6 +319,10 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     required: true,
   });
   if (bailed(chosen)) { p.cancel(CANCEL_MSG); return 1; }
+
+  // Independent, explicit account-wide messaging consent; all writes wait until execute.
+  const chatConsent = (chosen as string[]).includes("claude-code") ? await askTaskChatConsent() : undefined;
+  if (typeof chatConsent === "symbol") { p.cancel(CANCEL_MSG); return 1; }
 
   // ── 2b. stop hook (Claude Code and Codex) ──────────────────────────────────
   // Live-validated (#48), so it now defaults ON, but stays a visible toggle: if
@@ -613,6 +618,8 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     p.outro(`Finished with errors — fix the issue, then re-run: bastra install (log lines above)`);
     return 1;
   }
+
+  if (typeof chatConsent === "boolean") p.log.info(await finishTaskChatConsent(chatConsent));
 
   // Tracks whether recall is actually usable before we bolt a text-model download
   // on top. Only the fresh-enable path can fail here; "already"/"later" start true.

@@ -6,6 +6,7 @@ import { authenticateTask, requireTaskOwner, mintTaskCredential, taskAuthPath } 
 import { atomicWrite } from "../task-store.js";
 import { taskHookConfigPath, taskClientToken } from "../task-client-auth.js";
 import { withPathLock } from "../path-lock.js";
+import { askTaskChatConsent, finishTaskChatConsent } from "./task-chat-setup.js";
 export async function configureTaskHooks(authorization: string) {
   const owner = await authenticateTask(authorization); requireTaskOwner(owner);
   const credential = await mintTaskCredential(taskAuthPath(), { actor_id: `hooks.${randomUUID()}`, role: "agent", domains: owner.domains });
@@ -16,6 +17,10 @@ export async function configureTaskHooks(authorization: string) {
 export async function setupTaskHooks() {
   await configureTaskHooks(await ownerTaskAuthorization());
   process.stdout.write("Karten für lokale Hooks/MCP eingerichtet. Eigene Agent-Kennung; kein Owner-Schlüssel, keine Ausführungsfreigabe. Bei nächstem Kontakt, solange der Daemon läuft. BASTRA_TASK_TOKEN überschreibt diese Konfiguration.\n");
+  if (process.stdin.isTTY) {
+    const answer = await askTaskChatConsent();
+    if (typeof answer === "boolean") process.stdout.write(await finishTaskChatConsent(answer) + "\n");
+  }
 }
 export async function taskClientCoverage() {
   const token = taskClientToken();

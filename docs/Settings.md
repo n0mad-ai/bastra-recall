@@ -12,6 +12,8 @@ The Access section masks secrets, edits browser CORS origins and lists OAuth cli
 
 Invalid JSON edits keep settings unsaved. Save returns to and focuses the invalid editor; correcting or resetting it permits saving. Restart remains blocked while any unsaved edit exists.
 
+`tasks.chatActiveMinutes` sets the genuine-human activity window for Claude Code chat delivery (default 30 minutes, integer 1–1440). `tasks.chatConsent` records the one-time setup answer and is read-only here. Only an explicit Yes during interactive setup may enable Claude's account-wide incoming messages; No, held/refused or managed receiving settings keep notification and board delivery. [Chat setup and limits](active-chat-tasks.md#english).
+
 ### Local API
 
 The settings API requires a directly local connection, a loopback Host and an enabled web UI. Forwarded requests are rejected. Create a session with an empty JSON `POST /ui/settings/session`; keep its HttpOnly/SameSite=Strict cookie and the returned CSRF token. `GET /ui/settings` returns registry entries, masked values, effective settings, environment-override information and OAuth client summaries. Send JSON `POST /ui/settings` with `{ "changes": { "docs.language": "de" } }` and the `X-Bastra-Settings-CSRF` header to change settings. A null value removes a stored override. Invalid patches write nothing. The assistant name uses the existing dedicated address endpoint so its system transaction cannot be bypassed.
@@ -35,6 +37,8 @@ Dies beschreibt das vorbereitete main für v1.2.0; die veröffentlichte v1.1.8 b
 Der Zugangsbereich maskiert Geheimnisse, bearbeitet erlaubte Browser-CORS-Ursprünge und listet OAuth-Clients zum Widerrufen. Ein gespeichertes API-Token wird nie angezeigt. Zum Ersetzen ein neues Geheimnis eingeben; ein unverändert leeres Eingabefeld behält den bisherigen Wert. `bastra token` bleibt die gesonderte lokale Oberfläche zum Ausstellen von Tokens. `daemon.env` wird vollständig maskiert, weil es sensible Werte enthalten kann; beim Ändern das vollständige neue JSON-Objekt angeben. Es gilt für vom Forwarder gestartete Daemons; ein verwalteter Dienst behält seine eigene Umgebung.
 
 Ungültige JSON-Änderungen bleiben ungespeichert. Speichern führt zum fehlerhaften Feld und fokussiert es; Korrigieren oder Zurücksetzen erlaubt das Speichern. Bei ungespeicherten Änderungen bleibt der Neustart gesperrt.
+
+`tasks.chatActiveMinutes` setzt die Aktivitätsgrenze seit der letzten echten Nutzernachricht für Claude-Code-Chat-Zustellung (Standard 30 Minuten, ganze Zahl 1–1440). `tasks.chatConsent` hält die einmalige Einrichtungsantwort fest und ist hier nur lesbar. Nur ein ausdrückliches Ja in der interaktiven Einrichtung darf Claude Codes kontoweiten Nachrichteneingang aktivieren; bei Nein, gehaltenem/abgewiesenem oder verwaltetem Empfang bleiben Mitteilung und Brett. [Chat-Einrichtung und Grenzen](active-chat-tasks.md#deutsch).
 
 ### Lokale API
 

@@ -89,6 +89,8 @@ export const SETTINGS_REGISTRY = {
   tasks: {
     enabled: setting(bool, { area: "tasks", label: "Aufgaben", default: TASKS_DEFAULT, env: "BASTRA_TASKS", restartRequired: true, required: true }),
     notifications: setting(bool, { area: "tasks", label: "Mac-Mitteilungen bei fälligen Aufgaben", default: true }),
+    chatActiveMinutes: setting(z.number().int().min(1).max(1440), { area: "tasks", label: "Chat aktiv nach letzter Nutzernachricht (Minuten)", default: 30 }),
+    chatConsent: setting(z.enum(["accepted", "declined", "blocked"]), { area: "tasks", label: "Claude-Chat-Empfang (Einrichtungsantwort)", default: null, readonly: true }),
   },
   telemetry: { enabled: setting(bool, { area: "general", label: "Lokale Telemetrie", default: TELEMETRY_DEFAULT, env: "BASTRA_TELEMETRY", restartRequired: true, required: true }) },
 } as const;
