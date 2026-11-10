@@ -54,7 +54,7 @@ test("browser prevents duplicate execute reservations and releases its exact hol
 });
 
 test("browser header uses plain language without exposing technical session status",async()=>{
- const html=await readFile(new URL("../webui/index.html",import.meta.url),"utf8");assert.match(html,/Erinnerungen erscheinen beim nächsten Gespräch/);assert.match(html,/Vorbereiten und Ausführen brauchen deine Freigabe/);assert.ok(!html.includes("Zustellung ist ein Anzeigeversuch"));
+ const html=await readFile(new URL("../webui/index.html",import.meta.url),"utf8");assert.match(html,/Erinnerungen erscheinen beim nächsten Gespräch/);assert.match(html,/Deine Anweisung im Chat gibt Vorbereiten und Ausführen frei/);assert.ok(!html.includes("Zustellung ist ein Anzeigeversuch"));
 });
 
 test("task views separate active, completed and failed work and show scrubbed origin as text",async()=>{
@@ -324,4 +324,26 @@ test('#1402: repeated status deadlines abort each fetch before the next poll sta
  for(let i=0;i<8;i++){const poll=runInContext('poll()',u.ctx);await new Promise(r=>setImmediate(r));timers.splice(0).forEach(fn=>fn());await poll;}
  assert.equal(aborted,8);assert.equal(pending,0);assert.equal(peak,1);assert.equal(signals.length,8);assert.ok(signals.every(signal=>signal.aborted));
  hanging=false;await runInContext('poll()',u.ctx);assert.equal(await runInContext('polling',u.ctx),false);
+});
+
+test("chat authorization is visible and executing an authorized proposal needs no second confirmation",async()=>{
+ const authorization={write_origin:"user-directed",session_id:"chat-session",program:"synthetic-client",user_request:"Replace </script> with the reviewed content",at:1000};
+ const task={id:"chat-task",goal:"Authorized artifact",original_request:"Synthetic",state:"due",armed:true,action_level:"execute",schedule:{kind:"instant",at:1000},timezone:"UTC",deliveries:[]};
+ const snapshot={role:"agent",controls:{enabled:true,muted:false,execution_stopped:false},runtime:{running:true},tasks:[task],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[{id:"chat-proposal",task_id:task.id,status:"prepared",binding_current:true}],authorizations:[{task_id:task.id,authorization}],approval:{enrolled_domains:[],protected_boundary:false}};
+ const calls:string[]=[];const u=await ui(snapshot,undefined,{confirm:()=>{throw new Error("Already authorized: no repeated confirmation");},fetch:async(url:string)=>{calls.push(url);return{ok:true,json:async()=>url.endsWith("task_lease")?{lease:{id:"lease",fence:1},holder_token:"fixture"}:url.endsWith("task_execute")?{state:"succeeded",intent_id:"intent",receipt:{id:"receipt"}}:snapshot};}});
+ assert.ok(descendants(u.get("tasks")).some(n=>n.textContent.includes("Im Chat beauftragt")));
+ await runInContext("selectTask(snapshot.tasks[0])",u.ctx);const details=descendants(u.get("detail-body")).map(n=>n.textContent).join(" ");assert.ok(details.includes(authorization.user_request));assert.ok(details.includes(authorization.session_id));assert.ok(details.includes(authorization.program));
+ (u.ctx as any).fixture={proposal:snapshot.proposals[0],preview:{before:"before",after:"after"},approved:true,binding_status:"current",authorization};await runInContext("showProposal(fixture)",u.ctx);
+ assert.equal(u.get("sign-command").textContent,"");assert.ok(descendants(u.get("preview")).some(n=>n.textContent.includes(authorization.user_request)));
+ await descendants(u.get("proposal")).find(n=>n.id==="task-execute-button")!.handlers.click();assert.equal(calls.filter(url=>url.endsWith("task_execute")).length,1);
+});
+
+
+test("the board distinguishes a recorded chat refusal or revocation from authorization",async()=>{
+ const authorization={write_origin:"user-directed",session_id:"chat",program:"client",user_request:"Do not replace it",at:1000};
+ const task={id:"refused",goal:"Artifact",original_request:"Synthetic",state:"due",armed:true,action_level:"execute",schedule:{kind:"instant",at:1000},timezone:"UTC",deliveries:[]};
+ const base={role:"agent",controls:{enabled:true,muted:false,execution_stopped:false},runtime:{running:true},tasks:[task],capacity:{},intents:[],receipts:[],sources:[],adapters:[],proposals:[],approval:{}};
+ for(const row of [{decision:"deny"},{decision:"approve",revoked_at:2000}]){
+  const u=await ui({...base,authorizations:[{task_id:task.id,authorization,...row}]});const labels=descendants(u.get("tasks")).map(n=>n.textContent).join(" ");assert.ok(!labels.includes("Im Chat beauftragt"));assert.match(labels,row.decision==="deny"?/Im Chat abgelehnt/:/Chat-Freigabe widerrufen/);
+ }
 });
