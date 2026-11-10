@@ -1,4 +1,5 @@
 import test from "node:test";
+import { waitForFixtureChild } from "./fixtures/service-child-lifetime.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import assert from "node:assert/strict";
@@ -26,8 +27,9 @@ async function fixture(work:(dir:string,env:NodeJS.ProcessEnv,port:number)=>Prom
  const env: NodeJS.ProcessEnv={...process.env,HOME:home,USERPROFILE:home,BASTRA_VAULT_PATH:vault,BASTRA_HTTP_PORT:String(port),BASTRA_DAEMON_URL:`http://127.0.0.1:${port}`,BASTRA_EMBEDDING_PROVIDER:"none",BASTRA_TELEMETRY:"off",BASTRA_UPDATE_CHECK:"off",BASTRA_SESSION_HARVEST:"0",BASTRA_DAEMON_IDLE_SHUTDOWN_MS:"1000",BASTRA_HARVEST_QUEUE_PATH:join(home,".bastra/queue.json"),BASTRA_DRAFTS_PATH:join(home,".bastra/drafts.json"),BASTRA_PENDING_SUGGESTIONS_PATH:join(home,".bastra/relay.json"),BASTRA_VAULT_ROOTS_PATH:join(home,".bastra/roots.json"),BASTRA_HOST_PROFILE_PATH:join(home,".bastra/host.json")};
  delete env.BASTRA_DAEMON_STARTED_BY;delete env.BASTRA_AUTOSTART_MANAGED;delete env.INVOCATION_ID;
  try{await work(dir,env,port);}finally{
-  // Detached fallback daemons use a fixture-only short idle timer. Poll health
-  // (which is not activity), then remove the fixture only once its port is free.
+  // Workers retain their spawned daemons through close; direct daemons are
+  // stopped by each case. Health is only an additional port-release check,
+  // never the storage-writer lifetime boundary (#1413).
   await until(async()=>{try{const r=await fetch(env.BASTRA_DAEMON_URL+"/health",{signal:AbortSignal.timeout(200)});return !r.ok;}catch{return true;}},15000);
   await rm(dir,{recursive:true,force:true});
  }
@@ -128,4 +130,19 @@ test("#758 doctor explains a managed service behind a running client daemon",()=
  const probe={ok:true,detail:"fixture",endpoint:{} as DaemonProbe["endpoint"],startedBy:"forwarder",envOrigin:"client"} as DaemonProbe;
  assert.match(daemonOriginLines(probe,configuredState(undefined,{BASTRA_AUTOSTART_MANAGED:"1"})).join("\n"),/managed service is installed.*client daemon holds the port/);
  assert.doesNotMatch(daemonOriginLines(probe,configuredState({BASTRA_TRIGGER_EXPAND:"0"},null)).join("\n"),/managed service is installed/);
+});
+
+// #1413: a daemon may close HTTP before its final storage writes finish.
+test("#1413 fixture lifetime waits for late writes after the health port closes", async () => {
+ const dir=await mkdtemp(join(tmpdir(),"bastra-late-write-"));
+ const child=spawn(process.execPath,["-e",`const fs=require('node:fs'); const server=require('node:http').createServer(); server.listen(0,'127.0.0.1',()=>server.close(()=>process.stdout.write('port closed\\n'))); process.stdin.once('data',()=>{fs.mkdirSync(process.argv[1]+'/.bastra');fs.writeFileSync(process.argv[1]+'/.bastra/final','done');});`,dir],{stdio:["pipe","pipe","pipe"]});
+ try {
+  await once(child.stdout!,"data");
+  let completed=false;
+  const lifetime=waitForFixtureChild(child).then(()=>{completed=true;});
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.equal(completed,false,"closed HTTP must not permit fixture removal while the process is alive");
+  child.stdin!.end("finish");await lifetime;
+  assert.deepEqual(await readdir(join(dir,".bastra")),["final"]);
+ } finally {await stop(child);await rm(dir,{recursive:true,force:true});}
 });
