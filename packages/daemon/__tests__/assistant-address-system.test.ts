@@ -8,6 +8,8 @@ import { renderAssistantSocketPlist, makeAddressAdminScript } from "../src/assis
 import { changeAssistantName, setupAssistantAddress, removeAssistantAddress } from "../src/assistant-address.js";
 import { getAssistantName } from "../src/assistant-address-settings.js";
 
+async function applyCompanion(p:any){if(p.companion){if(p.companion.after===null)await rm(p.companion.path,{force:true});else await writeFile(p.companion.path,p.companion.after);}}
+
 test("#1332: socket plist binds both loopbacks and drops to the installing user", () => {
  const xml=renderAssistantSocketPlist({uid:"501",username:"fixture",home:"/Users/fixture",launcher:"/Users/fixture/address/launch.sh"});
  assert.match(xml,/<key>UserName<\/key>\s*<string>fixture<\/string>/);
@@ -35,7 +37,7 @@ test("#1332: setup requires consent; rename and uninstall remove only owned host
  const userJs=join(firefoxRoot,"Profiles","default","user.js"),foreign='user_pref("unrelated.pref", true);\n';await writeFile(userJs,foreign);
  await writeFile(hostsPath,"127.0.0.1 localhost\n10.0.0.2 foreign\n");
  const before=await readFile(hostsPath,"utf8");let prompts=0;
- const opts={settingsPath,hostsPath,runtimeDir,firefoxRoot,helperPath,uid:"501",username:"fixture",home:root,platform:"darwin" as const,ensureRuntime:async()=>{},runAdmin:async (plan:any)=>{prompts++;await writeFile(hostsPath,plan.hostsAfter);if(plan.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,plan.helperAfter);}};
+ const opts={settingsPath,hostsPath,runtimeDir,firefoxRoot,helperPath,uid:"501",username:"fixture",home:root,platform:"darwin" as const,ensureRuntime:async()=>{},runAdmin:async (plan:any)=>{prompts++;await writeFile(hostsPath,plan.hostsAfter);if(plan.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,plan.helperAfter);await applyCompanion(plan);}};
  await changeAssistantName("Jarvis",opts);
  await assert.rejects(setupAssistantAddress({...opts,systemConsent:false}),/consent|Zustimmung/i);
  assert.equal(prompts,0);assert.equal(await readFile(hostsPath,"utf8"),before);
@@ -64,7 +66,7 @@ test("#1332: a Firefox edit during admin consent rolls back system changes witho
  const root=await mkdtemp(join(tmpdir(),"assistant-rollback-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const firefoxRoot=join(root,"firefox"),profile=join(firefoxRoot,"profile"),settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper");
  await mkdir(profile,{recursive:true});await writeFile(join(firefoxRoot,"profiles.ini"),"[Profile0]\nIsRelative=1\nPath=profile\n");const pref=join(profile,"user.js");await writeFile(pref,'user_pref("foreign", true);\n');const before="127.0.0.1 localhost\n";await writeFile(hostsPath,before);let calls=0;
- const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},systemConsent:true,runAdmin:async(p:any)=>{calls++;await writeFile(hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,p.helperAfter);if(calls===1)await writeFile(pref,'user_pref("edited-during-consent", true);\n');}};
+ const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},systemConsent:true,runAdmin:async(p:any)=>{calls++;await writeFile(hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,p.helperAfter);await applyCompanion(p);if(calls===1)await writeFile(pref,'user_pref("edited-during-consent", true);\n');}};
  await changeAssistantName("Jarvis",options);await assert.rejects(setupAssistantAddress(options),/changed|retry/i);
  assert.equal(await readFile(hostsPath,"utf8"),before);assert.equal(await readFile(pref,"utf8"),'user_pref("edited-during-consent", true);\n');assert.equal(calls,2);
 });
@@ -73,7 +75,7 @@ test("#1332: another name change cannot race an outstanding admin consent",async
  const root=await mkdtemp(join(tmpdir(),"assistant-serial-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),firefoxRoot=join(root,"firefox");await mkdir(firefoxRoot);await writeFile(hostsPath,"127.0.0.1 localhost\n");
  let enter!:()=>void,release!:()=>void;const entered=new Promise<void>(r=>enter=r),gate=new Promise<void>(r=>release=r);
- const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{enter();await gate;await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
+ const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{enter();await gate;await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);await applyCompanion(p);}};
  await changeAssistantName("Jarvis",options);const first=setupAssistantAddress({...options,systemConsent:true});await entered;
  const second=changeAssistantName("Ruby",options).then(()=>"saved",()=>"rejected");
  await new Promise(r=>setTimeout(r,20));release();await first;
@@ -91,7 +93,7 @@ test("#1332: setup repairs an unchanged helper that is no longer loaded",async t
 test("#1332 review: admin failure after completed system writes reconciles settings and state",async t=>{
  const root=await mkdtemp(join(tmpdir(),"assistant-reconcile-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
- const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);throw new Error("admin timeout");}};
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);await applyCompanion(p);throw new Error("admin timeout");}};
  await setupAssistantAddress({...options,name:"Ruby"});assert.equal(await getAssistantName(settingsPath),"ruby");assert.equal(JSON.parse(await readFile(join(runtimeDir,"state.json"),"utf8")).name,"ruby");
 });
 test("#1332 review: a late admin completion is reconciled when status is checked",async t=>{
@@ -100,13 +102,13 @@ test("#1332 review: a late admin completion is reconciled when status is checked
  const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
  const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{plan=p;throw new Error("admin timeout");}};
  await assert.rejects(setupAssistantAddress({...options,name:"Ruby"}),/prüfen|pending|ausstehend/i);
- await writeFile(hostsPath,plan.hostsAfter);await writeFile(helperPath,plan.helperAfter);
+ await writeFile(hostsPath,plan.hostsAfter);await writeFile(helperPath,plan.helperAfter);await applyCompanion(plan);
  const status=await assistantAddressStatus(options);assert.equal(status.name,"ruby");assert.equal(JSON.parse(await readFile(join(runtimeDir,"state.json"),"utf8")).name,"ruby");
 });
 test("#1332 review: pre-existing user Firefox persisted whitelist is preserved",async t=>{
  const root=await mkdtemp(join(tmpdir(),"assistant-pref-owner-"));t.after(()=>rm(root,{recursive:true,force:true}));
  const firefoxRoot=join(root,"firefox"),profile=join(firefoxRoot,"profile"),settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper");await mkdir(profile,{recursive:true});await writeFile(join(firefoxRoot,"profiles.ini"),"[Profile0]\nIsRelative=1\nPath=profile\n");const prefs=join(profile,"prefs.js"),original='user_pref("browser.fixup.domainwhitelist.jarvis", true);\n';await writeFile(prefs,original);await writeFile(hostsPath,"127.0.0.1 localhost\n");
- const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},systemConsent:true,runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,p.helperAfter);}};
+ const options={settingsPath,hostsPath,helperPath,firefoxRoot,runtimeDir:join(root,"runtime"),uid:"501",username:"fixture",home:root,platform:"darwin"as const,ensureRuntime:async()=>{},systemConsent:true,runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(helperPath,{force:true});else await writeFile(helperPath,p.helperAfter);await applyCompanion(p);}};
  await setupAssistantAddress({...options,name:"Jarvis"});await changeAssistantName("Ruby",options);assert.equal(await readFile(prefs,"utf8"),original);
 });
 test("#1332 review: Doctor status supplies a repair path for a modified owned hosts block",async t=>{
@@ -125,14 +127,14 @@ test("#1332 review: timeout preserves the late native admin completion receipt",
 
 test("#1332 review: late removal is also reconciled without a second admin action",async t=>{
  const {assistantAddressStatus}=await import("../src/assistant-address.js");const root=await mkdtemp(join(tmpdir(),"assistant-remove-late-"));t.after(()=>rm(root,{recursive:true,force:true}));const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");let late:any;
- const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
- await setupAssistantAddress({...options,name:"Ruby"});await assert.rejects(removeAssistantAddress({...options,runAdmin:async p=>{late=p;throw new Error("timeout");}}));await writeFile(hostsPath,late.hostsAfter);await rm(helperPath);
+ const options={settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);await applyCompanion(p);}};
+ await setupAssistantAddress({...options,name:"Ruby"});await assert.rejects(removeAssistantAddress({...options,runAdmin:async p=>{late=p;throw new Error("timeout");}}));await writeFile(hostsPath,late.hostsAfter);await rm(helperPath);await applyCompanion(late);
  assert.equal((await assistantAddressStatus(options)).name,null);await assert.rejects(readFile(join(runtimeDir,"state.json")),{code:"ENOENT"});
 });
 
 test("#1332 review: unchanged repair waits for its admin receipt and blocks a second mutation",async t=>{
  const {assistantAddressStatus}=await import("../src/assistant-address.js");const root=await mkdtemp(join(tmpdir(),"assistant-repair-receipt-"));t.after(()=>rm(root,{recursive:true,force:true}));const settingsPath=join(root,"settings"),hostsPath=join(root,"hosts"),helperPath=join(root,"helper"),runtimeDir=join(root,"runtime");await writeFile(hostsPath,"127.0.0.1 localhost\n");
- const options={helperLoaded:async()=>false,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);}};
+ const options={helperLoaded:async()=>false,settingsPath,hostsPath,helperPath,runtimeDir,firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(hostsPath,p.hostsAfter);await writeFile(helperPath,p.helperAfter);await applyCompanion(p);}};
  await setupAssistantAddress({...options,name:"Ruby"});let settled:((success:boolean)=>Promise<void>)|undefined;await assert.rejects(setupAssistantAddress({...options,runAdmin:async p=>{settled=p.onSettled;throw new Error("timeout");}}));assert.equal((await assistantAddressStatus(options)).pending,true);await assert.rejects(changeAssistantName("Jarvis",options),/ausstehend/);assert.ok(settled);await settled(false);assert.equal((await assistantAddressStatus(options)).pending,false);assert.equal(await getAssistantName(settingsPath),"ruby");
 });
 

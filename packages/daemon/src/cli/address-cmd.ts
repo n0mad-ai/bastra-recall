@@ -6,7 +6,7 @@ export async function cmdAddress(args:ParsedArgs,options?:AssistantAddressOption
  options??={};
  try{
   const action=args.surface??"status",value=args.positional[2];
-  if(action==="status"){const s=await assistantAddressStatus(options);process.stdout.write(args.json?JSON.stringify(s)+"\n":`${s.name??"Kein Assistentenname gesetzt"}\n${s.urls?`${s.urls.local}\n${s.urls.bare}\n`:""}${s.ready?"Adresse erreichbar":"Adresse noch nicht eingerichtet oder Dienst nicht erreichbar"}\n${s.bareNameNotice}\n${s.repair??""}\n`);return 0;}
+  if(action==="status"){const s=await assistantAddressStatus(options);process.stdout.write(args.json?JSON.stringify(s)+"\n":`${s.name??"Kein Assistentenname gesetzt"}\n${s.urls?`${s.urls.local}\n${s.urls.bare}\n`:""}${s.ready?"Adresse erreichbar":"Adresse noch nicht eingerichtet oder Dienst nicht erreichbar"}\n${s.bareNameNotice}\n${s.repair??""}\n${s.processBoundUpgrade?`Für die Prozessgrenze einmal bestätigt neu einrichten: ${s.processBoundUpgrade}\n`:""}`);return 0;}
   if(!["setup","remove"].includes(action))throw new Error("bastra address status | setup [name] [--yes] | remove [--yes]");
   if(args.dryRun){if(value)normalizeAssistantName(value);process.stdout.write(`Würde lokale Adresse ${action==="remove"?"entfernen":"einrichten"}: ${value?JSON.stringify(assistantUrls(value)):"gespeicherter Name"}. hosts und eigener Socket-Helfer brauchen Systemfreigabe; nur eigene Firefox-Prefs werden verändert.\n`);return 0;}
   const needs=action==="setup"||await addressRemovalNeedsConsent(options);

@@ -293,6 +293,12 @@ state. This backup covers only the launcher/runtime state, not later setup,
 removal, hosts or browser changes. Use `bastra address status` to diagnose an
 incomplete installation and `bastra address setup --yes` for an explicit repair.
 
+### Assistant link: bounded socket helpers
+
+New confirmed macOS address setups use one persistent `Wait=true` job per loopback family. Each launcher replaces itself with Node; launchd admits at most one process per job before any launcher runs. The pair has two managed helper processes, with eight active connections per family; extra connections receive 503 and `Retry-After`. The fixture tests cover real inherited listeners, parallel requests, overload, retirement and the two-job rollback. They do not certify native launchd activation.
+
+Existing root `Wait=false` installations remain compatible and can still start shells outside the Node-slot limit. A daemon/runtime update alone does not change that system configuration. After reviewing the system change, use `bastra address setup <name> --yes` to migrate. `bastra address status` reports `processBound` only when both job files and loaded jobs are confirmed; `processBoundUpgrade` names the migration command otherwise. Before downgrading after this migration, remove both jobs with the current version, then install and configure the earlier version, which does not know the IPv6 companion.
+
 ### Vault care — flag it now, groom it later
 
 Memories age: titles go stale, duplicates creep in, ghosts point at notes you never wrote. bastra-recall turns tending the vault into a two-step loop instead of a chore. From any node's inspector on the vault map you flag a memory — *delete*, *edit*, *write* (for ghosts), or *note* — and the flags land as checkbox lines in an open `vault-care.md` at the vault root. Your **next AI session sees the open flags automatically** (session hook) and offers to work the list off with you: one guided cleanup pass, your call on every item. No hidden state, no separate app — a markdown checklist any editor can open.
@@ -956,6 +962,12 @@ Sicherung deckt nur Launcher und Laufzeitstand ab, keine späteren Einrichtungs-
 Entfernungs-, Hosts- oder Browser-Änderungen. `bastra address status` zeigt
 unvollständige Einrichtungen; `bastra address setup --yes` repariert sie auf
 ausdrücklichen Aufruf.
+
+### Assistenten-Link: begrenzte Socket-Helfer
+
+Neue bestätigte Mac-Adresseinrichtungen verwenden je Loopback-Familie einen dauerhaften `Wait=true`-Job. Der Launcher ersetzt sich durch Node; launchd lässt je Job höchstens einen Prozess zu, bevor der Launcher läuft. Das Paar hat zwei verwaltete Helferprozesse und je Familie acht aktive Verbindungen; weitere erhalten 503 und `Retry-After`. Die Fixtures prüfen echte geerbte Listener, parallele Anfragen, Überlastung, Retirement und die gemeinsame Rücknahme beider Jobs. Sie zertifizieren keine native launchd-Aktivierung.
+
+Bestehende Root-`Wait=false`-Einrichtungen bleiben kompatibel und können weiterhin Shells außerhalb der Node-Platzgrenze starten. Ein Daemon-/Laufzeitupdate ändert diese Systemkonfiguration nicht. Nach Prüfung der Systemänderung migriert `bastra address setup <name> --yes` die Einrichtung. `bastra address status` meldet `processBound` nur bei bestätigten Dateien und geladenen Jobs beider Familien; andernfalls nennt `processBoundUpgrade` den Migrationsbefehl. Nach dieser Migration vor einem Downgrade beide Jobs mit der aktuellen Version entfernen und dann die frühere Version installieren/einrichten; sie kennt den IPv6-Begleiter nicht.
 
 ### Vault-Pflege — jetzt markieren, später aufräumen
 

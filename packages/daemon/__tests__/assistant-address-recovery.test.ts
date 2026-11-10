@@ -8,12 +8,14 @@ import {setAssistantName,getAssistantName} from "../src/assistant-address-settin
 import {withPathLock} from "../src/path-lock.js";
 async function fixture(t:test.TestContext){
  const root=await mkdtemp(join(tmpdir(),"assistant-recovery-"));t.after(()=>rm(root,{recursive:true,force:true}));const service={loaded:false};
- const o={settingsPath:join(root,"settings"),hostsPath:join(root,"hosts"),helperPath:join(root,"helper"),runtimeDir:join(root,"runtime"),firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,helperLoaded:async()=>service.loaded,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(o.hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(o.helperPath,{force:true});else await writeFile(o.helperPath,p.helperAfter);service.loaded=p.helperAfter!==null;await p.onSettled?.(true);}};
+ const o={settingsPath:join(root,"settings"),hostsPath:join(root,"hosts"),helperPath:join(root,"helper"),runtimeDir:join(root,"runtime"),firefoxRoot:join(root,"firefox"),home:root,uid:"501",username:"fixture",platform:"darwin"as const,systemConsent:true,helperLoaded:async()=>service.loaded,ensureRuntime:async()=>{},runAdmin:async(p:any)=>{await writeFile(o.hostsPath,p.hostsAfter);if(p.helperAfter===null)await rm(o.helperPath,{force:true});else await writeFile(o.helperPath,p.helperAfter);await applyCompanion(p);service.loaded=p.helperAfter!==null;await p.onSettled?.(true);}};
  await writeFile(o.hostsPath,"127.0.0.1 localhost\n");await setAssistantName("Jarvis",o.settingsPath);return {o,service};
 }
 async function stopAndFail(o:Awaited<ReturnType<typeof fixture>>["o"],service:{loaded:boolean}){
  await assert.rejects(removeAssistantAddress({...o,runAdmin:async p=>{service.loaded=false;await p.onSettled?.(false);throw Error("hosts write failed");}}));
 }
+async function applyCompanion(p:any){if(p.companion){if(p.companion.after===null)await rm(p.companion.path,{force:true});else await writeFile(p.companion.path,p.companion.after);}}
+
 test("#1332 P1: setup repairs a failed removal and remove can resume a terminal partial state",async t=>{
  const {o,service}=await fixture(t);await setupAssistantAddress(o);await stopAndFail(o,service);
  assert.equal((await assistantAddressStatus(o)).partial,true);await assert.rejects(setupAssistantAddress({...o,systemConsent:false}),/Systemfreigabe/);await setupAssistantAddress(o);assert.equal(service.loaded,true);assert.equal((await assistantAddressStatus(o)).pending,false);
@@ -33,7 +35,7 @@ test("#1332 P2: unrelated pending errors never instruct deleting the hosts block
  const {o,service}=await fixture(t);let plan:any;
  await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{plan=p;throw Error("timeout");}}));
  let s=await assistantAddressStatus(o);assert.doesNotMatch(s.repair??"",/Block.*entfernen/i);assert.match(s.repair??"",/warten|später|Dialog/i);
- await writeFile(o.hostsPath,plan.hostsAfter);await writeFile(o.helperPath,plan.helperAfter);await setAssistantName("Ruby",o.settingsPath);
+ await writeFile(o.hostsPath,plan.hostsAfter);await writeFile(o.helperPath,plan.helperAfter);await applyCompanion(plan);await setAssistantName("Ruby",o.settingsPath);
  s=await assistantAddressStatus(o);assert.doesNotMatch(s.repair??"",/Block.*entfernen/i);assert.match(s.repair??"",/Einstellung|Namen/i);
  service.loaded=true;await plan.onSettled(true);s=await assistantAddressStatus(o);assert.doesNotMatch(s.repair??"",/Block.*entfernen/i);await setupAssistantAddress({...o,name:"Ruby"});assert.equal((await assistantAddressStatus(o)).pending,false);assert.equal(await getAssistantName(o.settingsPath),"ruby");
 });
@@ -74,7 +76,7 @@ test("#1332 follow-up: bootstrap failure distinguishes a previously unloaded ser
 });
 test("#1332 follow-up: full uninstall can clear a local partial intent when system cleanup is already done",async t=>{
  const {cmdUninstall,parseArgs}=await import("../src/cli/commands.js"),{ADAPTERS}=await import("../src/cli/registry.js");assert.ok(cmdUninstall.length>=2,"isolated address IO must exist before invoking full uninstall");assert.ok(process.env.BASTRA_TEST_RUN_ROOT);
- const {o,service}=await fixture(t);await setupAssistantAddress(o);await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{service.loaded=false;await p.onSettled?.(false);throw Error("bootstrap failed");}}));await rm(o.helperPath);await writeFile(o.hostsPath,"127.0.0.1 localhost\n");
+ const {o,service}=await fixture(t);await setupAssistantAddress(o);await assert.rejects(setupAssistantAddress({...o,runAdmin:async p=>{service.loaded=false;await p.onSettled?.(false);throw Error("bootstrap failed");}}));await rm(o.helperPath);await rm(o.helperPath+".ipv6.plist",{force:true});await writeFile(o.hostsPath,"127.0.0.1 localhost\n");
  const {addressRemovalNeedsConsent}=await import("../src/assistant-address.js");assert.equal(await addressRemovalNeedsConsent(o),false);
  for(const adapter of Object.values(ADAPTERS))t.mock.method(adapter,"uninstall",async()=>({status:"not-present"as const,message:"fixture"}));t.mock.method(process.stdout,"write",()=>true);
  assert.equal(await cmdUninstall(parseArgs(["uninstall","all"]),{address:o,notify:async()=>{}}),0);assert.equal(await getAssistantName(o.settingsPath),null);

@@ -10,11 +10,12 @@ import { readSettings, settingsFilePath } from "./settings-file.js";
 import { normalizeAssistantName, assistantUrls } from "./assistant-address-name.js";
 import { patchAssistantHosts, managedAssistantHostsName, patchFirefoxUserJs, retiredFirefoxPreference } from "./assistant-address-files.js";
 import { getAssistantName, setAssistantName } from "./assistant-address-settings.js";
-import { renderAssistantSocketPlist, runMacAddressAdmin, cleanupMacAddressAdminStaging, addressAdminProcessAlive, shellQuote, type AddressAdminPlan } from "./assistant-address-admin.js";
+import { renderAssistantSocketPair, runMacAddressAdmin, cleanupMacAddressAdminStaging, addressAdminProcessAlive, shellQuote, type AddressAdminPlan } from "./assistant-address-admin.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { stableNodeBin } from "./cli/autostart.js";
 
-/** Concurrent helpers: room for parallel UI loading on both loopbacks; beyond it a clear 503. */
+/** Compatibility only: admitted Node slots for old Wait=false jobs. New paired
+ * Wait=true jobs are bounded by launchd before process creation. */
 const HELPER_SLOTS=16;
 type RuntimeProcess={pid:number;uid:number;command:string;started?:string};
 export interface AssistantAddressOptions {
@@ -32,6 +33,8 @@ export function assistantAddressOptions(o:AssistantAddressOptions={}) {
 }
 async function optional(path:string):Promise<string|null>{try{return await readFile(path,"utf8");}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return null;throw e;}}
 async function atomic(path:string,content:string){await mkdir(dirname(path),{recursive:true,mode:0o700});const temp=`${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;await writeFile(temp,content,{mode:0o600,flag:"wx"});try{await rename(temp,path);}finally{await rm(temp,{force:true});}}
+const companionPath=(o:ReturnType<typeof assistantAddressOptions>)=>o.helperPath+".ipv6.plist";
+async function ownCompanion(o:ReturnType<typeof assistantAddressOptions>){const text=await optional(companionPath(o));if(text!==null&&!text.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`))throw new Error("foreign assistant IPv6 service — left unchanged");return text;}
 async function ownHelper(o:ReturnType<typeof assistantAddressOptions>){const text=await optional(o.helperPath);if(text!==null&&!text.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`))throw new Error("foreign assistant socket service — left unchanged");return text;}
 async function state(o:ReturnType<typeof assistantAddressOptions>):Promise<{name?:string;firefoxFiles?:string[];firefoxOwnedPrefs?:Record<string,string[]>}|null>{const raw=await optional(join(o.runtimeDir,"state.json"));if(!raw)return null;try{return JSON.parse(raw);}catch{throw new Error("assistant address state is damaged");}}
 function profileAllowed(path:string,root:string){const p=resolve(path),r=resolve(root);return p.startsWith(r+sep)&&p.endsWith(sep+"user.js");}
@@ -137,7 +140,7 @@ export async function ensureAssistantAddressRuntime(options:AssistantAddressOpti
  // Wait=false starts one helper per accepted connection. Each helper holds one of
  // HELPER_SLOTS kernel file locks, released by the kernel when it exits (#1335).
  const slot=`slot() { if [ -x /usr/bin/lockf ]; then /usr/bin/lockf -s -k -t 0 "$1" ${command}; elif [ -x /usr/bin/flock ]; then /usr/bin/flock -n -E 75 "$1" ${command}; else ${command}; fi; }\ni=0; rc=75\nwhile [ "$rc" -eq 75 ] && [ "$i" -lt ${HELPER_SLOTS} ]; do slot ${shellQuote(slots)}/"$i"; rc=$?; i=$((i+1)); done\nif [ "$rc" -eq 75 ]; then respond ${shellQuote(busy)}; exit 1; fi`;
- await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nrespond() { /usr/bin/printf %s "$1"; }\nfail() { respond ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\n${slot}\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
+ await atomic(join(o.runtimeDir,"launch.sh"),`#!/bin/sh\n# Socket protocol 2: accepted connections; legacy Wait=true uses the bootstrap compatibility path.\nrespond() { /usr/bin/printf %s "$1"; }\nfail() { respond ${shellQuote(failure)}; }\nif [ "\${BASTRA_ASSISTANT_ADDRESS_PROTOCOL:-2}" != 2 ] || [ ! -x ${shellQuote(node)} ] || [ ! -r ${shellQuote(bootstrap)} ]; then fail; exit 1; fi\nif [ "\${BASTRA_ASSISTANT_ADDRESS_LISTEN:-0}" = 1 ]; then exec ${command}; fi\n${slot}\nif [ "$rc" -ne 0 ]; then fail; fi\nexit "$rc"\n`);
  await retireLegacyAssistantHelpers(o);
 }
 export async function refreshAssistantAddressRuntime(options:AssistantAddressOptions={}):Promise<void>{const o=assistantAddressOptions(options);if(await optional(join(o.runtimeDir,"managed"))===`bastra-assistant-address:${o.uid}\n`)await ensureAssistantAddressRuntime(o);}
@@ -173,11 +176,14 @@ export async function publishAssistantAddressEndpoint(options:AssistantAddressOp
   await atomic(path,JSON.stringify({...current,generation:randomUUID(),daemonUrl:o.daemonUrl})+"\n");
  },{strictLocal:true});
 }
-async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions>):Promise<boolean|null>{
+async function assistantHelperLoaded(o:ReturnType<typeof assistantAddressOptions>,includeCompanion=false):Promise<boolean|null>{
  if(o.helperLoaded)return o.helperLoaded();
  if(o.runAdmin)return null; // Test/injected IO never inspects the live launchd domain.
  if(o.platform!=="darwin")return null;
- return new Promise(resolve=>execFile("/bin/launchctl",["print",`system/ai.n0mad.bastra-recall.address.${o.uid}`],{timeout:1500},(error,_out,stderr)=>{if(!error)resolve(true);else resolve(/Could not find service|service not found/i.test(stderr)?false:null);}));
+ const labels=[`ai.n0mad.bastra-recall.address.${o.uid}`];
+ if(includeCompanion||await optional(companionPath(o))!==null||(await optional(o.helperPath))?.includes("<key>BASTRA_ASSISTANT_ADDRESS_BOUND</key><string>2</string>"))labels.push(`ai.n0mad.bastra-recall.address.${o.uid}.ipv6`);
+ const loaded=await Promise.all(labels.map(label=>new Promise<boolean|null>(resolve=>execFile("/bin/launchctl",["print",`system/${label}`],{timeout:1500},(error,_out,stderr)=>{if(!error)resolve(true);else resolve(/Could not find service|service not found/i.test(stderr)?false:null);}))))
+ return loaded.includes(false)?false:loaded.includes(null)?null:true;
 }
 class AddressIntentError extends Error {}
 class AddressPendingError extends Error {}
@@ -190,7 +196,7 @@ const receiptPath=(o:ReturnType<typeof assistantAddressOptions>,id:string)=>join
 async function forgetPending(o:ReturnType<typeof assistantAddressOptions>,p:PendingAddress){await rm(pendingPath(o),{force:true});await rm(receiptPath(o,p.id),{force:true});}
 function validatePending(o:ReturnType<typeof assistantAddressOptions>,p:PendingAddress){
  try{
- if(!/^[a-f0-9-]{36}$/.test(p.id)||p.plan?.hostsPath!==o.hostsPath||p.plan?.helperPath!==o.helperPath||(p.name!==null&&p.name!==normalizeAssistantName(p.name))||!Array.isArray(p.profiles)||!p.profiles.every(e=>profileAllowed(e.path,o.firefoxRoot)||profileAllowed(join(dirname(e.path),"user.js"),o.firefoxRoot)&&e.path.endsWith(sep+"prefs.js")))throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");
+ if(!/^[a-f0-9-]{36}$/.test(p.id)||p.plan?.hostsPath!==o.hostsPath||p.plan?.helperPath!==o.helperPath||(p.plan.companion&&(p.plan.companion.path!==companionPath(o)||p.plan.companion.label!==`ai.n0mad.bastra-recall.address.${o.uid}.ipv6`))||(p.name!==null&&p.name!==normalizeAssistantName(p.name))||!Array.isArray(p.profiles)||!p.profiles.every(e=>profileAllowed(e.path,o.firefoxRoot)||profileAllowed(join(dirname(e.path),"user.js"),o.firefoxRoot)&&e.path.endsWith(sep+"prefs.js")))throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");
  }catch{throw new AddressIntentError("Adress-Abgleich beschädigt; keine Systemänderung wiederholen.");}
 
 }
@@ -235,7 +241,7 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
  const p=JSON.parse(raw)as PendingAddress;
  validatePending(o,p);
 
- const hosts=await optional(o.hostsPath),helper=await optional(o.helperPath);
+ const hosts=await optional(o.hostsPath),helper=await optional(o.helperPath),companion=p.plan.companion?await optional(companionPath(o)):undefined;
  let receipt=await optional(receiptPath(o,p.id));
  const createdAt=p.createdAt??(await stat(pendingPath(o))).mtimeMs;
  if(!receipt && Date.now()-createdAt>300000){
@@ -245,9 +251,9 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
  const observedDelta=p.plan.hostsAfter!==p.plan.hostsBefore||p.plan.helperAfter!==p.plan.helperBefore;
  const outcome=receipt?JSON.parse(receipt).success:undefined;
  const completedReceipt=outcome===true,settled=typeof outcome==="boolean";
- const loaded=p.plan.helperBefore!==null||p.plan.helperAfter!==null?await assistantHelperLoaded(o):false;
+ const loaded=p.plan.helperBefore!==null||p.plan.helperAfter!==null||p.plan.companion?await assistantHelperLoaded(o,!!p.plan.companion):false;
 
- if((observedDelta||completedReceipt)&&hosts===p.plan.hostsAfter&&helper===p.plan.helperAfter&&managedAssistantHostsName(hosts??"",o.uid)===p.name){
+ if((observedDelta||completedReceipt)&&hosts===p.plan.hostsAfter&&helper===p.plan.helperAfter&&(!p.plan.companion||companion===p.plan.companion.after)&&managedAssistantHostsName(hosts??"",o.uid)===p.name){
   if(settled&&loaded!==null&&loaded!==(p.name!==null))return "partial";
   const current=await getAssistantName(o.settingsPath);if(current!==p.previousName&&current!==p.name)throw new AddressSettingsConflictError(settled);
   await requireFirefoxClosed(o,p.profiles);
@@ -255,7 +261,7 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
   const edits=[];for(const e of p.profiles){const actual=await optional(e.path);if(actual!==e.after&&!(actual===null&&e.after===""))edits.push(e);}
   await applyProfiles(edits);await setAssistantName(p.name,o.settingsPath);if(p.desiredState)await atomic(join(o.runtimeDir,"state.json"),JSON.stringify(p.desiredState)+"\n");else await rm(join(o.runtimeDir,"state.json"),{force:true});await finishIntent(o,p);if(p.name===null)await cleanupAddressRuntime(o);return "completed";
  }
- if(receipt&&JSON.parse(receipt).success===false&&hosts===p.plan.hostsBefore&&helper===p.plan.helperBefore){
+ if(receipt&&JSON.parse(receipt).success===false&&hosts===p.plan.hostsBefore&&helper===p.plan.helperBefore&&(!p.plan.companion||companion===p.plan.companion.before)){
   // bootout can succeed before a hosts write fails; file equality alone proves no rollback.
   if(p.plan.helperBefore!==null){
    if(typeof p.helperLoadedBefore!=="boolean"||loaded===null)return "partial";
@@ -267,7 +273,7 @@ async function reconcileAssistantAddress(o:ReturnType<typeof assistantAddressOpt
  if(settled)return "partial"; // terminal failure may leave mixed files or service state
  return "pending"; // A late privileged process may still finish. Keep its intent.
 }
-async function hasSystem(o:ReturnType<typeof assistantAddressOptions>){return !!(await state(o)||managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid)||await ownHelper(o));}
+async function hasSystem(o:ReturnType<typeof assistantAddressOptions>){return !!(await state(o)||managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid)||await ownHelper(o)||await ownCompanion(o));}
 async function changeAssistantNameUnlocked(value:string,options:AssistantAddressOptions={},recovering=false):Promise<void>{
  const o=assistantAddressOptions(options),name=normalizeAssistantName(value,machineNames(o)),before=await getAssistantName(o.settingsPath);
  patchAssistantHosts(await optional(o.hostsPath)??"",name,o.uid); // check conflicts before saving
@@ -281,9 +287,11 @@ async function setupAssistantAddressUnlocked(options:AssistantAddressOptions&{na
  const hostsBefore=await optional(o.hostsPath);if(hostsBefore===null)throw new Error("hosts file missing");
  const hostsAfter=patchAssistantHosts(hostsBefore,name,o.uid),helperBefore=await ownHelper(o),profiles=await profileEdits(o,name);
  await requireFirefoxClosed(o,profiles);
+ await ownCompanion(o);
  await(o.ensureRuntime??(()=>ensureAssistantAddressRuntime(o)))();
- const helperAfter=renderAssistantSocketPlist({uid:o.uid,username:o.username,home:o.home,launcher:join(o.runtimeDir,"launch.sh")});
- const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
+ const [helperAfter,companionAfter]=renderAssistantSocketPair({uid:o.uid,username:o.username,home:o.home,launcher:join(o.runtimeDir,"launch.sh")});
+ const companion={path:companionPath(o),before:await ownCompanion(o),after:companionAfter,label:`ai.n0mad.bastra-recall.address.${o.uid}.ipv6`};
+ const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter,companion,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
  const previousName=await getAssistantName(o.settingsPath),firefoxOwnedPrefs=await firefoxOwnership(o,name,profiles);
  const pending:PendingAddress={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name,previousName,profiles,desiredState:{version:2,name,firefoxOwnedPrefs,firefoxFiles:profiles.filter(p=>p.path.endsWith(sep+"user.js")).map(p=>p.path)}};
  await replacePending(o,pending);
@@ -302,7 +310,7 @@ async function setupAssistantAddressUnlocked(options:AssistantAddressOptions&{na
  }catch(error){
   let rollbackError=false;
   try{await restoreProfiles(profiles);}catch{rollbackError=true;}
-  try{await(o.runAdmin??runMacAddressAdmin)({...plan,hostsBefore:hostsAfter,hostsAfter:hostsBefore,helperBefore:helperAfter,helperAfter:helperBefore});}catch{rollbackError=true;}
+  try{await(o.runAdmin??runMacAddressAdmin)({...plan,hostsBefore:hostsAfter,hostsAfter:hostsBefore,helperBefore:helperAfter,helperAfter:helperBefore,companion:{...companion,before:companion.after,after:companion.before}});}catch{rollbackError=true;}
   try{if(await getAssistantName(o.settingsPath)===name)await setAssistantName(previousName,o.settingsPath);}catch{rollbackError=true;}
   if(rollbackError)throw new Error("Einrichtung fehlgeschlagen; Rücknahme nicht vollständig bestätigt. bastra address status prüfen.");
   await discardAttempt(o,pending);throw error;
@@ -318,11 +326,12 @@ async function cleanupAddressRuntime(o:ReturnType<typeof assistantAddressOptions
 async function removeAssistantAddressUnlocked(options:AssistantAddressOptions={}):Promise<void>{
  const o=assistantAddressOptions(options),hostsBefore=await optional(o.hostsPath)??"",helperBefore=await optional(o.helperPath),profiles=await profileEdits(o,null);
  await requireFirefoxClosed(o,profiles);
+ const companionBefore=await ownCompanion(o);
  const hostsAfter=patchAssistantHosts(hostsBefore,null,o.uid),ownedHelper=helperBefore?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false;
  let pending:PendingAddress|undefined;
- if(hostsAfter!==hostsBefore||ownedHelper){
+ if(hostsAfter!==hostsBefore||ownedHelper||companionBefore!==null){
   if(!o.systemConsent)throw new Error("Entfernen der Systemadresse braucht Zustimmung (system consent)");if(o.platform!=="darwin")throw new Error("Systemadresse durch den Administrator entfernen");
-  const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter:ownedHelper?null:helperBefore,label:`ai.n0mad.bastra-recall.address.${o.uid}`};
+  const plan:AddressAdminPlan={hostsPath:o.hostsPath,hostsBefore,hostsAfter,helperPath:o.helperPath,helperBefore,helperAfter:ownedHelper?null:helperBefore,...(companionBefore!==null?{companion:{path:companionPath(o),before:companionBefore,after:null,label:`ai.n0mad.bastra-recall.address.${o.uid}.ipv6`}}:{}),label:`ai.n0mad.bastra-recall.address.${o.uid}`};
   pending={createdAt:Date.now(),ownerPid:process.pid,recoveryOf:await captureRecovery(o),helperLoadedBefore:helperBefore===null?false:await assistantHelperLoaded(o),id:randomUUID(),plan,name:null,previousName:await getAssistantName(o.settingsPath),profiles,desiredState:null};
   await replacePending(o,pending);const id=pending.id;
   try{await(o.runAdmin??runMacAddressAdmin)({...plan,onStarted:async pid=>{pending!.adminPid=pid;await atomic(pendingPath(o),JSON.stringify(pending)+"\n");},onSettled:async success=>atomic(receiptPath(o,id),JSON.stringify({success})+"\n")});}
@@ -337,20 +346,21 @@ async function assistantAddressStatusUnlocked(options:AssistantAddressOptions={}
  let registered:string|null=null,error:string|undefined;try{registered=managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid);}catch(e){error=(e as Error).message;}
  let listener=false;if(name&&enabled){try{const r=await fetch(`http://127.0.0.1:${o.gatewayPort??80}/.well-known/bastra-assistant-address`,{headers:{Host:`${name}.localhost:${o.gatewayPort??80}`},signal:AbortSignal.timeout(800)});const b=await r.json()as any;listener=r.ok&&b.service==="bastra-assistant-address"&&b.name===name;}catch{}}
  const helper=await ownHelper(o),helperLoaded=helper?await assistantHelperLoaded(o):null;
+ const companion=await ownCompanion(o),processBound=!!(helperLoaded===true&&helper&&companion&&helper.includes("<key>Wait</key><true/>")&&companion.includes("<key>Wait</key><true/>"));
  if(helper&&helperLoaded===false)listener=false;
  const helperProblem=helper&&!listener&&!error&&(helperLoaded!==true||enabled);
  if(helperProblem)error=helperLoaded===false?"Adress-Helfer eingerichtet, aber nicht geladen.":helperLoaded===true?"Adress-Helfer geladen, aber Adresse nicht erreichbar; Laufzeit prüfen.":"Adress-Helfer eingerichtet; Ladezustand unbekannt und Adresse nicht erreichbar.";
  const repair=error?`hosts zuerst sichern (Backup). Den veränderten Block zwischen den eigenen bastra-recall assistant-address-Markierungen prüfen; eigene Anpassungen außerhalb des Blocks bewahren. Nur den vollständigen eigenen Block als Administrator entfernen, dann bastra address setup ${name??"<name>"} --yes erneut ausführen. Keine fremden Zeilen löschen.`:undefined;
  const helperRepair=helperProblem?`Adress-Helfer mit bastra address setup ${name??"<name>"} --yes prüfen und erneut laden. Direkter UI-Zugang: ${o.daemonUrl}/ui/.`:undefined;
- return{repair:helperRepair??repair,helperLoaded,name,enabled,urls:name?assistantUrls(name):null,registeredName:registered,ready:listener,error,systemSetupSupported:o.platform==="darwin",firefoxProfiles:(await profileEdits(o,null)).filter(p=>p.path.endsWith(sep+"user.js")).length,bareNameNotice:"Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe."};
+ return{repair:helperRepair??repair,helperLoaded,processBound,processBoundUpgrade:helper&&!processBound?`bastra address setup ${name??"<name>"} --yes`:undefined,name,enabled,urls:name?assistantUrls(name):null,registeredName:registered,ready:listener,error,systemSetupSupported:o.platform==="darwin",firefoxProfiles:(await profileEdits(o,null)).filter(p=>p.path.endsWith(sep+"user.js")).length,bareNameNotice:"Einzelne Wörter können je nach Browser als Suche gelten. Adresse einmal öffnen; Firefox nach Einrichtung neu starten. <name>/ oder <name>.localhost bleibt die eindeutige Eingabe."};
 }
 
 export async function openAssistantAddress(url:string):Promise<void>{
  if(process.platform!=="darwin")return;
  await new Promise<void>((resolve,reject)=>{const c=spawn("/usr/bin/open",[url],{stdio:"ignore"});c.once("error",reject);c.once("exit",code=>code===0?resolve():reject(new Error("Browser konnte nicht geöffnet werden")));});
 }
-export async function hasManagedAssistantAddress(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(await getAssistantName(o.settingsPath)||await state(o))return true;const hosts=await optional(o.hostsPath)??"";if(managedAssistantHostsName(hosts,o.uid))return true;return (await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false;}
-export async function addressRemovalNeedsConsent(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid))return true;return (await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false;}
+export async function hasManagedAssistantAddress(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(await getAssistantName(o.settingsPath)||await state(o))return true;const hosts=await optional(o.hostsPath)??"";if(managedAssistantHostsName(hosts,o.uid))return true;return !!(await ownCompanion(o))||((await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false);}
+export async function addressRemovalNeedsConsent(options:AssistantAddressOptions={}):Promise<boolean>{const o=assistantAddressOptions(options);if(managedAssistantHostsName(await optional(o.hostsPath)??"",o.uid))return true;return !!(await ownCompanion(o))||((await optional(o.helperPath))?.includes(`<key>BASTRA_ASSISTANT_ADDRESS_OWNER</key><string>${o.uid}</string>`)??false);}
 export async function notifyAssistantAddressDaemon():Promise<void>{const base=resolveDaemonEndpoint().baseUrl;const u=new URL(base);if(!["127.0.0.1","localhost","[::1]"].includes(u.hostname))return;try{await fetch(`${base}/ui/assistant-address/refresh`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}",signal:AbortSignal.timeout(1000)});}catch{/* saved configuration takes effect when daemon starts */}}
 
 // A separate strict lock serializes UI/CLI lifecycles, including long admin prompts,
@@ -401,6 +411,6 @@ export async function assistantAddressStatus(options:AssistantAddressOptions={})
  },true);}catch(e){
   // Doctor must still return useful diagnostics when recovery itself is damaged/blocked.
   const name=await getAssistantName(o.settingsPath).catch(()=>null),error=(e as Error).message;
-  return {name,enabled:false,urls:name?assistantUrls(name):null,registeredName:null,ready:false,error,pending:true,partial:false,systemSetupSupported:o.platform==="darwin",firefoxProfiles:0,bareNameNotice:"",repair:addressRepair(o,name,error,e)};
+  return {processBound:false,processBoundUpgrade:undefined,name,enabled:false,urls:name?assistantUrls(name):null,registeredName:null,ready:false,error,pending:true,partial:false,systemSetupSupported:o.platform==="darwin",firefoxProfiles:0,bareNameNotice:"",repair:addressRepair(o,name,error,e)};
  }
 }
