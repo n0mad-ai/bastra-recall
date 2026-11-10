@@ -105,14 +105,20 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
 
 /** Handles accepted sockets, plus compatibility for previously installed Wait=true jobs. */
 export async function startAssistantSocket(opts:AssistantGatewayOptions,listening=false):Promise<Server>{
- const server=createServer(assistantGatewayHandler(opts));
+ const rejected=new WeakSet<Socket>(),gateway=assistantGatewayHandler(opts);
+ const server=createServer((req,res)=>{
+  // end(raw503) does not prevent a parser from emitting an already buffered
+  // request. Rejection belongs to the socket and must guard forwarding too.
+  if(rejected.has(req.socket)){req.resume();return;}
+  gateway(req,res);
+ });
  if(listening){
   // Each of the two launchd jobs owns one listener. Admission here bounds
   // connections, never creates a process: the only process was admitted by launchd.
   const sockets=new Set<Socket>(),headers=new Map<Socket,NodeJS.Timeout>();
   const [headersMs,lifetimeMs]=(process.env.BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS??"").split(",").map(Number);
   server.on("connection",socket=>{
-   if(sockets.size>=8){socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n");return;}
+   if(sockets.size>=8){rejected.add(socket);socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n");return;}
    sockets.add(socket);
    const header=setTimeout(()=>socket.destroy(),Math.min(headersMs||10000,10000));headers.set(socket,header);
    const lifetime=setTimeout(()=>socket.destroy(),Math.min(lifetimeMs||230000,230000));lifetime.unref();

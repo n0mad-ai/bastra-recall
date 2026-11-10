@@ -32,8 +32,8 @@ test('#1335: a failed companion upgrade restores both previous jobs before hosts
 });
 
 import {mkdir} from 'node:fs/promises';
-import {createServer as netServer} from 'node:net';
-import {createServer,request} from 'node:http';
+import {createServer as netServer,connect} from 'node:net';
+import {createServer,request,Server,IncomingMessage,ServerResponse} from 'node:http';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import ts from 'typescript';
@@ -82,7 +82,7 @@ test('#1335: confirmed legacy upgrade and removal carry both owned jobs through 
  const original=renderAssistantSocketPlist({uid:o.uid,username:o.username,home:o.home,launcher:join(o.runtimeDir,'launch.sh')});await writeFile(o.helperPath,original);
  // No live domain is consulted: fixture IO applies precisely the approved plan.
  const plans:any[]=[];let loaded=true;
- const options={...o,platform:'darwin' as const,systemConsent:true,machineNames:['fixture-host'],gatewayPort:9,helperLoaded:async()=>loaded,runAdmin:async(p:any)=>{
+ const options={...o,platform:'darwin' as const,systemConsent:true,machineNames:['fixture-host'],gatewayPort:9,runtimeProcesses:async()=>[],firefoxRunning:async()=>false,helperLoaded:async()=>loaded,runAdmin:async(p:any)=>{
   plans.push(p);await writeFile(p.hostsPath,p.hostsAfter);
   if(p.helperAfter===null)await rm(p.helperPath,{force:true});else await writeFile(p.helperPath,p.helperAfter);
   if(p.companion){if(p.companion.after===null)await rm(p.companion.path,{force:true});else await writeFile(p.companion.path,p.companion.after);}
@@ -96,4 +96,41 @@ test('#1335: confirmed legacy upgrade and removal carry both owned jobs through 
  // The preceding release can reinstall its old primary after current removal,
  // without a leftover IPv6 job retaining the second socket.
  await writeFile(o.helperPath,original);assert.equal(await readFile(o.helperPath,'utf8'),original);
+});
+
+
+test('#1335 CI: an overloaded socket cannot forward a request already parsed before close',async t=>{
+ const o=await runtime(t);let forwarded=0,forwardAttempts=0;
+ const backend=createServer((_q,r)=>{forwarded++;r.end('must-not-forward');});
+ await new Promise<void>(r=>backend.listen(0,'127.0.0.1',r));
+ t.after(()=>{backend.closeAllConnections();return new Promise<void>(r=>backend.close(()=>r()));});
+ const {startAssistantSocket}=await import('../src/assistant-address-gateway.js');
+ // The production inherited-listener branch is exercised on an isolated port,
+ // without replacing this test process's stdin or consulting launchd.
+ const originalListen=Server.prototype.listen;
+ t.mock.method(Server.prototype,'listen',function(this:Server,...args:any[]){
+  return args[0]?.fd===0?(originalListen as any).call(this,0,'127.0.0.1',args[1]):(originalListen as any).apply(this,args);
+ });
+ const server=await startAssistantSocket({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`},true);
+ t.mock.restoreAll();
+ t.after(()=>{server.closeAllConnections();return new Promise<void>(r=>server.close(()=>r()));});
+ const port=(server.address()as any).port;let connected=0,parsed=false;
+ server.on('connection',socket=>{
+  if(++connected!==9)return;
+  // Reproduce Node's legitimate scheduling: a request event can follow the
+  // connection hook's raw503/end before the socket has actually closed.
+  const req=new IncomingMessage(socket);req.method='GET';req.url='/ui/';req.headers={host:'jarvis.localhost'};
+  const originalPipe=req.pipe;
+  t.mock.method(req,'pipe',function(this:IncomingMessage,...args:any[]){forwardAttempts++;return (originalPipe as any).apply(this,args);});
+  const res=new ServerResponse(req);parsed=true;server.emit('request',req,res);req.push(null);
+ });
+ const holders=Array.from({length:8},()=>connect(port,'127.0.0.1'));holders.forEach(s=>{s.on('error',()=>{});s.resume();});
+ t.after(()=>holders.forEach(s=>s.destroy()));
+ for(const until=Date.now()+1000;connected<8;){assert.ok(Date.now()<until,'admitted connections not ready');await new Promise(r=>setTimeout(r,5));}
+ const raw=await new Promise<string>((resolve,reject)=>{
+  const socket=connect(port,'127.0.0.1');let text='';socket.on('error',reject);socket.on('data',chunk=>{text+=chunk;if(text.includes('\r\n\r\n')){socket.destroy();resolve(text);}});
+  socket.setTimeout(1000,()=>socket.destroy(Error('overload waited for request headers')));
+ });
+ assert.match(raw,/HTTP\/1.1 503/);assert.match(raw,/Retry-After: 1/);assert.equal(parsed,true);
+ await new Promise(r=>setTimeout(r,200));assert.equal(forwardAttempts,0,'rejected socket must not enter the forwarding path');assert.equal(forwarded,0,'raw503 does not authorize forwarding an already parsed rejected request');
 });
