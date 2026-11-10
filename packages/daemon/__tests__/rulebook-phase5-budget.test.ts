@@ -20,3 +20,19 @@ test('#1412 slow fixture catalog preparation does not consume the mechanical gat
  assert.equal(denied(prepared),true,`prepared mechanical decision must retain full denial: ${prepared}`);
  assert.match(prepared,/rulebook_check/);
 });
+
+test('#1412 prepared gate retains content projection for periodic full-rule delivery',async()=>{
+ const {mutateSessionState}=await import('../src/session-state.js');
+ const {RULE_KERNEL_TOOL_CALLS}=await import('../src/rule-kernel.js');
+ const sid='phase5-projection-specific';
+ await mutateSessionState(sid,state=>{state.toolCalls=RULE_KERNEL_TOOL_CALLS-1;});
+ const modes:(string|undefined)[]=[];
+ const kernel=async(_active:unknown,_project:unknown,mode?:'ids'|'content')=>{
+  modes.push(mode);
+  return mode==='ids'?{...catalog,ids_only:true as const,entries:catalog.entries.map(e=>({...e,title:'',body:''}))}
+   :{...catalog,entries:catalog.entries.map(e=>({...e,title:'Content projection title',body:'COMPLETE_PROJECTION_SPECIFIC_BODY'}))};
+ };
+ const raw=await preparedGate({...payload(sid),tool_name:'Read'},{kernel,reflexPool:()=>[]});
+ assert.match(raw,/COMPLETE_PROJECTION_SPECIFIC_BODY/,'periodic delivery must receive full content, never the IDs projection');
+ assert.deepEqual(modes,['ids','content']);
+});
