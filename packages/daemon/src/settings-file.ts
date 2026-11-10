@@ -67,7 +67,7 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
  * `readSettings` hands out defaults in the last two cases as well, and for a
  * reader that is the right fallback. For a writer it is not: defaults plus one
  * changed field, written back, erase every setting that IS in the file. Only
- * "the file does not exist" (ENOENT, or a missing parent: ENOTDIR) may be read
+ * "the file does not exist" (ENOENT, including a missing parent) may be read
  * as "there are no settings".
  */
 export type SettingsFileState = "ok" | "missing" | "corrupt" | { unreadable: string };
@@ -92,7 +92,10 @@ async function readSettingsText(
     raw = readAppRecord("settings", path);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code ?? "read failed";
-    return code === "ENOENT" || code === "ENOTDIR" ? { state: "missing" } : { state: { unreadable: code } };
+    if (code !== "ENOENT") {
+      process.stderr.write(`[bastra-recall] settings read failed (${code}); settings are unavailable\n`);
+    }
+    return code === "ENOENT" ? { state: "missing" } : { state: { unreadable: code } };
   }
   return raw.trim() === "" ? { state: "missing" } : { state: "text", raw };
 }

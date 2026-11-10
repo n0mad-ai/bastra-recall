@@ -1,5 +1,5 @@
 /** Local state adapters only: never pass a vault path to this module. */
-import { chmodSync, closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { openAppDatabase, type AppDatabase } from "./app-database.js";
@@ -11,6 +11,11 @@ export function appRecordDatabasePath(legacyPath: string): string {
 interface RecordValue { text: string | null; archive?: string; }
 type Validate = (text: string) => void;
 export interface AppRecordOptions { busyTimeoutMs?: number; }
+/** Presence of a local entry, including symlinks; access errors are not absence. */
+function localEntry(path: string): ReturnType<typeof lstatSync> | undefined {
+  try { return lstatSync(path); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+}
 function assertLocalSource(path: string): void {
   const check = (value: string) => {
     if (/^(?:\\\\|\/\/)/u.test(value) || /(?:^|[\\/])(?:CloudStorage|Google Drive|GoogleDrive[^\\/]*|Dropbox|OneDrive[^\\/]*|Mobile Documents)(?:[\\/]|$)/iu.test(value))
@@ -18,10 +23,10 @@ function assertLocalSource(path: string): void {
   };
   check(path);
   let ancestor = path;
-  while (!existsSync(ancestor)) ancestor = dirname(ancestor);
+  while (!localEntry(ancestor)) ancestor = dirname(ancestor);
   check(realpathSync(ancestor));
   // State files are local regular inputs, never links to a vault artifact.
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error("Local state migration cannot follow a source symlink");
+  if (localEntry(path)?.isSymbolicLink()) throw new Error("Local state migration cannot follow a source symlink");
 }
 function row(db: AppDatabase, namespace: string, path: string): RecordValue | undefined {
   const entry = db.sqlite.prepare("SELECT value FROM app_records WHERE namespace=? AND key=?").get(namespace, path);
@@ -35,11 +40,11 @@ function missing(path: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`No app state at ${path}`), { code: "ENOENT", path });
 }
 function finishArchive(path: string, value: RecordValue): void {
-  if (!value.archive || !existsSync(path)) return;
+  if (!value.archive || !localEntry(path)) return;
   assertLocalSource(path);
   // The commit is authoritative after interruption. Never reimport an old file
   // and never overwrite any retained original while completing the rename.
-  const destination = existsSync(value.archive) ? `${value.archive}-${randomUUID()}` : value.archive;
+  const destination = localEntry(value.archive) ? `${value.archive}-${randomUUID()}` : value.archive;
   chmodSync(path, 0o600);
   renameSync(path, destination);
 }

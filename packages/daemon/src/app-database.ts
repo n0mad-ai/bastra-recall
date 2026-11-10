@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -75,8 +75,11 @@ function localPath(path: string): string {
   while (true) {
     try {
       const entry = lstatSync(ancestor);
-      if (entry.isSymbolicLink() && (!existsSync(ancestor) || ancestor === absolute)) {
-        throw new Error("App database and backups must use local regular files, not symlink endpoints");
+      if (entry.isSymbolicLink()) {
+        const refuse = () => new Error("App database and backups must use local regular files, not symlink endpoints");
+        if (ancestor === absolute) throw refuse();
+        try { statSync(ancestor); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw refuse(); throw error; }
       }
       break;
     } catch (error) {
@@ -184,8 +187,8 @@ export class AppDatabase {
   /** Consistent committed snapshot, including WAL. Never overwrites a backup. */
   backup(destination: string): void {
     const target = localPath(destination);
-    if (existsSync(target)) throw new Error("Backup destination already exists");
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+    // Exclusive creation reports both collisions and inaccessible destinations.
     reservePrivateFile(target);
     // A second connection sees the last committed state while the migration
     // connection holds BEGIN IMMEDIATE. No other writer can race the backup.
