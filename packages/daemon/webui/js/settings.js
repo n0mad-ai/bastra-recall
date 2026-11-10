@@ -2,7 +2,7 @@
 export function createSettingsPanel() {
   const dialog=document.getElementById("recall-settings"), fields=document.getElementById("settings-fields"), status=document.getElementById("settings-status"), save=document.getElementById("settings-save"), restart=document.getElementById("settings-restart"), nav=document.getElementById("settings-nav");
   if(!dialog||!fields)return;
-  let csrf=null, model=null, active="general", changes=new Map();
+  let csrf=null, model=null, active="general", changes=new Map(), invalid=new Map();
   const areas={general:"Allgemein und Sprache",search:"Suche und Embeddings",hooks:"Hooks und Reflex",code:"Code-Index",archive:"Archiv",tasks:"Aufgaben",access:"Zugang",updates:"Updates",jarvis:"Assistent und Jarvis"};
   const message=text=>{status.textContent=text;};
   async function call(path,body) {
@@ -30,9 +30,10 @@ export function createSettingsPanel() {
         else if(entry.kind==="json") {input=document.createElement("textarea");input.rows=3;input.value=entry.secret?"":JSON.stringify(value??[],null,2);}
         else {input=document.createElement("input");input.type=entry.secret?"password":entry.kind==="number"?"number":"text";input.value=entry.secret?"":value??"";}
         input.id=`setting-${entry.key.replaceAll(".","-")}`;input.name=entry.key;input.disabled=entry.readonly;input.autocomplete="off";if(entry.secret)input.placeholder=entry.isSet?"Gesetzt — neuen Wert zum Ändern eingeben":"Nicht gesetzt";
+        if(invalid.has(entry.key)){input.value=invalid.get(entry.key);input.setCustomValidity("Gültiges JSON eingeben");}
         label.htmlFor=input.id;label.append(input);
-        input.addEventListener("change",()=>{try{const value=entry.kind==="boolean"?input.checked:entry.kind==="number"?Number(input.value):entry.kind==="json"?JSON.parse(input.value):input.value;mark(entry.key,value);input.setCustomValidity("");}catch{input.setCustomValidity("Gültiges JSON eingeben");input.reportValidity();}});
-        if(!entry.readonly){const reset=document.createElement("button");reset.type="button";reset.className="settings-reset";reset.textContent="Standard";reset.addEventListener("click",()=>{mark(entry.key,null);render();});row.append(reset);}
+        input.addEventListener("change",()=>{try{const value=entry.kind==="boolean"?input.checked:entry.kind==="number"?Number(input.value):entry.kind==="json"?JSON.parse(input.value):input.value;invalid.delete(entry.key);mark(entry.key,value);input.setCustomValidity("");}catch{invalid.set(entry.key,input.value);save.disabled=false;message("Ungespeicherte Änderungen — gültiges JSON eingeben");input.setCustomValidity("Gültiges JSON eingeben");input.reportValidity();}});
+        if(!entry.readonly){const reset=document.createElement("button");reset.type="button";reset.className="settings-reset";reset.textContent="Standard";reset.addEventListener("click",()=>{invalid.delete(entry.key);mark(entry.key,null);render();});row.append(reset);}
       }
       const note=document.createElement("p");note.className="settings-note";note.textContent=`${entry.restartRequired?"Wirksam nach Neustart: ":"Wirksam: "}${format(entry.effective)}${entry.envOverride.length?` · Umgebung hat Vorrang: ${entry.envOverride.map(e=>`${e.name}=${e.value}`).join(", ")}`:""}${entry.readonly?" · Automatisch verwaltet":""}`;row.append(note);fields.append(row);
     }
@@ -40,8 +41,8 @@ export function createSettingsPanel() {
     if(active==="jarvis"){const note=document.createElement("p");note.className="settings-note";note.textContent="Weitere Jarvis-Funktionen folgen in einem eigenen Schritt.";fields.append(note);}
     restart.disabled=!model.restartAvailable;restart.title=model.restartAvailable?"Daemon kontrolliert neu starten":"Diesen Daemon und seine Clients über die bestehende Einrichtung neu starten.";
   }
-  document.getElementById("settings-open")?.addEventListener("click",async()=>{dialog.showModal();message("Einstellungen werden geladen …");save.disabled=true;try{const session=await call("/ui/settings/session",{});csrf=session.csrf;model=await call("/ui/settings");changes=new Map();render();message("");}catch(error){message(error.message);}});
+  document.getElementById("settings-open")?.addEventListener("click",async()=>{dialog.showModal();message("Einstellungen werden geladen …");save.disabled=true;try{const session=await call("/ui/settings/session",{});csrf=session.csrf;model=await call("/ui/settings");changes=new Map();invalid.clear();render();message("");}catch(error){message(error.message);}});
   document.getElementById("settings-close")?.addEventListener("click",()=>dialog.close());
-  save.addEventListener("click",async()=>{save.disabled=true;try{const needsRestart=model.entries.some(e=>e.restartRequired&&changes.has(e.key));model=await call("/ui/settings",{changes:Object.fromEntries(changes)});changes.clear();render();message(needsRestart?"Gespeichert. Daemon und verbundene Clients für die markierten Optionen neu starten.":"Gespeichert");}catch(error){message(error.message);save.disabled=false;}});
+  save.addEventListener("click",async()=>{if(invalid.size){const key=invalid.keys().next().value;active=model.entries.find(e=>e.key===key).area;render();const input=document.getElementById(`setting-${key.replaceAll(".","-")}`);input.focus();input.reportValidity();message("Gültiges JSON eingeben — Änderungen wurden nicht gespeichert.");return;}save.disabled=true;try{const needsRestart=model.entries.some(e=>e.restartRequired&&changes.has(e.key));model=await call("/ui/settings",{changes:Object.fromEntries(changes)});changes.clear();render();message(needsRestart?"Gespeichert. Daemon und verbundene Clients für die markierten Optionen neu starten.":"Gespeichert");}catch(error){message(error.message);save.disabled=false;}});
   restart.addEventListener("click",async()=>{if(changes.size){message("Änderungen zuerst speichern.");return;}restart.disabled=true;try{await call("/ui/settings/restart",{});csrf=null;message("Neustart angefordert. Die Oberfläche kann nach dem Start neu geladen werden.");}catch(error){message(error.message);restart.disabled=false;}});
 }
