@@ -37,8 +37,10 @@
 .ev-note { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%); max-width: 70%; padding: 10px 14px; border: 1px solid var(--line-22); background: rgba(10,16,28,.92); font: 11px var(--mono); color: var(--muted); text-align: center; pointer-events: none; }
 .ev-note[hidden] { display: none; }
 
-/* Navigation hint, bottom left (the zoom bar sits bottom right). */
-.ev-hint { position: absolute; left: 14px; bottom: 18px; z-index: 3; font: 10.5px var(--mono); letter-spacing: .04em; color: var(--muted); opacity: .75; pointer-events: none; }
+/* Navigation hint, bottom left, on the zoom bar's row: same 12 px stage
+ * inset and the bar's 30 px height, text centred on the bar (views.css .zbar);
+ * one line that stops 12 px short of the bar (154 px footprint). */
+.ev-hint { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 178px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 3; font: 10.5px/30px var(--mono); letter-spacing: .04em; color: var(--muted); opacity: .75; pointer-events: none; }
 .ev-hint:empty { display: none; }
 
 /* Right panel › View (prototype tabView: Display + rows of segment switches). */
