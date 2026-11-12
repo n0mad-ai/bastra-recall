@@ -8,6 +8,7 @@ import { state, setState, subscribe } from "../state.js";
 import { data, onData } from "../data.js";
 import { vault, timeWindow, windowKey, areaCol, typeClass } from "./vault-data.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./chrome.js";
+import { mountMemoryBrowser } from "./memory-browser.js";
 import { attach, engine } from "./engine-host.js";
 import { signalMatch } from "./signals.js";
 import { CORES } from "../../../js/managers/orbit-core.js";
@@ -41,6 +42,8 @@ export function mountEngineView(id, stage) {
   const ov = overlay(stage);
   const cardHost = h("div");
   stage.append(cardHost);
+  // memory browser over this view; "show" flies to the memory (old select())
+  const unMb = mountMemoryBrowser(stage, { showMemory: (mid) => { const n = engine.get()?.sim.byId.get(mid); if (n) pick(n); } });
 
   let detach = null, sel = null, selM = null, card = null, cardKey = "", pct = -1, dead = false;
 
@@ -165,7 +168,7 @@ export function mountEngineView(id, stage) {
 
   return () => {
     dead = true;
-    unsub(); unData();
+    unMb(); unsub(); unData();
     window.removeEventListener("keydown", onKey);
     if (detach) detach();
   };

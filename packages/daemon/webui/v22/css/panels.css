@@ -110,13 +110,22 @@
 .area-row__n { font: 11px var(--mono); color: var(--muted); text-align: right; }
 .lens__wip { padding: 16px 18px 18px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .lens__wip .wip-badge { margin-bottom: 10px; }
+/* Panel notices (registerArea({ panelNotices: true }), prototype lensMsgShow). */
+.lens__msg { flex: none; display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px 9px 18px; border-top: 1px solid var(--line-20); background: var(--accent-06); box-shadow: inset 2px 0 0 var(--accent); }
+.lens__msg-p { flex: none; font: 600 11px var(--mono); color: var(--accent); }
+.lens__msg-t { flex: 1; min-width: 0; font: 11px var(--mono); line-height: 1.5; color: var(--accent); text-wrap: pretty; }
+.lens__msg-x { flex: none; border: 0; padding: 0 2px; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
 .lens__foot { flex: none; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 18px; border-top: 1px solid var(--line-20); font-size: 12px; color: var(--muted); }
 .lens__foot a { display: flex; align-items: center; gap: 5px; color: var(--muted); text-decoration: none; }
 .lens__foot a:hover { color: var(--accent); }
 .lens__foot svg { width: 13px; height: 13px; flex: none; }
 .lens__foot-sep { color: var(--muted); }
-/* Active row marker on the panel's outer right edge (x = viewport frame). */
-.ls-ind { position: absolute; z-index: 31; right: 12px; width: 1px; top: var(--t); height: var(--h); background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 3px var(--accent); pointer-events: none; transition: top .5s var(--ease-panel), height .5s var(--ease-panel), opacity .2s, background .3s; }
+/* Active row marker on the panel's outer right edge (x = viewport frame),
+   js/panel-indicator.js. Slides via transform (nav marker timing); colour =
+   the row's --lsel-c, else accent. */
+.ls-ind { position: absolute; z-index: 31; right: 12px; top: 0; width: 1px; height: var(--h); transform: translateY(var(--t)); background: var(--ic, var(--accent)); box-shadow: 0 0 10px var(--ic, var(--accent)), 0 0 3px var(--ic, var(--accent)); pointer-events: none; will-change: transform; transition: transform .5s var(--ease-panel), height .5s var(--ease-panel), opacity .2s, background .3s, box-shadow .3s; }
+.ls-ind.is-new { opacity: 0; transition: none; }
+.area-row { --lsel-c: var(--c); }
 
 /* ── Stage (content area) ─────────────────────────────────────────────── */
 .stage { position: absolute; left: var(--c-l, 100px); right: var(--c-r, 24px); top: var(--panel-t, 66px); bottom: var(--stage-b, 92px); z-index: 2; transition: left .45s var(--ease-knob), right .45s var(--ease-knob); }

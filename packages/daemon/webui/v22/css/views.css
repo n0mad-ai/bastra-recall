@@ -28,6 +28,13 @@
 .rg-none, .rg-ghosts { pointer-events: none; }
 .rg-ghosts.is-dim { opacity: .3; }
 .rg-emblem { cursor: pointer; transition: stroke .2s; }
+.rg.is-dot, .rg.is-dot .rg-seg { cursor: pointer; }
+.rg-hov, .rg-sel, .rg-pulse { pointer-events: none; display: none; }
+.rg-hov.is-on, .rg-sel.is-on, .rg-pulse.is-on { display: inline; }
+.rg-sel { filter: drop-shadow(0 0 4px rgba(56,217,245,.8)); }
+.rg-pulse { transform-box: fill-box; transform-origin: center; opacity: 0; }
+.rg-pulse.is-on { animation: rg-pulse .72s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes rg-pulse { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(6); } }
 .rg-core { position: absolute; left: var(--l, 0px); top: var(--t, 0px); width: var(--s, 0px); height: var(--s, 0px); display: none; }
 .rg-core.is-on { display: block; }
 .rg-core__disc { position: absolute; inset: 16%; border-radius: 50%; background: radial-gradient(circle, rgba(6,10,19,.97) 56%, rgba(6,10,19,0) 72%); }

@@ -16,7 +16,6 @@ export default {
   "vv.ofVault": "of vault",
   "vv.links": "links",
   "vv.openBrowser": "OPEN IN BROWSER →",
-  "vv.browserWip": "Memory browser: in progress",
   "vv.ask": "ASK RECALL ↗",
   "vv.askArea": "What changed in {a} recently?",
   "vv.askMemory": "Tell me about “{m}”",

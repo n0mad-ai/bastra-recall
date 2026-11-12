@@ -14,6 +14,8 @@ export const data = {
   weather: null,    // { temp, city }
   vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
   graph: null,      // { nodes, edges, groups } from GET /api/v1/graph, for the vault views
+  graphError: false, // the first graph request failed (run indicator shows it)
+  tasksLoaded: false, // the first task list answered (or failed): widgets stop showing "loading"
 };
 
 function emit() { for (const fn of listeners) fn(data); }
@@ -51,8 +53,9 @@ export async function loadGraph() {
       weeks[Math.min(51, Math.floor((at - start) / WEEK))]++;
     }
     data.weeks = weeks; data.weekStart = new Date(start);
+    data.graphError = false;
     emit();
-  } catch { /* keep last */ }
+  } catch { if (!data.graph) { data.graphError = true; emit(); } /* else keep last */ }
 }
 
 let taskCsrf = null;
@@ -75,8 +78,9 @@ export async function loadTasks() {
     const tasks = Array.isArray(b.tasks) ? b.tasks : [];
     data.dueTasks = tasks.filter((t) => t && t.state === "due" && !t.archived && typeof t.goal === "string");
     data.tasks = tasks.filter((t) => t && !t.archived && typeof t.goal === "string" && ["pending", "due", "snoozed"].includes(t.state));
+    data.tasksLoaded = true;
     emit();
-  } catch { /* keep last */ }
+  } catch { if (!data.tasksLoaded) { data.tasksLoaded = true; emit(); } /* else keep last */ }
 }
 
 export function dueAt(t) { return t.snoozed_until ?? t.next_slot?.at ?? t.schedule?.at ?? t.next_check_at; }

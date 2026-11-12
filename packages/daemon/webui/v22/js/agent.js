@@ -120,7 +120,7 @@ export function render(L) {
   podState.textContent = `RECALL · ${t(`agent.state.${ag}`)}`;
   const total = numberFmt.format(data.health?.vault_size ?? 0);
   const cap = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? chatState.shown.a : greeting();
-  clear(caption).append(cap, ag === "speaking" ? h("span.agent__caret") : "");
+  clear(caption).append(cap, ag === "speaking" || ag === "thinking" ? h("span.agent__caret") : "");
   podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newSince ? t("pod.newMemories", { n: data.newSince }) : t("pod.ready");
   podText = podLine.textContent;
   for (const fn of podListeners) fn();

@@ -74,3 +74,45 @@ button.hud-chip:hover { border-color: var(--line-50); }
 
 /* ── right panel tab badge (prototype lens tabs) ───────────────────────── */
 .lens__badge { min-width: 16px; height: 16px; padding: 0 4px; background: var(--accent); color: var(--bg); font: 600 9.5px var(--mono); line-height: 16px; letter-spacing: 0; }
+
+/* ── run indicators (js/sections/loading.js) ───────────────────────────────
+ * Prototype motion: tick-scan sweep, tkr-scan band, tree-flow line, caret.
+ * Animations exist only while the class is set. */
+@keyframes ld-sweep { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+@keyframes ld-band { from { top: -40px; opacity: 1; } 85% { opacity: 1; } to { top: 100%; opacity: 0; } }
+/* control: sweep across it, its own background stays underneath */
+.ld-on { cursor: progress !important; background-image: linear-gradient(90deg, var(--accent-00), var(--accent-28), var(--accent-00)) !important;
+  background-size: 45% 100% !important; background-repeat: no-repeat !important; animation: ld-sweep 1.1s linear infinite; pointer-events: none; }
+/* container (must be positioned): old content dimmed, scan band over it (Telemetry window switch) */
+.ld-veil > * { opacity: .38; transition: opacity .25s; pointer-events: none; }
+.ld-veil::after { content: ""; position: absolute; left: 0; right: 0; height: 40px; z-index: 5; pointer-events: none;
+  background: linear-gradient(180deg, var(--accent-00), var(--accent-14), var(--accent-00)); border-bottom: 1px solid var(--accent-35);
+  animation: ld-band 1.4s cubic-bezier(.65,0,.25,1) infinite; }
+/* placeholder block in HUD style */
+.ld-block { position: relative; display: flex; flex-direction: column; gap: 12px; max-width: 560px; margin: 40px auto; padding: 20px 22px;
+  border: 1px solid var(--line-16); background: linear-gradient(180deg, var(--accent-05), var(--accent-00) 70%); }
+.ld-block__corners { position: absolute; inset: -1px; pointer-events: none; background:
+  linear-gradient(var(--accent), var(--accent)) left top / 14px 1px no-repeat,
+  linear-gradient(var(--accent), var(--accent)) left top / 1px 14px no-repeat,
+  linear-gradient(var(--muted), var(--muted)) right bottom / 14px 1px no-repeat,
+  linear-gradient(var(--muted), var(--muted)) right bottom / 1px 14px no-repeat; }
+.ld-block__t { font: 10.5px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
+.ld-caret { display: inline-block; width: 2px; height: 1em; margin-left: 4px; vertical-align: -2px; background: var(--accent); animation: caret 1s step-end infinite; }
+.ld-flow { display: block; height: 1px; background: var(--line-20) linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%) no-repeat;
+  background-size: 50% 100%; animation: ld-sweep 1.8s linear infinite; }
+.ld-sk { display: block; height: 10px; background: var(--line-08) linear-gradient(90deg, transparent, var(--accent-10), transparent) no-repeat;
+  background-size: 40% 100%; animation: ld-sweep 1.6s linear infinite; }
+.ld-sk--0 { width: 92%; } .ld-sk--1 { width: 74%; animation-delay: .15s; } .ld-sk--2 { width: 58%; animation-delay: .3s; }
+.ld-block.is-err .ld-caret, .ld-block.is-err .ld-flow, .ld-block.is-err .ld-sk { animation: none; }
+.ld-block.is-err .ld-block__t { color: var(--ink); }
+/* one line: pulsing dot, text, caret */
+.ld-inline { display: inline-flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--muted); }
+.ld-inline__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: live-pulse 1.6s ease-in-out infinite; }
+.ld-inline .ld-caret { margin-left: 0; }
+/* positioned container: a flowing line along its top edge while an action runs (Tasks board) */
+.ld-top::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 6; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%) no-repeat; background-size: 40% 100%; animation: ld-sweep 1.2s linear infinite; }
+/* vault views before the first graph answer (loading.js watcher) */
+.ld-stage { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none; }
+.ld-stage .ld-block { width: min(420px, 80%); margin: 0; background: rgba(9,15,27,.86); }
+@media (prefers-reduced-motion: reduce) { .ld-on, .ld-veil::after, .ld-top::before, .ld-flow, .ld-sk, .ld-caret, .ld-inline__dot { animation: none; } }

@@ -200,6 +200,7 @@
 .tv-find__row:hover { background: var(--accent-10); }
 .tv-find__row.is-on { background: var(--accent-10); }
 .tv-find__row.is-off { opacity: .35; }
+.tv-find__wait { padding: 7px 0; }
 .tv-find__n { font: 10px var(--mono); color: var(--accent); }
 .tv-find__t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-find__k { display: flex; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--muted); }

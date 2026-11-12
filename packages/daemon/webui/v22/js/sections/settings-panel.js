@@ -41,7 +41,7 @@ export function findTab(body) {
       let hits = 0, mods = 0;
       for (const k of sec.keys) { const e = entry(k); total++; if (q && matches(e, nameOf(e), descOf(e), q)) hits++; if (store.changes.has(k)) mods++; }
       hitsAll += hits;
-      return h("li.st-nav__i", { cls: [store.sel === sec.id ? "is-on" : "", q && !hits ? "is-dim" : ""].join(" "), on: { click: () => store.jump?.(sec.id) } },
+      return h("li.st-nav__i", { cls: [store.sel === sec.id ? "is-on" : "", q && !hits ? "is-dim" : ""].join(" "), "data-lsel": store.sel === sec.id ? "1" : null, on: { click: () => store.jump?.(sec.id) } },
         h("span.st-nav__n", { text: sec.n }),
         h("span.st-nav__t", { text: sec.title }),
         h("span.st-nav__r", null, q && hits ? h("span.st-nav__hits", { text: String(hits) }) : null,
@@ -72,13 +72,13 @@ export function changesTab(body) {
       n ? null : h("p.st-ch__empty", { text: t("st.ch.empty") }),
       !n && store.saved ? h("div.st-ch__saved", { text: `✓ ${t("st.ch.saved", { at: store.saved, file: SETTINGS_FILE })}` }) : null,
       !n && store.savedRestart ? h("div.st-ch__rs", null, h("span", { text: t("st.ch.needRestart") }),
-        store.model?.restartAvailable ? h("button.st-btn.st-btn--go", { type: "button", text: store.restarting ? t("st.restarting") : t("st.restart"), disabled: store.restarting, on: { click: restart } }) : null) : null,
+        store.model?.restartAvailable ? h("button.st-btn.st-btn--go", { type: "button", cls: store.restarting ? "ld-on" : "", text: store.restarting ? t("st.restarting") : t("st.restart"), disabled: store.restarting, on: { click: restart } }) : null) : null,
       store.error && store.model ? h("div.st-ch__err", { text: t("st.saveErr", { err: store.error }) }) : null,
       h("div.st-ch__list", null, cards),
       n ? h("p.st-ch__rsn", { text: rsN ? t("st.restartN", { n: rsN }) : t("st.noRestart") }) : null,
       n ? h("div.st-ch__acts", null,
         h("button.st-btn.st-btn--mute", { type: "button", text: t("st.discard"), on: { click: discard } }),
-        h("button.st-btn.st-btn--go", { type: "button", text: store.busy ? t("st.applying") : t("st.apply"), disabled: store.busy, on: { click: apply } })) : null].filter(Boolean));
+        h("button.st-btn.st-btn--go", { type: "button", cls: store.busy ? "ld-on" : "", text: store.busy ? t("st.applying") : t("st.apply"), disabled: store.busy, on: { click: apply } })) : null].filter(Boolean));
   };
   sync();
   return onStore((what) => { if (what !== "query" && what !== "sel") sync(); });

@@ -6,6 +6,7 @@ import { onData } from "../data.js";
 import { vault, timeWindow, inWindow, windowKey, areaCol } from "./vault-data.js";
 import { mountLens } from "./lens-canvas.js";
 import { zoomBar, overlay, memoryCard, dock, TC, INK } from "./chrome.js";
+import { mountMemoryBrowser } from "./memory-browser.js";
 
 export function mountLensView(kind, stage) {
   const canvas = h("canvas.lv__cv");
@@ -15,6 +16,7 @@ export function mountLensView(kind, stage) {
   const ov = overlay(stage);
   const cardHost = h("div");
   stage.append(cardHost);
+  const unMb = mountMemoryBrowser(stage, { showMemory: (id) => lens.open(id) });
 
   let shown = null, shownFor = "", card = null, selMem = null;
   function items() {
@@ -69,5 +71,5 @@ export function mountLensView(kind, stage) {
   });
   const unData = onData(() => { const v = vault(); if (v && (!shown || shown.src !== v)) lens.update(opts()); });
 
-  return () => { unsub(); unData(); lens.destroy(); };
+  return () => { unMb(); unsub(); unData(); lens.destroy(); };
 }

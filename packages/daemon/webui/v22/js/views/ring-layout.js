@@ -1,6 +1,8 @@
 // Ring geometry — buildRing() from the prototype's ring-v8.js, fed with real
 // areas and memories instead of RAW. Every segment is at least as wide as its
 // full label; the wheel grows until all labels fit on one track.
+// `lf` is the label scale in SVG units per screen pixel: labels keep a fixed
+// on-screen size, so their arc need (and the wheel) is computed at that scale.
 import { hash } from "./vault-data.js";
 
 export const SMALL_KEY = "__small";
@@ -12,8 +14,9 @@ export const TAU = Math.PI * 2;
 /**
  * @param {{ areas: {key:string,count:number,meta:boolean}[], mems: {id:string,area:string}[], ghosts: object[] }} v
  * @param {(n:number) => string} smallLabel
+ * @param {number} [lf] SVG units per screen pixel the labels are drawn at
  */
-export function buildRing(v, smallLabel) {
+export function buildRing(v, smallLabel, lf = 1) {
   const R0 = 96, GAP = 0.022;
   const byArea = new Map();
   for (const m of v.mems) { if (!byArea.has(m.area)) byArea.set(m.area, []); byArea.get(m.area).push(m); }
@@ -31,7 +34,7 @@ export function buildRing(v, smallLabel) {
     const a = mc.measureText(txt.toUpperCase()).width + txt.length * 1.3;
     mc.font = "400 9.5px 'IBM Plex Mono', ui-monospace, monospace";
     const b = mc.measureText(String(c)).width + String(c).length * 0.4;
-    return a + 6 + b;
+    return (a + 6 + b) * lf;
   };
   const nodesFor = (members) => members.flatMap(([k]) => (byArea.get(k) || []).map((m) => ({ k, id: m.id, r: 1.5 + hash(m.id) * 2.3 }))).sort((a, b) => a.r - b.r);
 
@@ -71,7 +74,10 @@ export function buildRing(v, smallLabel) {
     return { spans, needSum: need.reduce((a, b) => a + b, 0) };
   }
   const usable = TAU - GAP * content.length;
-  let Rb = 150, segs = [];
+  // start where the labels can fit at all (large `lf` would otherwise use up
+  // the iterations growing by 4 % steps and never lay out a segment)
+  const labelSum = content.reduce((sum, s) => sum + labelArc(s.label ?? s.key, s.count) + PADA, 0);
+  let Rb = Math.max(150, labelSum / (usable * 0.94) - BAND / 2), segs = [];
   for (let iter = 0; iter < 60; iter++) {
     const Rt = Rb + BAND / 2;
     const { spans, needSum } = allocate(Rt, usable);
@@ -108,5 +114,5 @@ export function buildRing(v, smallLabel) {
   const smallKeys = new Set(small.map(([k]) => k));
   const dotOf = new Map();
   for (const s of [...segs, ...metaSegs]) for (const p of s.pts) dotOf.set(p.id, p);
-  return { segs, band, metaSegs, metaBand, orbit, ghosts, extent: orbit + 30, smallKeys, dotOf, total: v.total };
+  return { segs, band, metaSegs, metaBand, orbit, ghosts, extent: orbit + 30 * Math.max(1, lf), smallKeys, dotOf, total: v.total, lf };
 }

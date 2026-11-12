@@ -5,6 +5,7 @@ import { t, numberFmt } from "../i18n.js";
 import { setState } from "../state.js";
 import { ask } from "../agent.js";
 import { vault, areaCol, recentIn, ago } from "./vault-data.js";
+import { openMemoryBrowser } from "./memory-browser.js";
 
 export const ACC = "#38d9f5", AMB = "#d9a441", INK = "#d7e3f4", MUT = "#7d92a8";
 /** Display class colours (memory-lenses.js TC, prototype TYPE_COLOR). */
@@ -65,7 +66,7 @@ export function areaCard(key, { compact, onMemory }) {
     h("div.vcard__list", null, recentIn(key, compact ? 2 : 3).map((m) => h("button.vcard__mem", { on: { click: () => onMemory(m) } },
       h("span.vcard__sq", { vars: { "--tc": TC[m.cls] || INK } }), h("span.vcard__mt", { text: m.title }), h("span.vcard__ago", { text: Number.isFinite(m.at) ? ago(m.at) : "" })))),
     h("div.vcard__acts", null,
-      h("button.vcard__open", { text: t("vv.openBrowser"), title: t("vv.browserWip"), on: { click: () => setState({ toast: t("vv.browserWip") }) } }),
+      h("button.vcard__open", { text: t("vv.openBrowser"), on: { click: (e) => openMemoryBrowser(key, null, e.currentTarget.getBoundingClientRect()) } }),
       h("button.vcard__ask", { text: t("vv.ask"), on: { click: () => ask(t("vv.askArea", { a: key })) } })));
   return { el, side };
 }
@@ -80,7 +81,10 @@ export function memoryCard(m, { onClose }) {
     h("div.vcard__title", { text: m.title }),
     h("div.vcard__meta", { text: [date, t("vv.recalledN", { n: m.recalled }), t("vv.linksN", { n: m.links.length })].filter(Boolean).join(" · ") }),
     m.summary ? h("p.vcard__sum", { text: m.summary }) : null,
-    h("div.vcard__acts", null, h("button.vcard__ask", { text: t("vv.ask"), on: { click: () => ask(t("vv.askMemory", { m: m.title })) } })));
+    h("div.vcard__acts", null,
+      // memory browser, opened on this memory out of the clicked button (not for ghosts / skills)
+      vault()?.byId.get(m.id) ? h("button.vcard__open", { text: t("vv.openBrowser"), on: { click: (e) => openMemoryBrowser(m.area, m.id, e.currentTarget.getBoundingClientRect()) } }) : null,
+      h("button.vcard__ask", { text: t("vv.ask"), on: { click: () => ask(t("vv.askMemory", { m: m.title })) } })));
   return { el, side };
 }
 
@@ -114,6 +118,7 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
     side.classList.add(right ? "is-left" : "is-right");
     setVars(side, { "--sh": `${Math.min(cardH, Math.max(2, 2 * (hitY - y) + 1)).toFixed(0)}px` });
     ov.arm(pts, color);
+    reveal(card);
     return;
   }
   const cx = Math.max(0, Math.min(ex - CW / 2, W - CW)), Hb = Hx(cx);
@@ -123,6 +128,7 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
   setVars(card.el, { "--cx": `${cx}px`, "--cy": `${y}px` });
   if (!below) { side.classList.add("is-bottom"); setVars(side, { "--sx": `${(dx - Math.min(dx, CW - dx)).toFixed(0)}px`, "--sw": `${(2 * Math.min(dx, CW - dx) + 1).toFixed(0)}px` }); }
   ov.arm([[ax, ay], [ex, ey], [cx + dx, ey], [cx + dx, below ? y : y + cardH]].filter((p, i, a) => i === 0 || p[0] !== a[i - 1][0] || p[1] !== a[i - 1][1]), color);
+  reveal(card);
 }
 
 /** Card without an anchor: top right (prototype else-branch). */
@@ -130,5 +136,22 @@ export function park(card, ov, W) {
   setVars(card.el, { "--cx": `${Math.max(0, W - 280)}px`, "--cy": "10px" });
   card.side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
   ov.arm(null);
+  reveal(card);
+}
+
+// Cards open out of the spot the user pressed (a ring segment, a dot, a
+// row): once per card, its first placement starts the card at the press
+// point, scaled down, and grows it into place (transform + opacity only).
+let press = null;
+window.addEventListener("pointerdown", (e) => { press = { x: e.clientX, y: e.clientY, at: performance.now() }; }, true);
+/** The last pointer press, if it was within the last second. */
+export const lastPress = () => (press && performance.now() - press.at < 1000 ? press : null);
+function reveal(card) {
+  if (card.el.dataset.rv) return;
+  card.el.dataset.rv = "1";
+  const p = lastPress(); if (!p) return;
+  const r = card.el.getBoundingClientRect();
+  setVars(card.el, { "--fx": `${(p.x - (r.left + r.width / 2)).toFixed(1)}px`, "--fy": `${(p.y - (r.top + r.height / 2)).toFixed(1)}px` });
+  card.el.classList.add("is-from");
 }
 

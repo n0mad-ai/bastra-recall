@@ -13,6 +13,7 @@ import { registerArea, ICON } from "../areas.js";
 import { h, s, setVars, clear } from "../dom.js";
 import { state } from "../state.js";
 import { hud, hudPills, hudButton } from "./hud.js";
+import { loadingBlock } from "./loading.js";
 import { S, onTasks, emit, save, refresh, loadWeather, openDue, select, review, lifecycle, moveDue } from "./tasks-store.js";
 import { canMove } from "./tasks-api.js";
 import * as cal from "./tasks-cal.js";
@@ -95,8 +96,10 @@ function draw() {
     ? h("div.tk-empty", null, h("span.wip-badge", { text: t("tk.offlineBadge") }), h("p", { text: S.error }), h("button.tk-btn", { text: t("tk.retry"), on: { click: () => refresh() } }))
     : null;
   calSlot = h("div.tk-calslot");
-  clear(root).append(head(), ...overlays(ctxRef), content || calSlot);
-  if (!content) drawCal();
+  // first answer pending: a run indicator instead of an empty calendar
+  const wait = !content && !S.snap ? loadingBlock(t("ld.tasks")) : null;
+  clear(root).append(head(), ...overlays(ctxRef), content || wait || calSlot);
+  if (!content && !wait) drawCal();
 }
 
 function mount(el, ctx) {

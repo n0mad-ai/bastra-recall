@@ -12,6 +12,7 @@ import { data, onData } from "../data.js";
 import { h, clear } from "../dom.js";
 import { setState } from "../state.js";
 import { hud, hudRow, hudChip, hudButton, hudTiles } from "./hud.js";
+import { loadingBlock, loadingInline, setBusy } from "./loading.js";
 import { SETTINGS_FILE, GROUPS, META, store, onStore, emit, load, apply, discard, restart, revokeOauth,
   entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
@@ -170,7 +171,7 @@ function oauthRows() {
     h("div.st-row__main", null,
       h("div.st-row__head", null, h("span.st-row__name", { text: String(c.name || c.id) })),
       h("div.st-row__key", { text: t("st.oauth.meta", { n: Number(c.grants) || 0, at: c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleString() : "—" }) })),
-    h("div.st-row__ctl", null, h("button.st-btn", { type: "button", text: t("st.oauth.revoke"), on: { click: (ev) => { ev.currentTarget.disabled = true; revokeOauth(c.id); } } }))))];
+    h("div.st-row__ctl", null, h("button.st-btn", { type: "button", text: t("st.oauth.revoke"), on: { click: (ev) => { ev.currentTarget.disabled = true; setBusy(ev.currentTarget, true); revokeOauth(c.id); } } }))))];
 }
 
 function mount(el, ctx) {
@@ -193,7 +194,7 @@ function mount(el, ctx) {
 
   const build = () => {
     clear(body); rows = []; sections = [];
-    if (!store.model && !store.error) { body.append(h("div.st-state", { text: t("st.loading") })); }
+    if (!store.model && !store.error) { body.append(loadingBlock(t("st.loading"))); }
     if (store.error && !store.model) {
       body.append(h("div.st-state.is-err", null, h("span", { text: t("st.loadErr", { err: store.error }) }),
         h("button.st-btn", { type: "button", text: t("st.retry"), on: { click: () => load() } })));
@@ -238,16 +239,16 @@ function mount(el, ctx) {
     if (bar.hidden) return;
     const acts = h("div.st-bar__acts");
     let txt;
-    if (store.restarting) txt = h("span.st-bar__t", { text: t("st.restarting") });
+    if (store.restarting) txt = h("span.st-bar__t", null, loadingInline(t("st.restarting")));
     else if (n) {
       txt = h("span.st-bar__t", null, h("span.st-bar__n", { text: String(n) }), ` ${t("st.bar.unsaved", { n })} · `,
         h("span.st-bar__m", { text: rsN ? t("st.restartN", { n: rsN }) : t("st.noRestart") }));
       acts.append(h("button.st-btn", { type: "button", text: t("st.review"), on: { click: () => setState({ tab: "changes", lensOpen: true }) } }),
         h("button.st-btn.st-btn--mute", { type: "button", text: t("st.discard"), on: { click: discard } }),
-        h("button.st-btn.st-btn--go", { type: "button", text: store.busy ? t("st.applying") : t("st.apply"), disabled: store.busy, on: { click: apply } }));
+        h("button.st-btn.st-btn--go", { type: "button", cls: store.busy ? "ld-on" : "", text: store.busy ? t("st.applying") : t("st.apply"), disabled: store.busy, on: { click: apply } }));
     } else if (needRestart) {
       txt = h("span.st-bar__t", null, t("st.savedRestart", { at: store.saved }));
-      if (store.model?.restartAvailable) acts.append(h("button.st-btn.st-btn--go", { type: "button", text: t("st.restart"), on: { click: restart } }));
+      if (store.model?.restartAvailable) acts.append(h("button.st-btn.st-btn--go", { type: "button", text: t("st.restart"), on: { click: (ev) => { setBusy(ev.currentTarget, true); restart(); } } }));
       acts.append(h("button.st-btn.st-btn--mute", { type: "button", text: t("st.later"), on: { click: () => { store.savedRestart = false; emit("bar"); } } }));
     } else txt = h("span.st-bar__t");
     const err = store.error && store.model ? h("span.st-bar__err", { text: t("st.saveErr", { err: store.error }) }) : null;

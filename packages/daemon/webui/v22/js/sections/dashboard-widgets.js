@@ -9,6 +9,7 @@ import { h, s } from "../dom.js";
 import { t, LANG, numberFmt } from "../i18n.js";
 import { data, dueAt } from "../data.js";
 import { openTask } from "./tasks-store.js";
+import { loadingInline } from "./loading.js";
 import { placeWeather, weatherPicker } from "../weather-place.js";
 
 const LOCALE = LANG === "de" ? "de-DE" : "en-US";
@@ -63,6 +64,8 @@ export function deadlines(now) {
 
 const tasksOn = () => document.documentElement.dataset.tasksEnabled === "true";
 const empty = (text) => h("p.dw-empty", { text });
+/** Widget body while its first answer is on the way (js/sections/loading.js). */
+const waiting = (text) => h("p.dw-empty", null, loadingInline(text));
 
 // ── W-00 Today ────────────────────────────────────────────────────────────
 const hp = (x) => `${(((Math.min(22, Math.max(6, x)) - 6) / 16) * 100).toFixed(1)}%`;
@@ -185,7 +188,7 @@ function renderWeather(body, env) {
   if (picking) { body.append(h("div.dw-wx__pick", null, pick())); return { meta: place.name, onMeta, metaTitle: t("db.wx.change") }; }
   loadWeather(place, env.redraw);
   const W = wx.key === `${place.lat},${place.lon}` ? wx.data : null;
-  if (!W) { body.append(empty(t(wx.state === "err" ? "db.wx.err" : "db.wx.loading"))); return { meta: place.name, onMeta, metaTitle: t("db.wx.change") }; }
+  if (!W) { body.append(wx.state === "err" ? empty(t("db.wx.err")) : waiting(t("db.wx.loading"))); return { meta: place.name, onMeta, metaTitle: t("db.wx.change") }; }
   const { item, wPx, hPx } = env, hh = item.h;
   const [cl] = cond(W.code);
   const top = h("div.dw-wx__top", null,
@@ -247,6 +250,7 @@ const DOT = { due: "var(--amber)", pending: "var(--accent)", snoozed: "var(--mut
 
 function renderTasks(body, env) {
   if (!tasksOn()) { body.append(empty(t("db.tk.off"))); return { meta: "" }; }
+  if (!data.tasksLoaded) { body.append(waiting(t("ld.tasks"))); return { meta: "" }; }
   const open = openTasks(), due = open.filter((x) => x.state === "due").length;
   if (!open.length) body.append(empty(t("db.tk.empty")));
   else body.append(h("div.dw-rows", null, open.slice(0, Math.max(1, env.item.h * 2 - 1)).map((task) =>
@@ -261,6 +265,7 @@ function renderTasks(body, env) {
 function renderDeadlines(body, env) {
   if (!tasksOn()) { body.append(empty(t("db.tk.off"))); return { meta: "" }; }
   const { now, rowH, item } = env;
+  if (!data.tasksLoaded) { body.append(waiting(t("ld.tasks"))); return { meta: "" }; }
   const all = deadlines(now);
   if (!all.length) { body.append(empty(t("db.dl.empty"))); return { meta: "" }; }
   const n = Math.max(1, Math.floor((rowH * item.h + 12 * (item.h - 1) - 52) / 60));

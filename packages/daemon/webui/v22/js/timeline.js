@@ -10,7 +10,7 @@ const OPTS = [["all", "tl.all"], ["90", "90d"], ["30", "30d"], ["7", "7d"]];
 
 // An area may replace what the timeline shows while it is open (Telemetry:
 // window 1d/7d/30d/90d over its own 52 bars). Source shape:
-// { label(), opts() → [[value, text, on]], pick(value), range() → [a, b],
+// { label(), opts() → [[value, text, on, busy]], pick(value), range() → [a, b],
 //   weeks() → 52 numbers, barTitle(i, v), summary(), axis(kind) → strings }.
 const sources = new Map();
 export function registerTimelineSource(view, src) { sources.set(view, src); }
@@ -37,7 +37,8 @@ function weekLabel(w) {
 export function timeOpts(el) {
   const S = src();
   if (S) {
-    clear(el).append(...S.opts().map(([v, text, on]) => h("button.tl__opt", { cls: on ? "is-on" : "", text, on: { click: () => S.pick(v) } })));
+    // busy: the window being loaded right now (sweep, js/sections/loading.js)
+    clear(el).append(...S.opts().map(([v, text, on, busy]) => h("button.tl__opt", { cls: [on ? "is-on" : "", busy ? "ld-on" : ""].join(" "), "aria-busy": busy ? "true" : null, text, on: { click: () => S.pick(v) } })));
     return el;
   }
   clear(el).append(...OPTS.map(([v, k]) =>

@@ -135,11 +135,23 @@ export function mountLens(canvas, opts) {
   update(opts); resize();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(req);
   const scr = (x, y) => [x * z + tx, y * z + ty];
+  const vault0 = (id) => { for (const [, , , d] of pts) { if (d?.m?.id === id) return d.m; const it = Array.isArray(d?.items) && d.items.find((x) => x.m && x.m.id === id); if (it) return it.m; } return null; };
   return {
     update,
     zoomBy(f) { zoomAt(f, w / 2, h0 / 2); },
     reset() { sel = null; aim(1, 0, 0); },
     clearSel() { sel = null; req(); },
+    /** Open a memory as a click on it would (mark, glide, onOpen); false when it is not drawn. */
+    open(id) {
+      // its own dot, else the day dot that holds it (Chronos)
+      const p = pts.find(([, , , d]) => d && d.m && d.m.id === id) || pts.find(([, , , d]) => d && Array.isArray(d.items) && d.items.some((x) => x.m && x.m.id === id));
+      if (!p) return false;
+      const [x, y, r] = p, m = vault0(id);
+      sel = { x, y, r: r || 3, id }; fx.push({ x, y, r: r || 3, c: (m && TC[m.cls]) || ACC, t: performance.now() });
+      focusOn(x, y, Math.max(Z, 2.4)); req();
+      clearTimeout(openT); openT = setTimeout(() => { if (!dead) o.onOpen && o.onOpen(id); }, 430);
+      return true;
+    },
     /** Screen position of the selection marker, or null. */
     selScreen() { return sel ? [...scr(sel.x, sel.y), sel.id] : null; },
     /** Screen position of a memory drawn in the last frame, or null. */

@@ -20,7 +20,7 @@ import { createInteractions } from "../../../js/interactions.js";
 import { clusterHues } from "../../../js/graph-data.js";
 import { createOrbitView } from "../../../js/managers/orbit-view.js";
 import { createSemanticView } from "../../../js/managers/semantic-view.js";
-import { createWeather } from "../../../js/managers/weather.js";
+import { placeWeather, onPlaceWeather } from "../weather-place.js";
 import { createBoltDemo } from "../../../js/managers/bolt-demo.js";
 import { h, setVars } from "../dom.js";
 import { data, onUpdates, loadWeather } from "../data.js";
@@ -89,8 +89,11 @@ function build() {
   });
   const satLight = () => ["78%", "66%"];
   // weather layer (#217): opt-in, same stored place as the old UI; nothing is
-  // fetched until a place is set (View tab › Weather)
-  e.weather = createWeather(() => { awake(e); void loadWeather(); });
+  // fetched until a place is set (View tab › Weather). One manager for the
+  // whole UI (js/weather-place.js), so a place chosen on the Dashboard is
+  // the one the backdrop uses.
+  e.weather = placeWeather();
+  e.offWeather = onPlaceWeather(() => { awake(e); void loadWeather(); });
   e.orbit = createOrbitView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions, getHues: () => e.hues, getSatLight: satLight, getWeather: () => e.weather.get() });
   e.semantic = createSemanticView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions });
   e.live = installLive(e, { awake: (ms) => awake(e, ms), regroup: () => { e.sim.regroup(loadAnchors(e)); e.wasBusy = true; } });
@@ -297,7 +300,7 @@ export function attach(stage, v, hooks) {
 // so the map is current when it is opened again. Live off → nothing applied.
 onUpdates((list) => { if (eng && state.live && Array.isArray(list)) for (const u of list) eng.live.apply(u); });
 
-function detachAll(e) { cancelAnimationFrame(e.raf); e.clip.remove(); e.canvas.width = 0; e.canvas.height = 0; }
+function detachAll(e) { cancelAnimationFrame(e.raf); e.offWeather?.(); e.clip.remove(); e.canvas.width = 0; e.canvas.height = 0; }
 
 // ── controls used by the v22 frame (engine-view.js) ────────────────────────
 export const engine = {

@@ -6,6 +6,7 @@ import { state, setState } from "./state.js";
 import { data } from "./data.js";
 import { getArea } from "./areas.js";
 import { signalsTab } from "./views/signals.js";
+import { panelIndicator } from "./panel-indicator.js";
 
 // Vault views (no tabs of their own): Areas, Signals, View, Live.
 const VAULT_TABS = [{ id: "areas", labelKey: "lens.areas", render: (b) => { b.append(areasTab()); } },
@@ -34,7 +35,7 @@ export function mountLens(app, ctx) {
   ctxRef = ctx;
   peek = h("div.lens-peek", { on: { mouseenter: peekIn, mouseleave: peekOut } });
   tabsEl = h("div.lens__tabs");
-  body = h("div.lens__body", { on: { scroll: () => requestAnimationFrame(measureInd) } });
+  body = h("div.lens__body");
   // Notices of areas with registerArea({ panelNotices: true }) (Tasks): shown
   // here at the bottom while the panel is open; js/main.js toasts them otherwise.
   msgEl = h("div.lens__msg", { role: "status", hidden: true });
@@ -45,6 +46,7 @@ export function mountLens(app, ctx) {
       h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=feature_request.yml", target: "_blank", rel: "noopener" }, ideaIcon(), t("lens.idea"))));
   indLayer = h("div");
   app.append(peek, lens, indLayer);
+  measureInd = panelIndicator(indLayer, lens, body, () => lens.classList.contains("is-open"));
 }
 
 export function peekIn() { clearTimeout(lpT); if (!state.lensPeek) setState({ lensPeek: true }); }
@@ -90,16 +92,8 @@ function areasTab() {
     list);
 }
 
-function measureInd() {
-  clear(indLayer);
-  if (!lens.classList.contains("is-open")) return;
-  const ar = lens.getBoundingClientRect(), br = body.getBoundingClientRect();
-  for (const el of lens.querySelectorAll("[data-lsel]")) {
-    const r = el.getBoundingClientRect(), top = Math.max(r.top, br.top), bot = Math.min(r.bottom, br.bottom);
-    if (bot - top < 4 || ar.width < 10) continue;
-    indLayer.append(h("span.ls-ind", { vars: { "--t": `${Math.round(top)}px`, "--h": `${Math.round(bot - top)}px` } }));
-  }
-}
+// Active-row marker (js/panel-indicator.js); schedules one measurement.
+let measureInd = () => {};
 
 let lastKey = "", tabCleanup = null;
 /** Forces the open tab's content to be rebuilt on the next render (ctx.refreshLens()). */

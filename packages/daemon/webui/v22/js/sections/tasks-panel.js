@@ -10,6 +10,7 @@ import { S, emit, say, act, refresh, lifecycle, moveTo, review, controls, showPr
 import { calendarStyle, calendarStyles, PRO_STYLES } from "./tasks-styles.js";
 import { api, mutate, fmtAt, localParts, calendarSchedule, failureReason, originLabel, canMove, isTerminal, dueAt } from "./tasks-api.js";
 import { toggle } from "./tasks-overlays.js";
+import { loadingInline } from "./loading.js";
 
 export const dueList = () => S.items.filter((x) => x.k === "due" && !x.t.archived);
 export const awaitList = () => S.items.filter((x) => !x.t.archived && !isTerminal(x.t) && !x.t.armed);
@@ -171,7 +172,7 @@ export function viewTab(body) {
 
 export function controlTab(body) {
   const snap = S.snap;
-  if (!snap) { body.append(h("div.tk-pn", null, h("p.tk-pn__empty", { text: S.error || t("tk.loading") }))); return; }
+  if (!snap) { body.append(h("div.tk-pn", null, (S.error ? h("p.tk-pn__empty", { text: S.error }) : h("p.tk-pn__empty", null, loadingInline(t("tk.loading")))))); return; }
   const c = snap.controls || {}, rt = snap.runtime || {}, b = snap.budgets, cap = snap.capacity || {};
   const rows = [
     [t("tk.ctl.fn"), t("tk.ctl.fnD"), !!c.enabled, () => controls({ enabled: !c.enabled })],

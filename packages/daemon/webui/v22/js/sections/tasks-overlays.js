@@ -3,6 +3,7 @@
 // blurred (DESIGN-SYSTEM › Pop-over-Fenster). Form fields are the ones the
 // existing task API accepts (old UI compose dialog).
 import { h } from "../dom.js";
+import { loadingInline } from "./loading.js";
 import { t } from "../i18n.js";
 import { S, emit, say, act, select, create, executeProposal, byId } from "./tasks-store.js";
 import { api, fmtAt, calendarSchedule } from "./tasks-api.js";
@@ -78,7 +79,7 @@ function dueCard(c) {
 function due() {
   const cards = S.due || [];
   return h("div.tk-pop.tk-pop--due", { role: "dialog", "aria-label": t("tk.due.title") },
-    h("div.tk-pop__h.is-row", null, h("span.tk-pop__k", { text: t("tk.due.title") }), h("span.tk-pop__n", { text: S.dueBusy ? t("tk.loading") : t("tk.due.ready", { n: cards.filter((c) => c.kind !== "availability").length }) }),
+    h("div.tk-pop__h.is-row", null, h("span.tk-pop__k", { text: t("tk.due.title") }), S.dueBusy ? h("span.tk-pop__n", null, loadingInline(t("tk.loading"))) : h("span.tk-pop__n", { text: t("tk.due.ready", { n: cards.filter((c) => c.kind !== "availability").length }) }),
       h("button.tk-pop__x", { text: t("tk.close"), on: { click: close } })),
     h("div.tk-due", null, cards.map(dueCard), !S.dueBusy && !cards.length ? h("p.tk-due__none", { text: S.duePending ? t("tk.due.pending", { n: S.duePending, b: S.dueBlocked }) : t("tk.due.none") }) : null));
 }

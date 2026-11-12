@@ -13,8 +13,8 @@ import { createWeather } from "../../js/managers/weather.js";
 let shared = null;
 const listeners = new Set();
 
-/** A weather manager for areas that have none of their own (the Mindspace
- *  engine keeps its own, js/views/engine-host.js). Created on first use. */
+/** The one weather manager of the UI (Dashboard widget, Mindspace backdrop
+ *  in js/views/engine-host.js). Created on first use. */
 export function placeWeather() {
   if (!shared) shared = createWeather(() => { for (const fn of listeners) fn(); });
   return shared;

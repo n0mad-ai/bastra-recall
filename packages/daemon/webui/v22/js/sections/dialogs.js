@@ -13,6 +13,7 @@ import { addStrings, t } from "../i18n.js";
 import { registerArea, ICON } from "../areas.js";
 import { loadGraph } from "../data.js";
 import { h, clear } from "../dom.js";
+import { loadingInline, setBusy, touched } from "./loading.js";
 import en from "../i18n/dialogs-en.js";
 import de from "../i18n/dialogs-de.js";
 
@@ -57,7 +58,11 @@ function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
 
 const btn = (text, onClick, cls = "") => h("button.dlg-btn", { cls, text, on: { click: onClick } });
 const status = () => h("span.dlg__status");
-function setStatus(el, text, kind = "") { el.textContent = text; el.className = `dlg__status${kind ? " is-" + kind : ""}`; }
+function setStatus(el, text, kind = "") {
+  el.className = `dlg__status${kind ? " is-" + kind : ""}`;
+  // busy: the request is on its way (run indicator, js/sections/loading.js)
+  if (kind === "busy") clear(el).append(loadingInline(text)); else el.textContent = text;
+}
 
 // ── Areas ─────────────────────────────────────────────────────────────────
 function openAreas() {
@@ -75,10 +80,11 @@ function openAreas() {
 
   async function mutate(payload, okText) {
     if (busy) return false;
-    busy = true; setStatus(st, t("dlg.working"));
+    busy = true; setStatus(st, t("dlg.working"), "busy");
+    const el = touched(); setBusy(el, true);
     try { await call("/ui/areas", payload); mutated = true; setStatus(st, okText, "ok"); await render(); return true; }
     catch (err) { setStatus(st, err.message, "err"); return false; }
-    finally { busy = false; }
+    finally { busy = false; setBusy(el, false); }
   }
   async function create() {
     const name = nameIn.value.trim();
@@ -117,6 +123,7 @@ function openAreas() {
   async function render() {
     armed = null;
     let areas;
+    if (!list.children.length) list.append(h("li.dlg-list__empty", null, loadingInline(t("dlg.working"))));
     try { const d = await call("/ui/areas"); areas = Array.isArray(d.areas) ? d.areas.filter((a) => a && typeof a.name === "string") : []; }
     catch (err) { setStatus(st, err.message, "err"); return; }
     count.textContent = t("ar.count", { n: areas.length });
@@ -154,14 +161,14 @@ function openImport() {
   const stage = btn(t("im.stage"), async () => {
     const v = text.value.trim();
     if (!v || busy) return;
-    busy = true; stage.disabled = true; setStatus(st, t("im.staging"));
+    busy = true; stage.disabled = true; setBusy(stage, true); setStatus(st, t("im.staging"), "busy");
     try {
       const r = await call("/ui/import", { text: v, source });
       setStatus(st, t("im.staged", { n: r.staged }) + (r.skipped_duplicates > 0 ? t("im.dupes", { n: r.skipped_duplicates }) : "") + t("im.open", { n: r.open_total }), "ok");
       next.hidden = false; waiting?.remove(); text.value = "";
       refreshImportCount();
     } catch (err) { setStatus(st, err.message, "err"); }
-    finally { busy = false; stage.disabled = false; }
+    finally { busy = false; stage.disabled = false; setBusy(stage, false); }
   }, "is-primary");
   file.addEventListener("change", async () => {
     const f = file.files?.[0];
@@ -191,7 +198,9 @@ function folderImport() {
   const bPath = h("div.dlg-fs__path"), bList = h("ul.dlg-fs__list");
   const browser = h("div.dlg-fs", { hidden: true }, bPath, bList, h("div.dlg__foot", null, btn(t("im.use"), () => { if (browsePath) dir.value = browsePath; browser.hidden = true; })));
   async function browse(path) {
-    const d = await call(`/ui/fs${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+    setBusy(bList, true);
+    let d;
+    try { d = await call(`/ui/fs${path ? `?path=${encodeURIComponent(path)}` : ""}`); } finally { setBusy(bList, false); }
     browsePath = typeof d.path === "string" ? d.path : null;
     bPath.textContent = browsePath || "";
     const go = (p) => () => browse(p).catch((e) => setStatus(st, e.message, "err"));
@@ -205,13 +214,13 @@ function folderImport() {
   const run = btn(t("im.run"), async () => {
     const v = dir.value.trim();
     if (!v || busy) return;
-    busy = true; run.disabled = true; setStatus(st, t("im.importing"));
+    busy = true; run.disabled = true; setBusy(run, true); setStatus(st, t("im.importing"), "busy");
     try {
       const r = await call("/ui/import-vault", { dir: v, label: label.value.trim() || undefined });
       setStatus(st, t("im.imported", { n: r.imported, m: r.scanned, folder: r.folder }) + (r.skipped > 0 ? t("im.skipped", { n: r.skipped }) : "") + (r.orphaned > 0 ? t("im.orphaned", { n: r.orphaned }) : ""), "ok");
       loadGraph();
     } catch (err) { setStatus(st, err.message, "err"); }
-    finally { busy = false; run.disabled = false; }
+    finally { busy = false; run.disabled = false; setBusy(run, false); }
   }, "is-primary");
   const content = h("div.dlg-fold__in", { hidden: true },
     h("p.dlg__text", { text: t("im.folderHelp") }),
@@ -279,7 +288,7 @@ function openOnboarding(catalog) {
     if (finished) { close(); return; }
     collect();
     if (idx < steps.length - 1) { renderQuestion(idx + 1); return; }
-    busy = true; next.disabled = true; next.textContent = t("ob.saving");
+    busy = true; next.disabled = true; setBusy(next, true); next.textContent = t("ob.saving");
     try {
       const r = await call("/ui/onboarding", { persona, answers });
       finished = true;
@@ -290,7 +299,7 @@ function openOnboarding(catalog) {
       loadGraph();
     } catch (err) {
       prog.textContent = err.message; next.textContent = t("ob.save");
-    } finally { busy = false; next.disabled = false; }
+    } finally { busy = false; next.disabled = false; setBusy(next, false); }
   }
   renderPersona();
 }

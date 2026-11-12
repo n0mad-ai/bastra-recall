@@ -11,6 +11,7 @@ import { state, setState, subscribe } from "../state.js";
 import { registerTimelineSource } from "../timeline.js";
 import { buildModel, findHits, fmt } from "./telemetry-model.js";
 import { section, spark, pageHead } from "./telemetry-render.js";
+import { veil, loadingBlock, loadingInline } from "./loading.js";
 import en from "../i18n/telemetry-en.js";
 import de from "../i18n/telemetry-de.js";
 
@@ -35,7 +36,7 @@ const tv = {
 };
 function persist() { try { localStorage.setItem(KEY, JSON.stringify({ days: tv.days, style: tv.style, head: tv.head })); } catch { /* storage blocked */ } }
 
-let model = null, error = "", updated = null, reqId = 0;
+let model = null, error = "", updated = null, reqId = 0, pending = 0;
 let strip = null, stripAt = 0, stripDays = [];
 let view = null; // { el, frame, scroller, ctx } while mounted
 const panelUpdaters = new Set();
@@ -49,25 +50,41 @@ async function fetchReport(days) {
   return j;
 }
 
-/** silent: background tick — keeps the last good report on failure, no status line. */
+/**
+ * silent: background tick — keeps the last good report on failure, no indicator.
+ * Otherwise (first load, window switch) the old report stays on screen, dimmed
+ * under the scan band, until the new one is there; only the latest request counts.
+ */
 async function load({ silent = false } = {}) {
+  if (silent && pending) return;
   const id = ++reqId;
-  if (!silent) { error = ""; if (!model || model.days !== tv.days) { model = null; draw(); } }
+  if (!silent) { error = ""; pending = tv.days; showBusy(); if (!model) draw(); }
   try {
     const r = await fetchReport(tv.days);
     if (id !== reqId) return;
     model = buildModel(r);
     if (model.days && model.days < tv.days) { tv.days = model.days; persist(); }
     updated = new Date();
-    error = "";
+    error = ""; pending = 0;
     if (tv.days === 90) setStrip(r);
-    draw(); notifyPanel(); tick();
+    showBusy(); draw(); notifyPanel();
     if (Date.now() - stripAt > STRIP_MS) void loadStrip();
   } catch (e) {
     if (id !== reqId || silent) return;
-    error = t("tv.error", { m: e.message });
-    draw();
+    pending = 0;
+    if (model) {
+      // keep what is on screen and say why the switch did not happen
+      tv.days = model.days || tv.days; persist();
+      setState({ toast: t("tv.error", { m: e.message }) });
+      showBusy();
+    } else { error = t("tv.error", { m: e.message }); showBusy(); draw(); }
   }
+}
+
+/** Run indicator: veil over the stage frame while a report is on its way, sweep on the footer button. */
+function showBusy() {
+  if (view) veil(view.frame, !!pending && !!model);
+  tick();
 }
 
 /** Footer bars: context tokens per day over the last 90 days, folded into 52 bars. */
@@ -94,7 +111,9 @@ function setDays(d) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
-const daysLabel = () => (tv.days === 1 ? t("tv.last24") : t("tv.lastDays", { n: tv.days }));
+// Labels describe the report on screen; while a switch loads, that is still the old window.
+const shownDays = () => model?.days || tv.days;
+const daysLabel = () => (shownDays() === 1 ? t("tv.last24") : t("tv.lastDays", { n: shownDays() }));
 const updatedText = () => (updated ? updated.toLocaleTimeString(LANG === "de" ? "de-DE" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "");
 const q = () => tv.query.trim().toLowerCase();
 function visible() {
@@ -106,7 +125,7 @@ function selected(vis) { return vis.find((x) => x.id === state.tvSel) || vis[0] 
 
 // ── stage ────────────────────────────────────────────────────────────────
 function status() {
-  return h("div.tv-status", { cls: error ? "is-err" : "", text: error || t("tv.loading", { n: tv.days }) });
+  return error ? h("div.tv-status.is-err", { text: error }) : loadingBlock(t("tv.loading", { n: tv.days }), { cls: "tv-loading" });
 }
 function noHits() { return h("div.tv-nohits", { text: t("tv.noHits", { q: tv.query.trim() }) }); }
 
@@ -207,7 +226,7 @@ function mount(el, ctx) {
   const onVis = () => { arm(); if (!document.hidden) void load({ silent: true }); };
   document.addEventListener("visibilitychange", onVis);
   arm();
-  draw();
+  draw(); showBusy();
   void load({ silent: !!model && model.days === tv.days });
   return () => {
     clearInterval(timer); unsub();
@@ -245,7 +264,8 @@ function findTab(body) {
     clearBtn.hidden = !tv.query;
     clear(chips).append(...CHIPS.map((c) => h("button.tv-chip", { cls: tv.query === c ? "is-on" : "", text: c, on: { click: () => setQuery(tv.query === c ? "" : c) } })));
     const sel = selected(vis);
-    clear(list).append(...(model ? model.sections : []).map((x) => {
+    if (!model) { clear(list).append(error ? h("li.tv-find__row.is-off", { text: error }) : h("li.tv-find__wait", null, loadingInline(t("tv.loading", { n: tv.days })))); return; }
+    clear(list).append(...model.sections.map((x) => {
       const on = sel && x.id === sel.id, n2 = hits.get(x.id) || 0;
       return h("li.tv-find__row", { cls: [on ? "is-on" : "", vis.includes(x) ? "" : "is-off"].join(" "), "data-lsel": on ? "1" : null, on: { click: () => jump(x.id) } },
         h("span.tv-find__n", { text: x.n }), h("span.tv-find__t", { text: x.title }),
@@ -282,16 +302,16 @@ function viewTab(body, ctx) {
 // ── footer timeline: window 1d / 7d / 30d / 90d ──────────────────────────
 registerTimelineSource("telemetry", {
   label: () => t("tv.tl.label"),
-  opts: () => DAYS.map((d) => [String(d), `${d}d`, d === tv.days]),
+  opts: () => DAYS.map((d) => [String(d), `${d}d`, d === tv.days, d === pending]),
   pick: (v) => setDays(Number(v)),
   range: () => [52 - SEL[tv.days], 52],
   weeks: () => strip || new Array(52).fill(0),
   barTitle: (i, v) => { const ds = stripDays[i] || []; return ds.length ? t("tv.tl.bar", { a: ds[0].slice(5), b: ds[ds.length - 1].slice(5), n: fmt(v) }) : ""; },
-  summary: () => t("tv.tl.sum", { n: model ? fmt(model.events) : "—", d: tv.days === 1 ? t("tv.tl.24h") : t("tv.tl.days", { n: tv.days }) }),
+  summary: () => t("tv.tl.sum", { n: model ? fmt(model.events) : "—", d: shownDays() === 1 ? t("tv.tl.24h") : t("tv.tl.days", { n: shownDays() }) }),
   axis: (kind) => {
     const ago = t("tv.tl.ago"), now = t("tl.now").toUpperCase();
     if (kind === "short") return [ago, now];
-    if (kind === "mirror") return [ago, t("tv.tl.sum", { n: model ? fmt(model.events) : "—", d: tv.days === 1 ? t("tv.tl.24h") : t("tv.tl.days", { n: tv.days }) }), now];
+    if (kind === "mirror") return [ago, t("tv.tl.sum", { n: model ? fmt(model.events) : "—", d: shownDays() === 1 ? t("tv.tl.24h") : t("tv.tl.days", { n: shownDays() }) }), now];
     return [ago, "60", "30", now];
   },
 });

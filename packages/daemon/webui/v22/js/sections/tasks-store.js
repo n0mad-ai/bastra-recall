@@ -3,6 +3,7 @@
 // Actions are the old UI's (webui/js/tasks.js) on the same endpoints.
 import { t } from "../i18n.js";
 import { state, setState } from "../state.js";
+import { touched, setBusy } from "./loading.js";
 import { api, mutate, itemsOf, canMove, isTerminal, scheduleAt, fmtAt, BROWSER_TZ, createInput, loadWeatherDays } from "./tasks-api.js";
 
 const SAVE_KEY = "recall-v22-tasks";
@@ -67,11 +68,16 @@ export async function loadWeather() { if (await loadWeatherDays()) emit(); }
 
 /** Runs a user action; the notice goes to the panel/toast, the board refreshes afterwards. */
 export async function act(fn, okMsg) {
+  // Run indicator: sweep on the control that was used; a drag drop has none,
+  // so the board carries a flowing top line as well (js/sections/loading.js).
+  const el = touched(), board = document.querySelector(".tk");
+  setBusy(el, true); board?.classList.add("ld-top");
   try {
     const msg = await fn();
     await refresh();
     if (msg || okMsg) say(msg || okMsg);
   } catch (e) { say(e.message); refresh(); }
+  finally { setBusy(el, false); board?.classList.remove("ld-top"); }
 }
 
 /** Opens the Tasks area with this task selected (dashboard widgets, header
