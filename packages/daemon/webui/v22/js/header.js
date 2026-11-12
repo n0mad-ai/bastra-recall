@@ -130,7 +130,7 @@ function tickerButton(it, i) {
     mouseenter: (e) => armPreview(e.currentTarget, it, i),
     mouseleave: () => { clearTimeout(tk.tArm); if (tk.arm === i) { tk.arm = null; b.querySelector(".tkr__arm")?.remove(); } if (tk.open === i) { clearTimeout(tk.tClose); tk.tClose = setTimeout(closePreview, 260); } },
   } },
-    h("span.tkr__dia"), h("span.tkr__tag", { text: it.tag }), h("span.tkr__text", { text: it.text, title: it.text }), h("span.tkr__meta", { text: it.meta }));
+    h("span.tkr__dia"), h("span.tkr__tag", { text: it.tag }), h("span.tkr__text", { text: it.text }), h("span.tkr__meta", { text: it.meta }));
   return b;
 }
 
