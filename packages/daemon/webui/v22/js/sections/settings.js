@@ -13,7 +13,7 @@ import { h, clear } from "../dom.js";
 import { setState } from "../state.js";
 import { hud, hudRow, hudChip, hudButton, hudTiles } from "./hud.js";
 import { SETTINGS_FILE, GROUPS, META, store, onStore, emit, load, apply, discard, restart, revokeOauth,
-  entry, groupKeys, locked, changed, shown, setValue, matches } from "./settings-model.js";
+  entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
 import en from "../i18n/settings-en.js";
 import de from "../i18n/settings-de.js";
@@ -105,9 +105,10 @@ function secretCtl(e) {
   const input = h("input.st-text.st-text--secret", { type: "password", autocomplete: "new-password", placeholder: t("st.secret.new"),
     on: { input: () => {
       const raw = input.value.trim();
-      if (!raw) { input.classList.remove("is-bad"); setValue(e.key, e.value); store.changes.delete(e.key); emit("value"); return; }
-      if (e.kind === "json") { try { setValue(e.key, JSON.parse(raw)); input.classList.remove("is-bad"); } catch { input.classList.add("is-bad"); } }
-      else setValue(e.key, raw);
+      input.classList.remove("is-bad");
+      if (!raw) { revert(e.key); return; }
+      if (e.kind !== "json") { store.changes.set(e.key, raw); emit("value"); return; }
+      try { store.changes.set(e.key, JSON.parse(raw)); emit("value"); } catch { input.classList.add("is-bad"); }
     } } });
   return { nodes: [mask, input], wide: true, sync: () => {
     mask.textContent = changed(e.key) ? t("st.secret.pending") : e.isSet ? "••••••••••••" : t("st.secret.unset");
@@ -251,7 +252,7 @@ function mount(el, ctx) {
     } else txt = h("span.st-bar__t");
     const err = store.error && store.model ? h("span.st-bar__err", { text: t("st.saveErr", { err: store.error }) }) : null;
     bar.classList.toggle("is-calm", !n);
-    clear(bar).append(h("span.st-bar__dot"), txt, err, acts);
+    clear(bar).append(...[h("span.st-bar__dot"), txt, err, acts].filter(Boolean));
   };
 
   const sync = () => { for (const r of rows) r.sync(); drawHead(); drawBar(); };
@@ -282,7 +283,10 @@ function mount(el, ctx) {
     flashT = setTimeout(() => s.el.classList.remove("is-flash"), 1800);
   };
 
+  let count = store.changes.size;
   const offStore = onStore((what) => {
+    // The Changes tab badge lives in the panel's tab row; rebuild it when the count moves.
+    if (store.changes.size !== count) { count = store.changes.size; ctx.refreshLens(); }
     if (what === "value" || what === "bar" || what === "sel") { if (what !== "sel") sync(); return; }
     if (what === "query") { filter(); return; }
     build();

@@ -169,6 +169,7 @@ export const changed = (key) => store.changes.has(key);
 
 /** Value the control shows: pending change, else stored value, else what is in effect. */
 export function shown(e) {
+  if (e.local) return state[e.stateKey];
   if (store.changes.has(e.key)) return store.changes.get(e.key);
   if (e.envOverride?.length) return e.effective;
   return e.value ?? e.effective ?? null;
@@ -177,7 +178,7 @@ export function shown(e) {
 export function setValue(key, value) {
   const e = entry(key);
   if (!e || locked(e)) return;
-  if (e.local) { setState({ [e.stateKey]: value }); emit(); return; }
+  if (e.local) { setState({ [e.stateKey]: value }); emit("value"); return; }
   const same = JSON.stringify(value) === JSON.stringify(e.value) && !(value === null && e.isSet);
   if (same) store.changes.delete(key); else store.changes.set(key, value);
   emit("value");
