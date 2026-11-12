@@ -116,19 +116,36 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
 
 /** Per process: requests handled at once (later ones wait in order) and open sockets before raw 503. */
 export const ASSISTANT_ACTIVE_REQUESTS=8,ASSISTANT_MAX_SOCKETS=64;
+export const ASSISTANT_MAX_PENDING_REQUESTS=64;
 /** Handles accepted sockets, plus compatibility for previously installed Wait=true jobs. */
 export async function startAssistantSocket(opts:AssistantGatewayOptions,listening=false):Promise<Server>{
  const rejected=new WeakSet<Socket>(),gateway=assistantGatewayHandler(opts);
  // A browser opens about six connections per page. Excess requests queue
- // instead of failing; each queued request is bounded by its socket's lifetime.
- const queue:Array<()=>void>=[];let active=0;
- const release=()=>{active--;for(let next;active<ASSISTANT_ACTIVE_REQUESTS&&(next=queue.shift());)next();};
- const admit=(req:IncomingMessage,res:ServerResponse)=>{if(req.socket.destroyed){req.resume();return;}active++;res.once("close",release);gateway(req,res);};
+ // instead of failing. Bound requests too: HTTP pipelining can put many
+ // requests on one socket, and abandoned waiters must leave immediately.
+ const queue=new Set<()=>void>();let active=0;
+ // A pipelined response may not own the socket yet. Observe the socket too,
+ // with one listener per connection rather than one per queued request.
+ const closers=new WeakMap<Socket,Set<()=>void>>();
+ const watchClose=(socket:Socket,res:ServerResponse,done:()=>void)=>{
+  let callbacks=closers.get(socket);
+  if(!callbacks){callbacks=new Set();closers.set(socket,callbacks);socket.once("close",()=>{for(const close of callbacks!)close();});}
+  const close=()=>{callbacks!.delete(close);res.removeListener("close",close);done();};
+  callbacks.add(close);res.once("close",close);
+  return ()=>{callbacks!.delete(close);res.removeListener("close",close);};
+ };
+ const release=()=>{active--;while(active<ASSISTANT_ACTIVE_REQUESTS&&queue.size){const next=queue.values().next().value!;queue.delete(next);next();}};
+ const admit=(req:IncomingMessage,res:ServerResponse)=>{if(req.socket.destroyed){req.resume();return;}active++;watchClose(req.socket,res,release);gateway(req,res);};
  const server=createServer((req,res)=>{
   // end(raw503) does not prevent a parser from emitting an already buffered
   // request. Rejection belongs to the socket and must guard forwarding too.
   if(rejected.has(req.socket)){req.resume();return;}
-  if(active<ASSISTANT_ACTIVE_REQUESTS)admit(req,res);else queue.push(()=>admit(req,res));
+  if(active+queue.size>=ASSISTANT_MAX_PENDING_REQUESTS){rejected.add(req.socket);req.socket.destroy();return;}
+  if(active<ASSISTANT_ACTIVE_REQUESTS)admit(req,res);else{
+   const next=()=>{unwatch();admit(req,res);};
+   const unwatch=watchClose(req.socket,res,()=>{queue.delete(next);});
+   queue.add(next);
+  }
  });
  if(listening){
   // Each of the two launchd jobs owns one listener. Admission here bounds
