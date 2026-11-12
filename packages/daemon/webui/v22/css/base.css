@@ -1,0 +1,47 @@
+/* Recall UI v22 — reset, scrollbars, shared keyframes (prototype <style> block). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--muted); text-decoration: none; }
+a:hover { color: var(--accent); }
+button, input, select { font-family: inherit; }
+input[type=range] { accent-color: var(--accent); }
+::placeholder { color: var(--muted); }
+[hidden] { display: none !important; }
+
+@keyframes orb-rot { to { transform: rotate(360deg); } }
+@keyframes orb-breathe { 0%,100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes live-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .5; } }
+@keyframes mark-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes tick-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes tkr-arm { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes tkr-drop { from { clip-path: inset(0 -2px 100% -2px); } to { clip-path: inset(0 -2px 0 -2px); } }
+@keyframes tkr-flare { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tkr-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tkr-trace { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+@keyframes tkr-scan { from { transform: translateY(0); opacity: 1; } to { transform: translateY(260px); opacity: 0; } }
+@keyframes tkr-row { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(12px); } }
+@keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes tick-glow { 0%, 100% { opacity: .42; } 50% { opacity: 1; } }
+@keyframes tick-trace { 0% { stroke-dashoffset: 110; opacity: 0; } 4% { opacity: 1; } 64% { opacity: 1; } 70% { stroke-dashoffset: -1000; opacity: 0; } 100% { stroke-dashoffset: -1000; opacity: 0; } }
+@keyframes caret { 50% { opacity: 0; } }
+
+/* Scrollbars: thin, square, dimmed; full only while the pointer is over the scrolling area ([data-sb]). */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+  [data-sb] { scrollbar-color: var(--scroll-thumb-on) transparent; }
+}
+::-webkit-scrollbar { width: 9px; height: 9px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 0; border-style: solid; border-color: transparent; border-width: 2px 3px 2px 2px; background-clip: padding-box; }
+[data-sb]::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb-on); }
+
+/* Shared small parts */
+.mono { font-family: var(--mono); }
+.dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.dot--pulse { animation: live-pulse 2s ease-in-out infinite; }
+.vsep { flex: none; width: 1px; height: 18px; background: var(--line-20); }
+.ico { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.wip-badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid var(--amber); color: var(--amber); font: 500 9.5px var(--mono); letter-spacing: .2em; text-transform: uppercase; white-space: nowrap; }

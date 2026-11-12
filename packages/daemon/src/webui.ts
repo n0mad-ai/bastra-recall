@@ -15,7 +15,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SearchIndex } from "@bastra-recall/core";
-import { getUiEnabled } from "./settings.js";
+import { getPrimaryLanguage, getUiEnabled } from "./settings.js";
 
 /**
  * Content-Security-Policy for the map (#217).
@@ -402,15 +402,17 @@ export async function handleWebUi(
   try {
     let html: string | undefined;
     let contentLength: number;
-    if (rel === "index.html") {
+    if (rel === "index.html" || rel === "v22/index.html") {
       // Bind validation and reading to one descriptor (#1238, CodeQL).
       const file = await open(target, "r");
       try {
         if (!(await file.stat()).isFile()) { sendPlain(res, 404, "not found"); return; }
         // Resolve before first paint; disabled clients never wire the Tasks view.
         const enabled = tasksEnabled();
+        // UI language follows language.primary: "de" → German, anything else → English.
+        const lang = (await getPrimaryLanguage(settingsPath)) === "de" ? "de" : "en";
         html = (await file.readFile("utf8"))
-          .replace('<html', `<html data-tasks-enabled="${enabled}"`)
+          .replace('<html', `<html data-tasks-enabled="${enabled}" data-lang="${lang}"`)
           .replace('data-view="tasks" hidden', enabled ? 'data-view="tasks"' : 'data-view="tasks" hidden');
         contentLength = Buffer.byteLength(html);
       } finally { await file.close(); }

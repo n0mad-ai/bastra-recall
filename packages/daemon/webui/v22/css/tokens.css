@@ -1,0 +1,95 @@
+/* Recall UI v22 — design tokens (DESIGN-SYSTEM.md › Farben).
+ * Values are the dark-theme fallbacks of the prototype's inline styles.
+ * Themes are parked: a later theme file only redefines these properties. */
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 300; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexSansCondensed-Light-Latin1.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 400; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexSansCondensed-Regular-Latin1.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 500; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexSansCondensed-Medium-Latin1.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 600; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexSansCondensed-SemiBold-Latin1.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexMono-Regular-Latin1.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; font-style: normal; font-display: swap; src: url("../fonts/IBMPlexMono-Medium-Latin1.woff2") format("woff2"); }
+
+:root {
+  color-scheme: dark;
+  --sans: "IBM Plex Sans Condensed", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --bg: #060a13;
+  --ink: #d7e3f4;
+  --muted: #7d92a8;
+  --accent: #38d9f5;
+  --amber: #d9a441;
+  --panel: #121926;
+  --panel-2: #0a101c;
+  --popover: #0d1422;
+  --danger: #e06a6a;
+
+  /* line = rgba(126,164,210,a) */
+  --line-03: rgba(126,164,210,.03);
+  --line-04: rgba(126,164,210,.04);
+  --line-08: rgba(126,164,210,.08);
+  --line-10: rgba(126,164,210,.1);
+  --line-12: rgba(126,164,210,.12);
+  --line-14: rgba(126,164,210,.14);
+  --line-16: rgba(126,164,210,.16);
+  --line-18: rgba(126,164,210,.18);
+  --line-20: rgba(126,164,210,.2);
+  --line-22: rgba(126,164,210,.22);
+  --line-24: rgba(126,164,210,.24);
+  --line-25: rgba(126,164,210,.25);
+  --line-30: rgba(126,164,210,.3);
+  --line-35: rgba(126,164,210,.35);
+  --line-40: rgba(126,164,210,.4);
+  --line-45: rgba(126,164,210,.45);
+
+  /* accent = rgba(56,217,245,a) */
+  --accent-00: rgba(56,217,245,0);
+  --accent-04: rgba(56,217,245,.04);
+  --accent-05: rgba(56,217,245,.05);
+  --accent-06: rgba(56,217,245,.06);
+  --accent-07: rgba(56,217,245,.07);
+  --accent-08: rgba(56,217,245,.08);
+  --accent-10: rgba(56,217,245,.1);
+  --accent-12: rgba(56,217,245,.12);
+  --accent-13: rgba(56,217,245,.13);
+  --accent-14: rgba(56,217,245,.14);
+  --accent-16: rgba(56,217,245,.16);
+  --accent-18: rgba(56,217,245,.18);
+  --accent-20: rgba(56,217,245,.2);
+  --accent-24: rgba(56,217,245,.24);
+  --accent-25: rgba(56,217,245,.25);
+  --accent-28: rgba(56,217,245,.28);
+  --accent-35: rgba(56,217,245,.35);
+  --accent-45: rgba(56,217,245,.45);
+  --accent-50: rgba(56,217,245,.5);
+  --accent-55: rgba(56,217,245,.55);
+  --accent-60: rgba(56,217,245,.6);
+  --accent-70: rgba(56,217,245,.7);
+  --accent-85: rgba(56,217,245,.85);
+
+  --amber-00: rgba(217,164,65,0);
+  --amber-35: rgba(217,164,65,.35);
+
+  --shade-35: rgba(0,0,0,.35);
+  --shade-45: rgba(0,0,0,.45);
+  --shade-50: rgba(0,0,0,.5);
+  --shade-55: rgba(0,0,0,.55);
+  --shade-60: rgba(0,0,0,.6);
+  --shade-65: rgba(0,0,0,.65);
+  --shade-75: rgba(0,0,0,.75);
+
+  --surface-nav: rgba(9,15,27,.78);
+  --surface-lens: rgba(9,15,27,.8);
+  --surface-agent: rgba(9,15,27,.86);
+  --surface-toast: rgba(9,15,27,.96);
+  --surface-input: rgba(6,10,19,.92);
+  --surface-deep: rgba(6,10,19,.7);
+  --surface-tile: rgba(6,10,19,.6);
+  --glow-bg: rgba(20,46,76,.42);
+
+  --scroll-thumb: rgba(150,160,175,.08);
+  --scroll-thumb-on: rgba(150,160,175,.22);
+
+  --ease-panel: cubic-bezier(.65,0,.25,1);
+  --ease-knob: cubic-bezier(.2,.8,.2,1);
+  --ease-cam: cubic-bezier(.45,0,.3,1);
+}
