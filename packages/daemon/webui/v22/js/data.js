@@ -12,7 +12,7 @@ export const data = {
   newSince: 0,      // live updates since page load
   weather: null,    // { temp, city }
   vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
-  graph: null,      // { nodes, edges } from GET /api/v1/graph, for the vault views
+  graph: null,      // { nodes, edges, groups } from GET /api/v1/graph, for the vault views
 };
 
 function emit() { for (const fn of listeners) fn(data); }
@@ -39,7 +39,7 @@ export async function loadGraph() {
     if (Array.isArray(g.clusters)) data.clusters = g.clusters.filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count));
     data.edges = Array.isArray(g.edges) ? g.edges.length : 0;
     // Raw nodes and edges for the vault views (js/views/vault-data.js checks the shapes).
-    data.graph = { nodes: Array.isArray(g.nodes) ? g.nodes : [], edges: Array.isArray(g.edges) ? g.edges : [] };
+    data.graph = { nodes: Array.isArray(g.nodes) ? g.nodes : [], edges: Array.isArray(g.edges) ? g.edges : [], groups: Array.isArray(g.groups) ? g.groups : [] };
     const now = new Date(), end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + 864e5;
     const start = end - 52 * WEEK;
     const weeks = new Array(52).fill(0);

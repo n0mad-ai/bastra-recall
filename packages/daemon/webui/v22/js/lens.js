@@ -4,15 +4,17 @@ import { h, s, clear, setVars } from "./dom.js";
 import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data } from "./data.js";
+import { getArea } from "./areas.js";
 
-const TABS = {
-  dashboard: [["areas", "lens.widgets"], ["layout", "lens.layout"]],
-  tasks: [["areas", "lens.details"], ["view", "lens.view"], ["control", "lens.control"]],
-  settings: [["areas", "lens.find"], ["changes", "lens.changes"]],
-  telemetry: [["areas", "lens.find"], ["view", "lens.view"]],
-  default: [["areas", "lens.areas"], ["signals", "lens.signals"], ["view", "lens.view"], ["live", "lens.live"]],
+// Vault views (no tabs of their own): Areas, Signals, View, Live.
+const VAULT_TABS = [{ id: "areas", labelKey: "lens.areas", render: (b) => { b.append(areasTab()); } },
+  { id: "signals", labelKey: "lens.signals" }, { id: "view", labelKey: "lens.view" }, { id: "live", labelKey: "lens.live" }];
+// A vault view may fill the View tab (registerArea({ viewTab: render })).
+const tabsOf = (view) => {
+  const a = getArea(view);
+  if (a?.tabs) return a.tabs;
+  return a?.viewTab ? VAULT_TABS.map((x) => (x.id === "view" ? { ...x, render: a.viewTab } : x)) : VAULT_TABS;
 };
-const VAULTISH = (v) => !["telemetry", "dashboard", "settings", "tasks"].includes(v);
 
 // Footer icons, same drawings as the old UI's #feedback-row.
 const strokes = (...lines) => s("g", { stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round" },
@@ -95,19 +97,32 @@ function measureInd() {
   }
 }
 
-let lastKey = "";
+let lastKey = "", tabCleanup = null;
+/** Forces the open tab's content to be rebuilt on the next render (ctx.refreshLens()). */
+export function refreshLens() { lastKey = ""; }
+
 export function render(L, changed) {
   lens.classList.toggle("is-open", L.lensOpen);
   lens.classList.toggle("is-compact", L.compact);
   peek.hidden = !L.compact;
-  const tabs = TABS[state.view] || TABS.default;
-  const tab = tabs.some(([id]) => id === state.tab) ? state.tab : "areas";
-  clear(tabsEl).append(...tabs.map(([id, key]) => h("button.lens__tab", { cls: id === tab ? "is-on" : "", text: t(key), on: { click: () => setState({ tab: id }) } })),
-    h("button.lens__close", { title: t("lens.collapse"), on: { click: () => ctxRef.toggleLens() } }, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M9 5l7 7-7 7" }))));
-  const key = [state.view, tab, state.focus, data.clusters.length, data.clusters[0]?.count].join("|");
-  if (key !== lastKey || changed.has("data")) {
+  const tabs = tabsOf(state.view);
+  const tab = tabs.find((x) => x.id === state.tab) || tabs[0];
+  clear(tabsEl).append(...tabs.map((x) => {
+    const n = typeof x.badge === "function" ? x.badge() : 0;
+    return h("button.lens__tab", { cls: x === tab ? "is-on" : "", on: { click: () => setState({ tab: x.id }) } },
+      t(x.labelKey), n > 0 ? h("span.lens__badge", { text: String(n) }) : null);
+  }), h("button.lens__close", { title: t("lens.collapse"), on: { click: () => ctxRef.toggleLens() } }, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M9 5l7 7-7 7" }))));
+  // Vault tabs follow focus and data; an area's own tabs re-render on view/tab
+  // change or refreshLens() only (they own their content and its updates).
+  const own = !!getArea(state.view)?.tabs;
+  const key = own ? [state.view, tab.id].join("|") : [state.view, tab.id, state.focus, data.clusters.length, data.clusters[0]?.count].join("|");
+  if (key !== lastKey || (!own && changed.has("data"))) {
     lastKey = key;
-    clear(body).append(tab === "areas" && VAULTISH(state.view) ? areasTab() : wip());
+    if (typeof tabCleanup === "function") tabCleanup();
+    tabCleanup = null;
+    clear(body);
+    if (typeof tab.render === "function") tabCleanup = tab.render(body, ctxRef) || null;
+    else body.append(wip());
   }
   // Hover coupling with the vault views (state.hover).
   if (changed.has("hover")) for (const r of body.querySelectorAll(".area-row")) r.classList.toggle("is-hov", r.dataset.k === state.hover);

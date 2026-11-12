@@ -1,0 +1,201 @@
+// v22 frame around the old map engines (Mindspace, Clouds, Semantic):
+// zoom bar, info card with connecting arm, numbered hit marks, hover tip,
+// area focus/hover and the footer time window as engine filters, and the
+// "View" tab of the right panel. The engines themselves run in engine-host.js.
+import { h, clear, setVars } from "../dom.js";
+import { t } from "../i18n.js";
+import { state, setState, subscribe } from "../state.js";
+import { data, onData } from "../data.js";
+import { vault, timeWindow, windowKey, areaCol, typeClass } from "./vault-data.js";
+import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./chrome.js";
+import { attach, engine } from "./engine-host.js";
+
+/** v22 view id → engine view id (old UI data-view). */
+export const ENGINE_VIEW = { mindspace: "orbit", clouds: "clouds", semantic: "semantic" };
+
+const base = (n) => n.baseCluster ?? n.cluster;
+const CARD_COL = 290; // right column for the info card (260 px card + margins)
+
+/** Card model for a node; nodes outside the v22 vault model (unwritten
+ *  ghosts, skills) get a minimal one built from the engine node. */
+function memOf(n) {
+  const m = vault()?.byId.get(n.id);
+  if (m) return m;
+  const at = Date.parse(typeof n.updated === "string" ? n.updated : "");
+  const e = engine.get(), links = [];
+  if (e) for (const x of e.sim.edges) if (x.s.id === n.id || x.t.id === n.id) links.push(x);
+  return { id: n.id, title: n.title, area: base(n), cls: n.kind === "ghost" ? "note" : typeClass(n.type), summary: n.kind === "ghost" ? t("ev.ghostSum") : n.summary,
+    at: Number.isFinite(at) ? at : NaN, recalled: 0, links };
+}
+
+export function mountEngineView(id, stage) {
+  const zb = zoomBar({ onIn: () => engine.zoomBy(1.4), onOut: () => engine.zoomBy(1 / 1.4), onFit: () => engine.fit() });
+  const tipT = h("span.ev-tip__t"), tipS = h("span.ev-tip__s");
+  const tip = h("div.ev-tip", { hidden: true }, tipT, tipS);
+  const note = h("div.ev-note", { hidden: true });
+  const hint = h("div.ev-hint");
+  stage.append(zb.el, tip, note, hint);
+  const ov = overlay(stage);
+  const cardHost = h("div");
+  stage.append(cardHost);
+
+  let detach = null, sel = null, selM = null, card = null, cardKey = "", pct = -1, dead = false;
+
+  function start() {
+    if (detach || dead || !data.graph) return;
+    note.hidden = false; note.textContent = t("ev.loading");
+    detach = attach(stage, ENGINE_VIEW[id], {
+      onSelect: pick,
+      onHover: hover,
+      onFrame: place,
+      onReady: () => { note.hidden = true; look(); },
+      onError: (err) => { note.hidden = false; note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) }); },
+    });
+    look();
+  }
+
+  // ── engine look: area focus = cluster filter, area hover = preview, footer
+  // window = time filter (the old sidebar legend + time filter, ANDed) ──────
+  function look() {
+    const e = engine.get(); if (!e || !detach) return;
+    const focus = state.focus, win = timeWindow();
+    const inWin = (n) => { const at = Date.parse(typeof n.updated === "string" ? n.updated : ""); return Number.isFinite(at) && at >= win[0] && at < win[1]; };
+    e.renderer.setFilter(!focus && !win ? null : (n) => (!focus || base(n) === focus) && (!win || inWin(n)));
+    const hv = state.hover;
+    e.renderer.setHighlight(hv ? (n) => base(n) === hv : null, hv && e.structure === "clusters" ? hv : null);
+    engine.wake(300);
+  }
+
+  function members(key) { const e = engine.get(); return e ? e.sim.nodes.filter((n) => base(n) === key) : []; }
+
+  function pick(n) {
+    const e = engine.get();
+    if (!n) { if (sel) closeMem(); return; }
+    // picking a memory ends the area focus (old select()), then lights its neighbourhood
+    sel = null;
+    if (state.focus) setState({ focus: null });
+    sel = n; selM = memOf(n);
+    e.renderer.setHover(null);
+    e.renderer.setFocus(n);
+    const pts = [n];
+    const lists = e.view === "semantic" ? [e.sim.edges, e.semantic.getEdges()] : [e.sim.edges];
+    for (const list of lists) for (const x of list) { if (x.s.id === n.id) pts.push(x.t); if (x.t.id === n.id) pts.push(x.s); }
+    // the card docks in a column on the right; the neighbourhood fits beside it
+    engine.setCardInset(CARD_COL);
+    engine.flyTo(pts, { padding: 60, maxScale: 2.6 });
+    tip.hidden = true;
+  }
+
+  function closeMem() {
+    sel = null;
+    engine.setCardInset(0);
+    engine.get()?.renderer.setFocus(null);
+    engine.wake(300);
+  }
+
+  function hover(n, x, y) {
+    if (!n || !engine.get()?.rect) { tip.hidden = true; return; }
+    tipT.textContent = n.title;
+    tipS.textContent = n.kind === "ghost" ? t("ev.tipGhost", { n: n.degree }) : t("ev.tipMem", { a: base(n), t: n.type, n: n.degree });
+    tip.hidden = false;
+    const b = stage.getBoundingClientRect(), w = tip.offsetWidth, hh = tip.offsetHeight;
+    setVars(tip, { "--x": `${Math.max(0, Math.min(x - b.left + 14, b.width - w - 8)).toFixed(0)}px`, "--y": `${Math.max(0, Math.min(y - b.top + 14, b.height - hh - 8)).toFixed(0)}px` });
+  }
+
+  // ── card, arm and hit marks; runs after every drawn frame ────────────────
+  function place() {
+    const e = engine.get(); if (!e || !e.rect || dead) return;
+    const p = engine.zoomPct();
+    if (p !== pct) { pct = p; zb.set(p); }
+    // navigation hint (old UI #orbit-hint / #semantic-hint): drag rotates in depth views
+    const hk = e.view === "orbit" || (e.view === "semantic" && engine.semanticMode() === "3d") ? "ev.hintDepth" : e.view === "clouds" ? "ev.hintClouds" : "ev.hintFlat";
+    if (hint.dataset.k !== hk) { hint.dataset.k = hk; hint.textContent = t(hk); }
+    const W = e.rect.right - e.rect.left, H = e.rect.bottom - e.rect.top;
+    const key = sel ? `m|${sel.id}` : state.focus ? `a|${state.focus}|${H < 420}` : "";
+    if (key !== cardKey) {
+      cardKey = key; clear(cardHost); card = null;
+      if (sel) card = memoryCard(selM, { onClose: closeMem });
+      else if (state.focus && vault()) card = areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const n = e.sim.byId.get(m.id); if (n) pick(n); } });
+      if (card) cardHost.append(card.el);
+    }
+    if (card) {
+      let ax = NaN, ay = NaN, right = true;
+      if (sel) { [ax, ay] = engine.toStage(sel.x, sel.y); right = ax < W - CARD_COL; }
+      else {
+        // area: dock at the cloud's outer edge on the card side, so the card
+        // does not cover the area it describes
+        let x0 = Infinity, x1 = -Infinity, sy = 0, c = 0;
+        for (const n of members(state.focus)) { if (n.ringHidden) continue; const [x, y] = engine.toStage(n.x, n.y); if (x < 0 || x > W || y < 0 || y > H) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); sy += y; c++; }
+        if (c) { right = (x0 + x1) / 2 < W - CARD_COL; ax = right ? x1 : x0; ay = sy / c; }
+      }
+      if (!(ax >= 0 && ax <= W && ay >= 0 && ay <= H)) park(card, ov, W);
+      else {
+        const m = right ? -Math.PI / 4 : (-3 * Math.PI) / 4;
+        const ex = ax + Math.cos(m) * 26, ey = ay + Math.sin(m) * 26;
+        const x = right ? W - CARD_COL + 18 : 12;
+        dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color: sel ? TC[selM.cls] || INK : areaCol(state.focus) });
+      }
+    } else ov.arm(null);
+    const hits = Array.isArray(state.hits) ? state.hits : [];
+    ov.marks(hits.slice(0, 3).map((hid, i) => ({ n: i + 1, node: e.sim.byId.get(hid) })).filter((m) => m.node && !m.node.ringHidden)
+      .map((m) => { const [x, y] = engine.toStage(m.node.x, m.node.y); return { n: m.n, x, y }; }).filter((m) => m.x >= 0 && m.x <= W && m.y >= 0 && m.y <= H));
+  }
+
+  const onKey = (ev) => { if (ev.key === "Escape" && sel) closeMem(); };
+  window.addEventListener("keydown", onKey);
+
+  let prev = { ...state }, prevWin = windowKey();
+  const unsub = subscribe((st) => {
+    const ch = (k) => st[k] !== prev[k];
+    if (ch("focus")) {
+      if (sel) closeMem();
+      engine.setCardInset(st.focus ? CARD_COL : 0);
+      if (st.focus) engine.flyTo(members(st.focus), { padding: 90, maxScale: 2.4, ms: 850 });
+    }
+    if (ch("focus") || ch("hover") || windowKey() !== prevWin) look();
+    prev = { ...st }; prevWin = windowKey();
+    engine.wake(600); // layout changes (panels) move the stage; hits move the marks
+  });
+  const unData = onData(() => start());
+  start();
+
+  return () => {
+    dead = true;
+    unsub(); unData();
+    window.removeEventListener("keydown", onKey);
+    if (detach) detach();
+  };
+}
+
+// ── right panel › View (prototype viewRows) ───────────────────────────────
+const TIME = [["all", "tl.all"], ["90", "90d"], ["30", "30d"], ["7", "7d"]];
+
+export function viewTab(id) {
+  return function render(body) {
+    const draw = () => {
+      const rows = [];
+      const seg = (opts, cur, onPick) => h("div.vt__seg", null, opts.map(([v, key]) => h("button", { type: "button", cls: v === cur ? "is-on" : "", text: t(key), on: { click: () => { onPick(v); setTimeout(draw, 0); } } })));
+      const row = (labelKey, el) => rows.push(h("span.vt__l", { text: t(labelKey) }), el);
+      if (id === "mindspace") {
+        const m = engine.orbitMode();
+        row("ev.mode", seg([["universe", "ev.universe"], ["galaxy", "ev.galactic"]], m, engine.setOrbitMode));
+        row("ev.lab", seg([["universe-lab", "ev.universeLab"], ["galaxy-lab", "ev.milkyWay"]], m, engine.setOrbitMode));
+        row("ev.distance", seg([["woven", "ev.woven"], ["balanced", "ev.balanced"]], engine.distance(), engine.setDistance));
+        row("ev.drift", seg([["on", "ev.on"], ["off", "ev.off"]], engine.drift() ? "on" : "off", (v) => engine.setDrift(v === "on")));
+      } else if (id === "semantic") {
+        const m = engine.semanticMode();
+        row("ev.structure", seg([["2d", "ev.flat"], ["3d", "ev.depth"]], m, engine.setSemanticMode));
+        // the engine's opt-in auto-spin (depth only): visible and off by default
+        if (m === "3d") row("ev.spin", seg([["on", "ev.on"], ["off", "ev.off"]], engine.spin() ? "on" : "off", (v) => engine.setSpin(v === "on")));
+      } else {
+        row("ev.structure", seg([["clusters", "ev.clusters"], ["blocks", "ev.blocks"]], engine.structure(), engine.setStructure));
+      }
+      row("ev.updated", seg(TIME, state.brush ? "" : state.time, (v) => setState({ time: v, brush: null })));
+      clear(body).append(h("div.vt", null,
+        h("div.vt__head", null, h("span.vt__h", { text: t("ev.display") }), h("span.vt__k", { text: t(`view.${id}`) })),
+        h("div.vt__grid", null, rows),
+        id === "clouds" ? h("button.vt__reset", { type: "button", title: t("ev.resetTitle"), text: t("ev.reset"), on: { click: () => engine.resetLayout() } }) : null));
+    };
+    draw();
+  };
+}

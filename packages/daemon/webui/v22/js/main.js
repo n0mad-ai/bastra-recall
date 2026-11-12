@@ -12,6 +12,7 @@ import * as footer from "./footer.js";
 import * as lens from "./lens.js";
 import * as stage from "./stage.js";
 import "./views/index.js";
+import "./sections/index.js";
 
 const app = document.getElementById("app");
 let L = computeLayout(state);
@@ -25,6 +26,9 @@ const ctx = {
   toggleLens: () => lens.toggleLens(L),
   lensPeekIn: () => lens.peekIn(),
   lensPeekOut: () => lens.peekOut(),
+  // An area's panel tab content is rebuilt on view/tab change; areas call this
+  // when their panel data changed.
+  refreshLens: () => { lens.refreshLens(); update(new Set(["lens"])); },
   runAction: (a) => (typeof a.onAction === "function" ? a.onAction(ctx) : setState({ toast: t("wip.stage") })),
 };
 

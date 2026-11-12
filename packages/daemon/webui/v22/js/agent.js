@@ -4,15 +4,12 @@ import { h, s, clear, setVars } from "./dom.js";
 import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
+import { getArea } from "./areas.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
 
 const STATE_COLOR = { idle: "var(--muted)", listening: "var(--accent)", thinking: "var(--amber)", speaking: "var(--accent)" };
-const SUGGEST = {
-  dashboard: ["agent.sug.brief"],
-  settings: ["agent.sug.settings"],
-  tasks: ["agent.sug.due", "agent.sug.remind"],
-  default: ["agent.sug.ring", "agent.sug.week", "agent.sug.unwritten"],
-};
+// Vault suggestions; areas bring their own via registerArea({ presetKeys }).
+const VAULT_PRESETS = ["agent.sug.ring", "agent.sug.week", "agent.sug.unwritten"];
 
 let panel, stateEl, faceCanvas, jarvis, caption, srcBox, msgBox, sugBox, inBox, input, pod, podOrb, podState, podLine, podChev;
 const chatState = { msgs: [], shown: null, typed: "", history: [] };
@@ -66,8 +63,8 @@ function syncInput() {
 }
 
 function greeting() {
-  const v = state.view;
-  if (v === "dashboard" || v === "settings" || v === "tasks") return t(`agent.greeting.${v}`);
+  const area = getArea(state.view);
+  if (area?.greetingKey) return t(area.greetingKey);
   return data.newSince ? t("agent.greetingNew", { n: data.newSince }) : t("agent.greeting");
 }
 
@@ -134,7 +131,7 @@ export function render(L) {
   }
   clear(msgBox).append(...chatState.msgs.slice(-4).map((m) => h(`div.msg.msg--${m.role}`, { text: m.text })));
   msgBox.className = chatState.msgs.length ? "agent__srcs" : "";
-  const keys = SUGGEST[state.view] || SUGGEST.default;
+  const keys = getArea(state.view)?.presetKeys || VAULT_PRESETS;
   const used = new Set([chatState.shown?.q, ...chatState.msgs.map((m) => m.text)]);
   clear(sugBox).append(...keys.map((k) => t(k)).filter((q) => !used.has(q)).slice(0, state.vh < 760 ? 1 : 2)
     .map((q) => h("button.agent__sug", { on: { click: () => ask(q) } }, h("span", { text: "↳" }), q)));

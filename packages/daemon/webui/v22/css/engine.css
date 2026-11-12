@@ -1,0 +1,57 @@
+/* Engine views Mindspace, Clouds, Semantic (js/views/engine-host.js, engine-view.js).
+ * The old canvas renderer reads its colours from these custom properties on
+ * <html> (renderer.js readTheme) — values of the old dark theme, accent from
+ * the v22 tokens. Area hues come from the same golden-angle rule as the
+ * Areas list, with the v22 saturation/lightness (78 % / 66 %). */
+:root {
+  --accent-soft: rgba(56, 217, 245, 0.14);
+  --map-edge: rgba(125, 150, 185, 0.05);
+  --map-edge-hi: rgba(56, 217, 245, 0.75);
+  --map-label: rgba(215, 227, 244, 0.82);
+  --map-label-halo: rgba(6, 10, 19, 0.9);
+  --map-node-sat: 78%;
+  --map-node-light: 66%;
+  --map-glow-alpha: 0.35;
+  --map-dim: 0.16;
+  --map-ghost: rgba(160, 180, 205, 0.75);
+  --map-bridge: rgba(56, 217, 245, 0.9);
+  --map-band: rgba(126, 164, 210, 0.07);
+  --map-band-border: rgba(126, 164, 210, 0.28);
+  --map-flow: rgba(190, 242, 255, 0.95);
+  --map-flow-tail: rgba(190, 242, 255, 0);
+  --map-flow-blend: lighter;
+}
+
+/* Clip box over the stage; the canvas starts at the viewport origin (the
+ * engines use clientX/Y as canvas coordinates) and is clipped to the stage. */
+.ev { position: absolute; inset: 0; overflow: hidden; }
+.ev__cv { position: absolute; left: var(--ev-l, 0px); top: var(--ev-t, 0px); width: var(--ev-w, 100%); height: var(--ev-h, 100%); display: block; touch-action: none; cursor: grab; }
+.ev__cv.pointing { cursor: pointer; }
+.ev__cv.dragging { cursor: grabbing; }
+
+.ev-tip { position: absolute; left: var(--x, 0px); top: var(--y, 0px); z-index: 4; max-width: 300px; display: flex; flex-direction: column; gap: 3px; padding: 8px 11px; background: rgba(9,14,24,.97); border: 1px solid var(--line-22); box-shadow: 0 18px 40px rgba(0,0,0,.6); pointer-events: none; }
+.ev-tip[hidden] { display: none; }
+.ev-tip__t { font: 600 13px var(--sans); color: var(--ink); }
+.ev-tip__s { font: 10.5px var(--mono); color: var(--muted); }
+
+.ev-note { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%); max-width: 70%; padding: 10px 14px; border: 1px solid var(--line-22); background: rgba(10,16,28,.92); font: 11px var(--mono); color: var(--muted); text-align: center; pointer-events: none; }
+.ev-note[hidden] { display: none; }
+
+/* Navigation hint, bottom left (the zoom bar sits bottom right). */
+.ev-hint { position: absolute; left: 14px; bottom: 18px; z-index: 3; font: 10.5px var(--mono); letter-spacing: .04em; color: var(--muted); opacity: .75; pointer-events: none; }
+.ev-hint:empty { display: none; }
+
+/* Right panel › View (prototype tabView: Display + rows of segment switches). */
+.vt { padding: 16px 18px 18px; }
+.vt__head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.vt__h { font-size: 16px; font-weight: 600; color: var(--ink); }
+.vt__k { font: 10.5px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .14em; }
+.vt__grid { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; row-gap: 10px; column-gap: 10px; margin-bottom: 24px; }
+.vt__l { font-size: 12.5px; color: var(--muted); }
+.vt__seg { display: flex; border: 1px solid var(--line-20); }
+.vt__seg button { flex: 1; padding: 6px 0; border: 0; background: transparent; color: var(--muted); font: 11px var(--mono); cursor: pointer; white-space: nowrap; }
+.vt__seg button + button { border-left: 1px solid var(--line-20); }
+.vt__seg button:hover { color: var(--accent); }
+.vt__seg button.is-on { background: var(--accent-soft); color: var(--accent); }
+.vt__reset { width: 100%; height: 32px; border: 1px dashed var(--line-30); background: transparent; color: var(--muted); font: 500 10.5px var(--mono); letter-spacing: .14em; cursor: pointer; }
+.vt__reset:hover { border-color: var(--accent); color: var(--accent); }

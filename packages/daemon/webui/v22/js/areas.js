@@ -4,6 +4,21 @@
 // documents, images, links, full dashboard, live voice) live in the private
 // recall-pro repository and are added through registerArea() — this file is
 // the docking point, it carries no Pro code.
+//
+// ── Adding an area (Dashboard, Telemetry, Tasks, Settings, …) ─────────────
+// Files: js/sections/<name>.js (code), css/<name>.css (linked in index.html),
+// js/i18n/<name>-en.js + <name>-de.js (strings, merged via addStrings()).
+// Import js/sections/<name>.js from js/sections/index.js. Then in <name>.js:
+//
+//   addStrings(en, de);
+//   registerArea({ id: "settings", ...,                 // existing entry: same id replaces it
+//     section: { frame: true },                          // stage frame (see stage.js)
+//     greetingKey: "agent.greeting.settings",            // agent greeting in this area
+//     presetKeys: ["agent.sug.settings"],                // agent suggestions
+//     tabs: [{ id: "areas", labelKey: "lens.find", render: (body, ctx) => {…} }],
+//     mount: (el, ctx) => { el.append(hud({ kicker, title, text, side, tiles })); return () => {}; } });
+//
+// HUD head box, tiles, chips and buttons: js/sections/hud.js.
 export const ICON = {
   dashboard: "M4 4h7v9H4ZM13 4h7v5h-7ZM13 11h7v9h-7ZM4 15h7v5H4Z",
   mindspace: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M7 9.5a5.5 5.5 0 0 1 8.5-1.7M17 14.5a5.5 5.5 0 0 1-8.5 1.7",
@@ -34,11 +49,27 @@ const PINNED = new Set(["dashboard", "settings", "tasks"]);
 const registry = new Map();
 
 /**
- * Register an area.
+ * Register an area. Registering an id again replaces the earlier entry.
  * @param {{ id: string, group: string, order: number, labelKey?: string, label?: string,
  *           titleKey?: string, icon: string, kind?: "view"|"action", pinAgent?: boolean,
  *           mount?: (stage: HTMLElement, ctx: object) => (() => void) | void,
- *           onAction?: (ctx: object) => void, badge?: () => number }} area
+ *           onAction?: (ctx: object) => void, badge?: () => number,
+ *           section?: { frame?: boolean, fit?: boolean },
+ *           greetingKey?: string, presetKeys?: string[],
+ *           tabs?: { id: string, labelKey: string, badge?: () => number,
+ *                    render?: (body: HTMLElement, ctx: object) => (() => void) | void }[] }} area
+ *
+ * section   — stage frame for normal areas: mount() then gets the inner content
+ *             element instead of the bare stage. frame: inner content frame
+ *             (Telemetry, Settings) or none (Tasks, Mail, Docs, …).
+ *             fit: no scrolling; the content fills the stage height exactly.
+ *             Without `section`, mount() gets the bare stage (vault views).
+ * greetingKey / presetKeys — agent window greeting and suggestions
+ *             (prototype *_GREETING / *_PRESETS). Default: the vault greeting.
+ * tabs      — right panel tabs. The first tab must have id "areas" (it is the
+ *             one opened when the area is entered). A tab without render()
+ *             shows the "in progress" marker. Default: Areas/Signals/View/Live.
+ *             render() runs on view/tab change; ctx.refreshLens() rebuilds it.
  */
 export function registerArea(area) {
   registry.set(area.id, { kind: "view", ...area });
@@ -54,13 +85,20 @@ export function getArea(id) { return registry.get(id); }
 export function isPinned(view) { return PINNED.has(view); }
 
 // ── free build ────────────────────────────────────────────────────────────
-registerArea({ id: "dashboard", group: "home", order: 1, labelKey: "nav.dashboard", icon: ICON.dashboard, pinAgent: true });
+registerArea({ id: "dashboard", group: "home", order: 1, labelKey: "nav.dashboard", icon: ICON.dashboard, pinAgent: true,
+  greetingKey: "agent.greeting.dashboard", presetKeys: ["agent.sug.brief"],
+  tabs: [{ id: "areas", labelKey: "lens.widgets" }, { id: "layout", labelKey: "lens.layout" }] });
 // "vault" is the pop-over button itself; telemetry sits right below it.
-registerArea({ id: "telemetry", group: "vault", order: 2, labelKey: "nav.telemetry", icon: ICON.telemetry });
-registerArea({ id: "tasks", group: "work", order: 1, labelKey: "nav.tasks", icon: ICON.tasks, pinAgent: true });
+registerArea({ id: "telemetry", group: "vault", order: 2, labelKey: "nav.telemetry", icon: ICON.telemetry,
+  tabs: [{ id: "areas", labelKey: "lens.find" }, { id: "view", labelKey: "lens.view" }] });
+registerArea({ id: "tasks", group: "work", order: 1, labelKey: "nav.tasks", icon: ICON.tasks, pinAgent: true,
+  greetingKey: "agent.greeting.tasks", presetKeys: ["agent.sug.due", "agent.sug.remind"],
+  tabs: [{ id: "areas", labelKey: "lens.details" }, { id: "view", labelKey: "lens.view" }, { id: "control", labelKey: "lens.control" }] });
 registerArea({ id: "areas", group: "manage", order: 1, labelKey: "nav.areas", titleKey: "nav.areasTitle", icon: ICON.areas, kind: "action" });
 registerArea({ id: "import", group: "manage", order: 2, labelKey: "nav.import", titleKey: "nav.importTitle", icon: ICON.import, kind: "action" });
-registerArea({ id: "settings", group: "system", order: 1, labelKey: "nav.settings", icon: ICON.settings, pinAgent: true });
+registerArea({ id: "settings", group: "system", order: 1, labelKey: "nav.settings", icon: ICON.settings, pinAgent: true,
+  greetingKey: "agent.greeting.settings", presetKeys: ["agent.sug.settings"],
+  tabs: [{ id: "areas", labelKey: "lens.find" }, { id: "changes", labelKey: "lens.changes" }] });
 
 // Pro builds call this hook from their own bundle; the free build exposes it
 // and stays empty.

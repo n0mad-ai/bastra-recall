@@ -45,6 +45,7 @@
   --panel-2: #0a101c;
   --popover: #0d1422;
   --danger: #e06a6a;
+  --ok: #5fd39a;
 
   /* line = rgba(126,164,210,a) */
   --line-03: rgba(126,164,210,.03);
@@ -111,6 +112,10 @@
   --surface-deep: rgba(6,10,19,.7);
   --surface-tile: rgba(6,10,19,.6);
   --glow-bg: rgba(20,46,76,.42);
+  /* areas: inner content frame (prototype k33), HUD tile (k1m) */
+  --surface-frame: rgba(6,10,19,.8);
+  --surface-hud-tile: rgba(9,15,27,.96);
+  --line-50: rgba(126,164,210,.5);
 
   /* footer variants (prototype k3o/k3p, k3k/k3l, k3n/k3d, k3i, #a9bccf) */
   --ink-soft: #a9bccf;
