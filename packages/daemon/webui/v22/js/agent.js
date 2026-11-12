@@ -6,18 +6,22 @@ import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
 import { getArea } from "./areas.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
+import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
+import { TC, INK } from "./views/chrome.js";
+import { showInView, openMemoryBrowser } from "./views/memory-browser.js";
 
 const STATE_COLOR = { idle: "var(--muted)", listening: "var(--accent)", thinking: "var(--amber)", speaking: "var(--accent)" };
 // Vault suggestions; areas bring their own via registerArea({ presetKeys }).
 const VAULT_PRESETS = ["agent.sug.ring", "agent.sug.week", "agent.sug.unwritten"];
 
-let panel, stateEl, faceCanvas, jarvis, caption, srcBox, msgBox, sugBox, inBox, input, pod, podOrb, podState, podLine, podChev;
-const chatState = { msgs: [], shown: null, typed: "", history: [] };
+let panel, stateEl, faceCanvas, jarvis, qBox, caption, srcBox, msgBox, sugBox, inBox, input, pod, podOrb, podState, podLine, podChev;
+const chatState = { msgs: [], shown: null, typed: "", question: "", history: [] };
 let typeTimer = 0;
 
 export function mountAgent(app) {
   stateEl = h("span.agent__state", null, h("span.dot"), h("span"));
   faceCanvas = h("canvas", { title: t("agent.name") });
+  qBox = h("div.msg.msg--you");
   caption = h("p.agent__caption");
   srcBox = h("div.agent__srcs");
   msgBox = h("div");
@@ -33,7 +37,7 @@ export function mountAgent(app) {
   panel = h("section.agent", { "aria-label": t("agent.name") },
     h("div.agent__head", null, h("span.agent__name", { text: t("agent.name") }), h("span.agent__role", { text: t("agent.role") }), stateEl),
     h("div.agent__face", null, faceCanvas),
-    h("div.agent__body", null, caption, srcBox, msgBox, sugBox),
+    h("div.agent__body", null, qBox, caption, srcBox, msgBox, sugBox),
     h("div.agent__foot", null, inBox));
 
   podOrb = h("span.orb", null, h("span.orb__ring"), h("span.orb__rim"), h("span.orb__core"));
@@ -72,7 +76,7 @@ export function ask(q) {
   q = (q || "").trim(); if (!q) return;
   clearInterval(typeTimer);
   if (chatState.shown) chatState.msgs.push({ role: "you", text: chatState.shown.q }, { role: "recall", text: chatState.shown.a });
-  chatState.shown = null; chatState.typed = "";
+  chatState.shown = null; chatState.typed = ""; chatState.question = q;
   setState({ jOpen: true, focus: null, agent: "thinking", hits: [] });
   render();
   const history = chatState.history.slice(-6);
@@ -100,6 +104,24 @@ function typeOut(p) {
   }, 56);
 }
 
+/** Plain type name: reference/bookmark "Reference", a stored document "Document",
+ *  otherwise the display class (decision, rule, convention, fact, note). */
+function typeLabel(type, doc) {
+  if (doc) return t("agent.type.doc");
+  if (type === "reference" || type === "bookmark") return t("agent.type.reference");
+  return t(`vv.cls.${typeClass(type)}`);
+}
+
+/** A source: focus it in the open vault view (glide + info card); without a
+ *  vault view, or when it is outside the view's time window, the memory
+ *  browser opens on it with the reader. */
+function openSource(id, el) {
+  if (!id) return;
+  const m = vault()?.byId.get(id);
+  if (m && inWindow(m, timeWindow()) && showInView(id)) return;
+  openMemoryBrowser(m?.area || "all", id, el.getBoundingClientRect());
+}
+
 function send() { const q = input.value.trim(); if (!q) return; input.value = ""; input.blur(); syncInput(); ask(q); }
 
 export function render(L) {
@@ -124,13 +146,23 @@ export function render(L) {
   podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newMemories ? t("pod.newMemories", { n: data.newMemories }) : t("pod.ready");
   podText = podLine.textContent;
   for (const fn of podListeners) fn();
+  // The question being answered stands above its answer (Daniel, 13.11.2026).
+  qBox.textContent = chatState.question;
+  qBox.hidden = !chatState.question;
   clear(srcBox);
   if (chatState.shown && ag === "idle" && chatState.shown.sources.length) {
-    srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...chatState.shown.sources.map(([title, type], i) =>
-      h("div.agent__src", null, h("span.agent__src-n", { text: String(i + 1) }), h("span.agent__src-t", { text: title }), h("span.agent__src-k", { text: type }))));
+    srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...chatState.shown.sources.map(([title, type, id], i) => {
+      const m = id ? vault()?.byId.get(id) : null;
+      const doc = type === "doc" || m?.kind === "doc";
+      return h("button.agent__src", { type: "button", disabled: !id, title: id ? t("agent.srcOpen") : undefined, vars: { "--tc": TC[doc ? "reference" : typeClass(type)] || INK }, on: { click: (e) => openSource(id, e.currentTarget) } },
+        h("span.agent__src-n", { text: String(i + 1) }), h("span.agent__src-t", { text: title }), h("span.agent__src-k", { text: typeLabel(type, doc) }));
+    }));
   }
-  clear(msgBox).append(...chatState.msgs.slice(-4).map((m) => h(`div.msg.msg--${m.role}`, { text: m.text })));
-  msgBox.className = chatState.msgs.length ? "agent__srcs" : "";
+  // Earlier exchanges below, newest first, each question above its answer.
+  const pairs = [];
+  for (let i = 0; i + 1 < chatState.msgs.length; i += 2) pairs.unshift(chatState.msgs[i], chatState.msgs[i + 1]);
+  clear(msgBox).append(...(pairs.length ? [h("span.agent__srcs-l", { text: t("agent.earlier") })] : []), ...pairs.map((m) => h(`div.msg.msg--${m.role}`, { text: m.text })));
+  msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";
   const keys = getArea(state.view)?.presetKeys || VAULT_PRESETS;
   const used = new Set([chatState.shown?.q, ...chatState.msgs.map((m) => m.text)]);
   clear(sugBox).append(...keys.map((k) => t(k)).filter((q) => !used.has(q)).slice(0, state.vh < 760 ? 1 : 2)
