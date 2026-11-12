@@ -338,26 +338,45 @@ describe("the build lock against adversarial interleavings", () => {
   });
 
   it("lets exactly one of two REAL processes build, over many rounds", async (t) => {
-    // In-process interleavings are the ones we can stage; this is the one we
-    // cannot. Two node processes fight over the same lock sixty times each,
-    // and each marks the critical section with an O_EXCL file — a marker that
-    // already exists is two builds running at once, whatever the lock said.
-    //
-    // This is the test that FOUND the last of them: an acquisition that read
-    // the lock path a moment after its holder released it saw nothing, read
-    // "nothing" as "unreadable junk", and removed the file the next holder had
-    // just published. Both then believed they held the lock. Nothing smaller
-    // than two real processes hitting the same window reproduces it.
+    // Both processes report ready before either may acquire. Every round has
+    // an acquire barrier and a release barrier: even a delayed loser attempts
+    // acquisition while the winner still holds its lock. The old autonomous
+    // retry loops could finish before their peer started, or let one peer
+    // lose all sixty times; a mutex does not promise fair scheduling (#1437).
     const dir = await tempDir("bastra-lock-procs-");
     t.after(() => rm(dir, { recursive: true, force: true }));
     const script = join(dir, "contender.mjs");
-    await writeFile(script, CONTENDER, "utf8");
+    await writeFile(script, TAKEOVER_CONTENDER, "utf8");
 
-    const [a, b] = await Promise.all([runContender(script, dir), runContender(script, dir)]);
-    const held = a.held + b.held;
-    assert.equal(a.violations + b.violations, 0, `two holders at once: ${a.log} ${b.log}`);
-    assert.ok(held > 0, "nobody ever got the lock — the test proved nothing");
-    assert.ok(a.held > 0 && b.held > 0, "one process never got in: the race did not happen");
+    // Disable lease expiry for this exclusion test: a paused contender must
+    // still be busy when it resumes, however long the scheduler delayed it.
+    const contenders = [startTaker(script, dir, Infinity), startTaker(script, dir, Infinity)];
+    t.after(() => contenders.forEach((c) => c.kill()));
+    await Promise.all(contenders.map((c) => c.ready));
+    const phase = async (participants: Taker[], action: "acquire" | "release") => {
+      const done = participants.map((c) => c.round());
+      for (const c of participants) c.go(action);
+      await Promise.all(done);
+    };
+
+    for (let round = 0; round < 60; round++) {
+      await phase(contenders, "acquire");
+      await phase(contenders, "release");
+    }
+    // Force each process to be the holder once, then let its peer contend
+    // against that held lock. This tests both directions without assuming
+    // that simultaneous acquisition ever happens to pick a different winner.
+    for (const holder of contenders) {
+      await phase([holder], "acquire");
+      await phase(contenders.filter((c) => c !== holder), "acquire");
+      await phase(contenders, "release");
+    }
+    const results = await Promise.all(contenders.map((c) => c.finish()));
+    const shown = JSON.stringify(results);
+    assert.equal(results.reduce((n, r) => n + r.held, 0), 62, `one holder per round: ${shown}`);
+    assert.equal(results.reduce((n, r) => n + r.violations, 0), 0, `two holders at once: ${shown}`);
+    assert.ok(results.every((r) => r.held > 0), `each process must hold the lock: ${shown}`);
+    assert.equal(results.reduce((n, r) => n + r.tookOver, 0), 0, `no live lock may be taken over: ${shown}`);
     assert.equal(await readLock(dir), null, "and the lock is free again afterwards");
   });
 
@@ -403,7 +422,7 @@ describe("the build lock against adversarial interleavings", () => {
     const violations = results.reduce((n, r) => n + r.violations, 0);
     const tookOver = results.reduce((n, r) => n + r.tookOver, 0);
     const shown = JSON.stringify(results);
-    assert.ok(tookOver > TAKEOVER_ROUNDS / 2, `only ${tookOver} takeovers — the race did not happen`);
+    assert.equal(tookOver, TAKEOVER_ROUNDS, `one stale takeover per round: ${shown}`);
     // Exactly one holder per round. A second winner shows up as an extra
     // acquisition whether or not it collides inside the critical section, so
     // this counts double builds the marker on its own can miss.
@@ -479,11 +498,11 @@ interface Taker {
 }
 
 /**
- * A contender driven down its stdin. The byte is the barrier: ten processes
- * blocked on a pipe all wake in the same tick, which polling cannot match.
+ * A contender driven down its stdin. Each acknowledgement is a barrier: no
+ * release starts until every acquisition has finished, regardless of scheduling.
  */
-function startTaker(script: string, dir: string): Taker {
-  const child = spawn(process.execPath, ["--import", "tsx", script, LOCK_MODULE, dir], {
+function startTaker(script: string, dir: string, staleMs = 10_000): Taker {
+  const child = spawn(process.execPath, ["--import", "tsx", script, LOCK_MODULE, dir, String(staleMs)], {
     cwd: REPO_ROOT,
     stdio: ["pipe", "pipe", "inherit"],
   });
@@ -518,16 +537,15 @@ function startTaker(script: string, dir: string): Taker {
 }
 
 /**
- * One takeover contender. Blocks on stdin between rounds, so the ten of them
- * hit `acquireRepoLock` together rather than discovering the stale record at
- * ten different moments.
+ * One contender for either a fresh or a stale lock. Blocks on stdin between
+ * phases, so all acquisition attempts finish before any holder can release.
  */
 const TAKEOVER_CONTENDER = `
 import { createInterface } from "node:readline";
 import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-const [, , modulePath, dir] = process.argv;
+const [, , modulePath, dir, staleMs] = process.argv;
 const { acquireRepoLock, readLock } = await import(modulePath);
 const marker = join(dir, "building.marker");
 
@@ -539,7 +557,7 @@ process.stdout.write("ready\\n");
 
 for await (const phase of createInterface({ input: process.stdin })) {
   if (phase === "acquire") {
-    mine = await acquireRepoLock(dir, { heartbeat: false, staleMs: 10000 });
+    mine = await acquireRepoLock(dir, { heartbeat: false, staleMs: Number(staleMs) });
     if (mine !== null) {
       held++;
       if (mine.tookOver) tookOver++;
@@ -570,70 +588,3 @@ for await (const phase of createInterface({ input: process.stdin })) {
 process.stdout.write(JSON.stringify({ held, violations, tookOver }) + "\\n");
 
 `;
-
-/**
- * One competitor: take the lock, mark the critical section exclusively, let
- * go. Written as a file because it has to run in its OWN process — the whole
- * point is that the two contenders share nothing but the filesystem.
- */
-const CONTENDER = `
-import { open, rm } from "node:fs/promises";
-import { join } from "node:path";
-
-const [, , modulePath, dir] = process.argv;
-const { acquireRepoLock, readLock } = await import(modulePath);
-const marker = join(dir, "building.marker");
-
-let held = 0;
-let violations = 0;
-for (let i = 0; i < 60; i++) {
-  const lock = await acquireRepoLock(dir, { heartbeat: false });
-  if (lock === null) {
-    await new Promise((r) => setTimeout(r, 2));
-    continue;
-  }
-  held++;
-  try {
-    const handle = await open(marker, "wx");
-    await handle.close();
-  } catch {
-    violations++;
-  }
-  await new Promise((r) => setTimeout(r, 1));
-  await rm(marker, { force: true });
-  await lock.release();
-}
-process.stdout.write(JSON.stringify({ held, violations }));
-`;
-
-interface ContenderResult {
-  held: number;
-  violations: number;
-  log: string;
-}
-
-function runContender(script: string, dir: string): Promise<ContenderResult> {
-  return new Promise((done, fail) => {
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", script, LOCK_MODULE, dir],
-      { cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let out = "";
-    let err = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (c: string) => (out += c));
-    child.stderr.on("data", (c: string) => (err += c));
-    child.on("error", fail);
-    child.on("close", (code) => {
-      if (code !== 0) return fail(new Error(`contender exited ${String(code)}: ${err}`));
-      try {
-        const parsed = JSON.parse(out) as { held: number; violations: number };
-        done({ ...parsed, log: out });
-      } catch {
-        fail(new Error(`contender printed ${out} / ${err}`));
-      }
-    });
-  });
-}
