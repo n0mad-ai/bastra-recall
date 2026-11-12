@@ -23,5 +23,8 @@ export default {
   "bd.err.size": "The image is larger than 8 MB.",
   "bd.err.count": "24 images at most are stored.",
   "bd.err.fail": "Upload failed: {err}",
-  "bd.err.save": "Not saved: {err}",
+  "bd.remove": "REMOVE",
+  "bd.sure": "SURE?",
+  "bd.remove.t": "Delete “{name}” from this machine",
+  "bd.err.remove": "Not removed: {err}",
 };

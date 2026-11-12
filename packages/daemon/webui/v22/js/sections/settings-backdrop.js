@@ -3,15 +3,32 @@
 // Choosing a tile applies and saves at once (settings-model.js INSTANT).
 import { t } from "../i18n.js";
 import { h, clear, setVars } from "../dom.js";
-import { PRESETS, backdrop, onBackdrop, lookOf, uploadBackdrop } from "../backdrop.js";
+import { PRESETS, backdrop, onBackdrop, lookOf, uploadBackdrop, removeBackdrop } from "../backdrop.js";
 
-export function backdropCtl(e, { shown, setValue }) {
+export function backdropCtl(e, { shown, setValue, revert, reload }) {
   const grid = h("div.bd-pick");
   const err = h("div.bd-err", { hidden: true });
   const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp" });
   const upBox = h("span.bd-up__box", { text: t("bd.upload") });
   const up = h("label.bd-up", null, input, upBox, h("span.bd-up__cap", { text: t("bd.upload.cap") }));
-  let tiles = [];
+  let tiles = [], armed = null, armT = 0;
+
+  // Own images: "REMOVE" on the tile, a second click within 4 s deletes (Areas dialog pattern).
+  const disarm = () => { clearTimeout(armT); if (armed) { armed.classList.remove("is-armed"); armed.textContent = t("bd.remove"); } armed = null; };
+  const removeBtn = (id, name) => {
+    const b = h("button.bd-del", { type: "button", text: t("bd.remove"), title: t("bd.remove.t", { name }) });
+    b.addEventListener("click", async () => {
+      if (armed !== b) { disarm(); armed = b; b.classList.add("is-armed"); b.textContent = t("bd.sure"); armT = setTimeout(disarm, 4000); return; }
+      disarm(); b.disabled = true; err.hidden = true;
+      const wasShown = shown(e) === id;
+      try {
+        await removeBackdrop(id);
+        // The daemon reset ui.backdrop when this image was active: drop a pending pick and reload the snapshot.
+        if (wasShown) { revert(e.key); reload(); }
+      } catch (x) { err.textContent = t("bd.err.remove", { err: x.message }); err.hidden = false; b.disabled = false; }
+    });
+    return b;
+  };
 
   input.addEventListener("change", async () => {
     const f = input.files && input.files[0];
@@ -26,7 +43,7 @@ export function backdropCtl(e, { shown, setValue }) {
 
   const options = () => [
     ...PRESETS.map((id) => ({ id, name: t(`bd.p.${id}`), tag: id === "none" ? "" : t("bd.tag.preset") })),
-    ...backdrop.uploads.map((u) => ({ id: u.id, name: u.name, tag: t("bd.tag.upload") })),
+    ...backdrop.uploads.map((u) => ({ id: u.id, name: u.name, tag: t("bd.tag.upload"), upload: true })),
   ];
 
   const draw = () => {
@@ -38,9 +55,12 @@ export function backdropCtl(e, { shown, setValue }) {
       pic.append(ok);
       const btn = h("button.bd-opt", { type: "button", title: o.name, cls: o.id === "none" ? "bd-opt--none" : "", on: { click: () => setValue(e.key, o.id) } },
         pic, h("span.bd-opt__cap", null, h("span.bd-opt__name", { text: o.name }), h("span.bd-opt__tag", { text: o.tag })));
-      return { id: o.id, btn, ok };
+      // Upload tiles get a wrapper: the remove button cannot sit inside the tile button.
+      const el = o.upload ? h("div.bd-own", null, btn, removeBtn(o.id, o.name)) : btn;
+      return { id: o.id, btn, ok, el };
     });
-    clear(grid).append(...tiles.map((x) => x.btn), up, err);
+    disarm();
+    clear(grid).append(...tiles.map((x) => x.el), up, err);
     sync();
   };
 

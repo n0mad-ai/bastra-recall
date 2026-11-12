@@ -23,5 +23,8 @@ export default {
   "bd.err.size": "Das Bild ist größer als 8 MB.",
   "bd.err.count": "Es werden höchstens 24 Bilder gespeichert.",
   "bd.err.fail": "Hochladen fehlgeschlagen: {err}",
-  "bd.err.save": "Nicht gespeichert: {err}",
+  "bd.remove": "ENTFERNEN",
+  "bd.sure": "SICHER?",
+  "bd.remove.t": "„{name}“ von diesem Rechner löschen",
+  "bd.err.remove": "Nicht entfernt: {err}",
 };

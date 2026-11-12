@@ -43,3 +43,10 @@
 .bd-up.is-busy { cursor: progress; }
 .bd-up.is-busy .bd-up__box { border-style: solid; color: var(--muted); }
 .bd-err { grid-column: 1 / -1; font: 10.5px var(--mono); color: var(--amber); }
+/* Own image: remove on the tile (hover/focus), armed state like the Areas dialog (.dlg-btn.is-armed). */
+.bd-own { position: relative; display: flex; min-width: 0; }
+.bd-own > .bd-opt { flex: 1; min-width: 0; }
+.bd-del { position: absolute; left: 6px; top: 6px; height: 18px; padding: 0 6px; border: 1px solid var(--line-30); background: rgba(6,10,19,.85); color: var(--muted); font: 500 9.5px var(--mono); letter-spacing: .12em; cursor: pointer; opacity: 0; transition: opacity .2s, border-color .2s, color .2s; }
+.bd-own:hover .bd-del, .bd-del:focus-visible, .bd-del.is-armed { opacity: 1; }
+.bd-del:hover, .bd-del.is-armed { border-color: var(--danger); color: var(--danger); }
+.bd-del:disabled { cursor: progress; opacity: .6; }

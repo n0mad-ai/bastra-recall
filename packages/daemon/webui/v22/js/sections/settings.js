@@ -126,7 +126,7 @@ function valueCtl(e) {
 
 function controlFor(e) {
   if (e.managed || e.readonly) return valueCtl(e);
-  if (e.key === "ui.backdrop") return backdropCtl(e, { shown, setValue });
+  if (e.key === "ui.backdrop") return backdropCtl(e, { shown, setValue, revert, reload: load });
   if (e.secret) return e.envOverride?.length ? valueCtl(e) : secretCtl(e);
   if (e.kind === "boolean") return toggleCtl(e);
   if (e.choices) return segCtl(e);

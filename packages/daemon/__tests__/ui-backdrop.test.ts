@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { dispatchUiBackdrop, backdropName, BACKDROP_MAX_BYTES } from "../src/ui-backdrop.js";
@@ -106,7 +106,7 @@ test("image route resolves nothing but known upload ids (path traversal)", async
     assert.ok(!text.includes("secret-sentinel"), path);
   }
   assert.equal((await fetch(origin + `/ui/backdrop/${made.id}`)).status, 200);
-  assert.equal((await fetch(origin + `/ui/backdrop/${made.id}`, { method: "DELETE" })).status, 404);
+  assert.equal((await fetch(origin + `/ui/backdrop/${made.id}`, { method: "PUT" })).status, 404);
 });
 
 test("upload count is capped and the display name is sanitized", async (t) => {
@@ -122,4 +122,39 @@ test("disabled UI answers 404 on every backdrop route", async (t) => {
   const { origin } = await serve(t, false);
   assert.equal((await fetch(origin + "/ui/backdrop")).status, 404);
   assert.equal((await fetch(origin + "/ui/backdrop", { method: "POST", headers: { "Content-Type": "image/png" }, body: PNG })).status, 404);
+});
+
+test("DELETE removes a known upload (file + index row) and resets an active image to none", async (t) => {
+  const { origin, settingsPath, dir, root } = await serve(t);
+  const add = async () => (await (await fetch(origin + "/ui/backdrop?name=a", { method: "POST", headers: { "Content-Type": "image/png" }, body: PNG })).json()) as { id: string };
+  const keep = await add(), active = await add();
+  await mutateSettings(settingsPath, (s) => applySettingChanges(s, { "ui.backdrop": active.id, "ui.backdropDim": 70 }));
+  await writeFile(join(root, "secret.txt"), "secret-sentinel");
+
+  const del = await fetch(origin + `/ui/backdrop/${active.id}`, { method: "DELETE", headers: { Origin: origin } });
+  assert.equal(del.status, 200);
+  const st = await del.json() as { backdrop: string; dim: number; uploads: { id: string }[] };
+  assert.equal(st.backdrop, "none");
+  assert.deepEqual(st.uploads.map((u) => u.id), [keep.id]);
+  assert.deepEqual((await readSettings(settingsPath)).ui, { enabled: true, backdrop: "none", backdropDim: 70 }, "only the active image is reset");
+  assert.deepEqual((await readdir(dir)).sort(), [`${keep.id}.png`, "uploads.json"]);
+  assert.equal((await fetch(origin + `/ui/backdrop/${active.id}`)).status, 404);
+
+  // Deleting an inactive image leaves the setting alone.
+  await mutateSettings(settingsPath, (s) => applySettingChanges(s, { "ui.backdrop": "dusk" }));
+  const other = await add();
+  assert.equal((await fetch(origin + `/ui/backdrop/${other.id}`, { method: "DELETE" })).status, 200);
+  assert.equal((await readSettings(settingsPath)).ui?.backdrop, "dusk");
+
+  // Unknown ids, traversal and foreign pages touch nothing.
+  const index = JSON.parse(await readFile(join(dir, "uploads.json"), "utf8"));
+  await writeFile(join(dir, "uploads.json"), JSON.stringify([...index, { id: "../secret", name: "x", ext: ".txt" }]));
+  for (const path of ["/ui/backdrop/up-0000000000000000", "/ui/backdrop/..%2Fsecret.txt", "/ui/backdrop/%2e%2e%2fsecret.txt", "/ui/backdrop/../secret.txt", "/ui/backdrop/uploads.json", `/ui/backdrop/${keep.id}.png`, "/ui/backdrop"]) {
+    const r = await fetch(origin + path, { method: "DELETE" });
+    assert.ok([404, 418].includes(r.status), `${path} → ${r.status}`);
+  }
+  assert.equal((await fetch(origin + `/ui/backdrop/${keep.id}`, { method: "DELETE", headers: { Origin: "https://evil.example" } })).status, 403);
+  assert.equal(await readFile(join(root, "secret.txt"), "utf8"), "secret-sentinel");
+  assert.ok((await readdir(dir)).includes(`${keep.id}.png`));
+  assert.equal((await fetch(origin + `/ui/backdrop/${keep.id}`)).status, 200);
 });

@@ -92,3 +92,14 @@ export async function uploadBackdrop(file) {
   emit();
   return j.id;
 }
+
+/** Removes an upload from this machine; the daemon resets ui.backdrop when it was the active image. */
+export async function removeBackdrop(id) {
+  const r = await fetch(`/ui/backdrop/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
+  let j = null;
+  try { j = await r.json(); } catch { /* empty body */ }
+  if (!r.ok) throw new Error(j && typeof j.error === "string" ? j.error : `HTTP ${r.status}`);
+  backdrop.uploads = backdrop.uploads.filter((u) => u.id !== id);
+  if (backdrop.cfg.backdrop === id) backdrop.cfg = { ...backdrop.cfg, backdrop: "none" };
+  render(); emit();
+}

@@ -4,6 +4,7 @@
  *   GET  /ui/backdrop          → { backdrop, dim, blur, uploads: [{ id, name, url }] }
  *   GET  /ui/backdrop/<id>     → the uploaded image (id = up-<16 hex>, nothing else resolves)
  *   POST /ui/backdrop?name=…   → raw image body (png | jpeg | webp, ≤ 8 MB) → { id, name, url }
+ *   DELETE /ui/backdrop/<id>   → removes file + index row; an active image falls back to "none" → state
  *
  * Uploads stay on this machine: <data dir>/backdrops/<id>.<ext>, never in the vault.
  * The file name on disk comes only from a server-generated id; the user's name is
@@ -13,11 +14,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { bastraDataDir } from "./platform-paths.js";
-import { getUiEnabled, readSettings } from "./settings.js";
-import { BACKDROP_UPLOAD_ID, SETTINGS_REGISTRY } from "./settings-registry.js";
+import { getUiEnabled, mutateSettings, readSettings, settingsFilePath } from "./settings.js";
+import { applySettingChanges, BACKDROP_UPLOAD_ID, SETTINGS_REGISTRY } from "./settings-registry.js";
 import { sendJson } from "./http-util.js";
 
 export const BACKDROP_MAX_BYTES = 8 * 1024 * 1024;
@@ -60,6 +61,13 @@ async function present(dir: string): Promise<Upload[]> {
   const rows = await readIndex(dir);
   const ok = await Promise.all(rows.map(async (u) => { try { return (await stat(join(dir, u.id + u.ext))).isFile(); } catch { return false; } }));
   return rows.filter((_, i) => ok[i]);
+}
+
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true; // CLI / tools: loopback and account gates already ran
+  try { const u = new URL(origin); return (u.protocol === "http:" || u.protocol === "https:") && u.host.toLowerCase() === req.headers.host?.toLowerCase(); }
+  catch { return false; }
 }
 
 /** Display name only: no control characters, bounded length. */
@@ -110,9 +118,24 @@ async function handle(req: IncomingMessage, res: ServerResponse, method: string,
     return;
   }
   const id = path.slice("/ui/backdrop/".length);
-  if (method !== "GET" || !BACKDROP_UPLOAD_ID.test(id)) { sendJson(res, 404, { error: "not found" }); return; }
-  const up = (await readIndex(dir)).find((u) => u.id === id);
+  if ((method !== "GET" && method !== "DELETE") || !BACKDROP_UPLOAD_ID.test(id)) { sendJson(res, 404, { error: "not found" }); return; }
+  const rows = await readIndex(dir);
+  const up = rows.find((u) => u.id === id);
   if (!up) { sendJson(res, 404, { error: "not found" }); return; }
+  if (method === "DELETE") {
+    // DELETE skips the POST gate in http.ts: a foreign page must not reach it.
+    if (!sameOrigin(req)) { sendJson(res, 403, { error: "origin not allowed" }); return; }
+    // Index first, so no row ever points at a missing file; the path comes from the checked row.
+    await writeIndex(dir, rows.filter((u) => u.id !== id));
+    await unlink(join(dir, up.id + up.ext)).catch(() => undefined);
+    const settingsPath = o.settingsPath ?? settingsFilePath();
+    if ((await readSettings(settingsPath)).ui?.backdrop === id) {
+      await mutateSettings(settingsPath, (current) => current.ui?.backdrop === id ? applySettingChanges(current, { "ui.backdrop": "none" }) : current);
+    }
+    res.setHeader("Cache-Control", "no-store");
+    sendJson(res, 200, await state(o));
+    return;
+  }
   const file = join(dir, up.id + up.ext);
   let size: number;
   try { const st = await stat(file); if (!st.isFile()) throw new Error("not a file"); size = st.size; } catch { sendJson(res, 404, { error: "not found" }); return; }
