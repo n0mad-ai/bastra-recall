@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { IncomingMessage, ServerResponse, Server } from 'node:http';
 import { Socket } from 'node:net';
 import {
-  startAssistantSocket, ASSISTANT_ACTIVE_REQUESTS, ASSISTANT_MAX_PENDING_REQUESTS,
+  startAssistantSocket, ASSISTANT_ACTIVE_REQUESTS,
 } from '../src/assistant-address-gateway.js';
+
+const ASSISTANT_MAX_PENDING_REQUESTS = 64;
 
 // Exercise the inherited-listener request handler without launchd or an open
 // listener. Hold account inspection so admission never depends on scheduling IO.
@@ -51,8 +53,9 @@ test('gateway bounds pipelined requests and immediately reclaims abandoned waite
   const overflow = socket(); emit(overflow);
   assert.equal(overflow.destroyed, true, 'a new socket cannot bypass the request bound');
 
-  // Every waiting response closes with its socket in Node. Repeated waves must
-  // not accumulate closures while the first eight account lookups remain held.
+  // Model response cancellation independently of socket cancellation here.
+  // The real pipeline test below covers both on Node versions whose unbound
+  // responses do not emit close when their socket closes (including22.22).
   pipeline.destroy(); waiting.forEach(res => res.emit('close'));
   const replacement = socket();
   const replacements = Array.from({ length: waiting.length }, () => emit(replacement));
