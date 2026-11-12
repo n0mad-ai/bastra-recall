@@ -8,6 +8,7 @@
 import { h, clear } from "./dom.js";
 import { t } from "./i18n.js";
 import { loadWeather } from "./data.js";
+import { loadingInline, setBusy } from "./sections/loading.js";
 import { createWeather } from "../../js/managers/weather.js";
 
 let shared = null;
@@ -31,18 +32,29 @@ export function weatherPicker(w, redraw) {
   const r = w.readout();
   const head = place
     ? h("div.vt__wxh", null, h("span.vt__wxp", { text: [place.name, r && Number.isFinite(r.temp) ? `${Math.round(r.temp)}°` : "", r?.label || ""].filter(Boolean).join(" · ") }),
-      h("button.vt__btn", { type: "button", text: t("ev.off"), on: { click: () => { void w.clear().then(done); } } }))
+      h("button.vt__btn", { type: "button", text: t("ev.off"), on: { click: (e) => { setBusy(e.currentTarget, true); void w.clear().then(done); } } }))
     : h("span.vt__s", { text: t("ev.wxOff") });
-  let timer = 0;
+  // Run indicators (js/sections/loading.js): a line in msg while a search or
+  // GPS fix is on its way, a sweep on the button that started it. Only the
+  // latest search counts.
+  let timer = 0, seq = 0;
+  const say = (text) => { msg.textContent = text; };
   const input = h("input.vt__in", { type: "search", placeholder: t("ev.wxSearch"), "aria-label": t("ev.wxSearch"), on: { input: () => {
     clearTimeout(timer);
-    const q = input.value;
+    const q = input.value, id = ++seq;
+    if (q.trim().length >= 2) clear(msg).append(loadingInline(t("ev.wxSearching"))); else say("");
     timer = setTimeout(async () => {
-      const found = await w.search(q);
-      clear(list).append(...found.map((p) => h("button.vt__wxo", { type: "button", text: [p.name, p.detail].filter(Boolean).join(", "), on: { click: () => { void w.setPlace(p).then(done); } } })));
-      msg.textContent = q.trim().length >= 2 && !found.length ? t("ev.wxNone") : "";
+      let found = [];
+      try { found = await w.search(q); } catch { found = []; }
+      if (id !== seq) return;
+      clear(list).append(...found.map((p) => h("button.vt__wxo", { type: "button", text: [p.name, p.detail].filter(Boolean).join(", "), on: { click: (e) => { setBusy(e.currentTarget, true); void w.setPlace(p).then(done); } } })));
+      say(q.trim().length >= 2 && !found.length ? t("ev.wxNone") : "");
     }, 350);
   } } });
-  const gps = h("button.vt__btn", { type: "button", text: t("ev.wxGps"), title: t("ev.wxGpsTitle"), on: { click: () => { msg.textContent = t("ev.wxLocating"); w.useGps().then(done).catch((err) => { msg.textContent = err?.message || String(err); }); } } });
+  const gps = h("button.vt__btn", { type: "button", text: t("ev.wxGps"), title: t("ev.wxGpsTitle"), on: { click: () => {
+    seq++; clearTimeout(timer); // a pending search must not overwrite the GPS line
+    setBusy(gps, true); clear(msg).append(loadingInline(t("ev.wxLocating")));
+    w.useGps().then(() => { setBusy(gps, false); say(""); done(); }).catch((err) => { setBusy(gps, false); say(err?.message || String(err)); });
+  } } });
   return h("div.vt__wx", null, head, h("div.vt__wxs", null, input, gps), list, msg);
 }

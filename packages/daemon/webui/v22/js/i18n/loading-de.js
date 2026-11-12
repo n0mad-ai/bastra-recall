@@ -4,4 +4,5 @@ export default {
   "ld.vaultErr": "der Vault konnte nicht gelesen werden — Seite neu laden, um es erneut zu versuchen",
   "ld.tasks": "lese deine Aufgaben",
   "ld.settings": "lese die Einstellungen",
+  "ev.wxSearching": "suche Orte",
 };

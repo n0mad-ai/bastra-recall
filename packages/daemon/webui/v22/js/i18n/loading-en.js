@@ -4,4 +4,5 @@ export default {
   "ld.vaultErr": "the vault could not be read — reload the page to try again",
   "ld.tasks": "reading your tasks",
   "ld.settings": "reading the settings",
+  "ev.wxSearching": "searching places",
 };
