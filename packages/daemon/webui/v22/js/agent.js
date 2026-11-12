@@ -6,10 +6,10 @@ import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
 import { getArea } from "./areas.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
-import { vault, typeClass, inWindow, timeWindow, ago } from "./views/vault-data.js";
+import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
 import { TC, INK } from "./views/chrome.js";
 import { loadingInline, setBusy } from "./sections/loading.js";
-import { showInView, openMemoryBrowser } from "./views/memory-browser.js";
+import { showInView, openMemoryBrowser, markdown } from "./views/memory-browser.js";
 
 const STATE_COLOR = { idle: "var(--muted)", listening: "var(--accent)", thinking: "var(--amber)", speaking: "var(--accent)" };
 // Vault suggestions; areas bring their own via registerArea({ presetKeys }).
@@ -27,7 +27,7 @@ export function mountAgent(app) {
   stateEl = h("span.agent__state", null, h("span.dot"), h("span"));
   faceCanvas = h("canvas", { title: t("agent.name") });
   qBox = h("div.msg.msg--you");
-  caption = h("p.agent__caption");
+  caption = h("div.agent__caption.agent__md");
   srcBox = h("div.agent__srcs");
   msgBox = h("div");
   convBox = h("div.agent__convs", { hidden: true });
@@ -58,6 +58,9 @@ export function mountAgent(app) {
   app.append(panel, pod);
   jarvis = mountJarvis(faceCanvas, { scale: 0.27 });
   syncInput();
+  // The conversation open before a reload comes back (stored in recall.db).
+  const last = storedConv();
+  if (last) openConversation(last, null, true);
 }
 
 // The other footer variants (mirror, drawer, island) show the same agent
@@ -97,7 +100,7 @@ export function ask(q) {
     let answer, sources = [];
     if (ok && typeof body.reply === "string") {
       answer = body.reply;
-      if (typeof body.conversation_id === "string") chatState.conv = body.conversation_id;
+      if (typeof body.conversation_id === "string") { chatState.conv = body.conversation_id; storeConv(chatState.conv); }
       sources = Array.isArray(body.hits) ? body.hits.filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]) : [];
     } else if (status === 503) {
       answer = t("agent.noModel");
@@ -117,6 +120,29 @@ function typeOut(p) {
     i += 4; chatState.typed = p.a.slice(0, i); render();
     if (i >= p.a.length) { clearInterval(typeTimer); chatState.shown = p; chatState.typed = ""; setState({ agent: "idle" }); render(); }
   }, 56);
+}
+
+/** Answer text as safe DOM (memory-browser's mini markdown: code, bold, lists,
+ *  http(s) links in a new tab, [[memory]] links open the memory). */
+function md(text, caret) {
+  const nodes = markdown(String(text || ""), (id) => openSource(id, null));
+  if (caret) {
+    const last = nodes[nodes.length - 1];
+    const host = last?.tagName === "UL" ? last.lastElementChild : last?.tagName === "P" || last?.tagName === "H3" ? last : null;
+    if (host) host.append(h("span.agent__caret")); else nodes.push(h("span.agent__caret"));
+  }
+  return nodes;
+}
+
+const CONV_KEY = "recall-v22-agent-conv";
+function storedConv() { try { return localStorage.getItem(CONV_KEY) || null; } catch { return null; } }
+function storeConv(id) { try { if (id) localStorage.setItem(CONV_KEY, id); else localStorage.removeItem(CONV_KEY); } catch { /* private mode */ } }
+
+/** "vor 2 Std." / "2 h ago" from a timestamp. */
+function agoText(ms) {
+  const min = Math.max(1, (Date.now() - ms) / 60000);
+  const [k, n] = min < 60 ? ["min", min] : min < 1440 ? ["h", min / 60] : min < 10080 ? ["d", min / 1440] : min < 43200 ? ["w", min / 10080] : ["mo", min / 43200];
+  return t(`agent.ago.${k}`, { n: Math.round(n) });
 }
 
 function srcButtons(list) {
@@ -139,6 +165,7 @@ function stopTyping() {
 function newConversation() {
   stopTyping();
   Object.assign(chatState, { msgs: [], shown: null, question: "", history: [], conv: null });
+  storeConv(null);
   convs = null;
   setState({ agent: "idle", hits: [] });
   render();
@@ -157,12 +184,15 @@ function toggleConvs() {
 
 const toSources = (list) => (Array.isArray(list) ? list : []).filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]);
 
-async function openConversation(id, row) {
+async function openConversation(id, row, quiet) {
   setBusy(row, true);
   try {
     const r = await fetch(`/ui/chat/conversations/${encodeURIComponent(id)}`, { credentials: "same-origin" });
+    if (r.status === 404) { if (storedConv() === id) storeConv(null); if (quiet) return; }
     if (!r.ok) throw new Error(String(r.status));
     const b = await r.json();
+    // A reload restore never overrides a question asked in the meantime.
+    if (quiet && (chatState.question || chatState.conv)) return;
     const ex = [];
     const list = Array.isArray(b.messages) ? b.messages : [];
     for (let i = 0; i + 1 < list.length; i++) if (list[i].role === "user" && list[i + 1].role === "assistant") { ex.push({ q: String(list[i].text), a: String(list[i + 1].text), sources: toSources(list[i + 1].sources) }); i++; }
@@ -173,10 +203,12 @@ async function openConversation(id, row) {
       msgs: ex.flatMap((e) => [{ role: "you", text: e.q }, { role: "recall", text: e.a, sources: e.sources }]),
       history: [...ex, ...(last ? [last] : [])].flatMap((e) => [{ role: "user", content: e.q }, { role: "assistant", content: e.a }]),
     });
+    storeConv(id);
     convs = null;
     setState({ agent: "idle", hits: last ? last.sources.map((x) => x[2]).filter(Boolean) : [] });
     render();
   } catch {
+    if (quiet) return;
     if (convs) convs.error = true;
     render();
   } finally { setBusy(row, false); }
@@ -188,7 +220,7 @@ async function deleteConversation(id, btn) {
     const r = await fetch(`/ui/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin", headers: { "Content-Type": "application/json" } });
     if (!r.ok && r.status !== 404) throw new Error(String(r.status));
     if (convs) convs.items = convs.items.filter((c) => c.id !== id);
-    if (chatState.conv === id) chatState.conv = null; // further questions start a new one
+    if (chatState.conv === id) { chatState.conv = null; storeConv(null); } // further questions start a new one
   } catch { if (convs) convs.error = true; }
   setBusy(btn, false);
   render();
@@ -208,7 +240,7 @@ function renderConvs() {
   convBox.append(...convs.items.map((c) => {
     const row = h("button.agent__conv-open", { type: "button", cls: c.id === chatState.conv ? "is-cur" : "", on: { click: () => openConversation(c.id, row) } },
       h("span.agent__conv-t", { text: c.title }),
-      h("span.agent__conv-m", { text: `${t("agent.convCount", { n: c.count })} · ${Number.isFinite(c.updated) ? ago(c.updated) : ""}` }));
+      h("span.agent__conv-m", { text: `${(c.count === 1 ? t("agent.convCount1") : t("agent.convCount", { n: c.count }))} · ${Number.isFinite(c.updated) ? agoText(c.updated) : ""}` }));
     const del = h("button.agent__conv-del", { type: "button", title: t("agent.convDelete"), "aria-label": t("agent.convDelete"), text: "×", on: { click: () => deleteConversation(c.id, del) } });
     return h("div.agent__conv", null, row, del);
   }));
@@ -252,8 +284,11 @@ export function render(L) {
   podState.textContent = `RECALL · ${t(`agent.state.${ag}`)}`;
   const total = numberFmt.format(data.health?.vault_size ?? 0);
   const cap = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? chatState.shown.a : greeting();
-  clear(caption).append(cap, ag === "speaking" || ag === "thinking" ? h("span.agent__caret") : "");
-  podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newMemories ? t("pod.newMemories", { n: data.newMemories }) : t("pod.ready");
+  clear(caption).append(...md(cap, ag === "speaking" || ag === "thinking"));
+  // Short windows: with a question on screen the face steps back so that
+  // question, the start of the answer and its sources fit without scrolling.
+  panel.classList.toggle("is-compact", !!chatState.question && !convs && state.vh < 760);
+  podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? (chatState.shown.sources.length === 1 ? t("pod.answered1") : t("pod.answered", { n: chatState.shown.sources.length })) : data.newMemories ? t("pod.newMemories", { n: data.newMemories }) : t("pod.ready");
   podText = podLine.textContent;
   for (const fn of podListeners) fn();
   // The question being answered stands above its answer (Daniel, 13.11.2026).
@@ -267,7 +302,7 @@ export function render(L) {
   const pairs = [];
   for (let i = 0; i + 1 < chatState.msgs.length; i += 2) pairs.unshift([chatState.msgs[i], chatState.msgs[i + 1]]);
   clear(msgBox).append(...(pairs.length ? [h("span.agent__srcs-l", { text: t("agent.earlier") })] : []), ...pairs.flatMap(([you, rec]) => [
-    h("div.msg.msg--you", { text: you.text }), h("div.msg.msg--recall", { text: rec.text }),
+    h("div.msg.msg--you", { text: you.text }), h("div.msg.msg--recall.agent__md", null, ...md(rec.text)),
     rec.sources?.length ? h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources)) : null]));
   msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";
   renderConvs();

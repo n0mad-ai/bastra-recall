@@ -8,7 +8,8 @@
 .agent__role { font-size: 12px; color: var(--muted); }
 .agent__state { margin-left: auto; display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 9px; border: 1px solid var(--state-c, var(--muted)); color: var(--state-c, var(--muted)); font: 500 9.5px var(--mono); letter-spacing: .16em; }
 .agent__state .dot { background: var(--state-c, var(--muted)); box-shadow: none; animation: live-pulse 1.6s ease-in-out infinite; }
-.agent__face { position: relative; flex: none; height: var(--face-h, 220px); }
+.agent__face { position: relative; flex: none; height: var(--face-h, 220px); transition: height .45s var(--ease-knob); }
+.agent.is-compact .agent__face { height: min(var(--face-h, 220px), 84px); }
 .agent__face canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .agent__body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 12px; padding: 0 20px 14px; }
 .agent__caption { font-size: var(--caption-size, 16.5px); font-weight: 300; line-height: 1.5; text-align: center; text-wrap: pretty; overflow-wrap: anywhere; }
@@ -22,6 +23,14 @@
 .agent__src-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent__src-k { flex: none; font: 10px var(--mono); color: var(--tc, var(--muted)); }
 .agent__hist { gap: 8px; }
+.agent__md p, .agent__md ul, .agent__md pre { margin: 0 0 .45em; }
+.agent__md > :last-child { margin-bottom: 0; }
+.agent__md ul { padding-left: 18px; text-align: left; }
+.agent__md h3 { margin: 0 0 .3em; font-size: 1em; font-weight: 600; }
+.agent__md code { font: .86em var(--mono); color: var(--accent); }
+.agent__md pre { padding: 8px 10px; border: 1px solid var(--line-14); background: var(--surface-input); font: 11.5px var(--mono); line-height: 1.5; white-space: pre-wrap; text-align: left; }
+.agent__md a { color: var(--accent); }
+.agent__md strong { font-weight: 600; }
 .agent__srcs--old { margin: -2px 0 4px 12px; }
 .agent__srcs--old .agent__src { padding: 4px 8px; font-size: 12px; }
 .agent__hbtn { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-20); background: transparent; color: var(--muted); cursor: pointer; transition: border-color .2s, color .2s; }

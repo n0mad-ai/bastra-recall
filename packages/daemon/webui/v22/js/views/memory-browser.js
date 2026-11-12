@@ -99,6 +99,7 @@ const byRecent = (a, b) => (Number.isFinite(b.at) ? b.at : -Infinity) - (Number.
 const str = (v) => (typeof v === "string" ? v : "");
 
 // ── mini markdown (old map inspector), built as DOM nodes ──────────────────
+// Also renders the agent window's answers (agent.js); text only via textContent.
 const INLINE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s<)]+)|(^|[^*\w])\*([^*\s][^*]*)\*/g;
 function inline(text, onLink) {
   const out = []; let last = 0, m;
@@ -122,7 +123,7 @@ function inline(text, onLink) {
   if (last < text.length) out.push(text.slice(last));
   return out;
 }
-function markdown(md, onLink) {
+export function markdown(md, onLink) {
   const out = []; let list = null, fence = null;
   // HTML comments (auto-related markers) are bookkeeping, not text
   for (const raw of md.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {

@@ -86,6 +86,36 @@ older version. Preserve the originals and database for returning to the new
 version. The rulebook failure spool remains a stdlib-only offline transport
 buffer: clients must be able to record failures while the daemon is unreachable.
 
+### Agent chat history (schema v2)
+
+Migration v2 (`agent-chat-history`) adds `chat_conversations` (id, title =
+first question cut to 80 characters, created/updated times) and
+`chat_messages` (role `user`/`assistant`, text, sources as JSON
+`[{id,type,title}]`, time). Deleting a conversation deletes its messages. It
+is UI state of the web UI's agent window: nothing is written to the vault, and
+retention is unlimited until the user deletes a conversation. `POST /ui/chat`
+appends each question, answer and source list; a request without a known
+`conversation_id` starts a new conversation. Private memories are never stored
+as sources. `GET /ui/chat/conversations` lists conversations,
+`GET /ui/chat/conversations/<id>` returns one and
+`DELETE /ui/chat/conversations/<id>` removes it. These routes are local-only
+like `/ui/chat`; DELETE needs a same-origin request with
+`Content-Type: application/json`. A binary that supports only schema v1
+refuses this database; restore `before-v2-<UUID>.db` as described above to
+downgrade (stored conversations are then lost).
+
+**Deutsch:** Migration v2 (`agent-chat-history`) legt die Tabellen
+`chat_conversations` und `chat_messages` an. Darin speichert das
+Agentenfenster der Web-UI seine Gespräche: Frage, Antwort und Quellen. Der
+Titel ist die erste Frage. In den Vault wird nichts geschrieben. Gespräche
+bleiben, bis der Nutzer sie einzeln löscht. Private Memories werden nie als
+Quelle gespeichert. Die Routen `GET /ui/chat/conversations`,
+`GET /ui/chat/conversations/<id>` und `DELETE /ui/chat/conversations/<id>`
+sind nur lokal erreichbar; DELETE verlangt eine Anfrage derselben Herkunft mit
+`Content-Type: application/json`. Ein Programm, das nur Schema v1 kennt,
+startet mit dieser Datenbank nicht; für den Rückweg `before-v2-<UUID>.db`
+wie oben beschrieben zurückspielen (die Gespräche gehen dabei verloren).
+
 ## Tests
 
 Tests always choose temporary fixture paths; calls without an explicit path
