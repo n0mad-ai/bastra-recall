@@ -12,16 +12,16 @@ export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
 /** Groups in prototype order (settings-spec-v20.js SECTIONS), mapped onto real keys. */
 export const GROUPS = [
   { id: "appearance", keys: ["ui.footer", "ui.timeline"] },
-  { id: "general", keys: ["update.mode", "language.primary", "battery.saver", "ui.enabled", "assistant.name", "daemon.env"] },
-  { id: "models", keys: ["embedding.provider", "ollama.autostart", "generation.model", "modelRecommendation.id", "modelRecommendation.answer", "modelRecommendation.at"] },
-  { id: "recall", keys: ["reflex.enabled", "reflex.maxPerTurn", "evidenceGate.enabled", "experiment.name", "experiment.arms", "experiment.registration", "experiment.registration_version"] },
+  { id: "general", keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "assistant.name", "daemon.env"] },
+  { id: "models", keys: ["embedding.provider", "embedding.model", "ollama.autostart", "ollama.url", "generation.model", "ollama.keepAlive", "modelRecommendation.id", "modelRecommendation.answer", "modelRecommendation.at"] },
+  { id: "recall", keys: ["recall.floor", "reflex.enabled", "reflex.maxPerTurn", "prompt.hookMode", "hint.suppress", "hint.suppressAfter", "evidenceGate.enabled", "scope.filterLanes", "experiment.name", "experiment.arms", "experiment.registration", "experiment.registration_version"] },
   { id: "sharing", keys: ["commons.enabled", "sharedRecall.enabled", "sharedRecall.language", "sharedRecall.live"] },
   { id: "code", keys: ["code.repos", "promptImpact.enabled", "coverageMap.enabled"] },
-  { id: "writing", keys: ["docs.mode", "docs.language", "size.guide", "size.critical", "size.exemptPaths"] },
+  { id: "writing", keys: ["docs.mode", "docs.language", "size.guide", "size.critical", "size.exemptPaths", "saveNotice"] },
   { id: "archive", keys: ["archive.enabled", "archive.retain", "archive.cap", "archive.max-item"] },
   { id: "tasks", keys: ["tasks.enabled", "tasks.notifications", "tasks.chatActiveMinutes", "tasks.chatConsent"] },
   { id: "api", keys: ["api.token", "cors.origins"], oauth: true },
-  { id: "logs", keys: ["telemetry.enabled"] },
+  { id: "logs", keys: ["telemetry.enabled", "logs.retention", "logs.path", "training.capture"] },
   { id: "more", keys: [] },
 ];
 
@@ -38,7 +38,13 @@ export const META = {
   "experiment.arms": { experimental: true },
   "experiment.registration": { experimental: true },
   "experiment.registration_version": { experimental: true, min: 0, step: 1 },
+  "hint.suppressAfter": { unit: "surfaces" },
+  "logs.retention": { unit: "days" },
 };
+
+/** Runtime metadata takes precedence over presentation hints. */
+export const metaOf = (e) => ({ ...(META[e.key] || {}), ...Object.fromEntries(
+  ["min", "max", "step", "unit", "experimental"].filter((k) => e[k] !== undefined).map((k) => [k, e[k]])) });
 
 /** UI settings of this browser (state.js › localStorage recall-v22-ui), applied at once. */
 export const LOCAL = [
@@ -112,12 +118,19 @@ export async function load() {
 export async function apply() {
   if (!store.changes.size || store.busy) return;
   store.busy = true; store.error = ""; emit("bar");
-  const restart = [...store.changes.keys()].some((k) => entry(k)?.restartRequired);
+  // Login-service registration is a separate OS write, outside the settings DB.
+  const pending = [...store.changes.entries()];
+  const batches = [pending.filter(([k]) => k !== "autostart"), pending.filter(([k]) => k === "autostart")];
   try {
-    accept(await withSession(() => call("/ui/settings", { changes: Object.fromEntries(store.changes) })));
-    store.changes.clear();
-    store.saved = new Date().toTimeString().slice(0, 5);
-    store.savedRestart = restart;
+    for (const batch of batches.filter((b) => b.length)) {
+      const restart = batch.some(([k]) => entry(k)?.restartRequired);
+      accept(await withSession(() => call("/ui/settings", { changes: Object.fromEntries(batch) })));
+      for (const [key, value] of batch) {
+        if (JSON.stringify(store.changes.get(key)) === JSON.stringify(value)) store.changes.delete(key);
+      }
+      store.saved = new Date().toTimeString().slice(0, 5);
+      store.savedRestart ||= restart;
+    }
   } catch (err) { store.error = err.message; }
   store.busy = false;
   emit();
@@ -191,18 +204,20 @@ export function changeList() {
   return [...store.changes.entries()].map(([key, value]) => ({ key, value, e: entry(key) })).filter((c) => c.e);
 }
 
-/** The CLI line a change stands for (bastra config set accepts every writable key). */
+/** config set routes env-backed keys through the daemon.env merge as the UI does. */
 export function cliOf(e, v) {
+  if (e.key === "autostart") return `bastra autostart ${(v ?? e.default) ? "on" : "off"}`;
   if (v === null) return null;
-  const arg = typeof v === "boolean" ? String(v) : typeof v === "object" ? `'${JSON.stringify(v)}'` : /[\s'"]/.test(String(v)) ? `'${String(v).replaceAll("'", "'\\''")}'` : String(v);
+  const raw = typeof v === "object" ? JSON.stringify(v) : String(v);
+  const arg = /^[a-zA-Z0-9_./:@,+%-]+$/.test(raw) ? raw : `'${raw.replaceAll("'", "'\\''")}'`;
   return `bastra config set ${e.key} ${e.secret ? "'…'" : arg}`;
 }
 
 /** Search text of a row: name, key, env names, chips. */
 export function matches(e, name, desc, q) {
   if (!q) return true;
-  const meta = META[e.key] || {};
-  const text = [name, e.key, desc, ...(e.envOverride || []).map((x) => x.name),
+  const meta = metaOf(e);
+  const text = [name, e.key, e.envName || "", desc, ...(e.envOverride || []).map((x) => x.name),
     e.restartRequired ? "restart" : "", meta.experimental ? "experimental" : "", e.envOverride?.length ? "env" : "",
     e.secret ? "token secret" : "", e.local ? "ui local" : ""].join(" ").toLowerCase();
   return text.includes(q);

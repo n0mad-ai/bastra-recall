@@ -13,7 +13,7 @@ import { h, clear } from "../dom.js";
 import { setState } from "../state.js";
 import { hud, hudRow, hudChip, hudButton, hudTiles } from "./hud.js";
 import { loadingBlock, loadingInline, setBusy } from "./loading.js";
-import { SETTINGS_FILE, GROUPS, META, store, onStore, emit, load, apply, discard, restart, revokeOauth,
+import { SETTINGS_FILE, GROUPS, metaOf, store, onStore, emit, load, apply, discard, restart, revokeOauth,
   entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
 import en from "../i18n/settings-en.js";
@@ -73,7 +73,7 @@ function segCtl(e) {
 }
 
 function numberCtl(e) {
-  const m = META[e.key] || {}, step = m.step || 1;
+  const m = metaOf(e), step = m.step || 1;
   const val = h("span.st-num__v"), unit = h("span.st-num__u", { text: m.unit ? t(`st.unit.${m.unit}`) : "" });
   const bump = (d) => { const cur = Number(shown(e)); const base = Number.isFinite(cur) ? cur : (m.min ?? 0); setValue(e.key, Math.min(m.max ?? 1e9, Math.max(m.min ?? -1e9, base + d))); };
   const range = m.max !== undefined ? h("span.st-num__r", { text: `${m.min}–${m.max}` }) : null;
@@ -135,12 +135,12 @@ function controlFor(e) {
 
 // ── rows and sections ────────────────────────────────────────────────────
 function row(e) {
-  const meta = META[e.key] || {}, isLocked = locked(e), env = e.envOverride || [];
+  const meta = metaOf(e), isLocked = locked(e), env = e.envOverride || [];
   const ctl = controlFor(e);
   const mod = chip(t("st.chip.modified"), "st-chip--mod");
   const note = env.length ? h("div.st-row__env.is-set", { text: t("st.envSet", { env: env.map((x) => `${x.name}=${x.value}`).join(", ") }) })
     : e.managed ? h("div.st-row__env", { text: t("st.managed", { cli: `bastra config set ${e.key} <name>` }) })
-    : e.readonly ? h("div.st-row__env", { text: t("st.readonly") })
+    : e.readonly ? h("div.st-row__env", { text: tx(`st.readonly.${e.readonlyCode}`, t("st.readonly")) })
     : e.local ? h("div.st-row__env", { text: t("st.local") }) : null;
   const el = h("div.st-row", null,
     h("div.st-row__main", null,
@@ -148,7 +148,7 @@ function row(e) {
         e.restartRequired ? chip(t("st.chip.restart"), "st-chip--rs") : null,
         meta.experimental ? chip(t("st.chip.experimental"), "st-chip--exp") : null,
         env.length ? chip(t("st.chip.env"), "st-chip--env") : null),
-      h("div.st-row__key", { text: e.key }),
+      h("div.st-row__key", { text: e.envName || (e.key === "autostart" ? "bastra autostart" : e.key) }),
       descOf(e) ? h("p.st-row__desc", { text: descOf(e) }) : null,
       note),
     h("div.st-row__ctl", { cls: isLocked && !e.managed && !e.readonly ? "is-locked" : "" }, ctl.nodes));
