@@ -4,15 +4,40 @@
 
 The current main branch includes a settings page backed by the local app database. This is source development; it does not change the published release version. Open the local web UI, choose **Einstellungen**, change the desired fields and choose **Speichern**. The page groups general/language options, search and embeddings, hooks/reflex, code indexing, archiving, tasks, access and updates. The assistant section opens the existing name/address setup; native system changes retain their existing consent flow. Further Jarvis features are outside this change.
 
-Every field comes from the shared registry used by the CLI. Boolean switches, text/numbers and structured JSON options use the same validators. **Standard** removes the stored override. Environment overrides are displayed and continue to take precedence. A saved value can therefore differ from the effective value. Fields marked as requiring a restart apply when the daemon and affected clients restart. The restart button is available for the managed macOS launchd daemon; other installations use their existing service or process restart procedure.
+Every field comes from the shared definitions used by the CLI. Boolean switches, text/numbers and structured JSON options use the same validators. **Standard** removes the stored override. Environment overrides are displayed and continue to take precedence. A saved value can therefore differ from the effective value. Fields marked as requiring a restart apply when the daemon and affected clients restart. The restart button is available for the managed macOS launchd daemon; other installations use their existing service or process restart procedure.
 
 This describes prepared main for v1.2.0; published v1.1.8 keeps the opt-in preview. Tasks are **on by default from v1.2.0**, for new and existing installations. An explicit earlier opt-out is preserved. Enable or disable them in the Tasks section or with `bastra config set tasks.enabled true` / `false`; restart the daemon and connected clients/hooks. An explicit `BASTRA_TASKS` still wins (`1` enables; other values disable). Disable the setting again or set `BASTRA_TASKS=0` and restart to switch them off without cancelling stored tasks. Inside enabled tasks, `tasks.notifications` defaults to true and controls optional macOS notifications immediately; other platforms retain next-contact delivery. It does not enable tasks or mark them read. Local telemetry is controlled by `telemetry.enabled`; `BASTRA_TELEMETRY` (or its legacy `NEXUS_TELEMETRY`) still wins. Both switches use a read-only startup snapshot, so passive imports never create or migrate storage.
 
-The Access section masks secrets, edits browser CORS origins and lists OAuth clients for revocation. It never reveals a stored API token. To replace a secret, enter its new value; an untouched blank input keeps the previous value. The existing `bastra token` command remains the separate local token-issuance interface. `daemon.env` is masked as a whole because it can contain sensitive values; provide the complete replacement JSON object when changing it. It affects forwarder-spawned daemons; a managed service keeps its own environment.
+The Access section masks secrets, edits browser CORS origins and lists OAuth clients for revocation. It never reveals a stored API token. To replace a secret, enter its new value; an untouched blank input keeps the previous value. The existing `bastra token` command remains the separate local token-issuance interface. `daemon.env` is masked as a whole because it can contain sensitive values; provide the complete replacement JSON object when changing it. The v22 implementation applies its allowed pins at startup for service and direct starts as well as forwarder starts. Explicit service environment values take precedence and appear read-only. Forwarder pins retain their existing precedence over the spawning client environment.
 
 Invalid JSON edits keep settings unsaved. Save returns to and focuses the invalid editor; correcting or resetting it permits saving. Restart remains blocked while any unsaved edit exists.
 
 `tasks.chatActiveMinutes` sets the shared genuine-human activity window for Claude Code and attached Codex CLI chats (default 30 minutes, integer 1–1440). Only the chat where you last entered input is selected; an unavailable latest chat never redirects to an older one. Start a task-receiving Codex terminal with `bastra codex`; this changes no Codex settings and requires no additional approval. `tasks.chatConsent` records the one-time **Claude** setup answer and is read-only here. Only an explicit Yes during interactive setup may enable Claude's account-wide incoming messages; No, held/refused or managed receiving settings leave Claude on notification and board delivery without disabling the separately launched Codex bridge. [Chat setup and limits](active-chat-tasks.md#english).
+
+### v22 environment controls (development branch)
+
+The v22 Settings page exposes the following existing environment options in Models, Recall behaviour, Writing and Logs. The defaults come from the daemon runtime. All twelve store individual pins in the existing `daemon.env` record. Use **Apply**, inspect old/new values in **Changes**, and restart the daemon to apply these pins. **Standard** removes a pin. A real process environment override carries the ENV chip and is read-only. An applied settings pin stays editable even while its replacement or removal awaits restart.
+
+| Key | Environment variable | Default | Input |
+|---|---|---|---|
+| `embedding.model` | `BASTRA_EMBEDDING_MODEL` | `embeddinggemma` | text |
+| `ollama.url` | `BASTRA_OLLAMA_URL` | `http://localhost:11434` | HTTP(S) URL |
+| `ollama.keepAlive` | `BASTRA_OLLAMA_KEEP_ALIVE` | `10m` | duration, -1 or 0 |
+| `recall.floor` | `BASTRA_RECALL_FLOOR` | `30` | integer 0–100 |
+| `prompt.hookMode` | `BASTRA_PROMPT_HOOK_MODE` | `all` | all / retrieval-only |
+| `hint.suppress` | `BASTRA_HINT_SUPPRESS` | `shadow` | shadow / off |
+| `hint.suppressAfter` | `BASTRA_HINT_SUPPRESS_AFTER` | `8` | integer 0–30 |
+| `scope.filterLanes` | `BASTRA_SCOPE_FILTER_LANES` | `shadow` | shadow / enforce |
+| `saveNotice` | `BASTRA_SAVE_NOTICE` | `true` | boolean |
+| `logs.retention` | `BASTRA_LOG_RETENTION_DAYS` | `90` | 30–365 days |
+| `logs.path` | `BASTRA_LOG_PATH` | `~/.bastra/logs (macOS)` | raw path |
+| `training.capture` | `BASTRA_TRAINING_CAPTURE` | `false` | boolean |
+
+The log folder default is resolved to the current platform's Bastra data directory. Custom relative paths and literal `~` are passed through as the runtime already does. Retention has a 30-day runtime floor. The hint-suppression options remain shadow/off. Ollama URLs must use HTTP(S) without embedded credentials, query or fragment; keep-alive accepts signed, fractional and compound durations such as `1h30m`.
+
+The same keys work with the CLI, for example `bastra config set hint.suppressAfter 9`. Each command merges only its pin and preserves the others. The advanced masked `daemon.env` JSON editor still replaces the complete object, with validation for changed known pins.
+
+**Start at login** reads the installed service registration, defaulting to off when absent. On macOS the Settings control registers or removes the managed login plist while the current daemon continues running. It takes effect at the next login. Foreign registrations and platforms without this staging adapter are read-only here; the existing `bastra autostart on|off|status` CLI remains available on its supported platforms. The UI saves normal settings first, then login registration. If the second operation fails, successful settings stay saved and the failed login change remains pending.
 
 ### Local API
 
@@ -30,15 +55,40 @@ To return to the old version, stop all daemon/CLI writers and restore the retain
 
 Der aktuelle main-Branch enthält eine Einstellungsseite mit Speicherung in der lokalen App-Datenbank. Das ist Quellcode-Entwicklung; die veröffentlichte Versionsnummer ändert sich dadurch nicht. Öffne die lokale Web-UI, wähle **Einstellungen**, ändere die gewünschten Felder und wähle **Speichern**. Die Seite gruppiert Allgemeines/Sprache, Suche und Embeddings, Hooks/Reflex, Code-Index, Archivierung, Aufgaben, Zugang und Updates. Der Assistentenbereich öffnet die vorhandene Einrichtung für Name und Adresse; Änderungen am System behalten ihren bisherigen Zustimmungsweg. Weitere Jarvis-Funktionen gehören nicht zu dieser Änderung.
 
-Alle Felder stammen aus demselben Register wie die CLI. Schalter, Texte/Zahlen und strukturierte JSON-Optionen verwenden dieselben Validatoren. **Standard** entfernt die gespeicherte Vorgabe. Umgebungsvariablen werden angezeigt und haben weiterhin Vorrang. Der gespeicherte Wert kann deshalb vom wirksamen Wert abweichen. Markierte Optionen gelten nach dem Neustart von Daemon und betroffenen Clients. Der Neustartknopf ist beim verwalteten macOS-launchd-Daemon verfügbar; andere Installationen verwenden ihren bisherigen Dienst- oder Prozessneustart.
+Alle Felder stammen aus denselben Definitionen wie die CLI. Schalter, Texte/Zahlen und strukturierte JSON-Optionen verwenden dieselben Validatoren. **Standard** entfernt die gespeicherte Vorgabe. Umgebungsvariablen werden angezeigt und haben weiterhin Vorrang. Der gespeicherte Wert kann deshalb vom wirksamen Wert abweichen. Markierte Optionen gelten nach dem Neustart von Daemon und betroffenen Clients. Der Neustartknopf ist beim verwalteten macOS-launchd-Daemon verfügbar; andere Installationen verwenden ihren bisherigen Dienst- oder Prozessneustart.
 
 Dies beschreibt das vorbereitete main für v1.2.0; die veröffentlichte v1.1.8 bleibt bei der Opt-in-Vorschau. Aufgaben sind **ab v1.2.0 standardmäßig an**, bei neuen und bestehenden Installationen. Eine ausdrücklich frühere Abschaltung bleibt erhalten. Im Aufgabenbereich oder mit `bastra config set tasks.enabled true` / `false` ein- oder ausschalten; danach Daemon und verbundene Clients/Hooks neu starten. Ein ausdrücklich gesetztes `BASTRA_TASKS` gewinnt weiterhin (`1` schaltet ein; andere Werte schalten aus). Zum Abschalten die Einstellung ausschalten oder `BASTRA_TASKS=0` setzen und neu starten; gespeicherte Aufgaben werden dadurch nicht storniert. Innerhalb eingeschalteter Aufgaben ist `tasks.notifications` standardmäßig true und steuert optionale Mac-Mitteilungen sofort; andere Plattformen bleiben bei Zustellung zum nächsten Kontakt. Der Schalter aktiviert keine Aufgaben und markiert sie nicht als gelesen. Lokale Telemetrie wird über `telemetry.enabled` gesteuert; `BASTRA_TELEMETRY` beziehungsweise das alte `NEXUS_TELEMETRY` gewinnt weiter. Beide Schalter verwenden einen nur lesenden Start-Schnappschuss; passive Modulimporte legen keinen Speicher an und migrieren nichts.
 
-Der Zugangsbereich maskiert Geheimnisse, bearbeitet erlaubte Browser-CORS-Ursprünge und listet OAuth-Clients zum Widerrufen. Ein gespeichertes API-Token wird nie angezeigt. Zum Ersetzen ein neues Geheimnis eingeben; ein unverändert leeres Eingabefeld behält den bisherigen Wert. `bastra token` bleibt die gesonderte lokale Oberfläche zum Ausstellen von Tokens. `daemon.env` wird vollständig maskiert, weil es sensible Werte enthalten kann; beim Ändern das vollständige neue JSON-Objekt angeben. Es gilt für vom Forwarder gestartete Daemons; ein verwalteter Dienst behält seine eigene Umgebung.
+Der Zugangsbereich maskiert Geheimnisse, bearbeitet erlaubte Browser-CORS-Ursprünge und listet OAuth-Clients zum Widerrufen. Ein gespeichertes API-Token wird nie angezeigt. Zum Ersetzen ein neues Geheimnis eingeben; ein unverändert leeres Eingabefeld behält den bisherigen Wert. `bastra token` bleibt die gesonderte lokale Oberfläche zum Ausstellen von Tokens. `daemon.env` wird vollständig maskiert, weil es sensible Werte enthalten kann; beim Ändern das vollständige neue JSON-Objekt angeben. Die v22-Implementierung liest erlaubte Vorgaben beim Start auch für Dienste und direkte Starts ein. Ausdrückliche Umgebungswerte des Dienstes haben Vorrang und erscheinen schreibgeschützt. Vorgaben für den Forwarder behalten ihren bisherigen Vorrang vor der Umgebung des startenden Clients.
 
 Ungültige JSON-Änderungen bleiben ungespeichert. Speichern führt zum fehlerhaften Feld und fokussiert es; Korrigieren oder Zurücksetzen erlaubt das Speichern. Bei ungespeicherten Änderungen bleibt der Neustart gesperrt.
 
 `tasks.chatActiveMinutes` setzt die gemeinsame Aktivitätsgrenze seit der letzten echten Nutzernachricht für Claude Code und angebundene Codex-CLI-Chats (Standard 30 Minuten, ganze Zahl 1–1440). Gewählt wird nur der Chat mit deiner letzten Eingabe; ist er nicht erreichbar, wird nie auf einen älteren ausgewichen. Starte ein Codex-Terminal für Aufgabenmeldungen mit `bastra codex`; dabei ändern sich keine Codex-Einstellungen und eine zusätzliche Freigabe entfällt. `tasks.chatConsent` hält die einmalige **Claude**-Einrichtungsantwort fest und ist hier nur lesbar. Nur ein ausdrückliches Ja in der interaktiven Einrichtung darf Claude Codes kontoweiten Nachrichteneingang aktivieren; bei Nein, gehaltenem/abgewiesenem oder verwaltetem Empfang bleibt Claude bei Mitteilung und Brett, ohne die gesondert gestartete Codex-Verbindung abzuschalten. [Chat-Einrichtung und Grenzen](active-chat-tasks.md#deutsch).
+
+### Env-Einstellungen in v22 (Entwicklungsbranch)
+
+Die v22-Einstellungsseite zeigt die folgenden vorhandenen Umgebungsoptionen in Modelle, Abrufverhalten, Schreiben und Protokolle. Die Standards stammen aus dem Daemon. Alle zwölf speichern einzelne Vorgaben im bestehenden `daemon.env`-Datensatz. Mit **Übernehmen** speichern, alte/neue Werte im Reiter **Änderungen** prüfen und den Daemon zum Anwenden neu starten. **Standard** entfernt eine Vorgabe. Eine echte Prozess-Umgebungsvariable trägt den ENV-Chip und ist schreibgeschützt. Eine beim Start angewendete gespeicherte Vorgabe bleibt bearbeitbar, auch wenn ihre Ersetzung oder Entfernung noch auf den Neustart wartet.
+
+| Schlüssel | Umgebungsvariable | Standard | Eingabe |
+|---|---|---|---|
+| `embedding.model` | `BASTRA_EMBEDDING_MODEL` | `embeddinggemma` | Text |
+| `ollama.url` | `BASTRA_OLLAMA_URL` | `http://localhost:11434` | HTTP(S)-URL |
+| `ollama.keepAlive` | `BASTRA_OLLAMA_KEEP_ALIVE` | `10m` | Dauer, -1 oder 0 |
+| `recall.floor` | `BASTRA_RECALL_FLOOR` | `30` | ganze Zahl 0–100 |
+| `prompt.hookMode` | `BASTRA_PROMPT_HOOK_MODE` | `all` | all / retrieval-only |
+| `hint.suppress` | `BASTRA_HINT_SUPPRESS` | `shadow` | shadow / off |
+| `hint.suppressAfter` | `BASTRA_HINT_SUPPRESS_AFTER` | `8` | ganze Zahl 0–30 |
+| `scope.filterLanes` | `BASTRA_SCOPE_FILTER_LANES` | `shadow` | shadow / enforce |
+| `saveNotice` | `BASTRA_SAVE_NOTICE` | `true` | Schalter |
+| `logs.retention` | `BASTRA_LOG_RETENTION_DAYS` | `90` | 30–365 Tage |
+| `logs.path` | `BASTRA_LOG_PATH` | `~/.bastra/logs (macOS)` | unveränderter Pfad |
+| `training.capture` | `BASTRA_TRAINING_CAPTURE` | `false` | Schalter |
+
+Der Standardordner für Protokolle wird zum Bastra-Datenverzeichnis der jeweiligen Plattform aufgelöst. Eigene relative Pfade und ein wörtliches `~` werden wie bisher unverändert an die Laufzeit weitergegeben. Die Aufbewahrung hat eine Untergrenze von 30 Tagen. Die Hinweisunterdrückung bleibt bei shadow/off. Ollama-URLs verwenden HTTP(S) ohne eingebettete Zugangsdaten, Query oder Fragment. Keep-alive erlaubt vorzeichenbehaftete, gebrochene und zusammengesetzte Dauern wie `1h30m`.
+
+Dieselben Schlüssel funktionieren über die CLI, etwa `bastra config set hint.suppressAfter 9`. Jeder Befehl ändert nur seine Vorgabe und erhält die übrigen. Der maskierte erweiterte JSON-Editor für `daemon.env` ersetzt weiterhin das gesamte Objekt und validiert geänderte bekannte Vorgaben.
+
+**Bei Anmeldung starten** liest die installierte Dienstregistrierung und ist ohne Registrierung standardmäßig aus. Unter macOS legt der Settings-Schalter den verwalteten Login-Plist an oder entfernt ihn, während der aktuelle Daemon weiterläuft. Die Änderung gilt bei der nächsten Anmeldung. Fremde Registrierungen und Plattformen ohne diesen Adapter sind hier schreibgeschützt. Die bestehende CLI `bastra autostart on|off|status` bleibt auf ihren unterstützten Plattformen verfügbar. Die UI speichert normale Einstellungen zuerst, danach die Login-Registrierung. Scheitert die zweite Operation, bleiben die erfolgreichen Einstellungen gespeichert und die fehlgeschlagene Login-Änderung bleibt offen.
 
 ### Lokale API
 
