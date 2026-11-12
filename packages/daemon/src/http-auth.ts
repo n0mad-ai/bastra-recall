@@ -132,7 +132,8 @@ export function gateLocalPost(p: {
     if (!sameOrigin) return 403;
   }
   const type = p.contentType?.split(";", 1)[0]?.trim().toLowerCase();
-  if (p.path.split("?", 1)[0] === "/ui/vault-image") {
+  const target = p.path.split("?", 1)[0];
+  if (target === "/ui/vault-image" || target === "/ui/backdrop") {
     return type === "image/png" || type === "image/jpeg" || type === "image/webp" ? 200 : 415;
   }
   return type === "application/json" ? 200 : 415;

@@ -1,0 +1,45 @@
+/* Background image (settings ui.backdrop / ui.backdropDim / ui.backdropBlur).
+ * Prototype: layer between glow and frame (inset 12px = inside the frame), image, dim, vignette.
+ * Dim and image URL arrive as custom properties from js/backdrop.js (CSSOM, no inline styles).
+ * Soft focus: the fade-in class is dropped when it ends, so the filtered image is no
+ * composited layer afterwards and gets rasterised once, not per frame (measured, see report). */
+
+.bd { position: absolute; inset: 12px; z-index: 0; pointer-events: none; overflow: hidden; }
+.bd[hidden] { display: none; }
+.bd__img { position: absolute; inset: -24px; }
+.bd__img.is-in { animation: bd-in .8s ease-out both; }
+.bd.is-blur .bd__img { filter: blur(14px) saturate(1.1); }
+.bd__shade { position: absolute; inset: 0; background: rgba(6,10,19,var(--bd-dim, .8)); transition: background .4s; }
+.bd__vig { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 45%, rgba(6,10,19,0) 45%, rgba(6,10,19,.7)); }
+@keyframes bd-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+
+/* Presets ship with Recall as CSS (prototype BD_PRESETS), no image files. */
+.bd-p--none { background: #060a13; }
+.bd-p--aurora { background: radial-gradient(55% 60% at 22% 30%, hsla(188,90%,55%,.75), transparent 70%), radial-gradient(45% 55% at 78% 72%, hsla(262,80%,62%,.6), transparent 70%), radial-gradient(40% 40% at 60% 20%, hsla(160,80%,50%,.35), transparent 70%), linear-gradient(160deg, #03121c, #0b0a24); }
+.bd-p--deepsea { background: radial-gradient(70% 50% at 50% 0%, rgba(120,220,255,.45), transparent 70%), repeating-linear-gradient(100deg, rgba(56,217,245,.07) 0 2px, transparent 2px 38px), linear-gradient(180deg, #032033, #062a3d 55%, #020d16); }
+.bd-p--ember { background: radial-gradient(60% 55% at 70% 80%, rgba(240,140,40,.6), transparent 70%), radial-gradient(35% 35% at 25% 25%, rgba(217,164,65,.35), transparent 70%), linear-gradient(200deg, #140a05, #1d0c0a 60%, #07060a); }
+.bd-p--topo { background: repeating-radial-gradient(circle at 28% 38%, transparent 0 21px, rgba(56,217,245,.32) 21px 22px), repeating-radial-gradient(circle at 76% 70%, transparent 0 27px, rgba(126,164,210,.22) 27px 28px), linear-gradient(160deg, #07131f, #0a0f1c); }
+.bd-p--grid { background: linear-gradient(rgba(56,217,245,.18) 1px, transparent 1px) 0 0 / 46px 46px, linear-gradient(90deg, rgba(56,217,245,.18) 1px, transparent 1px) 0 0 / 46px 46px, radial-gradient(60% 60% at 50% 40%, rgba(40,110,170,.55), transparent 75%), #061322; }
+.bd-p--dusk { background: linear-gradient(180deg, #0b0c26 0%, #2a1240 48%, #6b2a3a 72%, #c76a3c 88%, #f0a35a 100%); }
+.bd-p--upload { background: var(--bd-url) center / cover no-repeat; }
+
+/* ── Settings row: picker grid under the row (prototype isBackdrop) ───── */
+.bd-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.bd-opt { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.bd-opt.is-on { color: var(--accent); }
+.bd-opt__pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line-25); box-shadow: none; overflow: hidden; transition: border-color .2s, box-shadow .25s; }
+.bd-opt.is-on .bd-opt__pic { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px var(--accent-35); }
+.bd-opt__shade { position: absolute; inset: 0; background: rgba(6,10,19,.25); }
+.bd-opt--none .bd-opt__shade { background: transparent; }
+.bd-opt__ok { position: absolute; right: 6px; top: 6px; width: 16px; height: 16px; display: grid; place-items: center; background: var(--accent); color: var(--bg); font: 600 10px var(--mono); }
+.bd-opt__cap { display: flex; justify-content: space-between; gap: 6px; font: 10.5px var(--mono); }
+.bd-opt__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-opt__tag { color: var(--muted); }
+.bd-up { display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.bd-up input { display: none; }
+.bd-up__box { width: 100%; aspect-ratio: 16 / 9; display: grid; place-items: center; border: 1px dashed var(--line-40); color: var(--accent); font: 500 10.5px var(--mono); letter-spacing: .14em; transition: border-color .2s, background .2s; }
+.bd-up:hover .bd-up__box { border-color: var(--accent); background: var(--accent-06); }
+.bd-up__cap { font: 10.5px var(--mono); color: var(--muted); }
+.bd-up.is-busy { cursor: progress; }
+.bd-up.is-busy .bd-up__box { border-style: solid; color: var(--muted); }
+.bd-err { grid-column: 1 / -1; font: 10.5px var(--mono); color: var(--amber); }

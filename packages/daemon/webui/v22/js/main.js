@@ -11,6 +11,7 @@ import * as agent from "./agent.js";
 import * as footer from "./footer.js";
 import * as lens from "./lens.js";
 import * as stage from "./stage.js";
+import { mountBackdrop } from "./backdrop.js";
 import "./views/index.js";
 import "./sections/index.js";
 
@@ -51,6 +52,7 @@ function renderToast(L) {
 }
 
 app.append(h("div.glow"), h("div.frame", null, h("span.frame__marks")));
+mountBackdrop(app);
 mountNav(app, ctx);
 stage.mountStage(app);
 agent.mountAgent(app);

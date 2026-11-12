@@ -16,6 +16,7 @@ import { loadingBlock, loadingInline, setBusy } from "./loading.js";
 import { SETTINGS_FILE, GROUPS, metaOf, store, onStore, emit, load, apply, discard, restart, revokeOauth,
   entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
+import { backdropCtl } from "./settings-backdrop.js";
 import en from "../i18n/settings-en.js";
 import de from "../i18n/settings-de.js";
 
@@ -125,6 +126,7 @@ function valueCtl(e) {
 
 function controlFor(e) {
   if (e.managed || e.readonly) return valueCtl(e);
+  if (e.key === "ui.backdrop") return backdropCtl(e, { shown, setValue });
   if (e.secret) return e.envOverride?.length ? valueCtl(e) : secretCtl(e);
   if (e.kind === "boolean") return toggleCtl(e);
   if (e.choices) return segCtl(e);
@@ -153,6 +155,7 @@ function row(e) {
       note),
     h("div.st-row__ctl", { cls: isLocked && !e.managed && !e.readonly ? "is-locked" : "" }, ctl.nodes));
   if (ctl.wide) el.classList.add("st-row--wide");
+  if (ctl.below) el.append(ctl.below);
   const text = [nameOf(e), descOf(e)];
   return { el, key: e.key, e, text,
     sync: () => { const c = changed(e.key); mod.hidden = !c; el.classList.toggle("is-changed", c); ctl.sync(); } };

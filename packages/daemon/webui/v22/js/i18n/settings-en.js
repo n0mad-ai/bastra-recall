@@ -92,7 +92,7 @@ export default {
 
   // groups (prototype settings-spec-v20.js SECTIONS)
   "st.g.appearance": "Appearance",
-  "st.g.appearance.q": "How the interface frames your vault — the footer that holds Recall and the timeline.",
+  "st.g.appearance.q": "How the interface frames your vault — the footer that holds Recall, the timeline and what sits behind it. Images stay inside the frame and are darkened so content keeps its contrast.",
   "st.g.general": "General",
   "st.g.general.q": "How recall updates itself, which language it writes in, and how it treats this machine.",
   "st.g.models": "Models & embeddings",

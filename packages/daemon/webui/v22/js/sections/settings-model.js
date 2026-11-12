@@ -6,12 +6,13 @@
 // from the prototype schema: only keys the daemon knows are shown. Keys the
 // registry adds later land in the "more" group automatically.
 import { state, setState } from "../state.js";
+import { setBackdrop } from "../backdrop.js";
 
 export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
 
 /** Groups in prototype order (settings-spec-v20.js SECTIONS), mapped onto real keys. */
 export const GROUPS = [
-  { id: "appearance", keys: ["ui.footer", "ui.timeline"] },
+  { id: "appearance", keys: ["ui.footer", "ui.timeline", "ui.backdrop", "ui.backdropDim", "ui.backdropBlur"] },
   { id: "general", keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "assistant.name", "daemon.env"] },
   { id: "models", keys: ["embedding.provider", "embedding.model", "ollama.autostart", "ollama.url", "generation.model", "ollama.keepAlive", "modelRecommendation.id", "modelRecommendation.answer", "modelRecommendation.at"] },
   { id: "recall", keys: ["recall.floor", "reflex.enabled", "reflex.maxPerTurn", "prompt.hookMode", "hint.suppress", "hint.suppressAfter", "evidenceGate.enabled", "scope.filterLanes", "experiment.name", "experiment.arms", "experiment.registration", "experiment.registration_version"] },
@@ -40,6 +41,7 @@ export const META = {
   "experiment.registration_version": { experimental: true, min: 0, step: 1 },
   "hint.suppressAfter": { unit: "surfaces" },
   "logs.retention": { unit: "days" },
+  "ui.backdropDim": { min: 50, max: 95, step: 5, unit: "%" },
 };
 
 /** Runtime metadata takes precedence over presentation hints. */
@@ -169,9 +171,9 @@ export function entry(key) {
 
 /** Keys of a group that the daemon (or this browser) actually knows. */
 export function groupKeys(g) {
-  if (g.id === "appearance") return LOCAL.map((x) => x.key);
+  const known = new Set(store.model?.entries.map((e) => e.key) || []);
+  if (g.id === "appearance") return [...LOCAL.map((x) => x.key), ...g.keys.filter((k) => known.has(k))];
   if (!store.model) return [];
-  const known = new Set(store.model.entries.map((e) => e.key));
   if (g.id !== "more") return g.keys.filter((k) => known.has(k));
   const mapped = new Set(GROUPS.flatMap((x) => x.keys));
   return store.model.entries.map((e) => e.key).filter((k) => !mapped.has(k));
@@ -196,6 +198,15 @@ export function setValue(key, value) {
   if (same) store.changes.delete(key); else store.changes.set(key, value);
   emit("value");
 }
+
+/** The background image previews the shown (pending) values at once; Apply stores them (prototype bdCfg = stCfg). */
+const BACKDROP = { "ui.backdrop": "backdrop", "ui.backdropDim": "dim", "ui.backdropBlur": "blur" };
+onStore(() => {
+  if (!store.model) return;
+  const patch = {};
+  for (const [key, field] of Object.entries(BACKDROP)) { const e = entry(key); if (e) patch[field] = shown(e) ?? e.default; }
+  setBackdrop(patch);
+});
 
 export function revert(key) { store.changes.delete(key); emit(); }
 export function discard() { store.changes.clear(); emit(); }

@@ -28,6 +28,7 @@ import type { createLiveUpdates } from "./live-updates.js";
 import { handleHookOnboarding, handleUiOnboarding } from "./onboarding.js";
 import { handleSessionContext, handleSessionContextPost } from "./session-context.js";
 import { sendJson } from "./http-util.js";
+import { dispatchUiBackdrop } from "./ui-backdrop.js";
 
 export interface UiRouteCtx {
   vault: Vault;
@@ -159,6 +160,9 @@ export function dispatchUiRoutes(
     );
     return true;
   }
+  // Background image of the web UI: local uploads + current settings.
+  if (dispatchUiBackdrop(req, res, method, url)) return true;
+
   // Ring-view center emblem (#207): stored as vault-image.<ext> at the
   // vault root — an open file like everything else the daemon writes.
   // Path-only match: the viewer cache-busts with ?ts=.

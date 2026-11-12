@@ -91,7 +91,7 @@ export default {
   "st.cli.default": "zurück auf Standard — kein CLI-Befehl",
 
   "st.g.appearance": "Darstellung",
-  "st.g.appearance.q": "Wie die Oberfläche deinen Vault rahmt — der Footer mit Recall und die Zeitleiste.",
+  "st.g.appearance.q": "Wie die Oberfläche deinen Vault rahmt — der Footer mit Recall, die Zeitleiste und was dahinter liegt. Bilder bleiben im Rahmen und werden abgedunkelt, damit der Inhalt seinen Kontrast behält.",
   "st.g.general": "Allgemein",
   "st.g.general.q": "Wie Recall sich aktualisiert, in welcher Sprache es schreibt und wie es mit diesem Rechner umgeht.",
   "st.g.models": "Modelle & Embeddings",

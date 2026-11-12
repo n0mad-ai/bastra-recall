@@ -258,7 +258,8 @@ export async function getUiEnabled(path?: string): Promise<boolean> {
 }
 
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, ui: { enabled: on } }));
+  // Keep the other ui.* keys (background image) when the switch flips.
+  await mutateSettings(path, (current) => ({ ...current, ui: { ...current.ui, enabled: on } }));
 }
 
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */

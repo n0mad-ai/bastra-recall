@@ -11,6 +11,10 @@ export const UPDATE_MODES = ["notify", "auto", "off"] as const;
 export const EMBEDDING_PROVIDERS = ["ollama", "openai", "none"] as const;
 export const DOCS_MODES = ["off", "suggest", "auto"] as const;
 export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed", "asked"] as const;
+/** Background image of the web UI: "none", a preset shipped with the UI, or a local upload (ui-backdrop.ts). */
+export const BACKDROP_PRESETS = ["none", "aurora", "deepsea", "ember", "topo", "grid", "dusk"] as const;
+export const BACKDROP_UPLOAD_ID = /^up-[0-9a-f]{16}$/;
+const BACKDROP_ID = new RegExp(`^(?:${BACKDROP_PRESETS.join("|")}|up-[0-9a-f]{16})$`);
 export type UpdateMode = (typeof UPDATE_MODES)[number];
 export type EmbeddingProviderName = (typeof EMBEDDING_PROVIDERS)[number];
 export type DocsMode = (typeof DOCS_MODES)[number];
@@ -63,7 +67,12 @@ export const SETTINGS_REGISTRY = {
     answer: setting(z.enum(MODEL_RECOMMENDATION_ANSWERS), { area: "updates", label: "Empfehlungsantwort", default: null, readonly: true, required: true }),
     at: setting(z.string(), { area: "updates", label: "Antwortzeitpunkt", default: null, readonly: true, required: true }),
   },
-  ui: { enabled: setting(bool, { area: "general", label: "Web-Oberfläche", default: false, required: true }) },
+  ui: {
+    enabled: setting(bool, { area: "general", label: "Web-Oberfläche", default: false, required: true }),
+    backdrop: setting(z.string().trim().regex(BACKDROP_ID), { area: "general", label: "Hintergrundbild", default: "none" }),
+    backdropDim: setting(z.number().int().min(50).max(95).multipleOf(5), { area: "general", label: "Abdunkeln des Hintergrundbilds (%)", default: 80 }),
+    backdropBlur: setting(bool, { area: "general", label: "Hintergrundbild weichzeichnen", default: false }),
+  },
   assistant: { name: setting(z.string().transform((value,ctx) => { try { return normalizeAssistantName(value); } catch { ctx.addIssue({code:"custom",message:"Invalid assistant name"}); return z.NEVER; } }), { area: "general", label: "Name des Assistenten", default: null, required: true }) },
   reflex: {
     enabled: setting(bool, { area: "hooks", label: "Reflex", default: true, env: "BASTRA_REFLEX" }),
