@@ -33,7 +33,10 @@ const editableSchema = z.strictObject({
   owner_domains: fields.owner_domains, recurrence: fields.recurrence,
   action_level: fields.action_level, evidence: fields.evidence, decision: fields.decision,
   notification_policy: fields.notification_policy, budget: fields.budget,
+  waits_on: fields.waits_on, source: fields.source, agent_note: fields.agent_note, assignee: fields.assignee,
 });
+/** Board fields a patch may clear: null (or an empty waits_on) removes them. */
+const CLEARABLE = ["expires_at", "auto_resolve", "source", "agent_note", "assignee"] as const;
 export const taskCreateInputSchema = editableSchema.extend({
   owner_domains: fields.owner_domains.optional(),
   idempotency_key: identity, arm: z.boolean().optional(), origin: fields.origin,
@@ -45,7 +48,8 @@ export const taskCreateInputSchema = editableSchema.extend({
 const getInput = z.strictObject({ id: identity });
 const mutationInput = getInput.extend({ expected_revision: token });
 const deleteInput = mutationInput.extend({ archive_id: z.string().uuid().optional() });
-const editInput = mutationInput.extend({ patch: editableSchema.extend({ expires_at: fields.expires_at.nullable(), auto_resolve: fields.auto_resolve.nullable() }).partial().refine(p => Object.keys(p).length > 0) });
+const editInput = mutationInput.extend({ patch: editableSchema.extend({ expires_at: fields.expires_at.nullable(), auto_resolve: fields.auto_resolve.nullable(),
+  waits_on: z.array(z.string().min(1).max(256)).max(20), source: fields.source.nullable(), agent_note: fields.agent_note.nullable(), assignee: fields.assignee.nullable() }).partial().refine(p => Object.keys(p).length > 0) });
 const lifecycleInput = mutationInput.extend({ until: instant.optional(), occurrence_id: identity.optional() });
 export const TASK_CRUD_OPERATIONS = ["task_recover", "task_archive", "task_archive_restore", "task_execute", "task_intent_reconcile", "task_rollback_prepare", "task_status", "task_controls", "task_prepare", "task_proposal", "task_challenge", "task_approval", "task_revoke_approval", "task_lease", "task_release", "task_reconsider", "task_due", "task_source_register", "task_event", "task_reconcile", "task_create", "task_delete", "task_list", "task_get", "task_review", "task_edit", "task_snooze", "task_acknowledge", "task_resolve", "task_cancel", "task_rearm", "task_pause", "task_resume", "task_end_series", "task_result_get", "task_result_report"] as const;
 export type TaskCrudOperation = typeof TASK_CRUD_OPERATIONS[number];
@@ -232,8 +236,8 @@ async function callTaskCrudInner(ctx: TaskServiceContext, authorization: string 
       const triggerChanged = ["schedule", "timezone", "recurrence", "decision", "evidence", "owner_domains", "scope", "action_level", "expires_at", "auto_resolve"]
         .some(key => key in patch && canonical(patch[key as keyof typeof patch]) !== canonical(task[key as keyof Task]));
       Object.assign(task, patch); delete task.reminder_fingerprint;
-      if (patch.expires_at === null) delete task.expires_at;
-      if (patch.auto_resolve === null) delete task.auto_resolve;
+      for (const key of CLEARABLE) if (patch[key] === null) delete task[key];
+      if (patch.waits_on?.length === 0) delete task.waits_on;
       if (triggerChanged) {
         task.generation++; delete task.snoozed_until; task.last_event_sequence = s.events.at(-1)?.sequence ?? 0; delete task.last_material_hash; delete task.slots_checked; delete task.next_slot;
         if (!["resolved", "cancelled", "expired"].includes(task.state)) task.state = "pending";

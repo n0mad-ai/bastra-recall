@@ -74,6 +74,12 @@ export const taskSchema = z.strictObject({
   }),
   evidence: z.array(taskReferenceSchema).max(100),
   decision: taskDecisionSchema.optional(),
+  // Board fields (Daniel 12.11.2026, UI v22 › Aufgaben). All optional, so rows
+  // written before them stay valid. The "area" of the UI is scope.name.
+  waits_on: z.array(z.string().min(1).max(256)).min(1).max(20).optional(),
+  source: z.strictObject({ kind: z.enum(["mail", "memory"]), ref: z.string().min(1).max(512) }).optional(),
+  agent_note: text.optional(),
+  assignee: z.enum(["user", "recall"]).optional(),
   decision_change: z.strictObject({ id, actor: taskIdentitySchema, binding_hash: hash, expected_memory_revision: id, new_body_hash: comparison.optional(), new_memory_hash: hash.optional(), updated_date: z.string().optional(), new_option: text, new_reason: text, status: z.enum(["pending", "applied"]), resulting_revision: id.optional() }).optional(),
   last_material_hash: comparison.optional(), last_event_sequence: revision.optional(), slots_checked: revision.optional(), next_slot: z.strictObject({ at: instant, index: revision, key: id, local_time: text.optional(), offset_minutes: z.number().optional() }).optional(),
   next_check_at: instant.optional(), snoozed_until: instant.optional(), agent_snooze_deadline: instant.optional(),

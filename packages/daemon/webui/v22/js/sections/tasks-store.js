@@ -4,12 +4,14 @@
 import { t } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { touched, setBusy } from "./loading.js";
+import { openMemoryBrowser } from "../views/memory-browser.js";
 import { api, mutate, itemsOf, canMove, isTerminal, scheduleAt, fmtAt, BROWSER_TZ, createInput, loadWeatherDays } from "./tasks-api.js";
 
 const SAVE_KEY = "recall-v22-tasks";
 const saved = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || "{}"); } catch { return {}; } })();
 
-export const blankForm = () => ({ goal: "", timing: "after", when: "7d", tz: BROWSER_TZ, domain: "personal", level: "notify", every: "", count: "3", expires: "", arm: false });
+export const blankForm = () => ({ goal: "", timing: "after", when: "7d", tz: BROWSER_TZ, domain: "personal", level: "notify", every: "", count: "3", expires: "", arm: false,
+  waits: "", srcKind: "", srcRef: "", note: "", assignee: "" });
 
 export const S = {
   snap: null,          // last task_status answer
@@ -44,6 +46,8 @@ export function save() {
 export function say(msg) { setState({ toast: "" }); setState({ toast: msg }); }
 
 export const byId = (id) => S.items.find((x) => x.id === id);
+/** Live (non-archive) tasks: the targets a waits_on entry can name. */
+export const liveTasks = () => S.items.filter((x) => !x.t.archived).map((x) => x.t);
 export const role = () => S.snap?.role;
 
 let request = 0;
@@ -107,6 +111,15 @@ export function moveTo(x, target) {
   if (target === "snoozed") { select(x.id); S.edit = { id: x.id, kind: "snooze" }; emit(); }
 }
 
+/** Hand the task over: "user" = Übernehmen, "recall" = An Recall geben (task_edit patch { assignee }). */
+export const assign = (x, who) => act(async () => { await mutate(x.t.id, "edit", { patch: { assignee: who } }); return who === "user" ? t("tk.msg.taken") : t("tk.msg.handed"); });
+
+/** Opens a memory source in the memory browser; a mail source (Pro) has no free target. */
+export function openSource(x, from) {
+  const src = x?.t?.source;
+  if (src?.kind === "memory" && typeof src.ref === "string") openMemoryBrowser("all", src.ref, from);
+}
+
 export const review = (x) => act(async () => { await mutate(x.t.id, "review"); return t("tk.msg.armed"); });
 
 /** Calendar drop: a real schedule change through task_edit (same API the old UI uses for edits). */
@@ -125,10 +138,10 @@ export function moveDue(id, at) {
 
 export function create() {
   let built;
-  try { built = createInput(S.F, role()); } catch (e) { say(e.message); return; }
+  try { built = createInput(S.F, role(), liveTasks()); } catch (e) { say(e.message); return; }
   return act(async () => {
     const res = await api("create", built.input);
-    S.compose = false; S.F = { ...S.F, goal: "", expires: "" };
+    S.compose = false; S.F = { ...S.F, goal: "", expires: "", waits: "", srcKind: "", srcRef: "", note: "" };
     if (res && typeof res.id === "string") S.sel = res.id;
     return built.note || t("tk.msg.created");
   });

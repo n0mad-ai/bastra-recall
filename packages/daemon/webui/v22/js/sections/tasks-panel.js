@@ -6,9 +6,10 @@
 // plus delete (task_delete), which the old board did not offer.
 import { h, s } from "../dom.js";
 import { t } from "../i18n.js";
-import { S, emit, say, act, refresh, lifecycle, moveTo, review, controls, showProposal, loadArchive, byId, save } from "./tasks-store.js";
+import { S, emit, say, act, refresh, lifecycle, moveTo, review, controls, showProposal, loadArchive, byId, save, assign, openSource, liveTasks } from "./tasks-store.js";
+import { vault } from "../views/vault-data.js";
 import { calendarStyle, calendarStyles, PRO_STYLES } from "./tasks-styles.js";
-import { api, mutate, fmtAt, localParts, calendarSchedule, failureReason, originLabel, canMove, isTerminal, dueAt } from "./tasks-api.js";
+import { api, mutate, fmtAt, localParts, calendarSchedule, failureReason, originLabel, canMove, isTerminal, dueAt, boardForm, boardPatch, holderOf, waitsView } from "./tasks-api.js";
 import { toggle } from "./tasks-overlays.js";
 import { loadingInline } from "./loading.js";
 
@@ -59,8 +60,25 @@ function editForm(x) {
   const task = x.t, kind = S.edit?.kind, cancel = () => { S.edit = null; emit(); };
   const row = (...kids) => h("div.tk-edit", null, ...kids, btn(t("tk.cancel"), cancel));
   if (kind === "goal") {
-    const inp = h("input.tk-in", { value: task.goal });
-    return row(h("label.tk-f.is-wide", null, t("tk.edit.goal"), inp), btn(t("tk.save"), () => { const goal = inp.value.trim(); if (!goal) return say(t("tk.err.goal")); S.edit = null; act(async () => { await mutate(task.id, "edit", { patch: { goal } }); return t("tk.msg.updated"); }); }, { pri: true }));
+    // Text, area (scope.name) and the board fields in one form; only changed values are sent.
+    const v = S.edit.v ??= { goal: task.goal, area: task.scope?.name ?? "", ...boardForm(task, liveTasks()) };
+    const inp = (key, ph) => h("input.tk-in", { value: v[key], placeholder: ph || "", on: { input: (e) => { v[key] = e.target.value; } } });
+    const seg = (opts, key) => h("div.tk-seg", null, opts.map(([o, lab]) => h("button", { cls: v[key] === o ? "is-on" : "", text: lab, on: { click: () => { v[key] = o; emit(); } } })));
+    const lab = (txt, el) => h("label.tk-f.is-wide", null, txt, el);
+    return row(lab(t("tk.edit.goal"), inp("goal")), lab(t("tk.f.domain"), inp("area")), lab(t("tk.f.waits"), h("input.tk-in", { value: v.waits, placeholder: t("tk.f.waitsPh"), list: "tk-goals-e", on: { input: (e) => { v.waits = e.target.value; } } })),
+      h("datalist", { id: "tk-goals-e" }, liveTasks().filter((o) => o.id !== task.id && !isTerminal(o)).map((o) => h("option", { value: o.goal }))),
+      h("div.tk-f.is-wide", null, t("tk.f.assignee"), seg([["", t("tk.who.auto")], ["user", t("tk.who.user")], ["recall", t("tk.who.recall")]], "assignee")),
+      h("div.tk-f.is-wide", null, t("tk.f.source"), seg([["", t("tk.src.none")], ["mail", `✉ ${t("tk.src.mail")}`], ["memory", `◆ ${t("tk.src.memory")}`]], "srcKind")),
+      v.srcKind ? lab(t("tk.f.srcRef"), inp("srcRef", v.srcKind === "mail" ? t("tk.f.srcRefMail") : t("tk.f.srcRefMem"))) : null,
+      lab(t("tk.f.note"), h("textarea.tk-in.tk-ta", { text: v.note, placeholder: t("tk.f.notePh"), on: { input: (e) => { v.note = e.target.value; } } })),
+      btn(t("tk.save"), () => {
+        const goal = v.goal.trim(), area = v.area.trim();
+        if (!goal) return say(t("tk.err.goal"));
+        let patch; try { patch = boardPatch(task, v, liveTasks()); } catch (e) { return say(e.message); }
+        if (goal !== task.goal) patch.goal = goal;
+        if (area && area !== task.scope?.name) patch.scope = { kind: task.scope?.kind || "personal", name: area };
+        if (!Object.keys(patch).length) { S.edit = null; emit(); return; }
+        S.edit = null; act(async () => { await mutate(task.id, "edit", { patch }); return t("tk.msg.updated"); }); }, { pri: true }));
   }
   if (kind === "expires") {
     const inp = h("input.tk-in", { value: task.expires_at === undefined ? "" : localParts(task.expires_at, task.timezone).slice(0, 16), placeholder: t("tk.f.whenLocalPh") });
@@ -89,6 +107,13 @@ function editForm(x) {
   return null;
 }
 
+/** Source fact: ✉ mail (reference only — mail is Pro) or ◆ memory, a link into the memory browser when the vault knows it. */
+function sourceView(x) {
+  const src = x.t.source, mem = src.kind === "memory", node = mem ? vault()?.byId.get(src.ref) : null;
+  const text = `${mem ? "◆" : "✉"} ${mem ? t("tk.src.memory") : t("tk.src.mail")} · ${node?.title || src.ref}`;
+  return node ? h("button.tk-dt__link", { text, title: src.ref, on: { click: (e) => openSource(x, e.currentTarget.getBoundingClientRect()) } }) : text;
+}
+
 function detail(x) {
   const task = x.t, term = isTerminal(task), fail = failureReason(task, S.snap || {}), awaiting = !term && !task.armed && !task.archived;
   const facts = [[t("tk.fact.status"), task.paused ? t("tk.paused") : t(`tk.state.${task.state}`)]];
@@ -96,6 +121,12 @@ function detail(x) {
   facts.push([t("tk.fact.due"), x.at ? `${fmtAt(dueAt(task), task.timezone)} (${task.timezone})` : t("tk.onEvent")], [t("tk.fact.origin"), originLabel(task)], [t("tk.fact.request"), task.original_request],
     [t("tk.fact.level"), t(`tk.lvl.${task.action_level}`)], [t("tk.fact.next"), fmtAt(task.next_check_at, task.timezone)], [t("tk.fact.last"), fmtAt((task.deliveries || []).at(-1)?.last_attempt, task.timezone)]);
   if (task.scope?.name) facts.push([t("tk.fact.area"), task.scope.name]);
+  const hold = holderOf(task, x.k);
+  facts.push([t("tk.fact.holder"), `${hold.who === "user" ? t("tk.who.user") : t("tk.who.recall")}${hold.set ? "" : ` · ${t("tk.who.derived")}`}`, hold.who === "user" ? "is-acc" : ""]);
+  const waits = waitsView(task, liveTasks());
+  if (waits.length) facts.push([t("tk.fact.waits"), `⧗ ${waits.map((w) => w.text + (w.done ? " ✓" : "")).join(" · ")}`, waits.some((w) => !w.done) ? "is-amb" : ""]);
+  if (task.source) facts.push([t("tk.fact.source"), sourceView(x)]);
+  if (task.agent_note) facts.push([t("tk.fact.note"), task.agent_note]);
   if (task.recurrence) facts.push([t("tk.fact.recur"), recurText(task.recurrence)]);
   const auth = authorizationOf(task);
   if (auth) facts.push([t("tk.fact.chat"), `${authLabel(auth)} · ${auth.program ?? ""} · ${t("tk.session")} ${auth.session_id ?? ""} · ${fmtAt(auth.at)} · ${auth.write_origin ?? ""}: ${auth.user_request ?? ""}`]);
@@ -112,6 +143,8 @@ function detail(x) {
       acts.push(btn(t("tk.act.snooze"), () => moveTo(x, "snoozed")));
       if (canMove(task, "done")) acts.push(btn(t("tk.act.done"), () => moveTo(x, "done")));
       acts.push(btn(t("tk.act.cancel"), () => moveTo(x, "failed")));
+      const holder = holderOf(task, x.k).who;
+      acts.push(holder === "user" ? btn(t("tk.act.toRecall"), () => assign(x, "recall")) : btn(t("tk.act.take"), () => assign(x, "user")));
       acts.push(btn(t("tk.act.edit"), () => { S.edit = { id: x.id, kind: "goal" }; emit(); }));
       acts.push(btn(t("tk.act.validity"), () => { S.edit = { id: x.id, kind: "expires" }; emit(); }));
       if (task.action_level !== "notify") acts.push(btn(t("tk.act.prepare"), () => { S.edit = { id: x.id, kind: "prepare" }; emit(); }, { off: !task.armed }));
@@ -136,7 +169,7 @@ function detail(x) {
     h("span.tk-dt__k", { cls: stCls, text: `${t("tk.dt.kicker")} · ${(task.paused ? t("tk.paused") : t(`tk.state.${task.state}`)).toUpperCase()}` }),
     h("h2.tk-dt__t", { text: task.goal }),
     awaiting ? h("div.tk-dt__await", null, h("span", { text: t("tk.awaitingLong") }), btn(t("tk.act.arm"), () => review(x), { pri: true })) : null,
-    h("div.tk-dt__facts", null, facts.map(([k, v, c]) => [h("span.tk-dt__fk", { text: k }), h("span.tk-dt__fv", { cls: c || "", text: v })])),
+    h("div.tk-dt__facts", null, facts.map(([k, v, c]) => [h("span.tk-dt__fk", { text: k }), typeof v === "string" ? h("span.tk-dt__fv", { cls: c || "", text: v }) : h("span.tk-dt__fv", { cls: c || "" }, v)])),
     task.archived ? h("p.tk-dt__note", { text: t("tk.archivedNote") }) : null,
     !task.archived && task.action_level !== "notify" && !task.armed && !term ? h("p.tk-dt__note", { text: t("tk.prepNeedsArm") }) : null,
     h("div.tk-dt__acts", null, acts),

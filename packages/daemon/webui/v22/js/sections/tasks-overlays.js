@@ -5,8 +5,8 @@
 import { h } from "../dom.js";
 import { loadingInline } from "./loading.js";
 import { t } from "../i18n.js";
-import { S, emit, say, act, select, create, executeProposal, byId } from "./tasks-store.js";
-import { api, fmtAt, calendarSchedule } from "./tasks-api.js";
+import { S, emit, say, act, select, create, executeProposal, byId, liveTasks } from "./tasks-store.js";
+import { api, fmtAt, calendarSchedule, isTerminal } from "./tasks-api.js";
 
 const close = () => { S.compose = false; S.showDue = false; S.proposal = null; emit(); };
 
@@ -14,9 +14,9 @@ const close = () => { S.compose = false; S.showDue = false; S.proposal = null; e
 function seg(opts, key) {
   return h("div.tk-seg", null, opts.map(([v, lab]) => h("button", { cls: S.F[key] === v ? "is-on" : "", text: lab, on: { click: () => { S.F = { ...S.F, [key]: v }; emit(); } } })));
 }
-function field(lab, key, ph, { wide = false } = {}) {
+function field(lab, key, ph, { wide = false, list = null } = {}) {
   return h("label.tk-f", { cls: wide ? "is-wide" : "" }, lab,
-    h("input.tk-in", { value: S.F[key], placeholder: ph, on: { input: (e) => { S.F[key] = e.target.value; } } }));
+    h("input.tk-in", { value: S.F[key], placeholder: ph, list, on: { input: (e) => { S.F[key] = e.target.value; } } }));
 }
 export function toggle(on, onClick, aria) {
   return h("button.tk-sw", { cls: on ? "is-on" : "", "aria-label": aria || t("tk.toggle"), "aria-pressed": on ? "true" : "false", on: { click: onClick } }, h("span.tk-sw__k"));
@@ -36,7 +36,13 @@ function compose() {
       h("div.tk-f.is-wide", null, t("tk.f.level"), seg([["notify", t("tk.lvl.notify")], ["prepare", t("tk.lvl.prepare")], ["execute", t("tk.lvl.execute")]], "level")),
       field(t("tk.f.every"), "every", t("tk.f.everyPh")),
       field(t("tk.f.count"), "count", "3"),
-      field(t("tk.f.expires"), "expires", t("tk.f.expiresPh"))),
+      field(t("tk.f.expires"), "expires", t("tk.f.expiresPh")),
+      field(t("tk.f.waits"), "waits", t("tk.f.waitsPh"), { wide: true, list: "tk-goals" }),
+      h("datalist", { id: "tk-goals" }, liveTasks().filter((x) => !isTerminal(x)).map((x) => h("option", { value: x.goal }))),
+      h("div.tk-f", null, t("tk.f.assignee"), seg([["", t("tk.who.auto")], ["user", t("tk.who.user")], ["recall", t("tk.who.recall")]], "assignee")),
+      h("div.tk-f", null, t("tk.f.source"), seg([["", t("tk.src.none")], ["mail", `✉ ${t("tk.src.mail")}`], ["memory", `◆ ${t("tk.src.memory")}`]], "srcKind")),
+      F.srcKind ? field(t("tk.f.srcRef"), "srcRef", F.srcKind === "mail" ? t("tk.f.srcRefMail") : t("tk.f.srcRefMem"), { wide: true }) : null,
+      field(t("tk.f.note"), "note", t("tk.f.notePh"), { wide: true })),
     h("div.tk-pop__foot", null,
       toggle(F.arm, () => { S.F = { ...S.F, arm: !S.F.arm }; emit(); }, t("tk.f.arm")),
       h("span.tk-pop__sw", { text: t("tk.f.arm") }), h("span.tk-pop__note", { text: F.arm ? t("tk.f.armOn") : t("tk.f.armOff") }),

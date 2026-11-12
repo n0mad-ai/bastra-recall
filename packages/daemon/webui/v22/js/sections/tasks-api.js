@@ -74,7 +74,7 @@ export function durationMs(v) {
 }
 
 /** Create input exactly as the old UI builds it (makeInput + recurrence + expiry). */
-export function createInput(F, role) {
+export function createInput(F, role, tasks = []) {
   const goal = F.goal.trim();
   if (!goal) throw new Error(t("tk.err.goal"));
   const tz = F.tz.trim() || BROWSER_TZ;
@@ -101,7 +101,62 @@ export function createInput(F, role) {
       ...(String(F.count).trim() ? { count: +F.count } : {}), catch_up: "latest" };
   }
   if (role === "agent") input.origin = { kind: "user-request", client: "recall-ui", session: "local-browser", context: goal };
+  Object.assign(input, boardFields(F, tasks));
   return { input, note };
+}
+
+// ── board fields (Daniel 12.11.2026): waits_on, source, agent_note, assignee.
+// The area is the existing scope.name. All optional on the daemon side.
+// waits_on entries are task ids (prototype TK_DEPS) or free text ("Antwort von Lena").
+export const splitWaits = (v) => String(v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
+/** Typed entries → stored entries: the exact goal of a known task becomes its id. */
+export function resolveWaits(entries, tasks = []) {
+  return entries.map((e) => (tasks.find((x) => x.id === e) ? e : tasks.find((x) => x.goal === e)?.id ?? e));
+}
+/** Stored entries → [{ text, done, task }]: task ids show the goal, a finished task counts as done. */
+export function waitsView(task, tasks = []) {
+  return (Array.isArray(task.waits_on) ? task.waits_on : []).filter((e) => typeof e === "string").map((e) => {
+    const dep = tasks.find((x) => x.id === e);
+    return { text: dep ? dep.goal : e, done: !!dep && isTerminal(dep), task: dep || null };
+  });
+}
+
+/** Form values → board fields of a create input; empty values are left out. */
+export function boardFields(F, tasks = []) {
+  const out = {}, waits = resolveWaits(splitWaits(F.waits), tasks), ref = String(F.srcRef ?? "").trim(), note = String(F.note ?? "").trim();
+  if (waits.length) out.waits_on = waits;
+  if (F.srcKind) { if (!ref) throw new Error(t("tk.err.srcRef")); out.source = { kind: F.srcKind, ref }; }
+  if (note) out.agent_note = note;
+  if (F.assignee === "user" || F.assignee === "recall") out.assignee = F.assignee;
+  return out;
+}
+
+/** Form values → task_edit patch with only what changed; cleared values become null / []. */
+export function boardPatch(task, F, tasks = []) {
+  const patch = {}, waits = resolveWaits(splitWaits(F.waits), tasks), ref = String(F.srcRef ?? "").trim(), note = String(F.note ?? "").trim();
+  if (JSON.stringify(waits) !== JSON.stringify(task.waits_on ?? [])) patch.waits_on = waits;
+  if (F.srcKind && !ref) throw new Error(t("tk.err.srcRef"));
+  const src = F.srcKind ? { kind: F.srcKind, ref } : null;
+  if (JSON.stringify(src) !== JSON.stringify(task.source ?? null)) patch.source = src;
+  if (note !== (task.agent_note ?? "")) patch.agent_note = note || null;
+  const who = F.assignee === "user" || F.assignee === "recall" ? F.assignee : null;
+  if (who !== (task.assignee ?? null)) patch.assignee = who;
+  return patch;
+}
+
+/** Task → form values of the board fields (edit form). */
+export const boardForm = (task, tasks = []) => ({ waits: waitsView(task, tasks).map((w) => w.text).join(", "), srcKind: task.source?.kind ?? "", srcRef: task.source?.ref ?? "", note: task.agent_note ?? "", assignee: task.assignee ?? "" });
+
+/**
+ * Who holds the task now: the set assignee, otherwise derived from state,
+ * arming and level (due, awaiting release and snoozed are with the user).
+ */
+export function holderOf(task, k) {
+  if (task.assignee === "user" || task.assignee === "recall") return { who: task.assignee, set: true };
+  const who = k === "done" || k === "failed" ? (task.origin?.kind === "agent-observed" && task.action_level !== "notify" ? "recall" : "user")
+    : k === "due" || k === "await" || k === "snoozed" ? "user" : "recall";
+  return { who, set: false };
 }
 
 // ── task model ────────────────────────────────────────────────────────────

@@ -14,7 +14,8 @@
 //   env.bw / env.bh   calendar body size in px      env.rebuild()  redraw the calendar
 //   env.ctx           area ctx (ctx.ask(…))         env.S          tasks state (items, sel, view, off, …)
 //   env.dom           { h, s, setVars }             env.t          i18n lookup
-//   env.actions       { emit, select, review, lifecycle, moveDue, canMove }
+//   env.actions       { emit, select, review, lifecycle, moveDue, canMove,
+//                       assign(x, "user"|"recall"), openSource(x, rect), holder(task, k) → { who, set } }
 //   env.cal           shared calendar helpers (js/sections/tasks-cal.js)
 //   env.ledger        { weekDays, monthStart }
 // Returned toolbar data: levels [{ label, on, onClick }], nav (‹ TODAY ›) with

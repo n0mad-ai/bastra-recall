@@ -14,8 +14,8 @@ import { h, s, setVars, clear } from "../dom.js";
 import { state } from "../state.js";
 import { hud, hudPills, hudButton } from "./hud.js";
 import { loadingBlock } from "./loading.js";
-import { S, onTasks, emit, save, refresh, loadWeather, openDue, select, review, lifecycle, moveDue } from "./tasks-store.js";
-import { canMove } from "./tasks-api.js";
+import { S, onTasks, emit, save, refresh, loadWeather, openDue, select, review, lifecycle, moveDue, assign, openSource } from "./tasks-store.js";
+import { canMove, holderOf } from "./tasks-api.js";
 import * as cal from "./tasks-cal.js";
 import { calendarStyle, onCalendarStyles } from "./tasks-styles.js";
 import { KEYS, label, ICON as KICON, onSelect, endDrag } from "./tasks-cal.js";
@@ -76,7 +76,7 @@ function calendar() {
   // Unregistered (Pro) style saved earlier → the free default.
   const style = calendarStyle(S.style) || calendarStyle("ledger");
   const v = style.render({ ...size, rebuild: () => drawCal(), ctx: ctxRef, S, t, dom: { h, s, setVars },
-    actions: { emit, select, review, lifecycle, moveDue, canMove }, cal, ledger: { weekDays, monthStart } });
+    actions: { emit, select, review, lifecycle, moveDue, canMove, assign, openSource, holder: holderOf }, cal, ledger: { weekDays, monthStart } });
   const agOn = v.canAgenda && S.agenda;
   bodyEl = h("div.tk-cal__body", null, v.body);
   ro?.disconnect();

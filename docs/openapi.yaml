@@ -3755,6 +3755,50 @@
                     ],
                     "additionalProperties": false
                   },
+                  "waits_on": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "mail",
+                          "memory"
+                        ]
+                      },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "agent_note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "assignee": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "recall"
+                    ]
+                  },
                   "idempotency_key": {
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
@@ -4508,6 +4552,52 @@
                           "max_source_bytes"
                         ],
                         "additionalProperties": false
+                      },
+                      "waits_on": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        }
+                      },
+                      "source": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "mail",
+                              "memory"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "agent_note": {
+                        "nullable": true,
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "assignee": {
+                        "nullable": true,
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "recall"
+                        ]
                       }
                     },
                     "additionalProperties": false
@@ -7567,6 +7657,50 @@
                     ],
                     "additionalProperties": false
                   },
+                  "waits_on": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "mail",
+                          "memory"
+                        ]
+                      },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "agent_note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "assignee": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "recall"
+                    ]
+                  },
                   "idempotency_key": {
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9._:-]{0,95}$"
@@ -8289,6 +8423,52 @@
                           "max_source_bytes"
                         ],
                         "additionalProperties": false
+                      },
+                      "waits_on": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        }
+                      },
+                      "source": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "mail",
+                              "memory"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "agent_note": {
+                        "nullable": true,
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "assignee": {
+                        "nullable": true,
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "recall"
+                        ]
                       }
                     },
                     "additionalProperties": false

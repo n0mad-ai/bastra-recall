@@ -56,7 +56,11 @@ export default {
   "tk.f.every": "WIEDERHOLUNG (OPTIONAL)", "tk.f.everyPh": "1d oder 1w", "tk.f.count": "ANZAHL (BEI WIEDERHOLUNG)",
   "tk.f.expires": "GÜLTIG BIS (OPTIONAL)", "tk.f.expiresPh": "2026-10-13T18:00",
   "tk.f.arm": "Direkt aktivieren", "tk.f.armOn": "sofort aktiv", "tk.f.armOff": "wartet danach auf deine Freigabe",
-  "tk.f.create": "ANLEGEN",
+  "tk.f.waits": "WARTET AUF (OPTIONAL)", "tk.f.waitsPh": "Antwort von Lena, Preisliste",
+  "tk.f.assignee": "ZUSTÄNDIG", "tk.f.source": "HERKUNFT", "tk.f.srcRef": "VERWEIS", "tk.f.srcRefMail": "Message-ID der Mail", "tk.f.srcRefMem": "Memory-ID",
+  "tk.f.note": "AGENT-NOTIZ (OPTIONAL)", "tk.f.notePh": "Was Recall dazu weiß oder vorhat",
+  "tk.who.auto": "Automatisch", "tk.who.user": "Du", "tk.who.recall": "Recall", "tk.who.derived": "abgeleitet",
+  "tk.src.none": "Keine", "tk.src.mail": "Mail", "tk.src.memory": "Memory",
 
   // due cards
   "tk.due.title": "FÄLLIGE KARTEN", "tk.due.ready": "{n} bereit",
@@ -88,11 +92,13 @@ export default {
   "tk.awaitingLong": "Wartet auf deine Freigabe.", "tk.awaiting": "Wartet auf deine Freigabe",
   "tk.fact.status": "Status", "tk.fact.valid": "Gültig bis", "tk.fact.due": "Fällig", "tk.fact.origin": "Herkunft", "tk.fact.request": "Wortlaut", "tk.fact.level": "Stufe",
   "tk.fact.next": "Nächste Prüfung", "tk.fact.last": "Letzte Zustellung", "tk.fact.area": "Bereich", "tk.fact.recur": "Wiederholung", "tk.fact.chat": "Freigabe im Chat",
+  "tk.fact.holder": "Zuständig", "tk.fact.waits": "Wartet auf", "tk.fact.source": "Quelle", "tk.fact.note": "Agent-Notiz",
   "tk.fact.seen": "Gesehen", "tk.fact.release": "Freigabe", "tk.fact.reason": "Grund",
   "tk.seenThen": "Damals als gesehen markiert", "tk.seenOpen": "Gesehen, noch nicht erledigt",
   "tk.rec.daily": "jeden Tag", "tk.rec.weekly": "jede Woche", "tk.rec.days": "alle {n} Tage", "tk.rec.weeks": "alle {n} Wochen", "tk.rec.count": "{every} · {n}×",
   "tk.act.arm": "FREIGEBEN", "tk.act.rearm": "Wieder zur Prüfung", "tk.act.pause": "Pausieren", "tk.act.resume": "Fortsetzen", "tk.act.endSeries": "Serie beenden",
   "tk.act.snooze": "Zurückstellen", "tk.act.done": "Erledigt", "tk.act.cancel": "Abbrechen", "tk.act.edit": "Bearbeiten", "tk.act.validity": "Gültigkeit ändern",
+  "tk.act.take": "Übernehmen", "tk.act.toRecall": "An Recall geben",
   "tk.act.prepare": "Vorbereiten", "tk.act.delete": "Löschen", "tk.act.reconcile": "Abgleichen (nur lesen)", "tk.act.rollback": "Rückabwicklung vorbereiten",
   "tk.edit.goal": "NEUER TEXT", "tk.edit.expires": "GÜLTIG BIS ({tz}), LEER ZUM ENTFERNEN", "tk.edit.snooze": "NEUE ZIELZEIT ({tz})",
   "tk.prep.target": "Registriertes Ziel", "tk.prep.payload": "Exakter neuer Inhalt",
@@ -137,6 +143,7 @@ export default {
   "tk.ctl.archive": "ARCHIV", "tk.ctl.archiveBtn": "Archiv {at} · {n} Aufgaben", "tk.ctl.archiveHide": "Archiv ausblenden",
 
   // notices (old UI wording)
+  "tk.msg.taken": "Du hast die Aufgabe übernommen.", "tk.msg.handed": "Die Aufgabe liegt jetzt bei Recall.",
   "tk.msg.created": "Aufgabe gespeichert.", "tk.msg.updated": "Aufgabe aktualisiert.",
   "tk.msg.rearmed": "Erneut vorgelegt. Die Aufgabe wartet auf deine Freigabe.", "tk.msg.armed": "Freigegeben. Die Aufgabe ist aktiv.",
   "tk.msg.cancelled": "Aufgabe abgebrochen.", "tk.msg.resolved": "Aufgabe erledigt.", "tk.msg.deleted": "Aufgabe gelöscht.",
@@ -166,6 +173,7 @@ export default {
   "tk.err.adapter_disabled": "Ausführen ist noch ausgeschaltet.",
   "tk.err.execution_stopped": "Ausführen wurde gestoppt.",
   "tk.err.protected_boundary_required": "Ausführen ist noch nicht eingerichtet. Erinnern und Vorbereiten bleiben verfügbar.",
+  "tk.err.srcRef": "Bitte gib den Verweis zur Herkunft an (Message-ID oder Memory-ID).",
   "tk.err.goal": "Bitte prüfe deine Eingabe. Was soll passieren?",
   "tk.err.duration": "Dauer: 30m, 2h, 7d oder 2w.",
   "tk.err.localTime": "Ortszeit als YYYY-MM-DDTHH:mm eingeben.",
