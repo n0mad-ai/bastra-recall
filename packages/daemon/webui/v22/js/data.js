@@ -11,6 +11,7 @@ export const data = {
   dueTasks: [],     // tasks in state "due"
   newSince: 0,      // live updates since page load
   weather: null,    // { temp, city }
+  vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
 };
 
 function emit() { for (const fn of listeners) fn(data); }
@@ -30,6 +31,10 @@ const WEEK = 7 * 864e5;
 export async function loadGraph() {
   try {
     const g = await getJson("/api/v1/graph");
+    if (typeof g.vault_name === "string" && g.vault_name.trim()) {
+      data.vaultName = g.vault_name.trim();
+      document.title = `${data.vaultName} — Recall`;
+    }
     if (Array.isArray(g.clusters)) data.clusters = g.clusters.filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count));
     data.edges = Array.isArray(g.edges) ? g.edges.length : 0;
     const now = new Date(), end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + 864e5;

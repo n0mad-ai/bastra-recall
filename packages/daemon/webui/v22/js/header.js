@@ -54,9 +54,12 @@ function weatherIcon() {
     ...["M12 2v2", "m4.93 4.93 1.41 1.41", "M20 12h2", "m19.07 4.93-1.41 1.41", "M15.947 12.65a4 4 0 0 0-5.925-4.128", "M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"].map((d) => s("path", { d })));
 }
 
-// ── left tab: BASTRAVAULT / view [/ filter] ───────────────────────────────
+// ── left tab: vault name / view [/ filter] ───────────────────────────────
+let crumbBrand = null;
+const brandText = () => data.vaultName || t("brand");
 function renderCrumb() {
-  const crumbs = [h("span.htab-l__brand", { text: t("brand") }), h("span.htab-l__sep", { text: "/" }), h("span.htab-l__view", { text: ctxRef.viewLabel(state.view) })];
+  crumbBrand = brandText();
+  const crumbs = [h("span.htab-l__brand", { text: crumbBrand }), h("span.htab-l__sep", { text: "/" }), h("span.htab-l__view", { text: ctxRef.viewLabel(state.view) })];
   if (state.focus && state.vw >= 1400) {
     crumbs.push(h("span.htab-l__sep", { text: "/" }), h("button.htab-l__crumb", { title: t("crumb.clear"), vars: { color: ctxRef.areaColor(state.focus) }, on: { click: () => setState({ focus: null }) } }, state.focus));
   }
@@ -230,8 +233,11 @@ function renderAccent() {
 }
 
 export function updateHeader(L, changed) {
-  if (changed.has("view") || changed.has("focus") || changed.has("vw")) renderCrumb();
+  // Data only re-renders the crumb when the vault name changed, so the
+  // regular polls don't replay the crumb animation.
+  const brandChanged = changed.has("data") && brandText() !== crumbBrand;
+  if (changed.has("view") || changed.has("focus") || changed.has("vw") || brandChanged) renderCrumb();
   renderStatus(L);
   if (changed.has("data") || changed.has("init")) renderTicker();
-  if (changed.has("vw") || changed.has("init") || changed.has("view")) requestAnimationFrame(measure);
+  if (changed.has("vw") || changed.has("init") || changed.has("view") || brandChanged) requestAnimationFrame(measure);
 }

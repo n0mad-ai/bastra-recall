@@ -21,6 +21,14 @@ export const state = {
   brush: null,
   live: true,
   toast: "",
+  // Footer variant (console | mirror | anchored | drawer | island) and
+  // timeline style (bars | pulse) — prototype settings ui.footer / ui.timeline.
+  footer: saved.footer || "console",
+  timeline: saved.timeline || "bars",
+  ftDw: false,
+  isMin: false,
+  isDrag: false,
+  isPos: (() => { try { return JSON.parse(localStorage.getItem("recall-v22-island") || "null"); } catch { return null; } })(),
 };
 
 export function setState(patch) {
@@ -28,8 +36,11 @@ export function setState(patch) {
   let changed = false;
   for (const [k, v] of Object.entries(next)) if (state[k] !== v) { state[k] = v; changed = true; }
   if (!changed) return;
-  try { localStorage.setItem("recall-v22-ui", JSON.stringify({ view: state.view, jOpen: state.jOpen, lensOpen: state.lensOpen })); } catch { /* storage blocked */ }
+  try { localStorage.setItem("recall-v22-ui", JSON.stringify({ view: state.view, jOpen: state.jOpen, lensOpen: state.lensOpen, footer: state.footer, timeline: state.timeline })); } catch { /* storage blocked */ }
   for (const fn of listeners) fn(state);
 }
 
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+// Test hook (no settings page yet): window.__recallState.setState({ footer: "island" }).
+window.__recallState = { state, setState };

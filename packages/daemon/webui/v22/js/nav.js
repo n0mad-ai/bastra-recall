@@ -74,6 +74,9 @@ function measureInd() {
   setVars(indEl, { "--ind-top": `${Math.round(br.top - sr.top + scrollEl.scrollTop)}px`, "--ind-h": `${Math.round(br.height)}px`, "--ind-op": 1 });
 }
 
+/** Slot below the area buttons (footer variant "anchored" docks Recall here). */
+export function mountNavAgent(el) { navEl.insertBefore(el, navEl.querySelector(".nav__foot")); }
+
 // ── vault views pop-over ──────────────────────────────────────────────────
 let vpGeo = { top: 140, dock: 24 }, vpHold = 0;
 

@@ -39,7 +39,6 @@ input[type=range] { accent-color: var(--accent); }
 [data-sb]::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb-on); }
 
 /* Shared small parts */
-.mono { font-family: var(--mono); }
 .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .dot--pulse { animation: live-pulse 2s ease-in-out infinite; }
 .vsep { flex: none; width: 1px; height: 18px; background: var(--line-20); }

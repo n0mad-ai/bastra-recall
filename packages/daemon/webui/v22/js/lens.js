@@ -14,6 +14,17 @@ const TABS = {
 };
 const VAULTISH = (v) => !["telemetry", "dashboard", "settings", "tasks"].includes(v);
 
+// Footer icons, same drawings as the old UI's #feedback-row.
+const strokes = (...lines) => s("g", { stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round" },
+  lines.map(([x1, y1, x2, y2]) => s("line", { x1, y1, x2, y2 })));
+const outline = (d) => s("path", { d, fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linejoin": "round" });
+const bugIcon = () => s("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
+  outline("M9 10a3 3 0 0 1 6 0v4a3 3 0 0 1-6 0Z"),
+  strokes([12, 7, 12, 5], [9, 8, 7, 6], [15, 8, 17, 6], [8.6, 12, 5.5, 12], [15.4, 12, 18.5, 12], [9, 16, 7, 18], [15, 16, 17, 18]));
+const ideaIcon = () => s("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
+  outline("M12 3a6 6 0 0 0-3.9 10.55c.7.62.9 1.45.9 2.45h6c0-1 .2-1.83.9-2.45A6 6 0 0 0 12 3Z"),
+  strokes([10, 19, 14, 19], [10.6, 21.5, 13.4, 21.5]));
+
 let peek, lens, tabsEl, body, indLayer, lpT = 0, ctxRef;
 
 export function mountLens(app, ctx) {
@@ -23,9 +34,9 @@ export function mountLens(app, ctx) {
   body = h("div.lens__body", { on: { scroll: () => requestAnimationFrame(measureInd) } });
   lens = h("aside.lens", { on: { mouseenter: peekIn, mouseleave: peekOut } }, tabsEl, body,
     h("div.lens__foot", null,
-      h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=bug_report.yml", target: "_blank", rel: "noopener", text: t("lens.bug") }),
+      h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=bug_report.yml", target: "_blank", rel: "noopener" }, bugIcon(), t("lens.bug")),
       h("span.lens__foot-sep", { text: "·" }),
-      h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=feature_request.yml", target: "_blank", rel: "noopener", text: t("lens.idea") })));
+      h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=feature_request.yml", target: "_blank", rel: "noopener" }, ideaIcon(), t("lens.idea"))));
   indLayer = h("div");
   app.append(peek, lens, indLayer);
 }

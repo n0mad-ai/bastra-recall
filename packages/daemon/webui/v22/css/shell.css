@@ -35,7 +35,9 @@
 .nav__btn.is-on:hover { color: var(--ink); background: var(--line-08); }
 .nav__icon { position: relative; display: block; width: 19px; height: 19px; }
 .nav__icon svg { width: 19px; height: 19px; }
-.nav__label { font-size: 10.5px; font-weight: 500; letter-spacing: .02em; }
+.nav__label { font-size: 10.5px; font-weight: 500; }
+/* Prototype: only the vault-view button and the vault group (Telemetry) carry letter-spacing .02em. */
+.nav__btn[data-nav="vault"] .nav__label, .nav__btn[data-nav="telemetry"] .nav__label { letter-spacing: .02em; }
 .app.is-short .nav__label { display: none; }
 .nav__badge { position: absolute; top: -5px; right: -9px; min-width: 14px; height: 14px; padding: 0 3px; background: var(--amber); color: var(--bg); font: 600 9px var(--mono); line-height: 14px; text-align: center; }
 .nav__badge--accent { background: var(--accent); }
@@ -89,7 +91,7 @@
 .htab-r__body { position: relative; display: flex; align-items: center; height: 42px; padding-right: 12px; background: var(--panel); border-bottom: 1px solid var(--line-10); }
 .stat { display: flex; align-items: baseline; gap: 6px; padding: 0 14px; }
 .stat__n { font: 500 15px var(--mono); }
-.stat__u { font: 10px var(--mono); letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+.stat__u { font: 10px var(--mono); letter-spacing: .14em; color: var(--muted); }
 .stat__d { font: 10px var(--mono); color: var(--accent); }
 .live-btn { display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; background: transparent; color: var(--muted); font: 500 12px var(--mono); cursor: pointer; white-space: nowrap; }
 .live-btn .dot { background: var(--line-45); box-shadow: 0 0 8px var(--line-45); }
@@ -110,7 +112,7 @@
 /* ── Ticker between the tabs ──────────────────────────────────────────── */
 .tkr { position: absolute; top: 12px; left: var(--tkr-l, 300px); right: var(--tkr-r, 500px); height: 42px; z-index: 14; display: flex; align-items: stretch; padding: 0 26px; background: var(--panel-2); border-bottom: 1px solid var(--line-10); clip-path: polygon(24px 0, calc(100% - 24px) 0, 100% 100%, 0 100%); box-shadow: inset 0 10px 24px -14px var(--accent-25); }
 .tkr__in { flex: 1; min-width: 0; display: flex; align-items: stretch; }
-.tkr__now { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 12px 0 4px; border-right: 1px solid var(--line-12); font: 500 9.5px var(--mono); letter-spacing: .2em; color: var(--accent); text-transform: uppercase; }
+.tkr__now { flex: none; display: flex; align-items: center; gap: 7px; padding: 0 12px 0 4px; border-right: 1px solid var(--line-12); font: 500 9.5px var(--mono); letter-spacing: .2em; color: var(--accent); }
 .tkr__run { position: relative; flex: 1; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
 .tkr__track { position: absolute; top: 0; bottom: 0; left: 0; margin-left: var(--tkr-nudge, 0px); transition: margin-left .18s var(--ease-panel); display: flex; align-items: center; width: max-content; animation: tick-scroll var(--tkr-dur, 24s) linear infinite; }
 .tkr__track.is-paused { animation-play-state: paused; }

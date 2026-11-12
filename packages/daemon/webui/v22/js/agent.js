@@ -49,6 +49,16 @@ export function mountAgent(app) {
   syncInput();
 }
 
+// The other footer variants (mirror, drawer, island) show the same agent
+// status as the pod; they read it here and re-render on every change.
+const podListeners = new Set();
+let podText = "";
+export function onPodChange(fn) { podListeners.add(fn); }
+export function podInfo() {
+  const ag = state.agent;
+  return { state: `RECALL · ${t(`agent.state.${ag}`)}`, color: STATE_COLOR[ag], busy: ag !== "idle", text: podText };
+}
+
 function syncInput() {
   const active = document.activeElement === input || !!input.value;
   inBox.classList.toggle("is-active", active);
@@ -114,6 +124,8 @@ export function render(L) {
   const cap = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? chatState.shown.a : greeting();
   clear(caption).append(cap, ag === "speaking" ? h("span.agent__caret") : "");
   podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newSince ? t("pod.newMemories", { n: data.newSince }) : t("pod.ready");
+  podText = podLine.textContent;
+  for (const fn of podListeners) fn();
   clear(srcBox);
   if (chatState.shown && ag === "idle" && chatState.shown.sources.length) {
     srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...chatState.shown.sources.map(([title, type], i) =>
