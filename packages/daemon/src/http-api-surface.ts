@@ -220,6 +220,9 @@ export function dispatchApiSurface(
         return true;
       }
       const { fm } = mem;
+      // Match buildGraph: private targets must not leak through link metadata.
+      // Missing targets remain visible as references to unwritten notes.
+      const visibleTarget = (target: string) => vault.get(target)?.fm.sensitivity !== "private";
       (async () => sendJson(res, 200, {
         id: fm.id,
         title: fm.title,
@@ -228,7 +231,7 @@ export function dispatchApiSurface(
         topic_path: fm.topic_path,
         tags: fm.tags,
         summary: fm.summary,
-        related: fm.related,
+        related: fm.related.filter(visibleTarget),
         source: fm.source ?? null,
         created: fm.created,
         updated: fm.updated,
@@ -236,7 +239,7 @@ export function dispatchApiSurface(
         // memory browser reader (prototype): triggers, mode, typed links, file
         recall_when: fm.recall_when,
         recall_mode: fm.recall_mode ?? null,
-        related_via: fm.related_via,
+        related_via: fm.related_via.filter(link => visibleTarget(link.id)),
         file: relative(toolDeps.vaultPath, mem.filePath).split(sep).join("/"),
         recall_days: (await recallDaily(defaultLogDir())).get(fm.id) ?? [],
       }))().catch((err: Error) => sendJson(res, 500, { error: err.message }));

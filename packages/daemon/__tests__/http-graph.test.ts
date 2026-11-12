@@ -214,6 +214,45 @@ test("GET /api/v1/graph + /api/v1/graph/node over loopback", async () => {
   }
 });
 
+test("graph node reference metadata excludes private targets but retains missing references", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-graph-private-links-"));
+  const via = [
+    { id: "public-target", reason: "Shared public topic", score: 0.8 },
+    { id: "private-target", reason: "private-link-reason-marker", score: 0.9 },
+    { id: "missing-target", reason: "Unwritten topic", score: 0.5 },
+  ];
+  await writeFile(join(dir, "parent.md"), memoryMarkdown("parent", {
+    related: ["public-target", "private-target", "missing-target"],
+  }).replace("created:", `related_via: ${JSON.stringify(via)}\ncreated:`));
+  await writeFile(join(dir, "public.md"), memoryMarkdown("public-target"));
+  await writeFile(join(dir, "private.md"), memoryMarkdown("private-target", { sensitivity: "private" }));
+  const vault = new Vault(dir);
+  await vault.init();
+  const search = new SearchIndex(vault); search.start();
+  const telemetry = new Telemetry();
+  const handle = await startHttpServer({
+    port: 0, vault, search, telemetry, version: "test",
+    toolDeps: { vault, search, telemetry, vaultPath: dir }, documentWriteEnabled: false,
+    embedding: { on: false, providerId: null, source: "none" },
+  });
+  try {
+    const node = await httpGet(handle.port!, "/api/v1/graph/node?id=parent");
+    assert.equal(node.status, 200);
+    const detail = JSON.parse(node.body);
+    assert.deepEqual(detail.related_via, [via[0], via[2]], "typed links must suppress private IDs and their derived reasons");
+    assert.deepEqual(detail.related, ["public-target", "missing-target"], "explicit links follow the same privacy boundary, preserving ghosts");
+    assert.ok(!node.body.includes("private-target"));
+    assert.ok(!node.body.includes("private-link-reason-marker"));
+    assert.equal((await httpGet(handle.port!, "/api/v1/graph/node?id=private-target")).status, 404);
+    const graph = JSON.parse((await httpGet(handle.port!, "/api/v1/graph")).body);
+    assert.ok(!graph.nodes.some((n: { id: string }) => n.id === "private-target"));
+    assert.ok(!graph.edges.some((e: { target: string }) => e.target === "private-target"));
+  } finally {
+    search.stop(); await vault.stop?.(); await handle.close();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("/ui: gated on ui.enabled, serves index, blocks traversal", async () => {
   const assetDir = await mkdtemp(join(tmpdir(), "bastra-webui-assets-"));
   const settingsDir = await mkdtemp(join(tmpdir(), "bastra-webui-settings-"));
