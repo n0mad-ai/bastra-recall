@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./daemon-settings-env.js";
 import { processOwnsVault } from "./local-account-access.js";
 import { tasksEnabled } from "./tasks-enabled.js";
 /**

@@ -10,7 +10,7 @@ export { readRuntimeSettingsRecord } from "@bastra-recall/core/runtime-settings"
 /** Only a genuinely absent DB record permits this passive legacy read. Opening
  * nonblocking and checking the descriptor also keeps FIFOs/directories/links
  * from blocking startup or becoming a second authoritative settings store. */
-function readLegacySettings(path: string): string | null | undefined {
+export function readLegacySettings(path: string): string | null | undefined {
   let fd: number | undefined;
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0));

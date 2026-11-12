@@ -1,5 +1,6 @@
 import { settingEntries, settingEntry, storedSetting, applySettingChanges } from "../settings-registry.js";
 import { readSettings, mutateSettings } from "../settings.js";
+import { envSettingSpecs, envSettingSpec, envSettingsSnapshot, applyEnvSettingChanges, validateEnvPinChanges, validateRawEnvInput } from "../settings-env.js";
 import { notifyAssistantAddressDaemon } from "../assistant-address.js";
 import { configureAssistantName } from "./address-cmd.js";
 import { getAssistantName } from "../assistant-address-settings.js";
@@ -60,7 +61,7 @@ import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainD
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { getCoverageMapEnabled, setCoverageMapEnabled } from "../code-graph/coverage-map-settings.js";
 
-const configKeys = settingEntries().filter(entry => !entry.readonly).map(entry => entry.key);
+const configKeys = [...settingEntries().filter(entry => !entry.readonly).map(entry => entry.key), ...envSettingSpecs.map(entry => entry.key)];
 type KnownKey = string;
 function isKnownKey(k: string | null): k is KnownKey { return k !== null && configKeys.includes(k); }
 
@@ -86,6 +87,12 @@ export async function cmdConfig(args: ParsedArgs): Promise<number> {
 }
 
 async function cmdConfigGet(key: KnownKey): Promise<number> {
+  if (envSettingSpec(key)) {
+    const entry = envSettingsSnapshot(await readSettings()).find(item => item.key === key)!;
+    process.stdout.write(`${entry.value}\n`);
+    if (entry.readonly) process.stdout.write(`  note: ${entry.envName} overrides this setting at runtime\n`);
+    return 0;
+  }
   switch (key) {
     case "assistant.name": process.stdout.write(`${await getAssistantName() ?? "(unset)"}\n`); return 0;
     case "update.mode":
@@ -184,6 +191,22 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
 }
 
 async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number> {
+  const envEntry = envSettingSpec(key);
+  if (envEntry) {
+    try {
+      if (value === null) throw new Error("Expected a value");
+      let parsed: unknown = value;
+      if (typeof envEntry.default === "boolean") parsed = parseBool(value);
+      else if (typeof envEntry.default === "number") parsed = Number(value);
+      if (parsed === null) throw new Error("Expected boolean");
+      await mutateSettings(settingsFilePath(), current => applyEnvSettingChanges(current, { [key]: parsed }), { refuseCorrupt: true, requireLock: true });
+      process.stdout.write(`✓ ${key} updated in daemon.env; restart the daemon to apply\n`);
+      return 0;
+    } catch {
+      process.stderr.write(`error: invalid or environment-controlled value for ${key}\n`);
+      return 2;
+    }
+  }
   switch (key) {
     case "assistant.name": {
       if(value===null||value==="") {process.stderr.write("Name angeben; entfernen mit bastra address remove.\n");return 2;}
@@ -433,7 +456,12 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
     if (entry.kind === "boolean") { parsed = parseBool(value); if(parsed === null) throw new Error("Expected boolean"); }
     else if (entry.kind === "number") parsed = value === null ? NaN : Number(value);
     else if (entry.kind === "json") parsed = JSON.parse(value ?? "null");
-    await mutateSettings(settingsFilePath(), current => applySettingChanges(current, { [key]: parsed }));
+    if (key === "daemon.env") validateRawEnvInput(parsed);
+    await mutateSettings(settingsFilePath(), current => {
+      const next = applySettingChanges(current, { [key]: parsed });
+      if (key === "daemon.env") validateEnvPinChanges(current, next);
+      return next;
+    });
     process.stdout.write(`✓ ${key} updated${entry.restartRequired ? "; restart the daemon and clients to apply" : ""}\n`);
     return 0;
   } catch { process.stderr.write(`error: invalid value for ${key}\n`); return 2; }

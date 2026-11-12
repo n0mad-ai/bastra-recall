@@ -1,0 +1,48 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { dispatchSettingsUi } from "../src/settings-ui.js";
+import { mutateSettings, readSettings } from "../src/settings-file.js";
+test("HTTP env settings read/write/reset, atomic validation, real env readonly, and autostart staging",async t=> {
+  const dir=await mkdtemp(join(tmpdir(),"settings-ui-env-")),path=join(dir,"cli-settings.json");
+  await mutateSettings(path,s=>({...s,ui:{enabled:true},daemon:{env:{BASTRA_TRIGGER_EXPAND:"0"}}}));
+  let installed=false,managed=true,sets=0;
+  const autostart={status:async()=>({installed,managed,supported:true}),set:async(value:boolean)=>{installed=value;sets++;}};
+  const server=createServer((req,res)=>{if(!dispatchSettingsUi(req,res,req.method!,req.url!,{path,autostart})){res.writeHead(404);res.end();}});
+  await new Promise<void>(r=>server.listen(0,"127.0.0.1",r));
+  t.after(async()=>{await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});});
+  const origin=`http://127.0.0.1:${(server.address()as{port:number}).port}`;
+  const session=await fetch(origin+"/ui/settings/session",{method:"POST",headers:{Origin:origin,"Content-Type":"application/json"},body:"{}"});
+  const headers={Origin:origin,"Content-Type":"application/json",Cookie:session.headers.get("set-cookie")!.split(";")[0],"X-Bastra-Settings-CSRF":(await session.json()as{csrf:string}).csrf};
+  const post=(changes:Record<string,unknown>)=>fetch(origin+"/ui/settings",{method:"POST",headers,body:JSON.stringify({changes})});
+  const initial=await(await fetch(origin+"/ui/settings",{headers})).json()as{entries:Array<Record<string,unknown>>};
+  assert.equal(initial.entries.find(e=>e.key==="embedding.model")!.default,"embeddinggemma");
+  assert.equal((await post({"hint.suppressAfter":12,"ollama.keepAlive":"1h30m"})).status,200);
+  assert.equal((await readSettings(path)).daemon!.env!.BASTRA_HINT_SUPPRESS_AFTER,"12");
+  assert.equal((await readSettings(path)).daemon!.env!.BASTRA_TRIGGER_EXPAND,"0","unrelated existing env is preserved");
+  assert.equal((await post({"docs.language":"de","logs.retention":7})).status,400);
+  assert.equal((await readSettings(path)).docs,undefined);
+  const previous=process.env.BASTRA_RECALL_FLOOR;process.env.BASTRA_RECALL_FLOOR="60";
+  try {
+    const snapshot=await(await fetch(origin+"/ui/settings",{headers})).json()as{entries:Array<Record<string,unknown>>};
+    const floor=snapshot.entries.find(e=>e.key==="recall.floor")!;
+    assert.equal(floor.readonly,true);assert.equal(floor.effective,60);
+    assert.equal((await post({"recall.floor":50})).status,400);
+    assert.equal((await post({"daemon.env":{BASTRA_RECALL_FLOOR:"50"}})).status,400);
+  }finally{if(previous===undefined)delete process.env.BASTRA_RECALL_FLOOR;else process.env.BASTRA_RECALL_FLOOR=previous;}
+  assert.equal((await post({"daemon.env":{BASTRA_TRIGGER_EXPAND:"1",BASTRA_HINT_SUPPRESS_AFTER:"14"}})).status,200);
+  assert.equal((await readSettings(path)).daemon!.env!.BASTRA_HINT_SUPPRESS_AFTER,"14");
+  assert.equal((await post({"daemon.env":{BASTRA_LOG_RETENTION_DAYS:"7"}})).status,400);
+  assert.equal((await post({"daemon.env":{BASTRA_RECALL_FLOOR:45}})).status,400);
+  assert.equal((await post({"hint.suppressAfter":null})).status,200);
+  assert.equal((await readSettings(path)).daemon!.env!.BASTRA_HINT_SUPPRESS_AFTER,undefined);
+  const on=await post({autostart:true});assert.equal(on.status,200);assert.equal(sets,1);
+  assert.equal(((await on.json()as{entries:Array<Record<string,unknown>>}).entries.find(e=>e.key==="autostart"))!.value,true);
+  assert.equal((await post({autostart:false,"docs.language":"de"})).status,400);assert.equal(sets,1);
+  assert.equal((await post({autostart:null})).status,200);assert.equal(installed,false);
+  assert.equal((await post({autostart:true})).status,200);assert.equal(sets,3);
+  managed=false;assert.equal((await post({autostart:false})).status,400);assert.equal(sets,3);
+});

@@ -7,6 +7,8 @@ import { readJsonBody, sendJson } from "./http-util.js";
 import { getUiEnabled, mutateSettings, readSettings, settingsFilePath } from "./settings.js";
 import { settingEntries, storedSetting, applySettingChanges } from "./settings-registry.js";
 import { effectiveSetting } from "./settings-effective.js";
+import { envSettingsSnapshot, envSettingSpec, applyEnvSettingChanges, validateEnvPinChanges, validateRawEnvInput } from "./settings-env.js";
+import { autostartSnapshot, settingsAutostart, type SettingsAutostart } from "./settings-autostart.js";
 import { listClients, revokeClient } from "./oauth-store.js";
 const sessions = new Map<string,{csrf:string;expires:number;path:string;host:string;lastUsed:number}>();
 const ttl = 15*60_000, cookieName = "bastra_settings_session";
@@ -14,16 +16,16 @@ const ttl = 15*60_000, cookieName = "bastra_settings_session";
 // long; sessions used within the window keep the capacity guard (429).
 const capacity = 100, reclaimIdleMs = 10*60_000;
 const cookie = (id:string,age:number) => `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/ui/settings; Max-Age=${age}`;
-export interface SettingsUiOptions { path?: string; oauthPath?: string; restart?: () => Promise<void>; }
+export interface SettingsUiOptions { path?: string; oauthPath?: string; restart?: () => Promise<void>; autostart?: SettingsAutostart; }
 function failure(status:number):never { throw Object.assign(new Error("Settings request denied"),{status}); }
 async function snapshot(path:string,options:SettingsUiOptions) {
   const settings = await readSettings(path);
   return {
-    entries: settingEntries().map(entry => {
+    entries: [...settingEntries().map(entry => {
       const stored=storedSetting(settings,entry), effective=effectiveSetting(entry,settings), mask=(value:unknown)=>entry.secret?(value===undefined||value===null?null:"••••••••"):value;
       return {key:entry.key,label:entry.label,area:entry.area,kind:entry.kind,choices:entry.choices,default:mask(entry.default),value:mask(stored??entry.default),effective:mask(effective.value),isSet:stored!==undefined,secret:!!entry.secret,readonly:!!entry.readonly,managed:entry.key==="assistant.name",restartRequired:!!entry.restartRequired,
         envOverride:effective.envNames.map(name=>({name,value:entry.secret?"••••••••":process.env[name]}))};
-    }),
+    }), ...envSettingsSnapshot(settings), await autostartSnapshot(options.autostart)],
     oauthClients: (await listClients(options.oauthPath ?? (options.path ? join(dirname(path), "oauth.json") : undefined))).map(client=>({id:client.client_id,name:client.client_name,grants:client.grants,lastUsedAt:client.last_used_at})),
     restartAvailable:!!options.restart,
   };
@@ -63,7 +65,25 @@ export function dispatchSettingsUi(req:IncomingMessage,res:ServerResponse,method
         const changes=body.changes as Record<string,unknown>;
         // Name/address edits retain the existing native system-consent transaction.
         if(Object.hasOwn(changes,"assistant.name"))failure(400);
-        await mutateSettings(path,current=>applySettingChanges(current,changes),{refuseCorrupt:true,requireLock:true});
+        const envChanges=Object.fromEntries(Object.entries(changes).filter(([key])=>envSettingSpec(key)));
+        const regular=Object.fromEntries(Object.entries(changes).filter(([key])=>!envSettingSpec(key)&&key!=="autostart"));
+        const auto=options.autostart??settingsAutostart;
+        if(Object.hasOwn(changes,"autostart")) {
+          // Service registration is a separate transaction: mixing it with a
+          // settings write would imply atomicity the operating system cannot offer.
+          const enabled=changes.autostart===null?false:changes.autostart;
+          if(Object.keys(changes).length!==1||typeof enabled!=="boolean"||(await autostartSnapshot(auto)).readonly)failure(400);
+          await auto.set(enabled);
+        } else {
+          if(Object.hasOwn(regular,"daemon.env"))validateRawEnvInput(regular["daemon.env"]);
+          await mutateSettings(path,current=>{
+            const next=applySettingChanges(current,regular);
+            // Preserve the advanced JSON editor, with the same validation and
+            // read-only checks on changed pins as the individual controls.
+            validateEnvPinChanges(current,next);
+            return applyEnvSettingChanges(next,envChanges);
+          },{refuseCorrupt:true,requireLock:true});
+        }
         sendJson(res,200,await snapshot(path,options));return;
       }
       if(url==="/ui/settings/oauth/revoke") {

@@ -7,7 +7,7 @@ async function model(fetch?: Function) {
   const source = await readFile(new URL("../webui/v22/js/sections/settings-model.js", import.meta.url), "utf8");
   return runInNewContext(source.replace(/^import .*;$/gm, "").replace(/^export /gm, "").replace(/^\{ state \};$/gm, "") +
     "\n({GROUPS, store, groupKeys, entry, shown, setValue, revert, changeList, cliOf, matches, metaOf, apply})", {
-    state: {}, setState() {}, fetch,
+    state: {}, setState() {}, setBackdrop() {}, fetch,
   });
 }
 

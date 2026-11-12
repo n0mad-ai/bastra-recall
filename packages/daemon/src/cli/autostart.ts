@@ -399,7 +399,7 @@ async function serviceState(): Promise<AutostartState> {
 
 // ─── on ─────────────────────────────────────────────────────────
 
-async function autostartOn(args: ParsedArgs): Promise<number> {
+export async function autostartOn(args: Pick<ParsedArgs,"dryRun"|"force"|"vaultPath">, stageOnly = false): Promise<number> {
   const write = (s: string) => process.stdout.write(s);
   if (unsupported(write)) return 1;
 
@@ -443,7 +443,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
     return 0;
   }
 
-  const started = await autostartService()!.install(env, program, { reload: true, force: args.force });
+  const started = await autostartService()!.install(env, program, { reload: !stageOnly, force: args.force });
 
   write(started.ok ? "✓ autostart on\n" : "✗ autostart could not be enabled\n");
   write(`  service: ${state.path}\n`);
@@ -451,7 +451,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
   write(`  vault:  ${vault.path}\n`);
   if (endpoint !== null) write(`  endpoint: ${endpoint} (persisted in the service)\n`);
   if (started.ok) {
-    write(`  ✓ loaded — the daemon stays up from now on (idle shutdown disabled)\n`);
+    write(stageOnly ? "  ✓ registered for the next login\n" : "  ✓ loaded — the daemon stays up from now on (idle shutdown disabled)\n");
   } else {
     write(
       `  ✗ autostart service failed: ${started.detail}\n` +
@@ -464,7 +464,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
 
 // ─── off ────────────────────────────────────────────────────────
 
-async function autostartOff(args: ParsedArgs): Promise<number> {
+export async function autostartOff(args: Pick<ParsedArgs,"dryRun"|"force">, stageOnly = false): Promise<number> {
   const write = (s: string) => process.stdout.write(s);
   if (unsupported(write)) return 1;
 
@@ -486,12 +486,16 @@ async function autostartOff(args: ParsedArgs): Promise<number> {
     return 0;
   }
 
-  const removed = await autostartService()!.uninstall({ force: args.force });
+  // Browser settings change the next login registration without terminating
+  // the daemon that must finish this HTTP request. CLI defaults stay unchanged.
+  const removed = stageOnly
+    ? await unlink(state.path).then(() => ({ok:true,detail:""}))
+    : await autostartService()!.uninstall({ force: args.force });
   if (!removed.ok) { process.stderr.write(`error: ${removed.detail}\n`); return 1; }
   write("✓ autostart off\n");
   write(`  removed ${state.path}\n`);
-  write("  The daemon still starts on demand through the MCP forwarder,\n");
-  write("  and shuts down again after 30 minutes idle.\n");
+  write(stageOnly ? "  Login registration removed; the running daemon is unchanged.\n" : "  The daemon still starts on demand through the MCP forwarder,\n");
+  if(!stageOnly)write("  and shuts down again after 30 minutes idle.\n");
   return 0;
 }
 

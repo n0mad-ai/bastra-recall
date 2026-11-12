@@ -40,6 +40,16 @@ export const DAEMON_ENV_KEYS = [
   "BASTRA_DOCUMENT_WRITE",
   "BASTRA_RM_ARCHIVES",
   "BASTRA_OLLAMA_URL",
+  "BASTRA_EMBEDDING_MODEL",
+  "BASTRA_OLLAMA_KEEP_ALIVE",
+  "BASTRA_RECALL_FLOOR",
+  "BASTRA_HINT_SUPPRESS",
+  "BASTRA_HINT_SUPPRESS_AFTER",
+  "BASTRA_SCOPE_FILTER_LANES",
+  "BASTRA_SAVE_NOTICE",
+  "BASTRA_LOG_RETENTION_DAYS",
+  "BASTRA_LOG_PATH",
+  "BASTRA_TRAINING_CAPTURE",
 ] as const;
 
 export type DaemonEnvKey = (typeof DAEMON_ENV_KEYS)[number];
@@ -59,6 +69,9 @@ export type DaemonEnvOrigin = "own" | "client" | "client+settings";
 
 export const STARTED_BY_ENV = "BASTRA_DAEMON_STARTED_BY";
 export const ENV_ORIGIN_ENV = "BASTRA_DAEMON_ENV_ORIGIN";
+export const ENV_PINS_ENV = "BASTRA_DAEMON_ENV_PINS";
+/** Provenance survives startup and subsequent edits/removals of stored pins. */
+export const appliedDaemonEnv = new Set<string>();
 
 export function daemonSpawnEnv(
   clientEnv: NodeJS.ProcessEnv,
@@ -77,6 +90,7 @@ export function daemonSpawnEnv(
   const origin: DaemonEnvOrigin = pinned.length > 0 ? "client+settings" : "client";
   env[STARTED_BY_ENV] = "forwarder";
   env[ENV_ORIGIN_ENV] = origin;
+  env[ENV_PINS_ENV] = JSON.stringify(pinned);
   return { env, origin, pinned };
 }
 
@@ -123,4 +137,19 @@ export function configFingerprint(env: Record<string, string | undefined>): stri
   }
   pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return createHash("sha256").update(JSON.stringify(pairs)).digest("hex").slice(0, 12);
+}
+
+export function applyDaemonSettingsEnv(pins: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, applied = appliedDaemonEnv): void {
+  if (env[STARTED_BY_ENV] === "forwarder" && env[ENV_ORIGIN_ENV] === "client+settings") {
+    try {
+      const inherited: unknown = JSON.parse(env[ENV_PINS_ENV] ?? "[]");
+      if (Array.isArray(inherited)) for (const key of DAEMON_ENV_KEYS) if (inherited.includes(key)) applied.add(key);
+    } catch { /* A malformed provenance marker grants no editable values. */ }
+  }
+  for (const key of DAEMON_ENV_KEYS) {
+    if (typeof pins[key] === "string" && env[key] === undefined) {
+      env[key] = pins[key];
+      applied.add(key);
+    }
+  }
 }
