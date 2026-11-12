@@ -202,7 +202,9 @@ export function storedBoltStyle() {
 /** Deflection strength from storage, clamped to 0..1. */
 export function storedBoltSpread() {
   try {
-    const n = Number(localStorage.getItem(BOLT_SPREAD_KEY));
+    // nothing stored yet → the default; Number(null) would read as 0 (no deflection)
+    const raw = localStorage.getItem(BOLT_SPREAD_KEY);
+    const n = raw === null || raw.trim() === "" ? NaN : Number(raw);
     if (!Number.isFinite(n) || n < 0) return BOLT_SPREAD_DEFAULT;
     return Math.min(1, n);
   } catch {
