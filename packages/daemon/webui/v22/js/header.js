@@ -5,6 +5,7 @@ import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, dueAt } from "./data.js";
 import { openTask } from "./sections/tasks-store.js";
+import { getArea } from "./areas.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
@@ -64,7 +65,8 @@ const brandText = () => data.vaultName || t("brand");
 function renderCrumb() {
   crumbBrand = brandText();
   const crumbs = [h("span.htab-l__brand", { text: crumbBrand }), h("span.htab-l__sep", { text: "/" }), h("span.htab-l__view", { text: ctxRef.viewLabel(state.view) })];
-  if (state.focus && state.vw >= 1400) {
+  // The area filter only applies to the vault views; other areas show no filter crumb.
+  if (state.focus && state.vw >= 1400 && getArea(state.view)?.group === "vault-view") {
     crumbs.push(h("span.htab-l__sep", { text: "/" }), h("button.htab-l__crumb", { title: t("crumb.clear"), vars: { color: ctxRef.areaColor(state.focus) }, on: { click: () => setState({ focus: null }) } }, state.focus));
   }
   clear(crumbEl).append(...crumbs);
