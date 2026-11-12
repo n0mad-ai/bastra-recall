@@ -11,4 +11,4 @@ registerArea({ id: "ring", group: "vault-view", order: 1, labelKey: "view.ring",
 ["chronos", "radiant", "spiral", "halflife", "weave"].forEach((id, i) =>
   registerArea({ id, group: "vault-view", order: 2 + i, labelKey: `view.${id}`, icon: ICON[id], mount: (stage) => mountLensView(id, stage) }));
 [["mindspace", 0], ["clouds", 0.5], ["semantic", 1.5]].forEach(([id, order]) =>
-  registerArea({ id, group: "vault-view", order, labelKey: `view.${id}`, icon: ICON[id], viewTab: viewTab(id), mount: (stage) => mountEngineView(id, stage) }));
+  registerArea({ id, group: "vault-view", order, labelKey: `view.${id}`, icon: ICON[id], viewTab: viewTab(id), signalFilter: true, mount: (stage) => mountEngineView(id, stage) }));

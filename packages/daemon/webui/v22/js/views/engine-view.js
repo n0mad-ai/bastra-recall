@@ -9,6 +9,8 @@ import { data, onData } from "../data.js";
 import { vault, timeWindow, windowKey, areaCol, typeClass } from "./vault-data.js";
 import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./chrome.js";
 import { attach, engine } from "./engine-host.js";
+import { signalMatch } from "./signals.js";
+import { CORES } from "../../../js/managers/orbit-core.js";
 
 /** v22 view id → engine view id (old UI data-view). */
 export const ENGINE_VIEW = { mindspace: "orbit", clouds: "clouds", semantic: "semantic" };
@@ -58,9 +60,10 @@ export function mountEngineView(id, stage) {
   // window = time filter (the old sidebar legend + time filter, ANDed) ──────
   function look() {
     const e = engine.get(); if (!e || !detach) return;
-    const focus = state.focus, win = timeWindow();
+    // area focus, footer window and the Signals tile (old sidebar filters, ANDed)
+    const focus = state.focus, win = timeWindow(), sig = signalMatch(state.signal);
     const inWin = (n) => { const at = Date.parse(typeof n.updated === "string" ? n.updated : ""); return Number.isFinite(at) && at >= win[0] && at < win[1]; };
-    e.renderer.setFilter(!focus && !win ? null : (n) => (!focus || base(n) === focus) && (!win || inWin(n)));
+    e.renderer.setFilter(!focus && !win && !sig ? null : (n) => (!focus || base(n) === focus) && (!win || inWin(n)) && (!sig || sig(n)));
     const hv = state.hover;
     e.renderer.setHighlight(hv ? (n) => base(n) === hv : null, hv && e.structure === "clusters" ? hv : null);
     engine.wake(300);
@@ -152,7 +155,7 @@ export function mountEngineView(id, stage) {
       engine.setCardInset(st.focus ? CARD_COL : 0);
       if (st.focus) engine.flyTo(members(st.focus), { padding: 90, maxScale: 2.4, ms: 850 });
     }
-    if (ch("focus") || ch("hover") || windowKey() !== prevWin) look();
+    if (ch("focus") || ch("hover") || ch("signal") || ch("careN") || windowKey() !== prevWin) look();
     prev = { ...st }; prevWin = windowKey();
     engine.wake(600); // layout changes (panels) move the stage; hits move the marks
   });
@@ -175,13 +178,21 @@ export function viewTab(id) {
     const draw = () => {
       const rows = [];
       const seg = (opts, cur, onPick) => h("div.vt__seg", null, opts.map(([v, key]) => h("button", { type: "button", cls: v === cur ? "is-on" : "", text: t(key), on: { click: () => { onPick(v); setTimeout(draw, 0); } } })));
-      const row = (labelKey, el) => rows.push(h("span.vt__l", { text: t(labelKey) }), el);
+      const row = (labelKey, el, list = rows) => list.push(h("span.vt__l", { text: t(labelKey) }), el);
       if (id === "mindspace") {
         const m = engine.orbitMode();
         row("ev.mode", seg([["universe", "ev.universe"], ["galaxy", "ev.galactic"]], m, engine.setOrbitMode));
         row("ev.lab", seg([["universe-lab", "ev.universeLab"], ["galaxy-lab", "ev.milkyWay"]], m, engine.setOrbitMode));
+        // the centre graphic exists only where there is a centre: both galactic modes
+        if (m === "galaxy" || m === "galaxy-lab") {
+          const sel = h("select.vt__sel", { "aria-label": t("ev.core"), on: { change: () => { engine.setCore(sel.value); } } },
+            Object.entries(CORES).map(([k, c]) => h("option", { value: k, text: c.name })));
+          sel.value = engine.core();
+          row("ev.core", sel);
+        }
         row("ev.distance", seg([["woven", "ev.woven"], ["balanced", "ev.balanced"]], engine.distance(), engine.setDistance));
         row("ev.drift", seg([["on", "ev.on"], ["off", "ev.off"]], engine.drift() ? "on" : "off", (v) => engine.setDrift(v === "on")));
+        row("ev.weather", weatherBox(draw));
       } else if (id === "semantic") {
         const m = engine.semanticMode();
         row("ev.structure", seg([["2d", "ev.flat"], ["3d", "ev.depth"]], m, engine.setSemanticMode));
@@ -191,11 +202,55 @@ export function viewTab(id) {
         row("ev.structure", seg([["clusters", "ev.clusters"], ["blocks", "ev.blocks"]], engine.structure(), engine.setStructure));
       }
       row("ev.updated", seg(TIME, state.brush ? "" : state.time, (v) => setState({ time: v, brush: null })));
+
+      // ── Activity flares (old sidebar › Activity): how a live flare travels ──
+      const flares = [];
+      const style = engine.boltStyle(), sec = (ms) => `${(ms / 1000).toFixed(1)}s`;
+      const sum = h("span.vt__s", { text: style === "off" ? t("ev.off") : `${style} · ${sec(engine.boltMs())}` });
+      row("ev.style", seg([["bolt", "ev.bolt"], ["pulse", "ev.pulse"], ["trace", "ev.trace"], ["off", "ev.off"]], style, engine.setBoltStyle), flares);
+      const slider = (min, max, step, value, fmt, onIn) => {
+        const out = h("span.vt__rv", { text: fmt(value) });
+        const inp = h("input.vt__range", { type: "range", min, max, step, value, on: { input: () => { onIn(Number(inp.value)); out.textContent = fmt(Number(inp.value)); sum.textContent = engine.boltStyle() === "off" ? t("ev.off") : `${engine.boltStyle()} · ${sec(engine.boltMs())}`; } } });
+        return h("div.vt__slide", null, inp, out);
+      };
+      row("ev.duration", slider(300, 4000, 100, engine.boltMs(), sec, engine.setBoltMs), flares);
+      row("ev.spread", slider(0, 100, 5, Math.round(engine.boltSpread() * 100), (v) => `${v}%`, (v) => engine.setBoltSpread(v / 100)), flares);
+      row("ev.demo", seg([["on", "ev.on"], ["off", "ev.off"]], engine.demo() ? "on" : "off", (v) => engine.setDemo(v === "on")), flares);
+
       clear(body).append(h("div.vt", null,
         h("div.vt__head", null, h("span.vt__h", { text: t("ev.display") }), h("span.vt__k", { text: t(`view.${id}`) })),
         h("div.vt__grid", null, rows),
+        h("div.vt__head", null, h("span.vt__h", { text: t("ev.flares") }), sum),
+        h("div.vt__grid", null, flares),
         id === "clouds" ? h("button.vt__reset", { type: "button", title: t("ev.resetTitle"), text: t("ev.reset"), on: { click: () => engine.resetLayout() } }) : null));
     };
     draw();
   };
+}
+
+/** Weather layer place picker (old weather chip): GPS and search, always
+ *  together; nothing is requested until a place is chosen. */
+function weatherBox(redraw) {
+  const w = engine.weather();
+  if (!w) return h("span.vt__s", { text: "–" });
+  const msg = h("span.vt__msg");
+  const list = h("div.vt__wxl");
+  const place = w.getPlace();
+  const r = w.readout();
+  const head = place
+    ? h("div.vt__wxh", null, h("span.vt__wxp", { text: [place.name, r && Number.isFinite(r.temp) ? `${Math.round(r.temp)}°` : "", r?.label || ""].filter(Boolean).join(" · ") }),
+      h("button.vt__btn", { type: "button", text: t("ev.off"), on: { click: () => { void w.clear().then(redraw); } } }))
+    : h("span.vt__s", { text: t("ev.wxOff") });
+  let timer = 0;
+  const input = h("input.vt__in", { type: "search", placeholder: t("ev.wxSearch"), "aria-label": t("ev.wxSearch"), on: { input: () => {
+    clearTimeout(timer);
+    const q = input.value;
+    timer = setTimeout(async () => {
+      const found = await w.search(q);
+      clear(list).append(...found.map((p) => h("button.vt__wxo", { type: "button", text: [p.name, p.detail].filter(Boolean).join(", "), on: { click: () => { void w.setPlace(p).then(redraw); } } })));
+      msg.textContent = q.trim().length >= 2 && !found.length ? t("ev.wxNone") : "";
+    }, 350);
+  } } });
+  const gps = h("button.vt__btn", { type: "button", text: t("ev.wxGps"), title: t("ev.wxGpsTitle"), on: { click: () => { msg.textContent = t("ev.wxLocating"); w.useGps().then(redraw).catch((err) => { msg.textContent = err?.message || String(err); }); } } });
+  return h("div.vt__wx", null, head, h("div.vt__wxs", null, input, gps), list, msg);
 }

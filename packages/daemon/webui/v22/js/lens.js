@@ -5,10 +5,11 @@ import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data } from "./data.js";
 import { getArea } from "./areas.js";
+import { signalsTab } from "./views/signals.js";
 
 // Vault views (no tabs of their own): Areas, Signals, View, Live.
 const VAULT_TABS = [{ id: "areas", labelKey: "lens.areas", render: (b) => { b.append(areasTab()); } },
-  { id: "signals", labelKey: "lens.signals" }, { id: "view", labelKey: "lens.view" }, { id: "live", labelKey: "lens.live" }];
+  { id: "signals", labelKey: "lens.signals", render: (b) => signalsTab(b) }, { id: "view", labelKey: "lens.view" }, { id: "live", labelKey: "lens.live" }];
 // A vault view may fill the View tab (registerArea({ viewTab: render })).
 const tabsOf = (view) => {
   const a = getArea(view);
@@ -27,14 +28,17 @@ const ideaIcon = () => s("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
   outline("M12 3a6 6 0 0 0-3.9 10.55c.7.62.9 1.45.9 2.45h6c0-1 .2-1.83.9-2.45A6 6 0 0 0 12 3Z"),
   strokes([10, 19, 14, 19], [10.6, 21.5, 13.4, 21.5]));
 
-let peek, lens, tabsEl, body, indLayer, lpT = 0, ctxRef;
+let peek, lens, tabsEl, body, msgEl, indLayer, lpT = 0, ctxRef;
 
 export function mountLens(app, ctx) {
   ctxRef = ctx;
   peek = h("div.lens-peek", { on: { mouseenter: peekIn, mouseleave: peekOut } });
   tabsEl = h("div.lens__tabs");
   body = h("div.lens__body", { on: { scroll: () => requestAnimationFrame(measureInd) } });
-  lens = h("aside.lens", { on: { mouseenter: peekIn, mouseleave: peekOut } }, tabsEl, body,
+  // Notices of areas with registerArea({ panelNotices: true }) (Tasks): shown
+  // here at the bottom while the panel is open; js/main.js toasts them otherwise.
+  msgEl = h("div.lens__msg", { role: "status", hidden: true });
+  lens = h("aside.lens", { on: { mouseenter: peekIn, mouseleave: peekOut } }, tabsEl, body, msgEl,
     h("div.lens__foot", null,
       h("a", { href: "https://github.com/n0mad-ai/bastra-recall/issues/new?template=bug_report.yml", target: "_blank", rel: "noopener" }, bugIcon(), t("lens.bug")),
       h("span.lens__foot-sep", { text: "·" }),
@@ -124,7 +128,20 @@ export function render(L, changed) {
     if (typeof tab.render === "function") tabCleanup = tab.render(body, ctxRef) || null;
     else body.append(wip());
   }
+  renderMsg(L);
   // Hover coupling with the vault views (state.hover).
   if (changed.has("hover")) for (const r of body.querySelectorAll(".area-row")) r.classList.toggle("is-hov", r.dataset.k === state.hover);
   setTimeout(measureInd, 480);
+}
+
+let msgShown = "", msgTimer = 0;
+function renderMsg(L) {
+  const msg = state.toast && L.lensOpen && getArea(state.view)?.panelNotices ? state.toast : "";
+  if (msg === msgShown) return;
+  msgShown = msg; clearTimeout(msgTimer);
+  msgEl.hidden = !msg;
+  if (!msg) { clear(msgEl); return; }
+  clear(msgEl).append(h("span.lens__msg-p", { text: "›" }), h("span.lens__msg-t", { text: msg }),
+    h("button.lens__msg-x", { "aria-label": t("toast.close"), text: "×", on: { click: () => setState({ toast: "" }) } }));
+  msgTimer = setTimeout(() => setState({ toast: "" }), 6000);
 }

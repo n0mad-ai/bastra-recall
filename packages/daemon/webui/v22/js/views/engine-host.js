@@ -20,8 +20,12 @@ import { createInteractions } from "../../../js/interactions.js";
 import { clusterHues } from "../../../js/graph-data.js";
 import { createOrbitView } from "../../../js/managers/orbit-view.js";
 import { createSemanticView } from "../../../js/managers/semantic-view.js";
+import { createWeather } from "../../../js/managers/weather.js";
+import { createBoltDemo } from "../../../js/managers/bolt-demo.js";
 import { h, setVars } from "../dom.js";
-import { data } from "../data.js";
+import { data, onUpdates, loadWeather } from "../data.js";
+import { state } from "../state.js";
+import { installLive } from "./engine-live.js";
 
 // Same storage keys as the old UI: cloud arrangements are shared between both.
 const ANCHORS_KEY = "bastra-vault-map-cluster-pos";
@@ -72,16 +76,27 @@ function build() {
   e.hues = clusterHues(graph.clusters);
   e.sim = createSimulation(graph, innerWidth, innerHeight, loadAnchors(e));
   e.renderer = createRenderer(canvas, e.sim, e.hues);
+  // Mindspace: a burning supernova wins every click in its radius (old app.js)
+  const burstAt = (sx, sy) => {
+    if (e.view !== "orbit" || sx === undefined) return null;
+    const w = e.renderer.toWorld(sx, sy), b = e.orbit.pickBurst(w.x, w.y);
+    return b ? e.sim.byId.get(b.id) ?? null : null;
+  };
   e.interactions = createInteractions(canvas, e.renderer, e.sim, {
-    onSelect: (n) => e.hooks?.onSelect(n),
-    onHoverChange: (n, x, y) => e.hooks?.onHover(n, x, y),
+    onSelect: (n, sx, sy) => e.hooks?.onSelect(burstAt(sx, sy) ?? n),
+    onHoverChange: (n, x, y) => { if (!n && burstAt(x, y)) canvas.style.cursor = "pointer"; e.hooks?.onHover(n, x, y); },
     onClusterDragEnd: () => saveAnchorsSoon(e),
     getInsets: () => insets(e),
     canDragClusters: () => e.view === "clouds",
   });
   const satLight = () => ["78%", "66%"];
-  e.orbit = createOrbitView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions, getHues: () => e.hues, getSatLight: satLight, getWeather: () => null });
+  // weather layer (#217): opt-in, same stored place as the old UI; nothing is
+  // fetched until a place is set (View tab › Weather)
+  e.weather = createWeather(() => { awake(e); void loadWeather(); });
+  e.orbit = createOrbitView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions, getHues: () => e.hues, getSatLight: satLight, getWeather: () => e.weather.get() });
   e.semantic = createSemanticView({ sim: e.sim, renderer: e.renderer, getInteractions: () => e.interactions });
+  e.live = installLive(e, { awake: (ms) => awake(e, ms), regroup: () => { e.sim.regroup(loadAnchors(e)); e.wasBusy = true; } });
+  e.boltDemo = createBoltDemo({ renderer: e.renderer, sim: e.sim });
   const wake = () => awake(e);
   for (const type of ["pointerdown", "pointermove", "pointerleave", "wheel"]) clip.addEventListener(type, wake, { passive: true });
   clip.addEventListener("pointerdown", () => { e.userTouched = true; }, { passive: true });
@@ -127,10 +142,10 @@ function awake(e, ms = AWAKE_MS) {
 
 /** "full" | frame interval in ms | "stop" — #324 idle throttle, extended: a still picture stops. */
 function cadence(e, now) {
-  if (e.transition || e.zoomAnim || e.interactions.isFlying() || now < e.awakeUntil || e.wasBusy) return "full";
+  if (e.transition || e.zoomAnim || e.interactions.isFlying() || now < e.awakeUntil || e.wasBusy || e.boltDemo.isRunning()) return "full";
   if (e.view === "orbit") return ORBIT_IDLE_MS; // the universe turns on its own (discs, planets)
   if (e.view === "semantic" && e.semantic.getMode() === "3d" && e.spin) return SLOW_MS;
-  return e.renderer.hasLiveEffects() ? SLOW_MS : "stop"; // focus beacon, filter pulse
+  return e.renderer.hasLiveEffects() || e.live.hasBursts(now) ? SLOW_MS : "stop"; // focus beacon, filter pulse, flares, supernovae
 }
 
 function frame(e, now) {
@@ -271,12 +286,17 @@ export function attach(stage, v, hooks) {
     if (e.transition) { for (const n of e.sim.nodes) { const b = e.transition.to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } } e.transition = null; }
     exitView(e);
     e.token++; // a semantic layout still loading must not enter after this
+    e.boltDemo.stop(); // a workbench light: it goes out when you leave (bolt-demo.js)
     e.renderer.setFocus(null); e.renderer.setHover(null); e.renderer.setHighlight(null); e.renderer.setFilter(null);
     e.stage = null; e.hooks = null; e.zoomAnim = null; e.cardInset = 0;
     e.clip.remove();
     e.canvas.width = 0; e.canvas.height = 0; // free the backing store while hidden
   };
 }
+
+// Live events reach the engine whether or not one of its views is on screen,
+// so the map is current when it is opened again. Live off → nothing applied.
+onUpdates((list) => { if (eng && state.live && Array.isArray(list)) for (const u of list) eng.live.apply(u); });
 
 function detachAll(e) { cancelAnimationFrame(e.raf); e.clip.remove(); e.canvas.width = 0; e.canvas.height = 0; }
 
@@ -339,6 +359,17 @@ export const engine = {
   setOrbitMode(m) { const e = eng; if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getMode()) return; e.orbit.setMode(m); e.orbit.relayout(); fit(e, 700); },
   distance: () => eng?.orbit.getDistanceMode() ?? "woven",
   setDistance(m) { const e = eng; if (!e || e.view !== "orbit" || e.transition || m === e.orbit.getDistanceMode()) return; e.orbit.setDistanceMode(m); e.orbit.relayout(); awake(e); },
+  core: () => eng?.orbit.getCore() ?? "classic",
+  setCore(k) { const e = eng; if (!e) return; if (e.orbit.setCore(k) && e.view === "orbit") e.orbit.relayout(); awake(e); },
+  weather: () => eng?.weather ?? null,
+  boltStyle: () => eng?.renderer.getBoltStyle() ?? "bolt",
+  setBoltStyle(id) { eng?.renderer.setBoltStyle(id); },
+  boltMs: () => eng?.renderer.getBoltMs() ?? 420,
+  setBoltMs(ms) { eng?.renderer.setBoltMs(ms); },
+  boltSpread: () => eng?.renderer.getBoltSpread() ?? 1,
+  setBoltSpread(v) { eng?.renderer.setBoltSpread(v); },
+  demo: () => !!eng?.boltDemo.isRunning(),
+  setDemo(on) { const e = eng; if (!e) return; if (on) e.boltDemo.start(); else e.boltDemo.stop(); awake(e); },
   drift: () => eng?.orbit.getDrift() ?? true,
   setDrift(on) { const e = eng; if (!e) return; e.orbit.setDrift(on); awake(e); },
 };

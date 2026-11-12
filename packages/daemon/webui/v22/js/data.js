@@ -9,6 +9,7 @@ export const data = {
   weeks: [],        // 52 weekly counts of memory updates, oldest first
   weekStart: null,  // Date of week 0
   dueTasks: [],     // tasks in state "due"
+  tasks: [],        // open tasks (pending | due | snoozed), for the dashboard
   newSince: 0,      // live updates since page load
   weather: null,    // { temp, city }
   vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
@@ -73,6 +74,7 @@ export async function loadTasks() {
     const b = await taskApi("list");
     const tasks = Array.isArray(b.tasks) ? b.tasks : [];
     data.dueTasks = tasks.filter((t) => t && t.state === "due" && !t.archived && typeof t.goal === "string");
+    data.tasks = tasks.filter((t) => t && !t.archived && typeof t.goal === "string" && ["pending", "due", "snoozed"].includes(t.state));
     emit();
   } catch { /* keep last */ }
 }
@@ -80,11 +82,17 @@ export async function loadTasks() {
 export function dueAt(t) { return t.snoozed_until ?? t.next_slot?.at ?? t.schedule?.at ?? t.next_check_at; }
 
 let seq = null;
+const updateListeners = new Set();
+/** Fresh vault events from GET /ui/updates (add | change | delete | read), as delivered. */
+export function onUpdates(fn) { updateListeners.add(fn); return () => updateListeners.delete(fn); }
 export async function pollUpdates() {
   try {
     const u = await getJson(seq === null ? "/ui/updates" : `/ui/updates?since=${seq}`);
     if (typeof u.seq !== "number") return;
-    if (seq !== null && u.seq >= seq && Array.isArray(u.updates) && u.updates.length) { data.newSince += u.updates.length; emit(); }
+    if (seq !== null && u.seq >= seq && Array.isArray(u.updates) && u.updates.length) {
+      data.newSince += u.updates.length; emit();
+      for (const fn of updateListeners) fn(u.updates);
+    }
     seq = u.seq;
   } catch { /* keep last */ }
 }
