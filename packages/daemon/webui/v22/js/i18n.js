@@ -2,7 +2,10 @@
 // ("de" → German, anything else → English). English is the fallback catalog.
 import en from "./i18n/en.js";
 import de from "./i18n/de.js";
+import viewsEn from "./i18n/views-en.js";
+import viewsDe from "./i18n/views-de.js";
 
+Object.assign(en, viewsEn); Object.assign(de, viewsDe);
 const CATALOGS = { en, de };
 export const LANG = CATALOGS[document.documentElement.dataset.lang] ? document.documentElement.dataset.lang : "en";
 document.documentElement.lang = LANG;

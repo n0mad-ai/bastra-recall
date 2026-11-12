@@ -100,7 +100,8 @@
 .lens__list { list-style: none; margin: 0 -8px; }
 .area-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) 52px 28px; align-items: center; gap: 10px; padding: 6px 8px; background: transparent; font-size: 13.5px; cursor: pointer; transition: background .15s; }
 .area-row:hover { background: var(--accent-10); }
-.area-row.is-on { background: var(--accent-10); }
+.area-row.is-on, .area-row.is-hov { background: var(--accent-10); }
+.area-row.is-hov:not(.is-on) .area-row__name { color: var(--accent); }
 .area-row__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
 .area-row__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .area-row.is-on .area-row__name { color: var(--c); }

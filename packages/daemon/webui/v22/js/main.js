@@ -11,6 +11,7 @@ import * as agent from "./agent.js";
 import * as footer from "./footer.js";
 import * as lens from "./lens.js";
 import * as stage from "./stage.js";
+import "./views/index.js";
 
 const app = document.getElementById("app");
 let L = computeLayout(state);

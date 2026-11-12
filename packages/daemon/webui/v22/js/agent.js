@@ -76,17 +76,17 @@ export function ask(q) {
   clearInterval(typeTimer);
   if (chatState.shown) chatState.msgs.push({ role: "you", text: chatState.shown.q }, { role: "recall", text: chatState.shown.a });
   chatState.shown = null; chatState.typed = "";
-  setState({ jOpen: true, focus: null, agent: "thinking" });
+  setState({ jOpen: true, focus: null, agent: "thinking", hits: [] });
   render();
   const history = chatState.history.slice(-6);
   chat(q, history).then(async ({ ok, status, body }) => {
     let answer, sources = [];
     if (ok && typeof body.reply === "string") {
       answer = body.reply;
-      sources = Array.isArray(body.hits) ? body.hits.filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || "")]) : [];
+      sources = Array.isArray(body.hits) ? body.hits.filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]) : [];
     } else if (status === 503) {
       answer = t("agent.noModel");
-      try { const r = await fetch(`/ui/search?q=${encodeURIComponent(q)}`); const b = await r.json(); sources = (Array.isArray(b.hits) ? b.hits : []).filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || "")]); } catch { /* none */ }
+      try { const r = await fetch(`/ui/search?q=${encodeURIComponent(q)}`); const b = await r.json(); sources = (Array.isArray(b.hits) ? b.hits : []).filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]); } catch { /* none */ }
     } else answer = t("agent.error");
     chatState.history.push({ role: "user", content: q }, { role: "assistant", content: answer });
     typeOut({ q, a: answer, sources });
@@ -94,7 +94,8 @@ export function ask(q) {
 }
 
 function typeOut(p) {
-  setState({ agent: "speaking" });
+  // Hit ids of the answer, numbered 1–3 on the vault views (js/views/).
+  setState({ agent: "speaking", hits: p.sources.map((x) => x[2]).filter(Boolean) });
   let i = 0;
   typeTimer = setInterval(() => {
     i += 4; chatState.typed = p.a.slice(0, i); render();

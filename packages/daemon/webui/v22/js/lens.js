@@ -68,7 +68,7 @@ function areasTab() {
     const qq = state.filter.trim().toLowerCase();
     clear(list).append(...data.clusters.filter((c) => !qq || c.key.toLowerCase().includes(qq)).map((c) => {
       const on = state.focus === c.key;
-      return h("li.area-row", { cls: on ? "is-on" : "", "data-lsel": on ? "1" : null, vars: { "--c": color(c.key) },
+      return h("li.area-row", { cls: [on ? "is-on" : "", state.hover === c.key ? "is-hov" : ""].join(" "), "data-k": c.key, "data-lsel": on ? "1" : null, vars: { "--c": color(c.key) },
         on: { click: () => setState({ focus: on ? null : c.key }), mouseenter: () => setState({ hover: c.key }), mouseleave: () => setState({ hover: null }) } },
         h("span.area-row__dot"), h("span.area-row__name", { text: c.key }),
         h("span.area-row__bar", null, h("span", { vars: { "--w": `${((c.count / max) * 100).toFixed(1)}%` } })),
@@ -109,5 +109,7 @@ export function render(L, changed) {
     lastKey = key;
     clear(body).append(tab === "areas" && VAULTISH(state.view) ? areasTab() : wip());
   }
+  // Hover coupling with the vault views (state.hover).
+  if (changed.has("hover")) for (const r of body.querySelectorAll(".area-row")) r.classList.toggle("is-hov", r.dataset.k === state.hover);
   setTimeout(measureInd, 480);
 }
