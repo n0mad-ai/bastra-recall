@@ -195,6 +195,11 @@ test("GET /api/v1/graph + /api/v1/graph/node over loopback", async () => {
     assert.equal(node.status, 200);
     const full = JSON.parse(node.body);
     assert.match(full.body, /Body of a1/);
+    // memory browser reader: triggers, file relative to the vault, 30-day loads
+    assert.deepEqual(full.recall_when, ["a1"]);
+    assert.ok(typeof full.file === "string" && full.file.endsWith(".md") && !full.file.startsWith("/"), full.file);
+    assert.ok(Array.isArray(full.recall_days) && Array.isArray(full.related_via));
+    assert.ok(nodes.every((n) => Array.isArray((n as { recall_days?: unknown }).recall_days)), "recall_days is always stamped");
 
     const priv = await httpGet(handle.port!, "/api/v1/graph/node?id=secret");
     assert.equal(priv.status, 404, "private memory must 404");

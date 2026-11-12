@@ -22,6 +22,9 @@ import { listSkills } from "./skills-registry.js";
 import { listFloors } from "./floors.js";
 import { liveIntent, readActs } from "./floor-acts.js";
 import { computeHeat, computeReach, readUsage } from "./usage-sidecar.js";
+import { recallDaily } from "./recall-daily.js";
+import { defaultLogDir } from "./learned-recall/harvest.js";
+import { relative, sep } from "node:path";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
 import { isLoopback, isLoopbackHost, hasForwardingHeaders, resolveCorsOrigin, gateApiRequest } from "./http-auth.js";
 import { dispatchTaskHttp, defaultTaskContext } from "./task-transport.js";
@@ -160,6 +163,8 @@ export function dispatchApiSurface(
         // eine berührte Knoten 1.0. Wer das unterscheiden will, braucht die
         // Zahlen dahinter, nicht nur den Anteil.
         const reach = computeReach(usage);
+        // Memory browser: loads per day (30 d) from the telemetry logs.
+        const daily = await recallDaily(defaultLogDir());
         // heat IMMER stampfen (0 statt Key-weglassen). zzallirog
         // (2026-07-18): `if (h) n.heat = h` machte kalten Node und Build-
         // ohne-Heat byte-identisch — ein frisch importierter Vault las sich
@@ -171,6 +176,7 @@ export function dispatchApiSurface(
           // bei heat: eine API, die bei Null verstummt, lehrt Consumer den
           // falschen Schluss ("Feature fehlt" statt "noch nichts passiert").
           n.reach = reach[n.id] ?? { loaded: 0, acted_on: 0, weight: 0, last_at: null };
+          n.recall_days = daily.get(n.id) ?? [];
         }
         sendJson(res, 200, graph);
       })().catch((err: Error) => sendJson(res, 500, { error: err.message }));
@@ -214,7 +220,7 @@ export function dispatchApiSurface(
         return true;
       }
       const { fm } = mem;
-      sendJson(res, 200, {
+      (async () => sendJson(res, 200, {
         id: fm.id,
         title: fm.title,
         type: fm.type,
@@ -227,7 +233,13 @@ export function dispatchApiSurface(
         created: fm.created,
         updated: fm.updated,
         body: mem.body,
-      });
+        // memory browser reader (prototype): triggers, mode, typed links, file
+        recall_when: fm.recall_when,
+        recall_mode: fm.recall_mode ?? null,
+        related_via: fm.related_via,
+        file: relative(toolDeps.vaultPath, mem.filePath).split(sep).join("/"),
+        recall_days: (await recallDaily(defaultLogDir())).get(fm.id) ?? [],
+      }))().catch((err: Error) => sendJson(res, 500, { error: err.message }));
       return true;
     }
   }

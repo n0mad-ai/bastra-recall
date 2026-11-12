@@ -73,6 +73,9 @@ export interface GraphNode {
     /** jüngster Kontakt (ISO) oder null, wenn nie erreicht */
     last_at: string | null;
   };
+  /** Loads per day over the last 30 days as sparse `[daysAgo, loads]`
+   *  (0 = today, UTC), from the telemetry logs. Stamped by the daemon. */
+  recall_days?: Array<[number, number]>;
 }
 
 /**

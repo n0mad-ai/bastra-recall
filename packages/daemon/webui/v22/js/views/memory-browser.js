@@ -55,11 +55,25 @@ function extras() {
   const g = data.graph;
   if (g && g !== extraFor) {
     extra = new Map();
-    for (const n of g.nodes) if (n && typeof n.id === "string") extra.set(n.id, { lastAt: Date.parse(typeof n.reach?.last_at === "string" ? n.reach.last_at : ""), tags: Array.isArray(n.tags) ? n.tags.filter((x) => typeof x === "string") : [], scope: typeof n.scope === "string" ? n.scope : "" });
+    for (const n of g.nodes) if (n && typeof n.id === "string") extra.set(n.id, { lastAt: Date.parse(typeof n.reach?.last_at === "string" ? n.reach.last_at : ""), tags: Array.isArray(n.tags) ? n.tags.filter((x) => typeof x === "string") : [], scope: typeof n.scope === "string" ? n.scope : "", days: days30(n.recall_days) });
     extraFor = g;
   }
   return extra;
 }
+
+/** `recall_days` ([daysAgo, loads] pairs from the daemon) → 30 bins, oldest first, today last. */
+function days30(list) {
+  const out = new Array(30).fill(0);
+  if (Array.isArray(list)) for (const x of list) if (Array.isArray(x) && Number.isInteger(x[0]) && x[0] >= 0 && x[0] < 30 && Number.isFinite(x[1])) out[29 - x[0]] += Math.max(0, x[1]);
+  return out;
+}
+/** Heat bars (prototype heatRow): scale 4 loads per bar, more fill the bar. */
+function heat(el, days, hot) {
+  const mx = Math.max(4, ...days);
+  el.append(...days.map((v) => h("span.mb-heat__b", { cls: v ? "is-v" : "", vars: { "--h": v ? `${Math.max(15, (v / mx) * 100).toFixed(0)}%` : "1px", "--c": hot } })));
+  return el;
+}
+const NO_DAYS = new Array(30).fill(0);
 
 const detail = new Map(); // id → node detail | null (failed)
 async function loadDetail(id) {
@@ -90,8 +104,10 @@ function inline(text, onLink) {
     if (m[9] !== undefined) { start += m[8].length; }
     if (start > last) out.push(text.slice(last, start));
     if (m[1] !== undefined) {
-      const id = m[1].trim(), known = !!vault()?.byId.get(id);
-      out.push(h("button.mb-wl", { cls: known ? "" : "is-dead", text: m[2] ?? m[1], on: known ? { click: () => onLink(id) } : null }));
+      const id = m[1].trim(), target = vault()?.byId.get(id);
+      // a span, not a button: it has to wrap inside running text
+      out.push(h("span.mb-wl", { cls: target ? "" : "is-dead", text: m[2] ?? target?.title ?? m[1], title: id, role: target ? "link" : null, tabindex: target ? "0" : null,
+        on: target ? { click: () => onLink(id), keydown: (e) => { if (e.key === "Enter") onLink(id); } } : null }));
     } else if (m[3] !== undefined) out.push(h("code", { text: m[3] }));
     else if (m[4] !== undefined) out.push(h("strong", { text: m[4] }));
     else if (m[5] !== undefined) out.push(h("a", { href: m[6], target: "_blank", rel: "noopener", text: m[5] }));
@@ -104,7 +120,8 @@ function inline(text, onLink) {
 }
 function markdown(md, onLink) {
   const out = []; let list = null, fence = null;
-  for (const raw of md.split("\n")) {
+  // HTML comments (auto-related markers) are bookkeeping, not text
+  for (const raw of md.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
     const line = raw.trimEnd();
     if (/^```/.test(line)) { if (fence) { out.push(h("pre", { text: fence.join("\n") })); fence = null; } else { list = null; fence = []; } continue; }
     if (fence) { fence.push(raw); continue; }
@@ -238,7 +255,8 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
         h("span.mb-row__type", { text: m.type || t(`vv.cls.${m.cls}`), vars: { "--tc": c } }),
         M.scope === "all" ? h("span.mb-row__area", null, h("span.mb-row__adot", { vars: { "--ac": areaCol(m.area) } }), m.area) : null,
         h("span", { text: t("mb.recalled", { n: numberFmt.format(m.recalled) }) }),
-        view.sem.has(m.id) && view.q && !`${m.title} ${m.summary} ${m.area} ${m.type}`.toLowerCase().includes(view.q) ? h("span.mb-row__ai", { text: t("mb.semantic"), title: t("mb.semanticTip") }) : null));
+        view.sem.has(m.id) && view.q && !`${m.title} ${m.summary} ${m.area} ${m.type}`.toLowerCase().includes(view.q) ? h("span.mb-row__ai", { text: t("mb.semantic"), title: t("mb.semanticTip") }) : null),
+      heat(h("span.mb-heat.mb-row__heat", { title: t("mb.heatTip") }), extras().get(m.id)?.days || NO_DAYS, m.id === M.sel ? ACC : "rgba(56,217,245,.55)"));
   }
 
   function renderList() {
@@ -297,11 +315,15 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     readerFor = key;
     clear(reader); reader.scrollTop = 0;
     if (!m) { reader.append(h("div.mb__nosel", null, t("mb.pick"), h("br"), t("mb.pickKeys"))); return; }
-    const c = TC[m.cls] || INK, ex = extras().get(m.id) || { lastAt: NaN, tags: [], scope: "" };
+    const c = TC[m.cls] || INK, ex = extras().get(m.id) || { lastAt: NaN, tags: [], scope: "", days: NO_DAYS };
     const text = h("div.mb-rd__text.is-wait", { text: t("mb.loading") });
     const facts = h("div.mb-rd__facts");
     const pos = h("span.mb-rd__pos");
-    const last = Number.isFinite(ex.lastAt) ? daysAgo(ex.lastAt) : null;
+    // last load: the newest day of the 30-day series, else the usage clock
+    const lastBin = ex.days.findLastIndex((x) => x > 0);
+    const last = lastBin >= 0 ? 29 - lastBin : Number.isFinite(ex.lastAt) ? daysAgo(ex.lastAt) : null;
+    const box = h("div.mb-rd__box", null, h("div.mb-rd__boxk", { text: t("mb.summary") }), h("div.mb-rd__boxv", { text: m.summary }));
+    const reflex = h("span.mb-rd__flag", { text: "REFLEX", hidden: true });
     const stats = [[numberFmt.format(m.recalled), "recalled", INK], [numberFmt.format(m.acted), "acted", ACC], [m.recalled ? `${Math.round((m.acted / m.recalled) * 100)}%` : "—", "rate", m.recalled ? ACC : MUT],
       [last === null ? t("mb.never") : last <= 0 ? t("mb.today") : t("mb.dAgo", { n: last }), "last", INK]];
     const links = m.links.map((l) => ({ l, o: v.byId.get(l.id) })).filter((x) => x.o);
@@ -311,11 +333,14 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
         h("span.mb-rd__chip", { text: t(`vv.cls.${m.cls}`), vars: { "--tc": c } }),
         h("button.mb-rd__area", { on: { click: () => { Object.assign(M, { scope: m.area, menu: false, limit: PAGE }); render(); } } }, h("span.mb-rd__adot", { vars: { "--ac": areaCol(m.area) } }), m.area),
         m.type ? h("span", { text: m.type }) : null,
+        reflex,
         pos),
       h("h2.mb-rd__h", { text: m.title }),
-      m.summary ? h("div.mb-rd__box", null, h("div.mb-rd__boxk", { text: t("mb.summary") }), h("div.mb-rd__boxv", { text: m.summary })) : null,
+      m.summary ? box : null,
       text,
       h("div.mb-rd__stats", null, stats.map(([val, k, col]) => h("div.mb-rd__stat", null, h("span.mb-rd__sv", { text: val, vars: { "--c": col } }), h("span.mb-rd__sk", { text: t(`mb.st.${k}`) })))),
+      h("div.mb-rd__hk", null, h("span", { text: t("mb.recalls30") }), h("span", { text: t("mb.todayK") })),
+      heat(h("div.mb-heat.mb-rd__heat"), ex.days, ACC),
       links.length ? [h("div.mb-rd__k", { text: t("mb.linked", { n: links.length }) }), h("div.mb-rd__links", null, links.map(({ l, o }) => h("button.mb-rd__link", { on: { click: () => follow(o.id) } },
         h("span.mb-rd__rel", { text: `${t(`mb.rel.${l.rel}`)} →`, vars: { "--rc": l.rel === "linked" ? ACC : MUT } }),
         h("span.mb-rd__lt", { text: o.title }),
@@ -327,17 +352,27 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       careBlock(m));
     reader.append(el);
     const fill = (d) => {
-      clear(facts).append(...[["id", m.id], ["type", m.type], ["scope", str(d?.scope) || ex.scope], ["topic", str(d?.topic_path)], ["tags", (Array.isArray(d?.tags) ? d.tags : ex.tags).filter((x) => typeof x === "string").join(" · ")], ["source", str(d?.source)],
-        ["created", Number.isFinite(m.created) ? dateStr(m.created) : str(d?.created)], ["updated", Number.isFinite(m.at) ? dateStr(m.at) : str(d?.updated)]]
+      const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+      const mode = d ? (d.recall_mode === "reflex" ? t("mb.mode.reflex") : t("mb.mode.auto")) : "";
+      clear(facts).append(...[["file", str(d?.file)], ["created", Number.isFinite(m.created) ? dateStr(m.created) : str(d?.created)], ["updated", Number.isFinite(m.at) ? dateStr(m.at) : str(d?.updated)], ["mode", mode],
+        ["id", m.id], ["type", m.type], ["scope", str(d?.scope) || ex.scope], ["topic", list(d?.topic_path).join(" / ")], ["tags", (d ? list(d.tags) : ex.tags).join(" · ")], ["source", str(d?.source)]]
         .filter(([, val]) => val).flatMap(([k, val]) => [h("span.mb-rd__fk", { text: t(`mb.f.${k}`) }), h("span.mb-rd__fv", { text: val })]));
     };
     fill(null); updatePos(pos);
     loadDetail(m.id).then((d) => {
       if (dead || readerFor !== key) return;
       fill(d);
+      // RECALL WHEN (prototype box): the memory's own triggers
+      const when = Array.isArray(d?.recall_when) ? d.recall_when.filter((x) => typeof x === "string" && x.trim()) : [];
+      if (when.length) {
+        clear(box).append(h("div.mb-rd__boxk", { text: t("mb.recallWhen") }), h("div.mb-rd__boxv", { text: when.join(" · ") }));
+        if (!box.isConnected) el.insertBefore(box, text);
+      }
+      reflex.hidden = d?.recall_mode !== "reflex";
       const body = str(d?.body).trim();
       text.classList.remove("is-wait");
       if (body) clear(text).append(...markdown(body, follow));
+      else if (d && box.firstChild?.textContent === t("mb.recallWhen") && m.summary) text.textContent = m.summary;
       else if (d) text.remove();
       else { text.classList.add("is-wait"); text.textContent = t("mb.noBody"); }
     });
