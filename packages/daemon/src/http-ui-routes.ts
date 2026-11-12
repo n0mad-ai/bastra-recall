@@ -19,6 +19,7 @@ import {
   handleUiVaultImagePost,
 } from "./webui.js";
 import { handleUiChat, type ChatFn } from "./webui-chat.js";
+import { chatHistory, dispatchChatHistory } from "./chat-history.js";
 import { handleHookImport, handleUiImport } from "./import-review.js";
 import { handleUiImportVault, handleUiFsBrowse } from "./import-vault.js";
 import { handleUiSkills } from "./skills-registry.js";
@@ -155,11 +156,14 @@ export function dispatchUiRoutes(
       const m = vault.get(id);
       return m && m.fm.sensitivity !== "private" ? m.body : null;
     };
-    handleUiChat(req, res, { search, chat: ctx.uiChat ?? null, getBody }).catch(() =>
+    const isPrivate = (id: string) => vault.get(id)?.fm.sensitivity === "private";
+    handleUiChat(req, res, { search, chat: ctx.uiChat ?? null, getBody, history: chatHistory, isPrivate }).catch(() =>
       sendJson(res, 500, { error: "ui error" }),
     );
     return true;
   }
+  // Agent window history (chat-history.ts): list, open, delete conversations.
+  if (dispatchChatHistory(req, res, method, url)) return true;
   // Background image of the web UI: local uploads + current settings.
   if (dispatchUiBackdrop(req, res, method, url)) return true;
 

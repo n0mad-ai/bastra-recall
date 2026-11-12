@@ -6,16 +6,21 @@ import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
 import { getArea } from "./areas.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
-import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
+import { vault, typeClass, inWindow, timeWindow, ago } from "./views/vault-data.js";
 import { TC, INK } from "./views/chrome.js";
+import { loadingInline, setBusy } from "./sections/loading.js";
 import { showInView, openMemoryBrowser } from "./views/memory-browser.js";
 
 const STATE_COLOR = { idle: "var(--muted)", listening: "var(--accent)", thinking: "var(--amber)", speaking: "var(--accent)" };
 // Vault suggestions; areas bring their own via registerArea({ presetKeys }).
 const VAULT_PRESETS = ["agent.sug.ring", "agent.sug.week", "agent.sug.unwritten"];
 
-let panel, stateEl, faceCanvas, jarvis, qBox, caption, srcBox, msgBox, sugBox, inBox, input, pod, podOrb, podState, podLine, podChev;
-const chatState = { msgs: [], shown: null, typed: "", question: "", history: [] };
+let panel, stateEl, histBtn, faceCanvas, jarvis, qBox, convBox, caption, srcBox, msgBox, sugBox, inBox, input, pod, podOrb, podState, podLine, podChev;
+// conv: id of the stored conversation (daemon, recall.db); seq drops answers
+// that arrive after the user switched to another conversation.
+const chatState = { msgs: [], shown: null, typed: "", question: "", history: [], conv: null, seq: 0 };
+// List of stored conversations: null = closed, else { items, loading, error }.
+let convs = null;
 let typeTimer = 0;
 
 export function mountAgent(app) {
@@ -25,6 +30,7 @@ export function mountAgent(app) {
   caption = h("p.agent__caption");
   srcBox = h("div.agent__srcs");
   msgBox = h("div");
+  convBox = h("div.agent__convs", { hidden: true });
   sugBox = h("div.agent__sugs");
   input = h("input", { placeholder: t("agent.ask"), "aria-label": t("agent.askLong"), on: {
     input: () => syncInput(),
@@ -35,9 +41,13 @@ export function mountAgent(app) {
   inBox = h("div.agent__in", null, input,
     h("button.agent__send", { "aria-label": t("agent.send"), on: { click: send } }, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M5 12h14M13 6l6 6-6 6" }))));
   panel = h("section.agent", { "aria-label": t("agent.name") },
-    h("div.agent__head", null, h("span.agent__name", { text: t("agent.name") }), h("span.agent__role", { text: t("agent.role") }), stateEl),
+    h("div.agent__head", null, h("span.agent__name", { text: t("agent.name") }), h("span.agent__role", { text: t("agent.role") }), stateEl,
+      histBtn = h("button.agent__hbtn", { type: "button", title: t("agent.history"), "aria-label": t("agent.history"), on: { click: toggleConvs } },
+        s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4M12 8v4l3 2" }))),
+      h("button.agent__hbtn", { type: "button", title: t("agent.new"), "aria-label": t("agent.new"), on: { click: newConversation } },
+        s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M12 5v14M5 12h14" })))),
     h("div.agent__face", null, faceCanvas),
-    h("div.agent__body", null, qBox, caption, srcBox, msgBox, sugBox),
+    h("div.agent__body", null, convBox, qBox, caption, srcBox, msgBox, sugBox),
     h("div.agent__foot", null, inBox));
 
   podOrb = h("span.orb", null, h("span.orb__ring"), h("span.orb__rim"), h("span.orb__core"));
@@ -75,23 +85,28 @@ function greeting() {
 export function ask(q) {
   q = (q || "").trim(); if (!q) return;
   clearInterval(typeTimer);
-  if (chatState.shown) chatState.msgs.push({ role: "you", text: chatState.shown.q }, { role: "recall", text: chatState.shown.a });
+  if (chatState.shown) chatState.msgs.push({ role: "you", text: chatState.shown.q }, { role: "recall", text: chatState.shown.a, sources: chatState.shown.sources });
   chatState.shown = null; chatState.typed = ""; chatState.question = q;
+  convs = null;
+  const seq = ++chatState.seq;
   setState({ jOpen: true, focus: null, agent: "thinking", hits: [] });
   render();
   const history = chatState.history.slice(-6);
-  chat(q, history).then(async ({ ok, status, body }) => {
+  chat(q, history, chatState.conv).then(async ({ ok, status, body }) => {
+    if (seq !== chatState.seq) return;
     let answer, sources = [];
     if (ok && typeof body.reply === "string") {
       answer = body.reply;
+      if (typeof body.conversation_id === "string") chatState.conv = body.conversation_id;
       sources = Array.isArray(body.hits) ? body.hits.filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]) : [];
     } else if (status === 503) {
       answer = t("agent.noModel");
       try { const r = await fetch(`/ui/search?q=${encodeURIComponent(q)}`); const b = await r.json(); sources = (Array.isArray(b.hits) ? b.hits : []).filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]); } catch { /* none */ }
     } else answer = t("agent.error");
+    if (seq !== chatState.seq) return;
     chatState.history.push({ role: "user", content: q }, { role: "assistant", content: answer });
     typeOut({ q, a: answer, sources });
-  }).catch(() => typeOut({ q, a: t("agent.error"), sources: [] }));
+  }).catch(() => { if (seq === chatState.seq) typeOut({ q, a: t("agent.error"), sources: [] }); });
 }
 
 function typeOut(p) {
@@ -102,6 +117,101 @@ function typeOut(p) {
     i += 4; chatState.typed = p.a.slice(0, i); render();
     if (i >= p.a.length) { clearInterval(typeTimer); chatState.shown = p; chatState.typed = ""; setState({ agent: "idle" }); render(); }
   }, 56);
+}
+
+function srcButtons(list) {
+  return list.map(([title, type, id], i) => {
+    const m = id ? vault()?.byId.get(id) : null;
+    const doc = type === "doc" || m?.kind === "doc";
+    return h("button.agent__src", { type: "button", disabled: !id, title: id ? t("agent.srcOpen") : undefined, vars: { "--tc": TC[doc ? "reference" : typeClass(type)] || INK }, on: { click: (e) => openSource(id, e.currentTarget) } },
+      h("span.agent__src-n", { text: String(i + 1) }), h("span.agent__src-t", { text: title }), h("span.agent__src-k", { text: typeLabel(type, doc) }));
+  });
+}
+
+// ── stored conversations (GET/DELETE /ui/chat/conversations, recall.db) ──
+function stopTyping() {
+  clearInterval(typeTimer);
+  chatState.seq++;
+  chatState.typed = "";
+}
+
+/** Empties the window; the next question starts a new stored conversation. */
+function newConversation() {
+  stopTyping();
+  Object.assign(chatState, { msgs: [], shown: null, question: "", history: [], conv: null });
+  convs = null;
+  setState({ agent: "idle", hits: [] });
+  render();
+  input?.focus();
+}
+
+function toggleConvs() {
+  if (convs) { convs = null; render(); return; }
+  convs = { items: [], loading: true, error: false };
+  render();
+  fetch("/ui/chat/conversations", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then((b) => { if (convs) Object.assign(convs, { items: Array.isArray(b.conversations) ? b.conversations : [], loading: false }); })
+    .catch(() => { if (convs) Object.assign(convs, { loading: false, error: true }); })
+    .finally(() => render());
+}
+
+const toSources = (list) => (Array.isArray(list) ? list : []).filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]);
+
+async function openConversation(id, row) {
+  setBusy(row, true);
+  try {
+    const r = await fetch(`/ui/chat/conversations/${encodeURIComponent(id)}`, { credentials: "same-origin" });
+    if (!r.ok) throw new Error(String(r.status));
+    const b = await r.json();
+    const ex = [];
+    const list = Array.isArray(b.messages) ? b.messages : [];
+    for (let i = 0; i + 1 < list.length; i++) if (list[i].role === "user" && list[i + 1].role === "assistant") { ex.push({ q: String(list[i].text), a: String(list[i + 1].text), sources: toSources(list[i + 1].sources) }); i++; }
+    stopTyping();
+    const last = ex.pop() || null;
+    Object.assign(chatState, {
+      conv: id, shown: last, question: last ? last.q : "",
+      msgs: ex.flatMap((e) => [{ role: "you", text: e.q }, { role: "recall", text: e.a, sources: e.sources }]),
+      history: [...ex, ...(last ? [last] : [])].flatMap((e) => [{ role: "user", content: e.q }, { role: "assistant", content: e.a }]),
+    });
+    convs = null;
+    setState({ agent: "idle", hits: last ? last.sources.map((x) => x[2]).filter(Boolean) : [] });
+    render();
+  } catch {
+    if (convs) convs.error = true;
+    render();
+  } finally { setBusy(row, false); }
+}
+
+async function deleteConversation(id, btn) {
+  setBusy(btn, true);
+  try {
+    const r = await fetch(`/ui/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin", headers: { "Content-Type": "application/json" } });
+    if (!r.ok && r.status !== 404) throw new Error(String(r.status));
+    if (convs) convs.items = convs.items.filter((c) => c.id !== id);
+    if (chatState.conv === id) chatState.conv = null; // further questions start a new one
+  } catch { if (convs) convs.error = true; }
+  setBusy(btn, false);
+  render();
+}
+
+function renderConvs() {
+  const open = !!convs;
+  convBox.hidden = !open;
+  histBtn.classList.toggle("is-on", open);
+  histBtn.setAttribute("aria-pressed", String(open));
+  for (const el of [qBox, caption, srcBox, msgBox, sugBox]) el.classList.toggle("is-off", open);
+  if (!open) { clear(convBox); return; }
+  clear(convBox).append(h("span.agent__srcs-l", { text: t("agent.convs") }));
+  if (convs.loading) { convBox.append(loadingInline(t("agent.convsLoading"))); return; }
+  if (convs.error) convBox.append(h("p.agent__convs-note", { text: t("agent.convsError") }));
+  if (!convs.items.length && !convs.error) { convBox.append(h("p.agent__convs-note", { text: t("agent.convsEmpty") })); return; }
+  convBox.append(...convs.items.map((c) => {
+    const row = h("button.agent__conv-open", { type: "button", cls: c.id === chatState.conv ? "is-cur" : "", on: { click: () => openConversation(c.id, row) } },
+      h("span.agent__conv-t", { text: c.title }),
+      h("span.agent__conv-m", { text: `${t("agent.convCount", { n: c.count })} · ${Number.isFinite(c.updated) ? ago(c.updated) : ""}` }));
+    const del = h("button.agent__conv-del", { type: "button", title: t("agent.convDelete"), "aria-label": t("agent.convDelete"), text: "×", on: { click: () => deleteConversation(c.id, del) } });
+    return h("div.agent__conv", null, row, del);
+  }));
 }
 
 /** Plain type name: reference/bookmark "Reference", a stored document "Document",
@@ -150,19 +260,17 @@ export function render(L) {
   qBox.textContent = chatState.question;
   qBox.hidden = !chatState.question;
   clear(srcBox);
-  if (chatState.shown && ag === "idle" && chatState.shown.sources.length) {
-    srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...chatState.shown.sources.map(([title, type, id], i) => {
-      const m = id ? vault()?.byId.get(id) : null;
-      const doc = type === "doc" || m?.kind === "doc";
-      return h("button.agent__src", { type: "button", disabled: !id, title: id ? t("agent.srcOpen") : undefined, vars: { "--tc": TC[doc ? "reference" : typeClass(type)] || INK }, on: { click: (e) => openSource(id, e.currentTarget) } },
-        h("span.agent__src-n", { text: String(i + 1) }), h("span.agent__src-t", { text: title }), h("span.agent__src-k", { text: typeLabel(type, doc) }));
-    }));
-  }
-  // Earlier exchanges below, newest first, each question above its answer.
+  if (chatState.shown && ag === "idle" && chatState.shown.sources.length)
+    srcBox.append(h("span.agent__srcs-l", { text: t("agent.sources") }), ...srcButtons(chatState.shown.sources));
+  // Earlier exchanges below, newest first, each question above its answer
+  // and the answer's sources (clickable as above).
   const pairs = [];
-  for (let i = 0; i + 1 < chatState.msgs.length; i += 2) pairs.unshift(chatState.msgs[i], chatState.msgs[i + 1]);
-  clear(msgBox).append(...(pairs.length ? [h("span.agent__srcs-l", { text: t("agent.earlier") })] : []), ...pairs.map((m) => h(`div.msg.msg--${m.role}`, { text: m.text })));
+  for (let i = 0; i + 1 < chatState.msgs.length; i += 2) pairs.unshift([chatState.msgs[i], chatState.msgs[i + 1]]);
+  clear(msgBox).append(...(pairs.length ? [h("span.agent__srcs-l", { text: t("agent.earlier") })] : []), ...pairs.flatMap(([you, rec]) => [
+    h("div.msg.msg--you", { text: you.text }), h("div.msg.msg--recall", { text: rec.text }),
+    rec.sources?.length ? h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources)) : null]));
   msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";
+  renderConvs();
   const keys = getArea(state.view)?.presetKeys || VAULT_PRESETS;
   const used = new Set([chatState.shown?.q, ...chatState.msgs.map((m) => m.text)]);
   clear(sugBox).append(...keys.map((k) => t(k)).filter((q) => !used.has(q)).slice(0, state.vh < 760 ? 1 : 2)

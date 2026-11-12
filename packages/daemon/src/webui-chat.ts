@@ -12,6 +12,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SearchIndex, RecallHit } from "@bastra-recall/core";
 import { getUiEnabled } from "./settings.js";
 import { sendJsonPlain } from "./webui.js";
+import type { ChatHistory } from "./chat-history.js";
 
 /** Same shape as the doc2query ChatFn: prompt in, raw model reply out. */
 export type ChatFn = (prompt: string) => Promise<string>;
@@ -22,6 +23,10 @@ export interface CopilotDeps {
   /** Full body of a (non-private) memory — the answer grounds in real
    *  content, not just summary snippets. */
   getBody?: (id: string) => string | null;
+  /** Stores each exchange (chat-history.ts); absent → nothing is stored. */
+  history?: () => ChatHistory;
+  /** Private memories are never kept as a stored source title. */
+  isPrivate?: (id: string) => boolean;
 }
 
 export interface CopilotHit {
@@ -181,8 +186,10 @@ export async function handleUiChat(
   }
   let message = "";
   let history: Array<{ role: string; content: string }> = [];
+  let conversationId: string | null = null;
   try {
-    const body = JSON.parse(raw) as { message?: unknown; history?: unknown };
+    const body = JSON.parse(raw) as { message?: unknown; history?: unknown; conversation_id?: unknown };
+    conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     message = typeof body.message === "string" ? body.message.trim().slice(0, MAX_MESSAGE) : "";
     if (Array.isArray(body.history)) {
       history = body.history
@@ -210,7 +217,17 @@ export async function handleUiChat(
       chat: deps.chat,
       getBody: deps.getBody,
     });
-    sendJsonPlain(res, 200, result);
+    let conversation_id: string | null = null;
+    if (deps.history) {
+      // A failing store must not cost the user the answer.
+      try {
+        const sources = result.hits.filter((h) => !deps.isPrivate?.(h.id)).map((h) => ({ id: h.id, type: h.type, title: h.title }));
+        conversation_id = deps.history().append(conversationId, message, result.reply, sources);
+      } catch (err) {
+        process.stderr.write(`[bastra-recall] chat history not stored: ${(err as Error).message}\n`);
+      }
+    }
+    sendJsonPlain(res, 200, { ...result, conversation_id });
   } catch (err) {
     sendJsonPlain(res, 502, { error: `copilot failed: ${(err as Error).message}` });
   }

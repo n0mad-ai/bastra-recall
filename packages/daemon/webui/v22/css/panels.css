@@ -22,6 +22,23 @@
 .agent__src-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent__src-k { flex: none; font: 10px var(--mono); color: var(--tc, var(--muted)); }
 .agent__hist { gap: 8px; }
+.agent__srcs--old { margin: -2px 0 4px 12px; }
+.agent__srcs--old .agent__src { padding: 4px 8px; font-size: 12px; }
+.agent__hbtn { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-20); background: transparent; color: var(--muted); cursor: pointer; transition: border-color .2s, color .2s; }
+.agent__hbtn:hover, .agent__hbtn.is-on { border-color: var(--accent); color: var(--accent); }
+.agent__hbtn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.agent__body .is-off { display: none; }
+.agent__convs { display: flex; flex-direction: column; gap: 4px; }
+.agent__convs[hidden] { display: none; }
+.agent__convs-note { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.agent__conv { display: flex; align-items: stretch; border: 1px solid var(--line-20); transition: border-color .2s, background .2s; }
+.agent__conv:hover { border-color: var(--accent); background: var(--accent-08); }
+.agent__conv-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.agent__conv-open.is-cur .agent__conv-t { color: var(--accent); }
+.agent__conv-t { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent__conv-m { font: 10px var(--mono); color: var(--muted); }
+.agent__conv-del { flex: none; width: 30px; border: 0; border-left: 1px solid var(--line-14); background: transparent; color: var(--muted); font-size: 15px; cursor: pointer; }
+.agent__conv-del:hover { color: var(--danger); }
 .msg { max-width: 90%; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .msg--you { align-self: flex-end; padding: 7px 10px; background: var(--line-12); color: var(--ink); }
 .msg--recall { align-self: flex-start; padding: 2px 0 2px 10px; border-left: 2px solid var(--accent); color: var(--muted); }

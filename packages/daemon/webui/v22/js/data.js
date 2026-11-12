@@ -104,9 +104,10 @@ export async function pollUpdates() {
   } catch { /* keep last */ }
 }
 
-/** POST /ui/chat — { message, history } → { reply, … }. */
-export async function chat(message, history) {
-  const r = await fetch("/ui/chat", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history }) });
+/** POST /ui/chat — { message, history, conversation_id } → { reply, hits, conversation_id }.
+ *  Without a conversation id the daemon starts a new stored conversation. */
+export async function chat(message, history, conversationId) {
+  const r = await fetch("/ui/chat", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history, conversation_id: conversationId || undefined }) });
   const b = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, body: b };
 }

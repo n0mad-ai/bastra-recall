@@ -41,6 +41,29 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [{
     CREATE VIRTUAL TABLE app_search USING fts5(namespace UNINDEXED,key UNINDEXED,text);
     INSERT INTO app_index_catalog VALUES('app_search',1);`);
   },
+}, {
+  version: 2,
+  name: "agent-chat-history",
+  // UI state of the agent window (chat-history.ts): conversations and their
+  // messages. Memories stay Markdown in the vault; nothing here is vault data.
+  up(db) {
+    db.exec(`CREATE TABLE chat_conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX chat_conversations_updated ON chat_conversations(updated_at DESC);
+    CREATE TABLE chat_messages (
+      id INTEGER PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+      text TEXT NOT NULL,
+      sources TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(sources)),
+      created_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX chat_messages_conversation ON chat_messages(conversation_id, id);`);
+  },
 }];
 
 export interface AppDatabaseOptions {
