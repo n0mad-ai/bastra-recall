@@ -65,7 +65,7 @@ export function installLive(e, { awake, regroup }) {
       if (typeof u.cluster !== "string" || !u.cluster) return;
       nodes.adoptLiveNode(u); // a real node first (#217), then the star above it
       e.orbit.spawnBurst(u);
-      awake(2600); // flash + shockwave at full rate, then the idle cadence
+      awake(2600); // flash + shockwave; afterwards the live burst keeps the loop running
       return;
     }
     const n = e.sim.byId.get(u.id);

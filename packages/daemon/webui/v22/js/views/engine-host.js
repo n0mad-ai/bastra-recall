@@ -31,8 +31,6 @@ import { installLive } from "./engine-live.js";
 const ANCHORS_KEY = "bastra-vault-map-cluster-pos";
 const SPIN_KEY = "bastra-vault-map-semantic-spin";
 const FLIGHT_MS = 950;
-const SLOW_MS = 50; // idle cadence for slow effects (focus beacon, filter pulse): 20 fps
-const ORBIT_IDLE_MS = 66; // idle universe (disc spin, planets — calm by design): 15 fps
 const AWAKE_MS = 1000; // full rate after the last input or state change
 
 let eng = null; // { graph, sim, renderer, interactions, orbit, semantic, canvas, … }
@@ -71,7 +69,7 @@ function build() {
   const canvas = h("canvas.ev__cv");
   const clip = h("div.ev", null, canvas);
   const e = { src: data.graph, graph, canvas, clip, structure: "clusters", view: null, stage: null, hooks: null,
-    transition: null, token: 0, raf: 0, lastFrame: -Infinity, awakeUntil: 0, rect: null, wasBusy: false, userTouched: false, saveT: 0,
+    transition: null, token: 0, raf: 0, awakeUntil: 0, rect: null, wasBusy: false, userTouched: false, saveT: 0,
     cloudSnapshot: null, spin: (() => { try { return localStorage.getItem(SPIN_KEY) === "on"; } catch { return false; } })() };
   e.hues = clusterHues(graph.clusters);
   e.sim = createSimulation(graph, innerWidth, innerHeight, loadAnchors(e));
@@ -140,12 +138,15 @@ function awake(e, ms = AWAKE_MS) {
   if (e.stage && !e.raf && !document.hidden) e.raf = requestAnimationFrame((now) => frame(e, now));
 }
 
-/** "full" | frame interval in ms | "stop" — #324 idle throttle, extended: a still picture stops. */
+/** "full" | "stop". Anything that moves is drawn at the full rAF rate, exactly
+ *  like the old render loop (Mindspace rendering and live animations are
+ *  frozen, smoothness included). Only a truly still picture stops drawing. */
 function cadence(e, now) {
   if (e.transition || e.zoomAnim || e.interactions.isFlying() || now < e.awakeUntil || e.wasBusy || e.boltDemo.isRunning()) return "full";
-  if (e.view === "orbit") return ORBIT_IDLE_MS; // the universe turns on its own (discs, planets)
-  if (e.view === "semantic" && e.semantic.getMode() === "3d" && e.spin) return SLOW_MS;
-  return e.renderer.hasLiveEffects() || e.live.hasBursts(now) ? SLOW_MS : "stop"; // focus beacon, filter pulse, flares, supernovae
+  if (e.view === "orbit") return "full"; // the universe always moves (discs, planets, drift)
+  if (e.view === "semantic" && e.semantic.getMode() === "3d" && e.spin) return "full";
+  // focus beacon, filter pulse, flares, supernovae
+  return e.renderer.hasLiveEffects() || e.live.hasBursts(now) ? "full" : "stop";
 }
 
 function frame(e, now) {
@@ -154,8 +155,6 @@ function frame(e, now) {
   if (syncGeometry(e)) e.awakeUntil = Math.max(e.awakeUntil, now + 200);
   const mode = cadence(e, now);
   if (mode === "stop") { e.hooks?.onFrame(); return; }
-  if (mode !== "full" && now - e.lastFrame < mode) { e.raf = requestAnimationFrame((t) => frame(e, t)); return; }
-  e.lastFrame = now;
   const tr = e.transition;
   if (tr) {
     // nodes fly between layouts; physics and view ticks pause meanwhile
