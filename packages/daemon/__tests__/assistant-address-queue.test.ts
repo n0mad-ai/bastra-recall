@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { IncomingMessage, ServerResponse, Server } from 'node:http';
 import { Socket } from 'node:net';
+import { once } from 'node:events';
 import {
   startAssistantSocket, ASSISTANT_ACTIVE_REQUESTS,
 } from '../src/assistant-address-gateway.js';
@@ -72,7 +73,6 @@ test('gateway bounds pipelined requests and immediately reclaims abandoned waite
 
 test('gateway frees real pipelined requests when their socket disconnects', { timeout: 5000 }, async t => {
   const { connect } = await import('node:net');
-  const { once } = await import('node:events');
   const originalListen = Server.prototype.listen;
   t.mock.method(Server.prototype, 'listen', function(this: Server, ...args: any[]) {
     return args[0]?.fd === 0

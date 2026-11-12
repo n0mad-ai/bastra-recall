@@ -56,7 +56,7 @@ test("validation rejects unknown source kinds, bad assignees, empty and oversize
     { waits_on: [""] }, { waits_on: Array.from({ length: 21 }, (_, n) => `w${n}`) }, { waits_on: ["x".repeat(257)] },
     { agent_note: "x".repeat(4097) },
   ] as unknown[]).entries())
-    await assert.rejects(f.call("task_create", { ...f.input, idempotency_key: `bad-${i}`, ...(bad as object) }), undefined, JSON.stringify(bad));
+    await assert.rejects(f.call("task_create", { ...f.input, idempotency_key: `bad-${i}`, ...(bad as object) }), JSON.stringify(bad));
   assert.equal((await readTaskStore(f.ctx.path)).tasks.length, 0);
 });
 
