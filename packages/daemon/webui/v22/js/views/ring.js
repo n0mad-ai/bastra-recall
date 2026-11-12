@@ -320,7 +320,7 @@ export function mountRing(stage) {
     if (key !== cardKey) {
       cardKey = key; clear(cardHost); card = null;
       if (state.focus && vault()) {
-        card = selMem ? memoryCard(selMem, { onClose: () => { selMem = null; place(); } }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { selMem = m; place(); } });
+        card = selMem ? memoryCard(selMem, { onClose: () => { selMem = null; place(); } }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
         cardHost.append(card.el);
       }
     }
