@@ -33,3 +33,25 @@ test("local settings session/CSRF, atomic validation and secret masking", async 
   await new Promise(resolve=>setImmediate(resolve)); assert.equal(restarts,1);
   assert.equal((await fetch(origin+"/ui/settings",{headers:{...headers,"X-Forwarded-For":"127.0.0.1"}})).status,403);
 });
+
+test("full settings sessions: a new browser displaces the least recently used idle session, never one in use", async t => {
+  const path = join(await mkdtemp(join(tmpdir(),"settings-ui-lru-")),"cli-settings.json");
+  await mutateSettings(path,s => ({...s,ui:{enabled:true}}));
+  const server = createServer((req,res) => { if (!dispatchSettingsUi(req,res,req.method!,req.url!,{path})) {res.writeHead(404);res.end();} });
+  await new Promise<void>(resolve => server.listen(0,"127.0.0.1",resolve));
+  // Start past the 15-minute TTL so sessions of earlier tests in this process have expired.
+  const realNow = Date.now; let now = realNow() + 20*60_000; Date.now = () => now;
+  t.after(()=>{ Date.now = realNow; return new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve())); });
+  const origin = `http://127.0.0.1:${(server.address() as {port:number}).port}`;
+  const open = () => fetch(origin+"/ui/settings/session",{method:"POST",headers:{"Content-Type":"application/json",Origin:origin},body:"{}"});
+  const grant = async () => { const r = await open(); assert.equal(r.status,200); return {Cookie:r.headers.get("set-cookie")!.split(";")[0]}; };
+  const oldest = await grant(); now += 1000;
+  const active = await grant(); now += 1000;
+  for (let i = 0; i < 250; i++) { const r = await open(); if (r.status === 429) break; assert.equal(r.status,200); }
+  assert.equal((await open()).status,429,"slots used within the idle window keep the capacity guard");
+  now += 11*60_000;
+  assert.equal((await fetch(origin+"/ui/settings",{headers:active})).status,200,"an open settings page keeps its session");
+  assert.equal((await open()).status,200,"a new browser gets in once the oldest slot has been idle long enough");
+  assert.equal((await fetch(origin+"/ui/settings",{headers:oldest})).status,401,"the least recently used session gave way");
+  assert.equal((await fetch(origin+"/ui/settings",{headers:active})).status,200,"the session in use stays valid");
+});

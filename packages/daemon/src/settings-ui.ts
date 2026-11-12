@@ -8,8 +8,11 @@ import { getUiEnabled, mutateSettings, readSettings, settingsFilePath } from "./
 import { settingEntries, storedSetting, applySettingChanges } from "./settings-registry.js";
 import { effectiveSetting } from "./settings-effective.js";
 import { listClients, revokeClient } from "./oauth-store.js";
-const sessions = new Map<string,{csrf:string;expires:number;path:string;host:string}>();
+const sessions = new Map<string,{csrf:string;expires:number;path:string;host:string;lastUsed:number}>();
 const ttl = 15*60_000, cookieName = "bastra_settings_session";
+// Full: the least recently used session gives way once it has been idle this
+// long; sessions used within the window keep the capacity guard (429).
+const capacity = 100, reclaimIdleMs = 10*60_000;
 const cookie = (id:string,age:number) => `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/ui/settings; Max-Age=${age}`;
 export interface SettingsUiOptions { path?: string; oauthPath?: string; restart?: () => Promise<void>; }
 function failure(status:number):never { throw Object.assign(new Error("Settings request denied"),{status}); }
@@ -37,17 +40,23 @@ export function dispatchSettingsUi(req:IncomingMessage,res:ServerResponse,method
       for(const[id,session]of sessions)if(session.expires<=Date.now())sessions.delete(id);
       if(url==="/ui/settings/session"&&method==="POST") {
         const body=await readJsonBody(req,256);if(Object.keys(body).length)failure(400);
-        if(sessions.size>=100)failure(429);
+        if(sessions.size>=capacity) {
+          let lru:string|undefined,lruAt=Infinity;
+          for(const[key,session]of sessions)if(session.lastUsed<lruAt){lru=key;lruAt=session.lastUsed;}
+          if(lru&&Date.now()-lruAt>=reclaimIdleMs)sessions.delete(lru);
+        }
+        if(sessions.size>=capacity)failure(429);
         const id=randomBytes(32).toString("base64url"),csrf=randomBytes(32).toString("base64url");
-        sessions.set(id,{csrf,expires:Date.now()+ttl,path,host:req.headers.host!});
+        sessions.set(id,{csrf,expires:Date.now()+ttl,path,host:req.headers.host!,lastUsed:Date.now()});
         res.setHeader("Set-Cookie",cookie(id,ttl/1000));sendJson(res,200,{csrf,expiresIn:ttl/1000});return;
       }
       const id=req.headers.cookie?.split(";").map(c=>c.trim()).find(c=>c.startsWith(`${cookieName}=`))?.slice(cookieName.length+1);
       const session=id?sessions.get(id):undefined;
       if(!session||session.path!==path||session.host!==req.headers.host)failure(401);
-      if(method==="GET"&&url==="/ui/settings") {sendJson(res,200,await snapshot(path,options));return;}
+      if(method==="GET"&&url==="/ui/settings") {session.lastUsed=Date.now();sendJson(res,200,await snapshot(path,options));return;}
       if(method!=="POST")failure(405);
       const csrf=req.headers["x-bastra-settings-csrf"];if(typeof csrf!=="string"||!safeEqual(csrf,session.csrf))failure(403);
+      session.lastUsed=Date.now();
       const body=await readJsonBody(req,128*1024);
       if(url==="/ui/settings") {
         if(Object.keys(body).some(k=>k!=="changes")||!body.changes||typeof body.changes!=="object"||Array.isArray(body.changes))failure(400);

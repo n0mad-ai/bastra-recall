@@ -91,3 +91,26 @@ test('#1410: new browsers reclaim abandoned sessions while authenticated activit
   assert.equal((await post('/ui/tasks/api/task_status',active)).status,401,'logout invalidates copied cookies');
  }finally{Date.now=realNow;await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
 });
+
+test('full board sessions: a new browser displaces the least recently used idle session, never a session in use', async () => {
+ const root=await mkdtemp(join(tmpdir(),'task-ui-lru-')),ctx={path:join(root,'tasks.json'),authPath:join(root,'task-auth.json')};
+ const previous=process.env.BASTRA_TASKS_PATH,previousToken=process.env.BASTRA_TASK_TOKEN;
+ process.env.BASTRA_TASKS_PATH=ctx.path;delete process.env.BASTRA_TASK_TOKEN;
+ await setUiEnabled(true);await ensureLocalTaskAgent();
+ const server=createServer((req,res)=>dispatchTaskUi(req,res,req.method!,req.url!,ctx));server.listen(0,'127.0.0.1');await once(server,'listening');
+ const base=`http://127.0.0.1:${(server.address() as any).port}`,realNow=Date.now;let now=realNow()+400*86400000;Date.now=()=>now;
+ const post=(path:string,headers:Record<string,string>={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:base,...headers},body:'{}'});
+ const grant=async()=>{const r=await post('/ui/tasks/session');assert.equal(r.status,200);return {Cookie:r.headers.get('set-cookie')!.split(';')[0],'x-bastra-task-csrf':(await r.json() as any).csrf};};
+ try {
+  // Sessions left over from earlier tests in this process are older than everything here.
+  const oldest=await grant();now+=1000;
+  const active=await grant();now+=1000;
+  for(let i=0;i<250;i++){const r=await post('/ui/tasks/session');if(r.status===503)break;assert.equal(r.status,200);}
+  assert.equal((await post('/ui/tasks/session')).status,503,'slots used within the idle window keep the capacity guard');
+  now+=11*60000;
+  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'an open board keeps its session');
+  assert.equal((await post('/ui/tasks/session')).status,200,'a new browser gets in once the oldest slot has been idle long enough');
+  assert.equal((await post('/ui/tasks/api/task_status',oldest)).status,401,'the least recently used session gave way');
+  assert.equal((await post('/ui/tasks/api/task_status',active)).status,200,'the session in use stays valid');
+ }finally{Date.now=realNow;await new Promise<void>(r=>server.close(()=>r()));await setUiEnabled(false);if(previous===undefined)delete process.env.BASTRA_TASKS_PATH;else process.env.BASTRA_TASKS_PATH=previous;if(previousToken===undefined)delete process.env.BASTRA_TASK_TOKEN;else process.env.BASTRA_TASK_TOKEN=previousToken;}
+});

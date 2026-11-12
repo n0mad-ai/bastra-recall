@@ -12,7 +12,12 @@ import { readJsonBody, sendJson, MAX_BODY_BYTES } from "./http-util.js";
 // Deliberately process-local: a daemon restart invalidates every browser grant.
 const sessions = new Map<string, { authorization: string; csrf: string; path: string; lastUsed: number }>();
 // Reclaim only under capacity pressure. Existing cookies have no automatic TTL.
-const abandonedAfterMs = 24 * 60 * 60 * 1000;
+// When all slots are taken, the least recently used session gives way to a new
+// browser if it has been idle for reclaimIdleMs. An open board polls far more
+// often, so a session in use is never displaced; when every session was used
+// within that window, the capacity guard still refuses (#1410).
+const capacity = 100;
+const reclaimIdleMs = 10 * 60 * 1000;
 const cookie = "bastra_task_session";
 const cookieHeader = (value: string) => `${cookie}=${value}; HttpOnly; SameSite=Strict; Path=/ui/tasks/${value ? "" : "; Max-Age=0"}`;
 function reject(code: string): never { throw Object.assign(new Error("Task UI access denied"), { code }); }
@@ -37,11 +42,12 @@ export function dispatchTaskUi(req: IncomingMessage, res: ServerResponse, method
           existing.lastUsed = Date.now();
           sendJson(res,200,{ role: "agent", csrf: existing.csrf, expires_in: null }); return;
         }
-        if (sessions.size >= 100) {
-          const cutoff = Date.now() - abandonedAfterMs;
-          for (const [key, session] of sessions) if (session.lastUsed < cutoff) sessions.delete(key);
+        if (sessions.size >= capacity) {
+          let lru: string | undefined, lruAt = Infinity;
+          for (const [key, session] of sessions) if (session.lastUsed < lruAt) { lru = key; lruAt = session.lastUsed; }
+          if (lru && Date.now() - lruAt >= reclaimIdleMs) sessions.delete(lru);
         }
-        if (sessions.size >= 100) reject("capacity");
+        if (sessions.size >= capacity) reject("capacity");
         const sessionId = randomBytes(32).toString("base64url"), csrf = randomBytes(32).toString("base64url");
         sessions.set(sessionId, { authorization, csrf, path: ctx.path, lastUsed: Date.now() });
         res.setHeader("Set-Cookie", cookieHeader(sessionId)); sendJson(res,200,{ role: "agent", csrf, expires_in: null }); return;
