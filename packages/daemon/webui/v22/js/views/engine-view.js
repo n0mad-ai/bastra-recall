@@ -11,6 +11,7 @@ import { zoomBar, overlay, areaCard, memoryCard, dock, park, TC, INK } from "./c
 import { attach, engine } from "./engine-host.js";
 import { signalMatch } from "./signals.js";
 import { CORES } from "../../../js/managers/orbit-core.js";
+import { weatherPicker } from "../weather-place.js";
 
 /** v22 view id → engine view id (old UI data-view). */
 export const ENGINE_VIEW = { mindspace: "orbit", clouds: "clouds", semantic: "semantic" };
@@ -192,7 +193,7 @@ export function viewTab(id) {
         }
         row("ev.distance", seg([["woven", "ev.woven"], ["balanced", "ev.balanced"]], engine.distance(), engine.setDistance));
         row("ev.drift", seg([["on", "ev.on"], ["off", "ev.off"]], engine.drift() ? "on" : "off", (v) => engine.setDrift(v === "on")));
-        row("ev.weather", weatherBox(draw));
+        row("ev.weather", weatherPicker(engine.weather(), draw));
       } else if (id === "semantic") {
         const m = engine.semanticMode();
         row("ev.structure", seg([["2d", "ev.flat"], ["3d", "ev.depth"]], m, engine.setSemanticMode));
@@ -228,29 +229,3 @@ export function viewTab(id) {
   };
 }
 
-/** Weather layer place picker (old weather chip): GPS and search, always
- *  together; nothing is requested until a place is chosen. */
-function weatherBox(redraw) {
-  const w = engine.weather();
-  if (!w) return h("span.vt__s", { text: "–" });
-  const msg = h("span.vt__msg");
-  const list = h("div.vt__wxl");
-  const place = w.getPlace();
-  const r = w.readout();
-  const head = place
-    ? h("div.vt__wxh", null, h("span.vt__wxp", { text: [place.name, r && Number.isFinite(r.temp) ? `${Math.round(r.temp)}°` : "", r?.label || ""].filter(Boolean).join(" · ") }),
-      h("button.vt__btn", { type: "button", text: t("ev.off"), on: { click: () => { void w.clear().then(redraw); } } }))
-    : h("span.vt__s", { text: t("ev.wxOff") });
-  let timer = 0;
-  const input = h("input.vt__in", { type: "search", placeholder: t("ev.wxSearch"), "aria-label": t("ev.wxSearch"), on: { input: () => {
-    clearTimeout(timer);
-    const q = input.value;
-    timer = setTimeout(async () => {
-      const found = await w.search(q);
-      clear(list).append(...found.map((p) => h("button.vt__wxo", { type: "button", text: [p.name, p.detail].filter(Boolean).join(", "), on: { click: () => { void w.setPlace(p).then(redraw); } } })));
-      msg.textContent = q.trim().length >= 2 && !found.length ? t("ev.wxNone") : "";
-    }, 350);
-  } } });
-  const gps = h("button.vt__btn", { type: "button", text: t("ev.wxGps"), title: t("ev.wxGpsTitle"), on: { click: () => { msg.textContent = t("ev.wxLocating"); w.useGps().then(redraw).catch((err) => { msg.textContent = err?.message || String(err); }); } } });
-  return h("div.vt__wx", null, head, h("div.vt__wxs", null, input, gps), list, msg);
-}

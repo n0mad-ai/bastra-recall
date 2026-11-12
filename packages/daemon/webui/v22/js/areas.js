@@ -19,7 +19,6 @@
 //     mount: (el, ctx) => { el.append(hud({ kicker, title, text, side, tiles })); return () => {}; } });
 //
 // HUD head box, tiles, chips and buttons: js/sections/hud.js.
-import { registerCalendarStyle } from "./sections/tasks-styles.js";
 export const ICON = {
   dashboard: "M4 4h7v9H4ZM13 4h7v5h-7ZM13 11h7v9h-7ZM4 15h7v5H4Z",
   mindspace: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M7 9.5a5.5 5.5 0 0 1 8.5-1.7M17 14.5a5.5 5.5 0 0 1-8.5 1.7",
@@ -103,6 +102,18 @@ registerArea({ id: "settings", group: "system", order: 1, labelKey: "nav.setting
   greetingKey: "agent.greeting.settings", presetKeys: ["agent.sug.settings"],
   tabs: [{ id: "areas", labelKey: "lens.find" }, { id: "changes", labelKey: "lens.changes" }] });
 
-// Pro builds call this hook from their own bundle; the free build exposes it
-// and stays empty.
-window.recallUi = Object.freeze({ registerArea, registerCalendarStyle });
+// ── window.recallUi: the one docking point for Pro bundles ────────────────
+// Only this file assigns window.recallUi. Modules that offer a further hook
+// (tasks-styles.js › registerCalendarStyle, dashboard.js › registerWidget)
+// add it with extendRecallUi({ name: fn }); existing names are never replaced.
+const recallUi = { registerArea };
+window.recallUi = Object.freeze({ ...recallUi });
+
+export function extendRecallUi(fns) {
+  for (const [name, fn] of Object.entries(fns)) {
+    if (typeof fn !== "function") throw new TypeError(`extendRecallUi: ${name} is not a function`);
+    if (name in recallUi) throw new Error(`extendRecallUi: ${name} is already registered`);
+    recallUi[name] = fn;
+  }
+  window.recallUi = Object.freeze({ ...recallUi });
+}

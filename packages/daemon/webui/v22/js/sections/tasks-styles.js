@@ -20,6 +20,7 @@
 // Returned toolbar data: levels [{ label, on, onClick }], nav (‹ TODAY ›) with
 // prev/next/today, zoom { in, out, label }, range/sub (null = week/month text).
 import { addStrings } from "../i18n.js";
+import { extendRecallUi } from "../areas.js";
 
 const styles = new Map();
 const listeners = new Set();
@@ -30,6 +31,8 @@ export function registerCalendarStyle(style) {
   styles.set(style.id, { pro: true, ...style });
   for (const fn of listeners) fn();
 }
+
+extendRecallUi({ registerCalendarStyle });
 
 export const calendarStyle = (id) => styles.get(id);
 export const calendarStyles = () => [...styles.values()];

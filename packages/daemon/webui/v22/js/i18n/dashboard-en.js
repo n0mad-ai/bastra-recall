@@ -47,8 +47,7 @@ export default {
   "db.b.ask": "BRIEF ME ↗",
 
   "db.wx.meta": "{place} · {tz}",
-  "db.wx.none": "No place chosen yet.",
-  "db.wx.noneHint": "The dashboard uses the place you picked for the weather in the classic view.",
+  "db.wx.change": "Change place",
   "db.wx.loading": "Loading weather…",
   "db.wx.err": "The weather service is not reachable right now.",
   "db.wx.hilo": "H {hi} · L {lo}",

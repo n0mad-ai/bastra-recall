@@ -8,6 +8,8 @@
 import { h, s } from "../dom.js";
 import { t, LANG, numberFmt } from "../i18n.js";
 import { data, dueAt } from "../data.js";
+import { openTask } from "./tasks-store.js";
+import { placeWeather, weatherPicker } from "../weather-place.js";
 
 const LOCALE = LANG === "de" ? "de-DE" : "en-US";
 const DAY = 864e5;
@@ -74,7 +76,7 @@ function renderBriefing(body, env) {
   const stats = [
     [String(due), t("db.b.due"), due ? "var(--amber)" : "var(--ink)", () => go({ view: "tasks" })],
     [String(later.length), t("db.b.today"), "var(--ink)", () => go({ view: "tasks" })],
-    [dl ? `${dl.days} d` : "—", t("db.b.next"), "var(--ink)", () => go({ view: "tasks" })],
+    [dl ? `${dl.days} d` : "—", t("db.b.next"), "var(--ink)", () => (dl ? openTask(dl.task.id) : go({ view: "tasks" }))],
     [String(memoryStats(now).week), t("db.b.new"), "var(--accent)", () => go({ view: "chronos" })],
   ];
   body.append(h("div.dw-brief", null,
@@ -90,7 +92,7 @@ function dayLine(now, open) {
   const events = open.map((x) => ({ x, at: taskAt(x) })).filter((e) => e.at !== null && e.at >= day0 && e.at < day0 + DAY);
   return h("div.dw-day", { vars: { "--now": hp(hour) } },
     h("span.dw-day__line"), h("span.dw-day__done"),
-    events.map((e) => h("span.dw-day__ev", { title: e.x.goal, vars: { "--x": hp((e.at - day0) / 36e5), "--c": e.x.state === "due" ? "var(--amber)" : "var(--accent)" } }, h("span"))),
+    events.map((e) => h("span.dw-day__ev", { title: e.x.goal, on: { click: () => openTask(e.x.id) }, vars: { "--x": hp((e.at - day0) / 36e5), "--c": e.x.state === "due" ? "var(--amber)" : "var(--accent)" } }, h("span"))),
     h("span.dw-day__now"),
     h("div.dw-day__scale", null, ["06", "10", "14", "18", "22"].map((x) => h("span", { text: x }))));
 }
@@ -171,12 +173,19 @@ function cond(code) {
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const deg = (v) => (v === null ? "—" : `${Math.round(v)}°`);
 
+// Place picker (js/weather-place.js): shown while no place is set, and on a
+// click on the place in the widget head.
+let picking = false;
+
 function renderWeather(body, env) {
   const place = readPlace();
-  if (!place) { body.append(h("div.dw-note", null, h("span", { text: t("db.wx.none") }), h("span.dw-note__sub", { text: t("db.wx.noneHint") }))); return { meta: "" }; }
+  const pick = () => weatherPicker(placeWeather(), () => { picking = false; env.redraw(); });
+  if (!place) { body.append(h("div.dw-wx__pick", null, pick())); return { meta: "" }; }
+  const onMeta = () => { picking = !picking; env.redraw(); };
+  if (picking) { body.append(h("div.dw-wx__pick", null, pick())); return { meta: place.name, onMeta, metaTitle: t("db.wx.change") }; }
   loadWeather(place, env.redraw);
   const W = wx.key === `${place.lat},${place.lon}` ? wx.data : null;
-  if (!W) { body.append(empty(t(wx.state === "err" ? "db.wx.err" : "db.wx.loading"))); return { meta: place.name }; }
+  if (!W) { body.append(empty(t(wx.state === "err" ? "db.wx.err" : "db.wx.loading"))); return { meta: place.name, onMeta, metaTitle: t("db.wx.change") }; }
   const { item, wPx, hPx } = env, hh = item.h;
   const [cl] = cond(W.code);
   const top = h("div.dw-wx__top", null,
@@ -192,7 +201,7 @@ function renderWeather(body, env) {
   body.append(h("div.dw-wx", null, top,
     hh >= 3 && hPx >= 250 && W.hours.length > 1 ? hourCurve(W.hours) : null,
     hh >= 4 && hPx >= 400 && W.days.length ? dayStrip(W.days) : null));
-  return { meta: t("db.wx.meta", { place: place.name, tz: W.tz }) };
+  return { meta: t("db.wx.meta", { place: place.name, tz: W.tz }), onMeta, metaTitle: t("db.wx.change") };
 }
 
 function sunArc(W, hh) {
@@ -241,7 +250,7 @@ function renderTasks(body, env) {
   const open = openTasks(), due = open.filter((x) => x.state === "due").length;
   if (!open.length) body.append(empty(t("db.tk.empty")));
   else body.append(h("div.dw-rows", null, open.slice(0, Math.max(1, env.item.h * 2 - 1)).map((task) =>
-    h("button.dw-row.dw-row--task", { vars: { "--dot": DOT[task.state] || "var(--muted)", "--when": task.state === "due" ? "var(--amber)" : "var(--muted)" }, on: { click: () => env.go({ view: "tasks" }) } },
+    h("button.dw-row.dw-row--task", { vars: { "--dot": DOT[task.state] || "var(--muted)", "--when": task.state === "due" ? "var(--amber)" : "var(--muted)" }, on: { click: () => openTask(task.id) } },
       h("span.dw-row__dot"),
       h("span.dw-row__main", null, h("span.dw-row__t", { text: task.goal }), h("span.dw-row__s", { text: whenText(task, env.now) })),
       h("span.dw-row__tag", { text: levelTag(task) })))));
@@ -260,7 +269,7 @@ function renderDeadlines(body, env) {
     const color = x.days <= 7 ? "var(--amber)" : x.days <= 14 ? "var(--accent)" : "var(--muted)";
     const d = new Date(x.at), area = Array.isArray(x.task.owner_domains) && typeof x.task.owner_domains[0] === "string" ? x.task.owner_domains[0] : "";
     const sub = x.at <= now.getTime() ? t("db.dl.overdue", { date: `${dateShort(d)} ${hhmm(d)}` }) : `${wdShort(d)} ${dateShort(d)} ${hhmm(d)}`;
-    return h("button.dw-dl", { cls: i === list.length - 1 ? "is-last" : "", vars: { "--c": color, "--p": `${Math.max(4, (1 - Math.min(x.days, 45) / 45) * 100).toFixed(0)}%` }, on: { click: () => env.go({ view: "tasks" }) } },
+    return h("button.dw-dl", { cls: i === list.length - 1 ? "is-last" : "", vars: { "--c": color, "--p": `${Math.max(4, (1 - Math.min(x.days, 45) / 45) * 100).toFixed(0)}%` }, on: { click: () => openTask(x.task.id) } },
       h("span.dw-dl__top", null, h("span.dw-dl__t", { text: x.task.goal }), h("span.dw-dl__n", null, String(x.days), h("span", { text: t("db.dl.days") }))),
       h("span.dw-dl__bar", null, h("span")),
       h("span.dw-dl__s", { text: area ? `${sub} · ${area}` : sub }));

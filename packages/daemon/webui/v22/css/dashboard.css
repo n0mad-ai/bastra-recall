@@ -42,6 +42,8 @@
 .dw__code { flex: none; font: 500 9.5px var(--mono); letter-spacing: .14em; color: var(--accent); }
 .dw__title { min-width: 0; font: 600 11px var(--sans); letter-spacing: .2em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dw__meta { margin-left: auto; flex: 0 1 auto; min-width: 0; font: 10px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw__meta.is-btn { padding: 0; border: 0; background: transparent; text-align: right; cursor: pointer; }
+.dw__meta.is-btn:hover { color: var(--accent); }
 .dw__meta.is-amber { color: var(--amber); }
 .dw__meta.is-accent { color: var(--accent); }
 .dw__size { flex: none; height: 20px; padding: 0 6px; display: flex; align-items: center; border: 1px solid var(--accent-45); font: 10px var(--mono); color: var(--accent); }
@@ -58,8 +60,8 @@
 .dw__rz--xy span { position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
 
 .dw-empty { padding: 8px 4px; font: 10.5px var(--mono); color: var(--muted); }
-.dw-note { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; font-size: 13px; }
-.dw-note__sub { font-size: 12px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+/* Place picker (js/weather-place.js, .vt__wx styles in engine.css). */
+.dw-wx__pick { display: flex; flex-direction: column; gap: 8px; max-width: 420px; min-height: 0; overflow-y: auto; font-size: 13px; }
 
 /* ── W-00 Today ────────────────────────────────────────────────────────── */
 .dw-brief { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
@@ -72,7 +74,7 @@
 .dw-day { position: relative; height: 40px; margin: 2px 6px 0; }
 .dw-day__line { position: absolute; left: 0; right: 0; top: 14px; height: 1px; background: var(--line-25); }
 .dw-day__done { position: absolute; left: 0; width: var(--now); top: 14px; height: 1px; background: linear-gradient(90deg, var(--accent-00), var(--accent)); }
-.dw-day__ev { position: absolute; left: var(--x); top: 8px; width: 7px; height: 13px; margin-left: -3px; display: grid; place-items: center; }
+.dw-day__ev { position: absolute; left: var(--x); top: 8px; width: 7px; height: 13px; margin-left: -3px; display: grid; place-items: center; cursor: pointer; }
 .dw-day__ev span { width: 1px; height: 13px; background: var(--c); box-shadow: 0 0 6px var(--c); }
 .dw-day__now { position: absolute; left: var(--now); top: 8px; width: 13px; height: 13px; margin-left: -6px; border: 1px solid var(--accent); background: var(--bg); box-shadow: 0 0 12px var(--accent-60); }
 .dw-day__scale { position: absolute; left: -6px; right: -6px; top: 26px; display: flex; justify-content: space-between; font: 9.5px var(--mono); color: var(--muted); }

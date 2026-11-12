@@ -47,8 +47,7 @@ export default {
   "db.b.ask": "ÜBERBLICK ↗",
 
   "db.wx.meta": "{place} · {tz}",
-  "db.wx.none": "Noch kein Ort gewählt.",
-  "db.wx.noneHint": "Das Dashboard nutzt den Ort, den du in der klassischen Ansicht fürs Wetter gewählt hast.",
+  "db.wx.change": "Ort ändern",
   "db.wx.loading": "Wetter wird geladen…",
   "db.wx.err": "Der Wetterdienst ist gerade nicht erreichbar.",
   "db.wx.hilo": "H {hi} · T {lo}",

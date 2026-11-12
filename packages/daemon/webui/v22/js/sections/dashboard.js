@@ -8,9 +8,10 @@
 // registerWidget({ type, code, title|titleKey, desc|descKey, icon, w, h,
 //   minW, minH, defaultOn?, render(body, env) → { meta?, tone? } })
 //   env: { item: {w,h}, wPx, hPx, rowH, now: Date, ctx, go(statePatch), redraw() }
+//   returns meta (head text), tone, and optionally onMeta + metaTitle (meta becomes a button)
 //   defaultOn: the widget joins a board the user has not arranged yet.
 import { addStrings, t, LANG } from "../i18n.js";
-import { registerArea, ICON } from "../areas.js";
+import { registerArea, extendRecallUi, ICON } from "../areas.js";
 import { onData } from "../data.js";
 import { h, s, clear } from "../dom.js";
 import { state, setState } from "../state.js";
@@ -194,7 +195,8 @@ function widgetEl(it, { cols, width, rowH, fitOk, now }) {
       s("svg", { viewBox: "0 0 10 16" }, s("path", { d: "M2 2h2v2H2ZM6 2h2v2H6ZM2 7h2v2H2ZM6 7h2v2H6ZM2 12h2v2H2ZM6 12h2v2H6Z", fill: "currentColor" }))) : null,
     h("span.dw__code", { text: w.code || "" }),
     h("span.dw__title", { text: wTitle(w) }),
-    h("span.dw__meta", { cls: out.tone ? `is-${out.tone}` : "", text: out.meta || "" }),
+    h(typeof out.onMeta === "function" ? "button.dw__meta.is-btn" : "span.dw__meta", { cls: out.tone ? `is-${out.tone}` : "", text: out.meta || "",
+      title: out.metaTitle || null, on: typeof out.onMeta === "function" ? { click: out.onMeta } : null }),
     B.edit ? [h("span.dw__size", { text: `${it.w} × ${it.h}` }),
       h("button.dw__x", { title: t("db.remove"), "aria-label": t("db.remove"), text: "×", on: { click: () => setItems(items().filter((x) => x.id !== it.id)) } })] : null),
   body,
@@ -324,4 +326,4 @@ registerArea({ id: "dashboard", group: "home", order: 1, labelKey: "nav.dashboar
 
 for (const w of BUILTIN) registerWidget(w);
 // Docking point for recall-pro (Mail, Week/Calendar, Coding agents).
-window.recallUi = Object.freeze({ ...(window.recallUi || {}), registerWidget });
+extendRecallUi({ registerWidget });

@@ -4,6 +4,7 @@ import { h, s, clear, setVars } from "./dom.js";
 import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, dueAt } from "./data.js";
+import { openTask } from "./sections/tasks-store.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
@@ -97,7 +98,7 @@ function tickerItems() {
     const full = at ? new Date(at).toLocaleString(document.documentElement.lang, { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: task.timezone || undefined }) : "";
     return { tag: t("ticker.task"), color: AMB, text: task.goal, meta: time,
       pv: { tag: t("ticker.taskDue"), title: task.goal, sub: `${full} · ${task.origin === "agent" ? t("ticker.byAgent") : t("ticker.byUser")}`, body: typeof task.request === "string" && task.request ? `„${task.request}“` : "", whyLabel: t("ticker.whyNow"), why: t("ticker.whyDefault"), openLabel: t("ticker.openTask"), ask: t("ticker.askTask", { goal: task.goal }) },
-      onClick: () => setState({ view: "tasks", tab: "areas" }) };
+      onClick: () => openTask(task.id) };
   });
 }
 
