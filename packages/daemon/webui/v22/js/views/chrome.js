@@ -92,6 +92,9 @@ export function dateStr(ms) {
   return new Date(ms).toLocaleDateString(document.documentElement.lang === "de" ? "de-DE" : "en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+// Zoom bar footprint at the stage's bottom right (142 × 30 px + 12 px margins).
+const ZB_W = 154, ZB_H = 54;
+
 /**
  * Dock a card to an anchor (prototype ring focus geometry, renderValsDark):
  * arm = anchor → elbow (ex, ey) → card edge; the side accent line runs
@@ -101,12 +104,19 @@ export function dateStr(ms) {
  * so the arm never runs underneath the card.
  */
 export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
+  // An anchor outside the stage (panned or zoomed away) gets no arm.
+  if (!(ax >= 0 && ax <= W && ay >= 0 && ay <= H)) { park(card, ov, W, H); return; }
   const cardH = card.el.offsetHeight || 300, CW = 260;
-  x = Math.max(0, Math.min(x, W - CW));
   const side = card.side;
   side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
-  // Keep the card clear of the zoom bar (bottom right: 142 × 30 px + 12 px margins).
-  const Hx = (cx0) => (cx0 + CW > W - 154 ? H - 54 : H);
+  // Keep the card clear of the zoom bar.
+  const Hx = (cx0) => (cx0 + CW > W - ZB_W ? H - ZB_H : H);
+  // A card too tall for the space above the zoom bar moves left of it.
+  const fitX = (cx0) => { cx0 = Math.max(0, Math.min(cx0, W - CW)); return Hx(cx0) < cardH ? Math.max(0, Math.min(cx0, W - ZB_W - CW)) : cx0; };
+  x = fitX(x);
+  // The elbow stays on the stage and off the zoom bar (it lies on the ring's
+  // outer edge, which leaves the stage when zoomed in).
+  ex = Math.max(8, Math.min(W - 8, ex)); ey = Math.max(8, Math.min(Hx(ex - CW) - 8, ey));
   if (right ? x >= ex + 8 : x + CW <= ex - 8) {
     const y = Math.max(0, Math.min(ey - 28, Hx(x) - cardH));
     const lx = right ? x : x + CW;
@@ -121,9 +131,9 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
     reveal(card);
     return;
   }
-  const cx = Math.max(0, Math.min(ex - CW / 2, W - CW)), Hb = Hx(cx);
+  const cx = fitX(ex - CW / 2), Hb = Hx(cx);
   const below = ey + 24 + cardH <= Hb || ey < Hb / 2;
-  const y = below ? Math.max(0, Math.min(ey + 24, Hb - cardH)) : Math.max(0, ey - 24 - cardH);
+  const y = below ? Math.max(0, Math.min(ey + 24, Hb - cardH)) : Math.max(0, Math.min(ey - 24, Hb) - cardH);
   const dx = Math.max(14, Math.min(CW - 14, ex - cx));
   setVars(card.el, { "--cx": `${cx}px`, "--cy": `${y}px` });
   if (!below) { side.classList.add("is-bottom"); setVars(side, { "--sx": `${(dx - Math.min(dx, CW - dx)).toFixed(0)}px`, "--sw": `${(2 * Math.min(dx, CW - dx) + 1).toFixed(0)}px` }); }
@@ -132,8 +142,10 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
 }
 
 /** Card without an anchor: top right (prototype else-branch). */
-export function park(card, ov, W) {
-  setVars(card.el, { "--cx": `${Math.max(0, W - 280)}px`, "--cy": "10px" });
+export function park(card, ov, W, H = Infinity) {
+  // too tall to end above the zoom bar: move left of it
+  const x = 10 + card.el.offsetHeight > H - ZB_H ? W - ZB_W - 260 : W - 280;
+  setVars(card.el, { "--cx": `${Math.max(0, x)}px`, "--cy": "10px" });
   card.side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
   ov.arm(null);
   reveal(card);

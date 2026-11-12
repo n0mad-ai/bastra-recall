@@ -135,7 +135,7 @@ export function mountEngineView(id, stage) {
         for (const n of members(state.focus)) { if (n.ringHidden) continue; const [x, y] = engine.toStage(n.x, n.y); if (x < 0 || x > W || y < 0 || y > H) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); sy += y; c++; }
         if (c) { right = (x0 + x1) / 2 < W - CARD_COL; ax = right ? x1 : x0; ay = sy / c; }
       }
-      if (!(ax >= 0 && ax <= W && ay >= 0 && ay <= H)) park(card, ov, W);
+      if (!(ax >= 0 && ax <= W && ay >= 0 && ay <= H)) park(card, ov, W, H);
       else {
         const m = right ? -Math.PI / 4 : (-3 * Math.PI) / 4;
         const ex = ax + Math.cos(m) * 26, ey = ay + Math.sin(m) * 26;

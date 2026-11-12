@@ -328,7 +328,7 @@ export function mountRing(stage) {
     const edge = ring.extent * kk;
     const dot = selMem && ring.dotOf.get(selMem.id);
     const sf = segFor(state.focus);
-    if (!sf) { park(card, ov, W); return; }
+    if (!sf) { park(card, ov, W, H); return; }
     const m = dot ? Math.atan2(dot.y, dot.x) : (sf.s.a0 + sf.s.a1) / 2, R = sf.ro;
     const [ax, ay] = dot ? toScr(dot.x, dot.y) : toScr(Math.cos(m) * R, Math.sin(m) * R);
     const [ex, ey] = toScr(Math.cos(m) * (R + 26), Math.sin(m) * (R + 26));
