@@ -91,11 +91,16 @@ test('#1335: both inherited listeners use two real processes for 24 connections,
  if(process.env.BASTRA_FIXTURE_OVERLOAD_FAILURE==='1')assert.fail('injected overload assertion');
  // Persistent jobs do not launch per connection; both listening descriptors stay reserved.
  children.forEach(c=>c.kill('SIGCONT'));await Promise.all(listeners.map(server=>new Promise<void>(r=>server.close(()=>r()))));
- for(const until=Date.now()+6000;Date.now()<until&&entered+results.length<24;)await new Promise(r=>setTimeout(r,20));
- assert.equal(entered,16);assert.equal(results.filter(c=>c===503).length,8);
+ // Each process forwards at most eight requests at once; the rest wait instead of failing.
+ for(const until=Date.now()+6000;Date.now()<until&&entered<16;)await new Promise(r=>setTimeout(r,20));
+ await new Promise(r=>setTimeout(r,200));
+ assert.equal(entered,16);assert.equal(results.length,0,`queued requests must not be rejected: ${results.join(',')}`);
  const processes=execFileSync('/bin/ps',['-ww','-p',children.map(c=>c.pid).join(','),'-o','args='],{encoding:'utf8'}).trim().split('\n');
  assert.equal(processes.length,2);assert.ok(processes.every(row=>row.startsWith(process.execPath+' ')),processes.join('\n'));
- releases.splice(0).forEach(r=>r());assert.equal((await Promise.all(pending)).filter(c=>c===200).length,16);
+ releases.splice(0).forEach(r=>r());
+ for(const until=Date.now()+6000;Date.now()<until&&entered<24;)await new Promise(r=>setTimeout(r,20));
+ assert.equal(entered,24);releases.splice(0).forEach(r=>r());
+ assert.deepEqual(await Promise.all(pending),Array(24).fill(200));
  const exits=children.map(c=>once(c,'exit'));await ensureAssistantAddressRuntime({...o,daemonUrl:'http://127.0.0.1:9'});
  await Promise.race([Promise.all(exits),new Promise((_,reject)=>setTimeout(()=>reject(Error('persistent jobs did not retire')),3000).unref())]);
  assert.ok(children.every(c=>c.exitCode===0),'a launchd job can restart only after its previous process exits');
@@ -150,9 +155,10 @@ test('#1335 CI: an overloaded socket cannot forward a request already parsed bef
  const server=await startAssistantSocket({...o,daemonUrl:`http://127.0.0.1:${(backend.address()as any).port}`},true);
  t.mock.restoreAll();
  t.after(()=>{server.closeAllConnections();return new Promise<void>(r=>server.close(()=>r()));});
+ const {ASSISTANT_MAX_SOCKETS}=await import('../src/assistant-address-gateway.js');
  const port=(server.address()as any).port;let connected=0,parsed=false;
  server.on('connection',socket=>{
-  if(++connected!==9)return;
+  if(++connected!==ASSISTANT_MAX_SOCKETS+1)return;
   // Reproduce Node's legitimate scheduling: a request event can follow the
   // connection hook's raw503/end before the socket has actually closed.
   const req=new IncomingMessage(socket);req.method='GET';req.url='/ui/';req.headers={host:'jarvis.localhost'};
@@ -160,9 +166,9 @@ test('#1335 CI: an overloaded socket cannot forward a request already parsed bef
   t.mock.method(req,'pipe',function(this:IncomingMessage,...args:any[]){forwardAttempts++;return (originalPipe as any).apply(this,args);});
   const res=new ServerResponse(req);parsed=true;server.emit('request',req,res);req.push(null);
  });
- const holders=Array.from({length:8},()=>connect(port,'127.0.0.1'));holders.forEach(s=>{s.on('error',()=>{});s.resume();});
+ const holders=Array.from({length:ASSISTANT_MAX_SOCKETS},()=>connect(port,'127.0.0.1'));holders.forEach(s=>{s.on('error',()=>{});s.resume();});
  t.after(()=>holders.forEach(s=>s.destroy()));
- for(const until=Date.now()+1000;connected<8;){assert.ok(Date.now()<until,'admitted connections not ready');await new Promise(r=>setTimeout(r,5));}
+ for(const until=Date.now()+1000;connected<ASSISTANT_MAX_SOCKETS;){assert.ok(Date.now()<until,'admitted connections not ready');await new Promise(r=>setTimeout(r,5));}
  const raw=await new Promise<string>((resolve,reject)=>{
   const socket=connect(port,'127.0.0.1');let text='';socket.on('error',reject);socket.on('data',chunk=>{text+=chunk;if(text.includes('\r\n\r\n')){socket.destroy();resolve(text);}});
   socket.setTimeout(1000,()=>socket.destroy(Error('overload waited for request headers')));

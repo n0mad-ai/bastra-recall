@@ -114,14 +114,21 @@ export function createAssistantAddressListener(opts: AssistantGatewayOptions, po
   };
 }
 
+/** Per process: requests handled at once (later ones wait in order) and open sockets before raw 503. */
+export const ASSISTANT_ACTIVE_REQUESTS=8,ASSISTANT_MAX_SOCKETS=64;
 /** Handles accepted sockets, plus compatibility for previously installed Wait=true jobs. */
 export async function startAssistantSocket(opts:AssistantGatewayOptions,listening=false):Promise<Server>{
  const rejected=new WeakSet<Socket>(),gateway=assistantGatewayHandler(opts);
+ // A browser opens about six connections per page. Excess requests queue
+ // instead of failing; each queued request is bounded by its socket's lifetime.
+ const queue:Array<()=>void>=[];let active=0;
+ const release=()=>{active--;for(let next;active<ASSISTANT_ACTIVE_REQUESTS&&(next=queue.shift());)next();};
+ const admit=(req:IncomingMessage,res:ServerResponse)=>{if(req.socket.destroyed){req.resume();return;}active++;res.once("close",release);gateway(req,res);};
  const server=createServer((req,res)=>{
   // end(raw503) does not prevent a parser from emitting an already buffered
   // request. Rejection belongs to the socket and must guard forwarding too.
   if(rejected.has(req.socket)){req.resume();return;}
-  gateway(req,res);
+  if(active<ASSISTANT_ACTIVE_REQUESTS)admit(req,res);else queue.push(()=>admit(req,res));
  });
  if(listening){
   // Each of the two launchd jobs owns one listener. Admission here bounds
@@ -129,7 +136,7 @@ export async function startAssistantSocket(opts:AssistantGatewayOptions,listenin
   const sockets=new Set<Socket>(),headers=new Map<Socket,NodeJS.Timeout>();
   const [headersMs,lifetimeMs]=(process.env.BASTRA_ASSISTANT_ADDRESS_TEST_LIMITS??"").split(",").map(Number);
   server.on("connection",socket=>{
-   if(sockets.size>=8){rejected.add(socket);socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n");return;}
+   if(sockets.size>=ASSISTANT_MAX_SOCKETS){rejected.add(socket);socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n");return;}
    sockets.add(socket);
    const header=setTimeout(()=>socket.destroy(),Math.min(headersMs||10000,10000));headers.set(socket,header);
    const lifetime=setTimeout(()=>socket.destroy(),Math.min(lifetimeMs||230000,230000));lifetime.unref();
