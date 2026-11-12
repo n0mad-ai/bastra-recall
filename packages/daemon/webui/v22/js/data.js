@@ -10,7 +10,8 @@ export const data = {
   weekStart: null,  // Date of week 0
   dueTasks: [],     // tasks in state "due"
   tasks: [],        // open tasks (pending | due | snoozed), for the dashboard
-  newSince: 0,      // live updates since page load
+  newSince: 0,      // live updates since page load (all kinds, incl. reads)
+  newMemories: 0,   // memories created since page load (kind "add" only)
   weather: null,    // { temp, city }
   vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
   graph: null,      // { nodes, edges, groups } from GET /api/v1/graph, for the vault views
@@ -94,7 +95,9 @@ export async function pollUpdates() {
     const u = await getJson(seq === null ? "/ui/updates" : `/ui/updates?since=${seq}`);
     if (typeof u.seq !== "number") return;
     if (seq !== null && u.seq >= seq && Array.isArray(u.updates) && u.updates.length) {
-      data.newSince += u.updates.length; emit();
+      data.newSince += u.updates.length;
+      data.newMemories += u.updates.filter((x) => x && x.kind === "add").length;
+      emit();
       for (const fn of updateListeners) fn(u.updates);
     }
     seq = u.seq;

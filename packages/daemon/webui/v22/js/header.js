@@ -76,7 +76,7 @@ function renderCrumb() {
 function renderStatus(L) {
   const hl = data.health;
   statMem.textContent = hl && Number.isFinite(hl.vault_size) ? numberFmt.format(hl.vault_size).replace(/\./g, " ").replace(/,/g, " ") : "–";
-  statMemD.textContent = data.newSince ? `+${data.newSince}` : "";
+  statMemD.textContent = data.newMemories ? `+${data.newMemories}` : "";
   statLinks.textContent = data.edges ? numberFmt.format(data.edges).replace(/\./g, " ").replace(/,/g, " ") : "–";
   liveBtn.classList.toggle("is-on", state.live);
   liveBtn.lastChild.textContent = state.live ? t("status.liveNew", { n: data.newSince }) : t("status.liveOff");

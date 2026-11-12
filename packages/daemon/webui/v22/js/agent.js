@@ -65,7 +65,7 @@ function syncInput() {
 function greeting() {
   const area = getArea(state.view);
   if (area?.greetingKey) return t(area.greetingKey);
-  return data.newSince ? t("agent.greetingNew", { n: data.newSince }) : t("agent.greeting");
+  return data.newMemories ? t("agent.greetingNew", { n: data.newMemories }) : t("agent.greeting");
 }
 
 export function ask(q) {
@@ -121,7 +121,7 @@ export function render(L) {
   const total = numberFmt.format(data.health?.vault_size ?? 0);
   const cap = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? chatState.shown.a : greeting();
   clear(caption).append(cap, ag === "speaking" || ag === "thinking" ? h("span.agent__caret") : "");
-  podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newSince ? t("pod.newMemories", { n: data.newSince }) : t("pod.ready");
+  podLine.textContent = ag === "speaking" ? chatState.typed : ag === "thinking" ? t("agent.thinking", { n: total }) : chatState.shown ? t("pod.answered", { n: chatState.shown.sources.length }) : data.newMemories ? t("pod.newMemories", { n: data.newMemories }) : t("pod.ready");
   podText = podLine.textContent;
   for (const fn of podListeners) fn();
   clear(srcBox);
