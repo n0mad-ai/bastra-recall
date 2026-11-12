@@ -4,7 +4,9 @@
 import { hash } from "./vault-data.js";
 
 export const SMALL_KEY = "__small";
-const SMALL_MIN = 12;
+// An area gets its own segment from 2 % of the counted memories on (the
+// prototype's fixed 12 is ~2 % of its 559). Rule areas never go to "small".
+const SMALL_SHARE = 0.02;
 export const TAU = Math.PI * 2;
 
 /**
@@ -19,8 +21,9 @@ export function buildRing(v, smallLabel) {
   const META = new Set(v.areas.filter((a) => a.meta).map((a) => a.key));
   const meta = RAW.filter(([k]) => META.has(k));
   const rest = RAW.filter(([k]) => !META.has(k));
-  const small = rest.filter(([, c]) => c < SMALL_MIN);
-  const content = rest.filter(([, c]) => c >= SMALL_MIN).map(([k, c]) => ({ key: k, count: c, members: [[k, c]] }));
+  const smallMin = RAW.reduce((sum, [, c]) => sum + c, 0) * SMALL_SHARE;
+  const small = rest.filter(([, c]) => c < smallMin);
+  const content = rest.filter(([, c]) => c >= smallMin).map(([k, c]) => ({ key: k, count: c, members: [[k, c]] }));
   if (small.length) content.push({ key: SMALL_KEY, label: smallLabel(small.length), count: small.reduce((s, [, c]) => s + c, 0), members: small });
   const mc = document.createElement("canvas").getContext("2d");
   const labelArc = (txt, c) => {

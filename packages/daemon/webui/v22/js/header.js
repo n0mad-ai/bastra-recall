@@ -7,7 +7,7 @@ import { data, dueAt } from "./data.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
-let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, acSvg, tpLayer;
+let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, acBox, acSvg, tpLayer;
 let geo = null;
 const tk = { nudge: 0, paused: false, arm: null, open: null, hold: false, tArm: 0, tClose: 0 };
 
@@ -40,10 +40,13 @@ export function mountHeader(root, ctx) {
   tkrSum = h("div.tkr__sum", null, h("button", { on: { click: () => setState({ view: "tasks", tab: "areas" }) } }, tkrDueN, tkrDueW));
   tkrIn = h("div.tkr__in", null, tkrNow, tkrRunWrap, tkrSum);
   tkr = h("div.tkr", { "data-tkr-bar": "1" }, tkrIn);
-  acSvg = s("svg.ac", { width: "100%", height: 70, "shape-rendering": "geometricPrecision" });
+  // The glow pulse runs on the svg's own layer (opacity only), the fade-in on
+  // the box around it — so the drop-shadow is not re-rastered every frame.
+  acSvg = s("svg.ac__glow", { width: "100%", height: 70, "shape-rendering": "geometricPrecision" });
+  acBox = h("div.ac", null, acSvg);
   tpLayer = h("div");
 
-  app.append(leftTab, rightTab, tkr, tpLayer, acSvg);
+  app.append(leftTab, rightTab, tkr, tpLayer, acBox);
   const ro = new ResizeObserver(() => measure());
   ro.observe(leftTab); ro.observe(rightTab);
   window.addEventListener("resize", () => requestAnimationFrame(measure));
@@ -221,7 +224,7 @@ function renderAccent() {
       grad("acRb", (R + 24 + bFR).toFixed(2), yb, (R + 24 + bA).toFixed(2), yb, fade4),
       grad("acRs", PR(uF)[0].toFixed(2), PR(uF)[1].toFixed(2), PR(uA)[0].toFixed(2), PR(uA)[1].toFixed(2), [[0, 0], [1, 1]]),
       grad("acFull", 13, 0, (vw - 13).toFixed(2), 0, [[0, 0], [fo1, 1], [fo2, 1], [1, 0]])),
-    s("g.ac__glow", null,
+    s("g", null,
       s("path.ac__solid", { d: `M ${f(PL(uA))} L ${f(PL(0))} L ${(L - 24 - bA).toFixed(2)} ${yb}` }),
       s("path.ac__fade", { d: `M ${(L - 24 - bFL).toFixed(2)} ${yb} L ${(L - 24 - bA).toFixed(2)} ${yb}`, stroke: "url(#acLb)" }),
       s("path.ac__fade", { d: `M ${f(PL(uF))} L ${f(PL(uA))}`, stroke: "url(#acLs)" }),
@@ -229,7 +232,7 @@ function renderAccent() {
       s("path.ac__fade", { d: `M ${(R + 24 + bFR).toFixed(2)} ${yb} L ${(R + 24 + bA).toFixed(2)} ${yb}`, stroke: "url(#acRb)" }),
       s("path.ac__fade", { d: `M ${f(PR(uF))} L ${f(PR(uA))}`, stroke: "url(#acRs)" }),
       avail >= 150 ? s("path.ac__full", { d: full, stroke: "url(#acFull)" }) : null));
-  setVars(acSvg, { "--ac-op": 1 });
+  setVars(acBox, { "--ac-op": 1 });
 }
 
 export function updateHeader(L, changed) {

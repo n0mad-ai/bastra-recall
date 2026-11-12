@@ -16,12 +16,13 @@ export function mountJarvis(canvas, opts = {}) {
   const BUCKETS = 7, bucketCyan = [], bucketAmber = [], cyanStyle = [], amberStyle = [];
   for (let b = 0; b < BUCKETS; b++) { const d = (b + 0.5) / BUCKETS, a = (0.08 + 0.75 * d * d).toFixed(3); cyanStyle.push(`rgba(56,217,245,${a})`); amberStyle.push(`rgba(217,164,65,${a})`); bucketCyan.push([]); bucketAmber.push([]); }
   let frameN = 0;
-  let w = 0, h = 0, dpr = 1, raf = 0, energy = 0, level = 0, rot = 0, blink = 0, nextBlink = 1.5, lastT = 0;
+  let w = 0, h = 0, dpr = 1, raf = 0, dead = false, energy = 0, level = 0, rot = 0, blink = 0, nextBlink = 1.5, lastT = 0;
   const resize = () => {
     dpr = Math.min(1.5, window.devicePixelRatio || 1);
     const b = canvas.getBoundingClientRect();
     w = b.width; h = b.height;
     canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
+    run();
   };
   const ro = new ResizeObserver(resize); ro.observe(canvas); resize();
   // head turn: spontaneous glances, or follow the pointer while it moves
@@ -30,10 +31,17 @@ export function mountJarvis(canvas, opts = {}) {
   window.addEventListener("pointermove", onMove, { passive: true });
   const t0 = performance.now();
 
+  // The loop only runs while something can be seen: inactive, a hidden tab or
+  // a collapsed canvas stop it; setActive(true), visibilitychange and a resize
+  // start it again.
+  function run() { if (!raf && !dead && st.active && !document.hidden && w >= 2) raf = requestAnimationFrame(frame); }
+  document.addEventListener("visibilitychange", run);
+
   function frame(now) {
+    raf = 0;
+    if (!st.active || document.hidden || w < 2) return;
     raf = requestAnimationFrame(frame);
     frameN++;
-    if (!st.active || document.hidden || w < 2) return;
     if (st.mode === "idle" && energy < 0.2 && (frameN & 1)) return;
     const t = (now - t0) / 1000, dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
     const target = { idle: 0.15, listening: 0.65, thinking: 0.5, speaking: 1 }[st.mode] ?? 0.15;
@@ -160,6 +168,6 @@ export function mountJarvis(canvas, opts = {}) {
       ctx.lineWidth = 1;
     }
   }
-  raf = requestAnimationFrame(frame);
-  return { set(mode) { st.mode = mode; }, setActive(on) { st.active = !!on; }, destroy() { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener("pointermove", onMove); } };
+  run();
+  return { set(mode) { st.mode = mode; }, setActive(on) { st.active = !!on; run(); }, destroy() { dead = true; cancelAnimationFrame(raf); raf = 0; ro.disconnect(); window.removeEventListener("pointermove", onMove); document.removeEventListener("visibilitychange", run); } };
 }

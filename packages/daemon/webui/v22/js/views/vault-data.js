@@ -2,8 +2,8 @@
 // The prototype's sample vault (memory-data.js) is replaced by real nodes:
 //   area     = node.cluster            recalled = node.reach.loaded
 //   at       = node.updated (date)     acted    = node.reach.acted_on
-//   seen     = node.reach.last_at      links    = edges (related | related_via)
-// The graph carries no creation date, so "updated" is the one date per memory.
+//   links    = edges (related | related_via)
+//   created  = node.created (date, only when the frontmatter holds a valid ISO date)
 import { data } from "../data.js";
 import { state } from "../state.js";
 import { range } from "../timeline.js";
@@ -41,7 +41,7 @@ let built = null, builtFor = null;
 
 /**
  * { mems, byId, areas: [{ key, count, meta }], ghosts, total, linksOf(area) }
- * mems: { id, area, title, type, kind, cls, at, seen, recalled, acted, links: [{ id, rel }] }
+ * mems: { id, area, title, type, kind, cls, at, created, recalled, acted, links: [{ id, rel }] }
  */
 export function vault() {
   const g = data.graph;
@@ -53,9 +53,9 @@ export function vault() {
     if (n.kind === "ghost") { ghosts.push({ id: n.id, area: n.cluster }); continue; }
     if (n.kind !== "memory" && n.kind !== "doc") continue;
     const at = Date.parse(str(n.updated));
-    const seen = Date.parse(str(n.reach?.last_at));
+    const created = Date.parse(str(n.created));
     const m = { id: n.id, area: n.cluster, title: str(n.title) || n.id, type: str(n.type), kind: n.kind, cls: typeClass(n.kind === "doc" ? "doc" : str(n.type)),
-      summary: str(n.summary), at: Number.isFinite(at) ? at : NaN, seen: Number.isFinite(seen) ? seen : NaN,
+      summary: str(n.summary), at: Number.isFinite(at) ? at : NaN, created: Number.isFinite(created) ? created : NaN,
       recalled: num(n.reach?.loaded), acted: num(n.reach?.acted_on), links: [] };
     mems.push(m); byId.set(m.id, m);
     if (n.group === "rules") metaKeys.add(n.cluster);

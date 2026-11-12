@@ -1,8 +1,8 @@
 // Lens drawings — the five canvas views of the prototype's memory-lenses.js
 // (chronos · radiant · spiral · weave · halflife), fed with real memories.
-// Differences to the sample data: the graph has one date per memory
-// (updated), so the amber series counts recalls (reach.last_at) instead of
-// updates, and links are the vault's own edges (written | derived).
+// Differences to the sample data: Chronos dates by created (cyan) and updated
+// (amber) like the prototype, the other lenses by the last update; links are
+// the vault's own edges (written | derived).
 import { t as tr, LANG } from "../i18n.js";
 import { hash } from "./vault-data.js";
 import { TC, ACC, AMB, INK, MUT } from "./chrome.js";
@@ -21,11 +21,11 @@ export const dstr = (d) => dateOf(d).toLocaleDateString(LOC, { day: "numeric", m
 const isoWeek = (dt) => { const d = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate())); const wd = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - wd); return Math.ceil(((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY + 1) / 7); };
 const monthStarts = () => { const out = []; for (let d = DAYS - 1; d >= 0; d--) if (dateOf(d).getUTCDate() === 1) out.push(d); return out; };
 
-/** d = days since the memory was last updated, r = days since it was last recalled (-1: never). */
+/** d = u = days since the memory was last updated, c = days since it was created (-1: unknown). */
 export function prep(V) {
   NOW = Date.now();
   const day = (ms) => (Number.isFinite(ms) ? Math.floor((NOW - ms) / DAY) : -1);
-  const items = V.map((m) => ({ m, d: day(m.at), u: day(m.at), r: day(m.seen), j: hash(m.id), j2: hash(m.id + "~") })).filter((x) => x.d >= 0 && x.d < DAYS);
+  const items = V.map((m) => ({ m, d: day(m.at), u: day(m.at), c: day(m.created), j: hash(m.id), j2: hash(m.id + "~") })).filter((x) => x.d >= 0 && x.d < DAYS);
   const byId = new Map(items.map((x) => [x.m.id, x]));
   const ac = new Map(); items.forEach((x) => ac.set(x.m.area, (ac.get(x.m.area) || 0) + 1));
   const areas = [...ac.entries()].sort((a, b) => b[1] - a[1]).map(([area, n]) => ({ area, n }));
@@ -62,7 +62,9 @@ function chronos(g) {
   // dot bands, 3-day bins
   const BIN = 3, NB = Math.ceil(DAYS / BIN), bIdx = new Map(bands.map((b, i) => [b.area, i]));
   const per = bands.map(() => new Array(NB).fill(0));
-  P.items.forEach((x) => { const bi = bIdx.get(x.m.area); if (bi !== undefined) per[bi][Math.floor(x.d / BIN)]++; });
+  // Like the prototype, Chronos counts the memories created within the year.
+  const yr = P.items.filter((x) => x.c >= 0 && x.c < DAYS);
+  yr.forEach((x) => { const bi = bIdx.get(x.m.area); if (bi !== undefined) per[bi][Math.floor(x.c / BIN)]++; });
   const pmax = Math.max(1, ...per.flat());
   bands.forEach((b, bi) => {
     const r = R - (bi + 0.5) * bt, hot = foc === b.area || (hov && hov.area === b.area) || o.hoverArea === b.area, dim = foc && foc !== b.area;
@@ -100,7 +102,7 @@ function chronos(g) {
   ctx.letterSpacing = "0px";
   // needles
   const cr = new Array(DAYS).fill(0), up = new Array(DAYS).fill(0), lists = Array.from({ length: DAYS }, () => []);
-  P.items.forEach((x) => { if (foc && x.m.area !== foc) return; cr[x.d]++; lists[x.d].push(x); if (x.r >= 0 && x.r < DAYS) up[x.r]++; });
+  yr.forEach((x) => { if (foc && x.m.area !== foc) return; cr[x.c]++; lists[x.c].push(x); if (x.u !== x.c) up[x.u]++; });
   const pct = (arr, q) => { const s = arr.filter((v) => v > 0).sort((a, b) => a - b); return Math.max(1, s.length ? s[Math.floor((s.length - 1) * q)] : 1); };
   const cmax = pct(cr, 0.92), umax = pct(up, 0.92), LEN = rN1 - rN0;
   for (let d = 0; d < DAYS; d++) {
@@ -119,7 +121,7 @@ function chronos(g) {
   const an = angD(0); ctx.strokeStyle = rgba(ACC, 0.7); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx + Math.cos(an + 0.012) * (rN0 - 6), cy + Math.sin(an + 0.012) * (rN0 - 6)); ctx.lineTo(cx + Math.cos(an + 0.012) * rIn, cy + Math.sin(an + 0.012) * rIn); ctx.stroke();
   // inner month ring + centre
   const rC = rN0 - Math.max(16, R * 0.06), mt = new Array(12).fill(0);
-  P.items.forEach((x) => { if (!foc || x.m.area === foc) mt[dateOf(x.d).getUTCMonth()]++; });
+  yr.forEach((x) => { if (!foc || x.m.area === foc) mt[dateOf(x.c).getUTCMonth()]++; });
   ctx.strokeStyle = "rgba(126,164,210,.16)"; ctx.beginPath(); ctx.arc(cx, cy, rC + 10, 0, TAU); ctx.stroke();
   if (R > 190) ms.forEach((d, i) => {
     const dEnd = i + 1 < ms.length ? ms[i + 1] : -1; if (d - dEnd < 12) return;
@@ -133,8 +135,8 @@ function chronos(g) {
   ctx.font = `300 ${cs}px ${MONO}`; ctx.fillStyle = ACC; ctx.fillText(fmt(tot * t), cx, cy - cs * 0.3);
   ctx.font = `${Math.max(8, R * 0.022)}px ${MONO}`; ctx.fillStyle = MUT; ctx.fillText(tr("vv.lens.memories"), cx, cy + cs * 0.32);
   ctx.font = `300 ${cs * 0.62}px ${MONO}`; ctx.fillStyle = AMB; ctx.fillText(fmt(upd * t), cx, cy + cs * 0.86);
-  ctx.font = `${Math.max(8, R * 0.022)}px ${MONO}`; ctx.fillStyle = MUT; ctx.fillText(tr("vv.lens.recalled"), cx, cy + cs * 1.32);
-  if (w - 2 * R > 260) legend(ctx, 16, 20, [[ACC, tr("vv.lens.updatedDay"), "line"], [AMB, tr("vv.lens.recalledDay"), "line"], [rgba(INK, 0.7), tr("vv.lens.byArea"), "dot"], ["rgba(126,164,210,.6)", tr("vv.lens.week"), "box"]]);
+  ctx.font = `${Math.max(8, R * 0.022)}px ${MONO}`; ctx.fillStyle = MUT; ctx.fillText(tr("vv.lens.updates"), cx, cy + cs * 1.32);
+  if (w - 2 * R > 260) legend(ctx, 16, 20, [[ACC, tr("vv.lens.createdDay"), "line"], [AMB, tr("vv.lens.updatedDay"), "line"], [rgba(INK, 0.7), tr("vv.lens.byArea"), "dot"], ["rgba(126,164,210,.6)", tr("vv.lens.week"), "box"]]);
 }
 
 // ── 2 · Radiant — every memory a ray from the core, the most recalled named on the rim ──

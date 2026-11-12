@@ -20,7 +20,7 @@ import { handleWebUi, handleUiAnnotate, handleUiAnnotations, parseCareFile, CARE
 
 function memoryMarkdown(
   id: string,
-  opts: { related?: string[]; sensitivity?: string; salience?: number; emotion?: string } = {},
+  opts: { related?: string[]; sensitivity?: string; salience?: number; emotion?: string; created?: string } = {},
 ): string {
   const ts = new Date().toISOString();
   const related = (opts.related ?? []).map((r) => `  - ${r}`).join("\n");
@@ -41,7 +41,7 @@ function memoryMarkdown(
     ...(opts.sensitivity ? [`sensitivity: ${opts.sensitivity}`] : []),
     ...(opts.salience != null ? [`salience: ${opts.salience}`] : []),
     ...(opts.emotion ? [`emotion: ${opts.emotion}`] : []),
-    `created: ${ts}`,
+    `created: ${opts.created ?? ts}`,
     `updated: ${ts}`,
     "---",
     "",
@@ -73,9 +73,9 @@ async function buildTestVault(): Promise<{ dir: string; vault: Vault }> {
   // a1/a2 → ghost-x (majority cluster), p1 → ghost-x (second cluster)
   await writeFile(
     join(alpha, "a1.md"),
-    memoryMarkdown("a1", { related: ["a2", "ghost-x"], salience: 0.9, emotion: "frustration" }),
+    memoryMarkdown("a1", { related: ["a2", "ghost-x"], salience: 0.9, emotion: "frustration", created: "2026-03-04" }),
   );
-  await writeFile(join(alpha, "a2.md"), memoryMarkdown("a2", { related: ["ghost-x"] }));
+  await writeFile(join(alpha, "a2.md"), memoryMarkdown("a2", { related: ["ghost-x"], created: "sometime-in-march" }));
   await writeFile(join(people, "p1.md"), memoryMarkdown("p1", { related: ["ghost-x"] }));
   // b1 bridges alpha + people (two foreign clusters)
   await writeFile(join(beta, "b1.md"), memoryMarkdown("b1", { related: ["a1", "p1"] }));
@@ -115,6 +115,11 @@ test("buildGraph: clusters, ghosts, bridges, private filter", async () => {
     const a2 = g.nodes.find((n) => n.id === "a2")!;
     assert.equal(a2.salience, undefined);
     assert.equal(a2.emotion, undefined);
+
+    // created reaches the node only as a valid ISO date
+    assert.equal(a1.created, "2026-03-04");
+    assert.equal(a2.created, undefined, "a non-ISO created is left out");
+    assert.ok(Number.isFinite(Date.parse(p1.created ?? "")), "a full ISO timestamp is kept");
 
     // ghost-x exists only as a link target → ghost node with both linkers
     const ghost = g.nodes.find((n) => n.id === "ghost-x")!;
@@ -184,6 +189,7 @@ test("GET /api/v1/graph + /api/v1/graph/node over loopback", async () => {
     const nodes = graph.nodes as { id: string; heat?: number }[];
     assert.equal(nodes.find((n) => n.id === "a1")?.heat, 1);
     assert.equal(nodes.find((n) => n.id === "a2")?.heat, 0);
+    assert.equal((nodes.find((n) => n.id === "a1") as { created?: string })?.created, "2026-03-04");
 
     const node = await httpGet(handle.port!, "/api/v1/graph/node?id=a1");
     assert.equal(node.status, 200);

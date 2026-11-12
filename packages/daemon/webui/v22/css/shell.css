@@ -165,8 +165,8 @@
 .tp__acts button + button:hover { background: var(--accent-06); color: var(--accent); }
 
 /* Accent trace along the header tabs */
-.ac { position: absolute; left: 0; top: 0; z-index: 17; pointer-events: none; overflow: visible; opacity: var(--ac-op, 0); transition: opacity .4s; }
-.ac__glow { filter: drop-shadow(0 0 2px var(--accent-55)); animation: tick-glow 4.8s ease-in-out infinite; }
+.ac { position: absolute; left: 0; top: 0; width: 100%; z-index: 17; pointer-events: none; opacity: var(--ac-op, 0); transition: opacity .4s; }
+.ac__glow { display: block; overflow: visible; filter: drop-shadow(0 0 2px var(--accent-55)); animation: tick-glow 4.8s ease-in-out infinite; will-change: opacity; }
 .ac__solid { fill: none; stroke: var(--accent); stroke-width: 1; stroke-linejoin: miter; }
 .ac__fade { fill: none; stroke-width: 1; }
 .ac__stop { stop-color: var(--accent); }

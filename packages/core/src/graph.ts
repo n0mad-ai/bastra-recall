@@ -17,6 +17,16 @@ import { basename, relative, sep, sep as sepChar } from "node:path";
 import type { Vault } from "./vault.js";
 import type { Memory } from "./schema.js";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/** A frontmatter value is a usable date only when it is ISO-shaped AND real
+ *  (2026-02-30 matches the pattern but is no day). */
+function isIsoDate(v: unknown): v is string {
+  if (typeof v !== "string" || !ISO_DATE.test(v)) return false;
+  const t = Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v.slice(0, 10);
+}
+
 export interface GraphNode {
   id: string;
   title: string;
@@ -32,6 +42,9 @@ export interface GraphNode {
   tags: string[];
   summary: string;
   updated: string;
+  /** memories only: frontmatter `created`, present only when it is a valid
+   *  ISO date (YYYY-MM-DD, optionally with time) */
+  created?: string;
   /** total edge count, ghost links included — viewers scale node size on it */
   degree: number;
   kind: "memory" | "doc" | "ghost" | "skill";
@@ -337,6 +350,7 @@ export function buildGraph(vault: Vault, skills: SkillRef[] = []): VaultGraph {
       tags: m.fm.tags,
       summary: m.fm.summary,
       updated: m.fm.updated,
+      ...(isIsoDate(m.fm.created) ? { created: m.fm.created } : {}),
       degree: degree.get(id) ?? 0,
       kind: m.fm.type === "doc" ? "doc" : "memory",
       ...(bridge ? { bridge } : {}),
