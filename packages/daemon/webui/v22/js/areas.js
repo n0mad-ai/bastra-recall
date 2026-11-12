@@ -19,6 +19,7 @@
 //     mount: (el, ctx) => { el.append(hud({ kicker, title, text, side, tiles })); return () => {}; } });
 //
 // HUD head box, tiles, chips and buttons: js/sections/hud.js.
+import { registerCalendarStyle } from "./sections/tasks-styles.js";
 export const ICON = {
   dashboard: "M4 4h7v9H4ZM13 4h7v5h-7ZM13 11h7v9h-7ZM4 15h7v5H4Z",
   mindspace: "M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M7 9.5a5.5 5.5 0 0 1 8.5-1.7M17 14.5a5.5 5.5 0 0 1-8.5 1.7",
@@ -54,7 +55,7 @@ const registry = new Map();
  *           titleKey?: string, icon: string, kind?: "view"|"action", pinAgent?: boolean,
  *           mount?: (stage: HTMLElement, ctx: object) => (() => void) | void,
  *           onAction?: (ctx: object) => void, badge?: () => number,
- *           section?: { frame?: boolean, fit?: boolean },
+ *           section?: { frame?: boolean, fit?: boolean }, panelNotices?: boolean,
  *           greetingKey?: string, presetKeys?: string[],
  *           tabs?: { id: string, labelKey: string, badge?: () => number,
  *                    render?: (body: HTMLElement, ctx: object) => (() => void) | void }[] }} area
@@ -64,6 +65,8 @@ const registry = new Map();
  *             (Telemetry, Settings) or none (Tasks, Mail, Docs, …).
  *             fit: no scrolling; the content fills the stage height exactly.
  *             Without `section`, mount() gets the bare stage (vault views).
+ * panelNotices — notices (state.toast) show at the bottom of the open right
+ *             panel instead of as a toast (Tasks: SCREENS.md › Meldungen).
  * greetingKey / presetKeys — agent window greeting and suggestions
  *             (prototype *_GREETING / *_PRESETS). Default: the vault greeting.
  * tabs      — right panel tabs. The first tab must have id "areas" (it is the
@@ -102,4 +105,4 @@ registerArea({ id: "settings", group: "system", order: 1, labelKey: "nav.setting
 
 // Pro builds call this hook from their own bundle; the free build exposes it
 // and stays empty.
-window.recallUi = Object.freeze({ registerArea });
+window.recallUi = Object.freeze({ registerArea, registerCalendarStyle });

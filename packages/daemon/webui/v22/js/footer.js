@@ -7,7 +7,7 @@ import { state, setState } from "./state.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
 import { mountNavAgent } from "./nav.js";
 import { ask, podInfo, onPodChange } from "./agent.js";
-import { makeGraph, timeOpts, summary, axis } from "./timeline.js";
+import { makeGraph, timeOpts, summary, axis, timeLabel } from "./timeline.js";
 
 let Lc = null;
 const C = {}, A = {}, M = {}, D = {}, I = {}, N = {};
@@ -41,7 +41,7 @@ export function mountFooter(app) {
   } });
   M.exp = h("button.fm__exp", { on: { click: toggleAgent } }, h("span", { text: "▴" }));
   M.opts = h("span.fm__opts"); M.graph = makeGraph("mirror"); M.axis = h("div.ft-axis.ft-axis--mirror");
-  M.time = h("div.fm__time", null, h("div.fm__head", null, h("span.fm__lab", { text: t("tl.updated") }), M.opts), M.graph.el, M.axis);
+  M.time = h("div.fm__time", null, h("div.fm__head", null, M.lab = h("span.fm__lab", { text: t("tl.updated") }), M.opts), M.graph.el, M.axis);
   M.el = h("div.fm", null, M.agent,
     h("div.fm__mid", null, h("div.fm__in", null, M.input,
       h("button.agent__send", { "aria-label": t("agent.send"), on: { click: mirrorSend } }, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M5 12h14M13 6l6 6-6 6" })))), M.exp),
@@ -114,7 +114,7 @@ export function render(L) {
 
   if (showC) {
     C.el.classList.toggle("tl--pulse", tl === "pulse");
-    timeOpts(C.opts).prepend(h("span.tl__lab", { text: t("tl.updated") }));
+    timeOpts(C.opts).prepend(h("span.tl__lab", { text: timeLabel() }));
     C.sum.textContent = summary();
     const on = tl === "pulse" || state.vw - (L.jL + L.podW + 12) - 24 >= 520;
     C.vsep.hidden = !on; C.chart.hidden = !on;
@@ -133,7 +133,7 @@ export function render(L) {
     M.agent.title = podTitle();
     M.exp.title = L.jOpen ? t("pod.title.close") : t("ft.expand");
     M.time.hidden = L.pinAgent;
-    if (!L.pinAgent) { timeOpts(M.opts); M.graph.update(tl); axis(M.axis, "mirror"); }
+    if (!L.pinAgent) { M.lab.textContent = timeLabel(); timeOpts(M.opts); M.graph.update(tl); axis(M.axis, "mirror"); }
   }
   if (L.ftDw) {
     const open = !!state.ftDw;

@@ -8,12 +8,24 @@ import { data } from "./data.js";
 const SEL = { all: 52, 90: 13, 30: 4, 7: 1 };
 const OPTS = [["all", "tl.all"], ["90", "90d"], ["30", "30d"], ["7", "7d"]];
 
+// An area may replace what the timeline shows while it is open (Telemetry:
+// window 1d/7d/30d/90d over its own 52 bars). Source shape:
+// { label(), opts() → [[value, text, on]], pick(value), range() → [a, b],
+//   weeks() → 52 numbers, barTitle(i, v), summary(), axis(kind) → strings }.
+const sources = new Map();
+export function registerTimelineSource(view, src) { sources.set(view, src); }
+const src = () => sources.get(state.view);
+
+/** Label in front of the quick filter ("UPDATED" / "WINDOW"). */
+export function timeLabel() { return src()?.label() ?? t("tl.updated"); }
+
 export function range() {
+  if (src()) return src().range();
   const sel = SEL[state.time] ?? 52;
   return state.brush ? [state.brush.a, state.brush.b] : [52 - sel, 52];
 }
 
-export function weeks() { return data.weeks.length === 52 ? data.weeks : new Array(52).fill(0); }
+export function weeks() { if (src()) return src().weeks(); return data.weeks.length === 52 ? data.weeks : new Array(52).fill(0); }
 
 function weekLabel(w) {
   if (!data.weekStart) return "";
@@ -23,6 +35,11 @@ function weekLabel(w) {
 
 /** Quick-filter buttons (prototype timeOpts). */
 export function timeOpts(el) {
+  const S = src();
+  if (S) {
+    clear(el).append(...S.opts().map(([v, text, on]) => h("button.tl__opt", { cls: on ? "is-on" : "", text, on: { click: () => S.pick(v) } })));
+    return el;
+  }
   clear(el).append(...OPTS.map(([v, k]) =>
     h("button.tl__opt", { cls: !state.brush && String(state.time) === v ? "is-on" : "", text: k.startsWith("tl.") ? t(k) : k, on: { click: () => setState({ time: v, brush: null }) } })));
   return el;
@@ -30,6 +47,7 @@ export function timeOpts(el) {
 
 /** Range summary (prototype timeLabel). */
 export function summary() {
+  if (src()) return src().summary();
   const [a, b] = range();
   const n = numberFmt.format(weeks().slice(a, b).reduce((x, y) => x + y, 0));
   return state.brush ? t("tl.range", { n, a: weekLabel(a), b: b === 52 ? t("tl.now") : weekLabel(b) })
@@ -46,6 +64,11 @@ function monthLabel(w, year) {
 
 /** Axis labels: "full" = five ticks, "short" = first + now, "mirror" = first, summary, now. */
 export function axis(el, kind) {
+  if (src()) {
+    const l = src().axis(kind);
+    clear(el).append(...l.slice(0, -1).map((x, i) => h(kind === "mirror" && i === 1 ? "span.tl__axis-sum" : "span", { text: x })), h("span.tl__axis-now", { text: l[l.length - 1] }));
+    return;
+  }
   const now = h("span.tl__axis-now", { text: t("tl.now").toUpperCase() });
   const parts = kind === "short" ? [h("span", { text: monthLabel(0, true) })]
     : kind === "mirror" ? [h("span", { text: monthLabel(0, true) }), h("span.tl__axis-sum", { text: summary() })]
@@ -114,6 +137,8 @@ export function makeGraph(variant) {
 
   function update(m) {
     if (m !== mode) build(m);
+    const S = src();
+    el.classList.toggle("tg--fixed", !!S);
     const [a, b] = range();
     const vals = weeks(), max = Math.max(1, ...vals);
     if (m === "pulse") {
@@ -129,7 +154,7 @@ export function makeGraph(variant) {
       clear(bars).append(...vals.map((v, i) => h("span.tl__bar", {
         cls: i >= a && i < b ? (b - a === 52 ? "is-all" : "is-in") : "",
         vars: { "--h": pct ? `${Math.max(6, (v / max) * 100).toFixed(1)}%` : `${(3 + (v / max) * 17).toFixed(1)}px` },
-        title: `${weekLabel(i)} · ${v}` })));
+        title: S ? S.barTitle(i, v) : `${weekLabel(i)} · ${v}` })));
     }
     win.classList.toggle("is-cut", b < 52);
     if (!drag) win.classList.remove("is-drag");
