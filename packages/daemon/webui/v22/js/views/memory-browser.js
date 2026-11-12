@@ -33,6 +33,10 @@ const DAY = 864e5, PAGE = 120, CLASSES = ["decision", "rule", "convention", "fac
 const M = { open: false, scope: "all", q: "", type: "all", sort: "recent", sel: null, menu: false, reader: false, limit: PAGE, sem: [], semQ: "", from: null, grow: false };
 let inst = null;
 
+/** Focus a memory in the mounted vault view (its glide / fly + info card).
+ *  false when no vault view is mounted or it has no such hook. */
+export function showInView(id) { if (!inst?.showMemory) return false; inst.showMemory(id); return true; }
+
 /** Open the browser on an area (or "all"), optionally with a memory selected. */
 /** `from` is where the user clicked: the clicked element's DOMRect (or a
  *  { left, top, right, bottom } box) taken at click time — the window grows
@@ -445,7 +449,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   ro.observe(root);
   const unData = onData(() => { if (M.open) render(); });
 
-  inst = { show };
+  inst = { show, showMemory };
   if (M.open) show(M.grow);
 
   return () => {

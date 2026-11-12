@@ -1,0 +1,31 @@
+// Live tab strings (js/views/live-tab.js). Merged via addStrings().
+// Draft wording follows the prototype (Recall UI v22, tabLive); the old
+// variant keeps the labels of the old live deck (js/managers/live-kinds.js).
+export default {
+  "live.title": "This session",
+  "live.n.add": "{n} new",
+  "live.n.change": "{n} changed",
+  "live.n.read": "{n} read",
+  "live.n.delete": "{n} deleted",
+  "live.kind.add": "NEW MEMORY",
+  "live.kind.change": "CHANGED",
+  "live.kind.read": "READ",
+  "live.kind.delete": "DELETED",
+  "live.old.add": "new memory",
+  "live.old.change": "updated",
+  "live.old.read": "read",
+  "live.old.delete": "deleted",
+  "live.short.add": "new",
+  "live.short.change": "updated",
+  "live.short.read": "read",
+  "live.short.delete": "deleted",
+  "live.via.recall": "recall",
+  "live.via.load_memory": "load_memory",
+  "live.empty": "Nothing has happened in this session yet. New, changed and read memories show up here the moment it happens.",
+  "live.off": "Live is off. Switch it on at the top right to follow new events.",
+  "live.cmp": "COMPARE",
+  "live.cmp.title": "Temporary: compare the old live animation with the draft",
+  "live.cmp.old": "Old",
+  "live.cmp.draft": "Draft",
+  "live.dismiss": "Dismiss",
+};

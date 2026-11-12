@@ -7,10 +7,11 @@ import { data } from "./data.js";
 import { getArea } from "./areas.js";
 import { signalsTab } from "./views/signals.js";
 import { panelIndicator } from "./panel-indicator.js";
+import { liveTab } from "./views/live-tab.js";
 
 // Vault views (no tabs of their own): Areas, Signals, View, Live.
 const VAULT_TABS = [{ id: "areas", labelKey: "lens.areas", render: (b) => { b.append(areasTab()); } },
-  { id: "signals", labelKey: "lens.signals", render: (b) => signalsTab(b) }, { id: "view", labelKey: "lens.view" }, { id: "live", labelKey: "lens.live" }];
+  { id: "signals", labelKey: "lens.signals", render: (b) => signalsTab(b) }, { id: "view", labelKey: "lens.view" }, liveTab];
 // A vault view may fill the View tab (registerArea({ viewTab: render })).
 const tabsOf = (view) => {
   const a = getArea(view);
@@ -112,7 +113,7 @@ export function render(L, changed) {
   }), h("button.lens__close", { title: t("lens.collapse"), on: { click: () => ctxRef.toggleLens() } }, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M9 5l7 7-7 7" }))));
   // Vault tabs follow focus and data; an area's own tabs re-render on view/tab
   // change or refreshLens() only (they own their content and its updates).
-  const own = !!getArea(state.view)?.tabs;
+  const own = !!getArea(state.view)?.tabs || !!tab.own; // own: tab keeps its content across data updates
   const key = own ? [state.view, tab.id].join("|") : [state.view, tab.id, state.focus, data.clusters.length, data.clusters[0]?.count].join("|");
   if (key !== lastKey || (!own && changed.has("data"))) {
     lastKey = key;

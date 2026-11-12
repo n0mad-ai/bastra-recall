@@ -1,0 +1,86 @@
+/* Right panel › Live (js/views/live-tab.js); root .lvt (.lv is the lens view canvas). Kind colours: new = accent,
+ * changed = amber, read = muted, deleted = danger. */
+.lvt { --k-add: var(--accent); --k-change: var(--amber); --k-read: var(--muted); --k-delete: var(--danger); }
+.lvt .lens__h { gap: 10px; margin-bottom: 6px; }
+.lvt .lens__h-t { flex: none; white-space: nowrap; }
+.lvt .lens__h-n { min-width: 0; text-align: right; }
+.k-add { --k: var(--k-add); }
+.k-change { --k: var(--k-change); }
+.k-read { --k: var(--k-read); }
+.k-delete { --k: var(--k-delete); }
+
+/* Temporary compare switch (Old | Draft), dashed = not part of the design. */
+.lv-cmp { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; padding: 5px 6px 5px 9px; border: 1px dashed var(--line-30); }
+.lv-cmp__k { margin-right: auto; font: 9.5px var(--mono); letter-spacing: .16em; color: var(--amber); }
+.lv-cmp__b { height: 22px; padding: 0 9px; border: 1px solid var(--line-20); background: transparent; color: var(--muted); font: 500 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; transition: color .2s, border-color .2s; }
+.lv-cmp__b:hover { color: var(--ink); }
+.lv-cmp__b.is-on { color: var(--accent); border-color: var(--accent-45); }
+
+.lv-note, .lv-empty { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); text-wrap: pretty; }
+.lv-note[hidden], .lv-empty[hidden] { display: none; }
+.lv-note { padding: 8px 10px; border: 1px solid var(--amber-35); color: var(--amber); }
+
+/* ── Draft: prototype tabLive ("This session") ───────────────────────────── */
+.lvB { position: relative; display: flex; flex-direction: column; }
+.lvB[hidden] { display: none; }
+.lvB::before { content: ""; position: absolute; left: 3px; top: 14px; bottom: 14px; width: 1px; background: var(--line-20); }
+.lvB__row { position: relative; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; padding: 11px 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.lvB__row:hover { color: var(--accent); }
+.lvB__row.k-delete { cursor: default; }
+.lvB__row.k-delete:hover { color: var(--ink); }
+.lvB__row.is-new { animation: card-in .3s ease-out both; }
+.lvB__dot { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: var(--k); box-shadow: 0 0 8px var(--k); }
+.lvB__txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lvB__kind { font: 9.5px var(--mono); letter-spacing: .16em; color: var(--k); }
+.lvB__title { font-size: 14px; line-height: 1.3; text-wrap: pretty; overflow-wrap: anywhere; }
+.lvB__meta, .lvB__ago { font: 10.5px var(--mono); color: var(--muted); }
+.lvB__meta { overflow-wrap: anywhere; }
+
+/* ── Old: the old UI's live deck (css/live.css, managers/live-deck.js) ────
+ * The newest card covers at most two others; covered cards are pulled up by
+ * their own height (--self-hide) and counted in the "+N" bar. Hover fans the
+ * deck out top card first (--fan-delay), leaving folds it back bottom card
+ * first (--fold-delay); the bar returns last (--fold-total). */
+.lvA { --deck-overlap: -62px; position: relative; margin-top: 12px; padding-left: 26px; }
+.lvA[hidden] { display: none; }
+.lvA__stack { position: relative; display: flex; flex-direction: column; }
+.lvA__cards { display: flex; flex-direction: column; }
+.lvA__card { position: relative; z-index: var(--z, 0); flex: none; padding: 10px 12px; background: var(--panel); border: 1px solid var(--accent-24); border-left: 2px solid var(--k); box-shadow: 0 10px 30px var(--shade-50); cursor: pointer;
+  transition: opacity .9s ease, border-color .15s ease, margin-top var(--fan-dur, .26s) var(--ease-knob); }
+.lvA__card.k-delete { cursor: default; }
+.lvA__card.is-new { animation: lvA-in .45s var(--ease-knob); }
+.lvA__card + .lvA__card { margin-top: var(--deck-overlap); transition-delay: 0s, 0s, var(--fold-delay, 0s); }
+.lvA__card:nth-child(n + 4) { margin-top: var(--self-hide, -140px); }
+.lvA:hover .lvA__card + .lvA__card { margin-top: 10px; transition-delay: 0s, 0s, var(--fan-delay, 0s); }
+.lvA__card:hover { border-color: var(--k); }
+@keyframes lvA-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.lvA__head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.lvA__star { color: var(--k); font-size: 13px; }
+.lvA__label { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--k); }
+.lvA__count { font: 10px var(--mono); letter-spacing: .06em; color: var(--muted); }
+.lvA__age { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
+.lvA__x { border: 0; padding: 0 2px; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.lvA__x:hover { color: var(--accent); }
+.lvA__title { margin-bottom: 2px; font-size: 13px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.lvA__meta { margin-bottom: 4px; font: 10.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.lvA__sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+
+.lvA__more { display: flex; align-items: center; gap: 8px; white-space: nowrap; height: 22px; margin-top: 6px; padding: 4px 10px; overflow: hidden; font: 10px var(--mono); letter-spacing: .06em; color: var(--muted); background: var(--panel); border: 1px solid var(--line-20);
+  transition: opacity .18s ease, height .34s var(--ease-knob), margin-top .34s var(--ease-knob), padding .34s var(--ease-knob), border-width .34s var(--ease-knob);
+  transition-delay: var(--fold-total, 0s); }
+.lvA__more[hidden] { display: none; }
+.lvA:hover .lvA__more { opacity: 0; height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; border-width: 0; transition-delay: 0s; }
+.lvA__total { color: var(--ink); }
+.lvA__mk { color: var(--k); }
+.lvA__mk:first-of-type { margin-left: auto; }
+
+/* Tick rail left of the deck: one mark per card, the newest long, the card
+ * under the pointer in the accent colour. */
+.lvA__ticks { position: absolute; left: 0; bottom: 0; width: 18px; max-height: 100%; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; gap: 7px; padding-top: 12px; overflow: hidden; pointer-events: none; top: 0; }
+.lvA__tick { flex: none; width: 8px; height: 2px; border-radius: 1px; background: var(--muted); opacity: .35; transition: width .22s var(--ease-knob), opacity .22s ease, background .22s ease; }
+.lvA__tick.is-near { width: 11px; opacity: .55; }
+.lvA__tick.is-on { width: 16px; height: 2.5px; opacity: 1; background: var(--ink); }
+.lvA:hover .lvA__tick { width: 11px; opacity: .6; }
+.lvA:hover .lvA__tick.is-near { width: 14px; opacity: .75; }
+.lvA:hover .lvA__tick.is-on { width: 18px; opacity: 1; }
+.lvA__tick.is-hov, .lvA:hover .lvA__tick.is-hov { background: var(--accent); opacity: 1; }
