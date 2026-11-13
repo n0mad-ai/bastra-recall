@@ -33,7 +33,12 @@ export async function loadHealth() {
 }
 
 const WEEK = 7 * 864e5;
-export async function loadGraph() {
+let graphRequest = null;
+export function loadGraph() {
+  if (!graphRequest) graphRequest = fetchGraph().finally(() => { graphRequest = null; });
+  return graphRequest;
+}
+async function fetchGraph() {
   try {
     const g = await getJson("/api/v1/graph");
     if (typeof g.vault_name === "string" && g.vault_name.trim()) {
@@ -90,17 +95,29 @@ let seq = null;
 const updateListeners = new Set();
 /** Fresh vault events from GET /ui/updates (add | change | delete | read), as delivered. */
 export function onUpdates(fn) { updateListeners.add(fn); return () => updateListeners.delete(fn); }
-export async function pollUpdates() {
+let updatesRequest = null;
+export function pollUpdates() {
+  if (!updatesRequest) updatesRequest = fetchUpdates().finally(() => { updatesRequest = null; });
+  return updatesRequest;
+}
+async function fetchUpdates() {
   try {
     const u = await getJson(seq === null ? "/ui/updates" : `/ui/updates?since=${seq}`);
     if (typeof u.seq !== "number") return;
-    if (seq !== null && u.seq >= seq && Array.isArray(u.updates) && u.updates.length) {
-      data.newSince += u.updates.length;
-      data.newMemories += u.updates.filter((x) => x && x.kind === "add").length;
-      emit();
-      for (const fn of updateListeners) fn(u.updates);
-    }
+    const fresh = seq !== null && u.seq > seq && Array.isArray(u.updates) ? u.updates : [];
     seq = u.seq;
+    if (fresh.length) {
+      data.newSince += fresh.length;
+      data.newMemories += fresh.filter((x) => x && x.kind === "add").length;
+      emit();
+      for (const fn of updateListeners) fn(fresh);
+      if (fresh.some((x) => x && ["add", "change", "delete"].includes(x.kind))) {
+        // One refresh for the entire batch. If the initial graph is still in
+        // flight, let it finish before fetching the post-update snapshot.
+        if (graphRequest) await graphRequest;
+        await loadGraph();
+      }
+    }
   } catch { /* keep last */ }
 }
 

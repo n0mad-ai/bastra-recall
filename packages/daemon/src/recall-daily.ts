@@ -48,7 +48,7 @@ async function countFile(path: string, key: string): Promise<FileCounts> {
       continue;
     }
     if (e.kind !== "load_memory" || typeof e.ts !== "string" || typeof e.id !== "string" || e.found === false) continue;
-    if (isEvalTraffic(e)) continue;
+    if (e.eval_run === true || isEvalTraffic(e)) continue;
     const day = e.ts.slice(0, 10);
     let m = byDay.get(day);
     if (!m) byDay.set(day, (m = new Map()));

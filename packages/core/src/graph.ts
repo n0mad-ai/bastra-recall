@@ -23,8 +23,11 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\
  *  (2026-02-30 matches the pattern but is no day). */
 function isIsoDate(v: unknown): v is string {
   if (typeof v !== "string" || !ISO_DATE.test(v)) return false;
-  const t = Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v);
-  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v.slice(0, 10);
+  // Validate the written calendar day independently of the instant: an offset
+  // may legitimately move that instant into the previous/next UTC day.
+  const day = v.slice(0, 10);
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === day && Number.isFinite(Date.parse(v));
 }
 
 export interface GraphNode {

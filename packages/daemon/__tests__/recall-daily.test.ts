@@ -32,3 +32,18 @@ test("recallDaily counts found loads per day, skips misses, other kinds and old 
 test("recallDaily on a missing log dir is empty", async () => {
   assert.equal((await recallDaily(join(tmpdir(), "no-such-recall-daily-dir"), NOW)).size, 0);
 });
+
+test("recallDaily excludes eval_run and dimensions measurement markers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "recall-daily-eval-"));
+  try {
+    const rows = [
+      { id: "eval-marker", eval_run: true },
+      { id: "eval-dim", dimensions: { client: "eval" } },
+      { id: "replay-dim", dimensions: { client: "replay" } },
+      { id: "real", eval_run: false },
+      { id: "legacy" },
+    ];
+    await writeFile(join(dir, "events-2026-11-12.jsonl"), rows.map((e) => row({ ts: "2026-11-12T09:00:00Z", ...e })).join(""));
+    assert.deepEqual([...await recallDaily(dir, NOW)], [["real", [[0, 1]]], ["legacy", [[0, 1]]]]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

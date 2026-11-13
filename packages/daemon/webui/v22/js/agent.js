@@ -113,12 +113,13 @@ export function ask(q) {
 }
 
 function typeOut(p) {
+  clearInterval(typeTimer);
   // Hit ids of the answer, numbered 1–3 on the vault views (js/views/).
   setState({ agent: "speaking", hits: p.sources.map((x) => x[2]).filter(Boolean) });
   let i = 0;
-  typeTimer = setInterval(() => {
+  const timer = typeTimer = setInterval(() => {
     i += 4; chatState.typed = p.a.slice(0, i); render();
-    if (i >= p.a.length) { clearInterval(typeTimer); chatState.shown = p; chatState.typed = ""; setState({ agent: "idle" }); render(); }
+    if (i >= p.a.length) { clearInterval(timer); if (typeTimer === timer) typeTimer = 0; chatState.shown = p; chatState.typed = ""; setState({ agent: "idle" }); render(); }
   }, 56);
 }
 
@@ -261,7 +262,7 @@ function openSource(id, el) {
   if (!id) return;
   const m = vault()?.byId.get(id);
   if (m && inWindow(m, timeWindow()) && showInView(id)) return;
-  openMemoryBrowser(m?.area || "all", id, el.getBoundingClientRect());
+  openMemoryBrowser(m?.area || "all", id, el?.getBoundingClientRect());
 }
 
 function send() { const q = input.value.trim(); if (!q) return; input.value = ""; input.blur(); syncInput(); ask(q); }
