@@ -20,6 +20,8 @@ export const state = {
   time: "all",
   brush: null,
   live: true,
+  // Short notice for the header ticker (js/header.js renderNote): a string or
+  // { text, tone?: "error" }; "" = none.
   toast: "",
   // Footer variant (console | mirror | anchored | drawer | island) and
   // timeline style (bars | pulse) — prototype settings ui.footer / ui.timeline.

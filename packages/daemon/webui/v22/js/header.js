@@ -9,7 +9,7 @@ import { getArea } from "./areas.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
-let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, acBox, acSvg, tpLayer;
+let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, tkrNote, acBox, acSvg, tpLayer;
 let geo = null;
 const tk = { nudge: 0, paused: false, arm: null, open: null, hold: false, tArm: 0, tClose: 0 };
 
@@ -41,7 +41,9 @@ export function mountHeader(root, ctx) {
   tkrDueN = h("span.n-amber"); tkrDueW = h("span", { text: t("ticker.due") });
   tkrSum = h("div.tkr__sum", null, h("button", { on: { click: () => setState({ view: "tasks", tab: "areas" }) } }, tkrDueN, tkrDueW));
   tkrIn = h("div.tkr__in", null, tkrNow, tkrRunWrap, tkrSum);
-  tkr = h("div.tkr", { "data-tkr-bar": "1" }, tkrIn);
+  // Notices (state.toast) take over the ticker for a few seconds, see renderNote.
+  tkrNote = h("div.tkr__note", { role: "status", "aria-live": "polite", on: { mouseenter: () => holdNote("hover", true), mouseleave: () => holdNote("hover", false) } });
+  tkr = h("div.tkr", { "data-tkr-bar": "1" }, tkrIn, tkrNote);
   // The glow pulse runs on the svg's own layer (opacity only), the fade-in on
   // the box around it — so the drop-shadow is not re-rastered every frame.
   acSvg = s("svg.ac__glow", { width: "100%", height: 70, "shape-rendering": "geometricPrecision" });
@@ -49,6 +51,7 @@ export function mountHeader(root, ctx) {
   tpLayer = h("div");
 
   app.append(leftTab, rightTab, tkr, tpLayer, acBox);
+  document.addEventListener("visibilitychange", () => holdNote("tab", document.hidden));
   const ro = new ResizeObserver(() => measure());
   ro.observe(leftTab); ro.observe(rightTab);
   window.addEventListener("resize", () => requestAnimationFrame(measure));
@@ -108,7 +111,8 @@ let lastItemsKey = "";
 function renderTicker() {
   const avail = geo ? geo.R - geo.L : 0;
   const show = avail >= 200;
-  tkr.hidden = !show;
+  // A notice is shown even where the ticker itself has no room.
+  tkr.hidden = !show && !note.on;
   tkrNow.lastChild.hidden = avail < 230;
   tkrRunWrap.hidden = avail < 300;
   tkrDueW.hidden = avail < 280;
@@ -138,7 +142,53 @@ function tickerButton(it, i) {
 
 function syncPlay() {
   const items = data.dueTasks.length;
-  tkrTrack.classList.toggle("is-paused", !items || tk.paused || tk.open !== null || tk.hold);
+  tkrTrack.classList.toggle("is-paused", !items || tk.paused || tk.open !== null || tk.hold || note.on);
+}
+
+// ── notices ───────────────────────────────────────────────────────────────
+// Every short confirmation or error (state.toast: a string, or
+// { text, tone: "error" }) slides into the ticker: the ticker content fades
+// out, the notice stays with a running timer line, then the ticker returns.
+// Hover and a hidden browser tab pause the timer; a new notice replaces the
+// current one. One timeout per notice, no loop.
+const note = { on: false, shown: null, left: 0, since: 0, timer: 0, outT: 0, hover: false, tab: false };
+function holdNote(kind, val) {
+  note[kind] = val;
+  if (!note.on) return;
+  const hold = note.hover || note.tab;
+  tkrNote.classList.toggle("is-held", hold);
+  clearTimeout(note.timer);
+  if (hold) { if (note.since) note.left -= Date.now() - note.since; note.since = 0; }
+  else { note.since = Date.now(); note.timer = setTimeout(() => setState({ toast: "" }), Math.max(0, note.left)); }
+}
+
+function renderNote() {
+  const v = state.toast;
+  if (v === note.shown) return;
+  note.shown = v;
+  const text = typeof v === "string" ? v : v?.text || "";
+  clearTimeout(note.timer); clearTimeout(note.outT);
+  if (!text) {
+    if (!note.on) return;
+    note.on = false; tkr.classList.remove("has-note"); syncPlay();
+    // Content goes after the fade-out; a following notice cancels this.
+    note.outT = setTimeout(() => { clear(tkrNote); renderTicker(); }, 400);
+    return;
+  }
+  const ms = Math.min(12000, Math.max(6000, 2000 + text.length * 60));
+  const err = typeof v === "object" && v.tone === "error";
+  const bar = h("span.tkr__note-bar");
+  setVars(bar, { "--note-ms": `${ms}ms` });
+  clear(tkrNote).append(h("span.tkr__note-in", { title: text },
+    h("span.tkr__note-p", { text: "›" }), h("span.tkr__note-t", { text })),
+  h("button.tkr__note-x", { type: "button", "aria-label": t("toast.close"), text: "×", on: { click: () => setState({ toast: "" }) } }), bar);
+  tkrNote.classList.toggle("is-err", err);
+  tkrNote.classList.remove("is-held");
+  note.on = true; note.left = ms; note.since = 0;
+  if (tk.open !== null) closePreview();
+  renderTicker();
+  tkr.classList.add("has-note"); syncPlay();
+  holdNote("tab", document.hidden);
 }
 
 function armPreview(el, it, i) {
@@ -245,5 +295,6 @@ export function updateHeader(L, changed) {
   if (changed.has("view") || changed.has("focus") || changed.has("vw") || brandChanged) renderCrumb();
   renderStatus(L);
   if (changed.has("data") || changed.has("init")) renderTicker();
+  if (changed.has("toast")) renderNote();
   if (changed.has("vw") || changed.has("init") || changed.has("view") || brandChanged) requestAnimationFrame(measure);
 }

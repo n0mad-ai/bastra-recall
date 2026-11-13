@@ -129,6 +129,24 @@
 .tkr__sum button { display: flex; align-items: center; gap: 6px; border: 0; padding: 0; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .tkr__sum button:hover { color: var(--amber); }
 .tkr__sum .n-amber { color: var(--amber); }
+/* Notices (state.toast, js/header.js renderNote): the ticker content fades
+   up and out, the notice slides in, a timer line runs down, then the ticker
+   returns. Hover pauses the timer (.is-held). Errors in --danger. */
+.tkr__in { transition: opacity .3s var(--ease-panel), transform .3s var(--ease-panel), visibility 0s; }
+.tkr.has-note .tkr__in { opacity: 0; transform: translateY(-10px); visibility: hidden; pointer-events: none; transition: opacity .22s var(--ease-panel), transform .22s var(--ease-panel), visibility 0s .22s; }
+.tkr__note { --nc: var(--accent); position: absolute; top: 0; bottom: 0; left: 26px; right: 26px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px; overflow: hidden; background: linear-gradient(90deg, var(--accent-08), var(--accent-00) 70%); box-shadow: inset 2px 0 0 var(--nc); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(12px); transition: opacity .25s var(--ease-panel), transform .3s var(--ease-panel), visibility 0s .3s; }
+.tkr.has-note .tkr__note { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition: opacity .35s var(--ease-knob) .12s, transform .45s var(--ease-knob) .12s, visibility 0s; }
+.tkr__note::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; background: linear-gradient(90deg, var(--accent-00), var(--accent-14), var(--accent-00)); transform: translateX(-100%); }
+.tkr.has-note .tkr__note::before { animation: note-sweep 1.1s var(--ease-panel) .2s both; }
+.tkr__note.is-err { --nc: var(--danger); background: linear-gradient(90deg, rgba(224,106,106,.1), rgba(224,106,106,0) 70%); }
+.tkr__note-in { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; animation: note-in .5s var(--ease-knob) .14s both; }
+.tkr__note-p { flex: none; font: 600 11px var(--mono); color: var(--nc); }
+.tkr__note-t { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font: 11.5px var(--mono); line-height: 1.4; color: var(--nc); text-wrap: pretty; }
+.tkr__note-x { flex: none; border: 0; padding: 0 2px; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.tkr__note-x:hover { color: var(--nc); }
+.tkr__note-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--nc); opacity: .6; transform-origin: left; animation: toast-bar var(--note-ms, 6s) linear forwards; }
+.tkr__note.is-held .tkr__note-bar { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .tkr__note, .tkr__in, .tkr.has-note .tkr__note, .tkr.has-note .tkr__in { transform: none; } .tkr__note-in, .tkr.has-note .tkr__note::before { animation: none; } }
 
 /* Ticker preview (hover 2 s) */
 .tp { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 16; filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60)); }
@@ -171,10 +189,3 @@
 .ac__fade { fill: none; stroke-width: 1; }
 .ac__stop { stop-color: var(--accent); }
 .ac__full { fill: none; stroke-width: 1; stroke-linejoin: miter; }
-
-/* Toast (shown when the right panel is closed) */
-.toast { position: absolute; z-index: 40; right: 84px; bottom: 32px; max-width: min(380px, calc(100vw - 180px)); display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px 12px 14px; background: var(--surface-toast); border: 1px solid var(--accent-45); box-shadow: inset 2px 0 0 #38d9f5, 0 18px 44px var(--shade-60); backdrop-filter: blur(8px); overflow: hidden; animation: toast-in .35s var(--ease-knob) both, toast-out .35s ease-in 5.6s forwards; }
-.toast__p { flex: none; font: 600 11px var(--mono); color: var(--accent); }
-.toast__t { flex: 1; min-width: 0; font: 11.5px var(--mono); line-height: 1.5; color: var(--accent); }
-.toast__x { flex: none; border: 0; padding: 0 2px; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
-.toast__bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent-60); transform-origin: left; animation: toast-bar 6s linear forwards; }

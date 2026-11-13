@@ -75,7 +75,7 @@ async function load({ silent = false } = {}) {
     if (model) {
       // keep what is on screen and say why the switch did not happen
       tv.days = model.days || tv.days; persist();
-      setState({ toast: t("tv.error", { m: e.message }) });
+      setState({ toast: { text: t("tv.error", { m: e.message }), tone: "error" } });
       showBusy();
     } else { error = t("tv.error", { m: e.message }); showBusy(); draw(); }
   }

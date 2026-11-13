@@ -42,8 +42,8 @@ export function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ style: S.style, view: S.view, agenda: S.agenda, hide: S.hide })); } catch { /* storage blocked */ }
 }
 
-/** Notices: detail panel bottom while the panel is open, toast otherwise (js/main.js, js/lens.js). */
-export function say(msg) { setState({ toast: "" }); setState({ toast: msg }); }
+/** Notices slide into the header ticker (js/header.js renderNote); tone "error" shows them in --danger. */
+export function say(msg, tone) { setState({ toast: { text: msg, tone } }); }
 
 export const byId = (id) => S.items.find((x) => x.id === id);
 /** Live (non-archive) tasks: the targets a waits_on entry can name. */
@@ -70,7 +70,7 @@ export async function refresh(background = false) {
 
 export async function loadWeather() { if (await loadWeatherDays()) emit(); }
 
-/** Runs a user action; the notice goes to the panel/toast, the board refreshes afterwards. */
+/** Runs a user action; the notice goes to the ticker, the board refreshes afterwards. */
 export async function act(fn, okMsg) {
   // Run indicator: sweep on the control that was used; a drag drop has none,
   // so the board carries a flowing top line as well (js/sections/loading.js).
@@ -80,7 +80,7 @@ export async function act(fn, okMsg) {
     const msg = await fn();
     await refresh();
     if (msg || okMsg) say(msg || okMsg);
-  } catch (e) { say(e.message); refresh(); }
+  } catch (e) { say(e.message, "error"); refresh(); }
   finally { setBusy(el, false); board?.classList.remove("ld-top"); }
 }
 
@@ -138,7 +138,7 @@ export function moveDue(id, at) {
 
 export function create() {
   let built;
-  try { built = createInput(S.F, role(), liveTasks()); } catch (e) { say(e.message); return; }
+  try { built = createInput(S.F, role(), liveTasks()); } catch (e) { say(e.message, "error"); return; }
   return act(async () => {
     const res = await api("create", built.input);
     S.compose = false; S.F = { ...S.F, goal: "", expires: "", waits: "", srcKind: "", srcRef: "", note: "" };
@@ -154,12 +154,12 @@ export async function openDue() {
     S.due = Array.isArray(d.cards) ? d.cards : [];
     S.duePending = Number.isFinite(d.pending) ? d.pending : 0; S.dueBlocked = Number.isFinite(d.retry_blocked) ? d.retry_blocked : 0;
   }
-  catch (e) { S.due = []; say(e.message); }
+  catch (e) { S.due = []; say(e.message, "error"); }
   S.dueBusy = false; emit();
 }
 
 export async function showProposal(data) {
-  if (!data || !data.proposal) { say(t("tk.err.generic")); return; }
+  if (!data || !data.proposal) { say(t("tk.err.generic"), "error"); return; }
   S.proposal = data; S.propNote = ""; S.compose = false; S.showDue = false; emit();
 }
 
@@ -172,7 +172,7 @@ export async function executeProposal() {
     const r = await api("execute", { proposal_id: data.proposal.id, lease_id: res.lease.id, holder_token: res.holder_token, fence: res.lease.fence, idempotency_key: crypto.randomUUID() });
     S.propNote = t("tk.prop.result", { state: t(`tk.outcome.${r.state}`), intent: r.intent_id ?? "—", receipt: r.receipt?.id || t("tk.prop.noReceipt") });
     emit(); await refresh();
-  } catch (e) { say(e.message); }
+  } catch (e) { say(e.message, "error"); }
   finally { if (res?.lease) await api("release", { lease_id: res.lease.id, holder_token: res.holder_token, fence: res.lease.fence }).catch(() => {}); }
 }
 

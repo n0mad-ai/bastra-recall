@@ -21,8 +21,8 @@ input[type=range] { accent-color: var(--accent); }
 @keyframes tkr-trace { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
 @keyframes tkr-scan { from { transform: translateY(0); opacity: 1; } to { transform: translateY(260px); opacity: 0; } }
 @keyframes tkr-row { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-@keyframes toast-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(12px); } }
+@keyframes note-in { from { opacity: 0; transform: translateX(-14px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+@keyframes note-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 @keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes tick-glow { 0%, 100% { opacity: .42; } 50% { opacity: 1; } }
 @keyframes tick-trace { 0% { stroke-dashoffset: 110; opacity: 0; } 4% { opacity: 1; } 64% { opacity: 1; } 70% { stroke-dashoffset: -1000; opacity: 0; } 100% { stroke-dashoffset: -1000; opacity: 0; } }

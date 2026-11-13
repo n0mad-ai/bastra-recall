@@ -120,7 +120,6 @@ function mount(el, ctx) {
 
 registerArea({ id: "tasks", group: "work", order: 1, labelKey: "nav.tasks", icon: ICON.tasks, pinAgent: true,
   section: { frame: false, fit: true },
-  panelNotices: true,
   greetingKey: "agent.greeting.tasks", presetKeys: ["agent.sug.due", "agent.sug.remind"],
   tabs: [
     { id: "areas", labelKey: "lens.details", render: detailTab },

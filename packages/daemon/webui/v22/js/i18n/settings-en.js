@@ -67,6 +67,7 @@ export default {
   "st.discard": "DISCARD",
   "st.apply": "APPLY",
   "st.applying": "APPLYING…",
+  "st.savedNote": "Settings saved.",
   "st.savedRestart": "Saved {at}. Some options take effect after the daemon and its clients restart.",
   "st.restart": "RESTART DAEMON",
   "st.restarting": "Restarting the daemon…",

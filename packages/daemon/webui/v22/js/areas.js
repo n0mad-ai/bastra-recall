@@ -54,7 +54,7 @@ const registry = new Map();
  *           titleKey?: string, icon: string, kind?: "view"|"action", pinAgent?: boolean,
  *           mount?: (stage: HTMLElement, ctx: object) => (() => void) | void,
  *           onAction?: (ctx: object) => void, badge?: () => number,
- *           section?: { frame?: boolean, fit?: boolean }, panelNotices?: boolean,
+ *           section?: { frame?: boolean, fit?: boolean },
  *           greetingKey?: string, presetKeys?: string[],
  *           tabs?: { id: string, labelKey: string, badge?: () => number,
  *                    render?: (body: HTMLElement, ctx: object) => (() => void) | void }[] }} area
@@ -64,8 +64,6 @@ const registry = new Map();
  *             (Telemetry, Settings) or none (Tasks, Mail, Docs, …).
  *             fit: no scrolling; the content fills the stage height exactly.
  *             Without `section`, mount() gets the bare stage (vault views).
- * panelNotices — notices (state.toast) show at the bottom of the open right
- *             panel instead of as a toast (Tasks: SCREENS.md › Meldungen).
  * greetingKey / presetKeys — agent window greeting and suggestions
  *             (prototype *_GREETING / *_PRESETS). Default: the vault greeting.
  * tabs      — right panel tabs. The first tab must have id "areas" (it is the

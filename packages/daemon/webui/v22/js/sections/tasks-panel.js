@@ -73,8 +73,8 @@ function editForm(x) {
       lab(t("tk.f.note"), h("textarea.tk-in.tk-ta", { text: v.note, placeholder: t("tk.f.notePh"), on: { input: (e) => { v.note = e.target.value; } } })),
       btn(t("tk.save"), () => {
         const goal = v.goal.trim(), area = v.area.trim();
-        if (!goal) return say(t("tk.err.goal"));
-        let patch; try { patch = boardPatch(task, v, liveTasks()); } catch (e) { return say(e.message); }
+        if (!goal) return say(t("tk.err.goal"), "error");
+        let patch; try { patch = boardPatch(task, v, liveTasks()); } catch (e) { return say(e.message, "error"); }
         if (goal !== task.goal) patch.goal = goal;
         if (area && area !== task.scope?.name) patch.scope = { kind: task.scope?.kind || "personal", name: area };
         if (!Object.keys(patch).length) { S.edit = null; emit(); return; }
@@ -83,14 +83,14 @@ function editForm(x) {
   if (kind === "expires") {
     const inp = h("input.tk-in", { value: task.expires_at === undefined ? "" : localParts(task.expires_at, task.timezone).slice(0, 16), placeholder: t("tk.f.whenLocalPh") });
     return row(h("label.tk-f.is-wide", null, t("tk.edit.expires", { tz: task.timezone }), inp), btn(t("tk.save"), () => {
-      let at = null; try { if (inp.value.trim()) at = calendarSchedule(inp.value.trim(), task.timezone).schedule.at; } catch (e) { return say(e.message); }
+      let at = null; try { if (inp.value.trim()) at = calendarSchedule(inp.value.trim(), task.timezone).schedule.at; } catch (e) { return say(e.message, "error"); }
       S.edit = null; act(async () => { await mutate(task.id, "edit", { patch: { expires_at: at } }); return t("tk.msg.updated"); }); }, { pri: true }));
   }
   if (kind === "snooze") {
     const def = new Date(Date.now() + 864e5); def.setHours(9, 0, 0, 0);
     const inp = h("input.tk-in", { value: localParts(def.getTime(), task.timezone).slice(0, 16), placeholder: t("tk.f.whenLocalPh") });
     return row(h("label.tk-f.is-wide", null, t("tk.edit.snooze", { tz: task.timezone }), inp), btn(t("tk.act.snooze"), () => {
-      let at; try { at = calendarSchedule(inp.value.trim(), task.timezone).schedule.at; } catch (e) { return say(e.message); }
+      let at; try { at = calendarSchedule(inp.value.trim(), task.timezone).schedule.at; } catch (e) { return say(e.message, "error"); }
       S.edit = null; act(async () => { await mutate(task.id, "snooze", { until: at }); return t("tk.msg.snoozed", { at: fmtAt(at, task.timezone) }); }); }, { pri: true }));
   }
   if (kind === "prepare") {
@@ -100,9 +100,9 @@ function editForm(x) {
     return row(h("datalist", { id: "tk-targets" }, adapters.map((a) => h("option", { value: a.id }))),
       h("label.tk-f.is-wide", null, t("tk.prep.target"), target), h("label.tk-f.is-wide", null, t("tk.prep.payload"), payload),
       btn(t("tk.act.prepare"), async () => {
-        if (!target.value.trim()) return say(t("tk.err.validation"));
+        if (!target.value.trim()) return say(t("tk.err.validation"), "error");
         try { const cur = await api("get", { id: task.id }); S.edit = null; await showProposal(await api("prepare", { id: task.id, expected_revision: cur.expected_revision, target_id: target.value.trim(), payload: payload.value })); refresh(); }
-        catch (e) { say(e.message); } }, { pri: true }));
+        catch (e) { say(e.message, "error"); } }, { pri: true }));
   }
   return null;
 }
@@ -226,12 +226,12 @@ export function controlTab(body) {
       (snap.intents || []).map((i) => h("div.tk-pn__row", null, line(`${i.state === "unknown" ? t("tk.intent.unknown") : i.state === "pending" ? t("tk.intent.pending") : t("tk.intent.done")} · ${i.target_id ?? ""} · ${fmtAt(i.at)}`),
         i.state === "pending" || i.temp_cleanup_pending ? btn(t("tk.act.reconcile"), () => act(async () => { const r = await api("intent_reconcile", { intent_id: i.id }); return r.state === "unknown" ? t("tk.msg.reconcileUnknown") : t("tk.msg.reconciled"); })) : null)),
       (snap.receipts || []).map((r) => h("div.tk-pn__row", null, line(`${t("tk.receipt")} ${String(r.id).slice(0, 12)} · ${r.outcome === "unknown" ? t("tk.intent.unknown") : r.outcome === "reconciled" ? t("tk.outcome.reconciled") : t("tk.outcome.succeeded")} · ${r.target_id ?? ""} · ${fmtAt(r.at)}`),
-        r.rollback_available ? btn(t("tk.act.rollback"), async () => { try { await showProposal(await api("rollback_prepare", { receipt_id: r.id })); } catch (e) { say(e.message); } }) : null))) : null,
+        r.rollback_available ? btn(t("tk.act.rollback"), async () => { try { await showProposal(await api("rollback_prepare", { receipt_id: r.id })); } catch (e) { say(e.message, "error"); } }) : null))) : null,
     sec(t("tk.ctl.sources"),
       line(t("tk.ctl.trust")),
       (snap.sources || []).map((x) => line(t("tk.ctl.source", { id: x.id, on: x.enabled ? t("tk.on") : t("tk.off"), rev: x.revision }), x.enabled ? "" : "is-mut")),
       (snap.adapters || []).map((x) => line(t("tk.ctl.adapter", { id: x.id, on: x.enabled ? t("tk.active") : t("tk.off"), a: x.adapter }), x.enabled ? "" : "is-mut")),
-      (snap.proposals || []).map((p) => btn(t("tk.ctl.proposal", { id: String(p.id).slice(0, 12), st: p.binding_current ? t(`tk.prop.st.${p.status}`) : t("tk.prop.st.outdated") }), async () => { try { await showProposal(await api("proposal", { proposal_id: p.id })); } catch (e) { say(e.message); } }))),
+      (snap.proposals || []).map((p) => btn(t("tk.ctl.proposal", { id: String(p.id).slice(0, 12), st: p.binding_current ? t(`tk.prop.st.${p.status}`) : t("tk.prop.st.outdated") }), async () => { try { await showProposal(await api("proposal", { proposal_id: p.id })); } catch (e) { say(e.message, "error"); } }))),
     (snap.archives || []).length ? sec(t("tk.ctl.archive"), (snap.archives || []).map((a) => btn(t("tk.ctl.archiveBtn", { at: fmtAt(a.at), n: a.task_count }), () => loadArchive(a.id))),
       S.cold.length ? btn(t("tk.ctl.archiveHide"), () => { S.cold = []; refresh(); }) : null) : null,
     h("div.tk-pn__foot", null, btn(t("tk.refresh"), () => act(async () => t("tk.msg.refreshed", { at: new Date().toLocaleTimeString() }))))));

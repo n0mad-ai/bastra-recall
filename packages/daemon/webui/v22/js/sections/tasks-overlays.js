@@ -72,11 +72,11 @@ function dueCard(c) {
     acts.push(h("button.tk-btn.is-sm", { text: t("tk.rc.keep"), on: { click: () => pick("keep") } }),
       h("button.tk-btn.is-sm", { text: t("tk.rc.stop"), on: { click: () => pick("stop") } }));
     parts.push(h("div.tk-due__rc", null, until, h("button.tk-btn.is-sm", { text: t("tk.rc.snooze"), on: { click: () => {
-      let at; try { at = calendarSchedule(until.value.trim(), c.timezone || "UTC").schedule.at; } catch (e) { say(e.message); return; }
+      let at; try { at = calendarSchedule(until.value.trim(), c.timezone || "UTC").schedule.at; } catch (e) { say(e.message, "error"); return; }
       pick("snooze", { until: at }); } } })),
     h("div.tk-due__rc", null, opt, why, body, h("button.tk-btn.is-sm", { text: t("tk.rc.change"), on: { click: async () => {
-      if (!opt.value.trim() || !why.value.trim()) { say(t("tk.err.validation")); return; }
-      const tk = await api("get", { id: c.task_id }).catch((e) => { say(e.message); return null; }); if (!tk) return;
+      if (!opt.value.trim() || !why.value.trim()) { say(t("tk.err.validation"), "error"); return; }
+      const tk = await api("get", { id: c.task_id }).catch((e) => { say(e.message, "error"); return null; }); if (!tk) return;
       pick("change", { change: { idempotency_key: crypto.randomUUID(), expected_memory_revision: tk.decision?.revision, option: opt.value.trim(), reason: why.value.trim(), body: body.value } }); } } })));
   }
   return h("div.tk-due__c", null, parts, h("div.tk-due__acts", null, acts));

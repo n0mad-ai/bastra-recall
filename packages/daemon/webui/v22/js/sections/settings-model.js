@@ -6,6 +6,7 @@
 // from the prototype schema: only keys the daemon knows are shown. Keys the
 // registry adds later land in the "more" group automatically.
 import { state, setState } from "../state.js";
+import { t } from "../i18n.js";
 import { setBackdrop } from "../backdrop.js";
 
 export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
@@ -135,6 +136,7 @@ export async function apply() {
     }
   } catch (err) { store.error = err.message; }
   store.busy = false;
+  if (!store.error) setState({ toast: { text: t("st.savedNote") } });
   emit();
 }
 

@@ -35,22 +35,6 @@ const ctx = {
 
 function readWeather() { return data.weather; }
 
-// Toast: short notices while the right panel is closed (DESIGN-SYSTEM › Toast).
-const toastLayer = h("div");
-let toastShown = "", toastTimer = 0;
-function renderToast(L) {
-  const msg = state.toast && !L.lensOpen ? state.toast : "";
-  if (msg === toastShown) return;
-  toastShown = msg; clearTimeout(toastTimer);
-  toastLayer.replaceChildren();
-  if (!msg) return;
-  toastLayer.append(h("div.toast", { role: "status" },
-    h("span.toast__p", { text: "›" }), h("span.toast__t", { text: msg }),
-    h("button.toast__x", { "aria-label": t("toast.close"), text: "×", on: { click: () => setState({ toast: "" }) } }),
-    h("span.toast__bar")));
-  toastTimer = setTimeout(() => setState({ toast: "" }), 6000);
-}
-
 app.append(h("div.glow"), h("div.frame", null, h("span.frame__marks")));
 mountBackdrop(app);
 mountNav(app, ctx);
@@ -59,7 +43,6 @@ agent.mountAgent(app);
 footer.mountFooter(app);
 lens.mountLens(app, ctx);
 mountHeader(app, ctx);
-app.append(toastLayer);
 
 function update(changed) {
   L = computeLayout(state);
@@ -70,7 +53,6 @@ function update(changed) {
   agent.render(L);
   footer.render(L);
   lens.render(L, changed);
-  renderToast(L);
 }
 
 subscribe((s) => {

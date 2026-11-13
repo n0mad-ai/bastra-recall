@@ -67,6 +67,7 @@ export default {
   "st.discard": "VERWERFEN",
   "st.apply": "ÜBERNEHMEN",
   "st.applying": "WIRD GESPEICHERT …",
+  "st.savedNote": "Einstellungen gespeichert.",
   "st.savedRestart": "Gespeichert {at}. Einige Optionen wirken erst nach einem Neustart von Daemon und Clients.",
   "st.restart": "DAEMON NEU STARTEN",
   "st.restarting": "Daemon wird neu gestartet …",
