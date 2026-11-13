@@ -48,7 +48,9 @@ export function mountRing(stage) {
 
   let ring = null, builtFor = null, W = 800, H = 600, rz = 1, rpx = 0, rpy = 0, raf = 0, moved = false, jarvis = null;
   let refs = null, card = null, cardKey = "", selMem = null, dead = false, labScale = 0, relayT = 0;
-  let hovDot = null, glideDot = null, openT = 0;
+  let hovDot = null, glideDot = null, openT = 0, opening = false;
+  // closing a memory card (×, Escape, another area) glides back to the fit
+  const zoomHome = () => ringTo(1, 0, 0, true);
 
   const k = () => (Math.min(W, H) / (2 * (ring ? ring.extent : 400))) * rz;
   // SVG units per screen pixel at zoom 100 % — the scale ring labels are laid
@@ -298,7 +300,8 @@ export function mountRing(stage) {
     openT = setTimeout(() => {
       if (dead) return;
       glideDot = null;
-      if (state.focus !== m.area) setState({ focus: m.area });
+      // the area focus that comes with the memory must not count as a close
+      if (state.focus !== m.area) { opening = true; setState({ focus: m.area }); opening = false; }
       selMem = m; place();
     }, 430);
   }
@@ -320,7 +323,7 @@ export function mountRing(stage) {
     if (key !== cardKey) {
       cardKey = key; clear(cardHost); card = null;
       if (state.focus && vault()) {
-        card = selMem ? memoryCard(selMem, { onClose: () => { selMem = null; place(); } }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
+        card = selMem ? memoryCard(selMem, { onClose: () => { selMem = null; place(); zoomHome(); } }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
         cardHost.append(card.el);
       }
     }
@@ -348,7 +351,7 @@ export function mountRing(stage) {
   let prev = { ...state }, prevWin = windowKey();
   const unsub = subscribe((st) => {
     const ch = (k2) => st[k2] !== prev[k2];
-    if (ch("focus")) selMem = null;
+    if (ch("focus")) { if (selMem && !opening) zoomHome(); selMem = null; }
     if (ch("hover") || ch("focus") || windowKey() !== prevWin) paint();
     if (ch("agent")) jarvis?.set(st.agent);
     prev = { ...st }; prevWin = windowKey();

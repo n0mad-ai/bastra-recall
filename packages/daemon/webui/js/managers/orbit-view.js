@@ -147,6 +147,26 @@ export function createOrbitView(deps) {
   let orbitT = 0; // drift clock: accumulates ONLY while drifting (no resume-jump)
   let lastTick = 0;
   let lastInteract = 0; // drift pauses while the user navigates
+  // motion clock: every turning thing (disc spin, planets, galaxy drift,
+  // lab spin) reads simT instead of wall time. Unheld it IS wall time; hold()
+  // stops it (an open memory card) and the release eases it back in over
+  // RESUME_S, so nothing jumps and nothing jerks.
+  const RESUME_S = 1.4;
+  let simT = performance.now() / 1000;
+  let lastClock = performance.now();
+  let held = false;
+  let ramp = 1; // 0 … 1, linear; the speed is its smoothstep
+  const speed = () => ramp * ramp * (3 - 2 * ramp);
+  function clock(now) {
+    const dt = Math.max((now - lastClock) / 1000, 0);
+    if (dt > 0) {
+      lastClock = now;
+      const r0 = speed();
+      ramp = held ? 0 : Math.min(ramp + dt / RESUME_S, 1);
+      simT += (dt * (r0 + speed())) / 2;
+    }
+    return simT;
+  }
   const markInteract = () => {
     lastInteract = performance.now();
   };
@@ -618,7 +638,7 @@ export function createOrbitView(deps) {
   function focusBurst(id) {
     const b = bursts.get(id);
     if (!b) return;
-    const pr = project(burstWorld(id, b, performance.now() / 1000), trigNow(), innerWidth / 2, innerHeight / 2);
+    const pr = project(burstWorld(id, b, clock(performance.now())), trigNow(), innerWidth / 2, innerHeight / 2);
     deps.getInteractions().flyTo(pr.x, pr.y, 2.2, 900);
   }
 
@@ -634,7 +654,7 @@ export function createOrbitView(deps) {
         bursts.delete(id);
         continue;
       }
-      const pr = project(burstWorld(id, b, now / 1000), trig, cx, cy);
+      const pr = project(burstWorld(id, b, clock(now)), trig, cx, cy);
       drawBurstAt(ctx, camera, theme, pr.x, pr.y, depthScale(pr), age, Math.max(depthFade(pr.d), 0.35));
     }
   }
@@ -655,7 +675,7 @@ export function createOrbitView(deps) {
     let best = null;
     let bestD = Infinity;
     for (const [id, b] of bursts) {
-      const pr = project(burstWorld(id, b, performance.now() / 1000), trig, cx, cy);
+      const pr = project(burstWorld(id, b, clock(performance.now())), trig, cx, cy);
       const hitR = Math.max(7 * depthScale(pr), 10 / camScale) * 2.6;
       const d = Math.hypot(wx - pr.x, wy - pr.y);
       if (d < hitR && d < bestD) {
@@ -683,11 +703,13 @@ export function createOrbitView(deps) {
     // flight targets are computed for LANDING time (the 950 ms view flight),
     // so planets land exactly where they will be — no angle snap
     const targets = new Map();
-    apply(performance.now() / 1000 + 0.95, targets);
+    apply(clock(performance.now()) + 0.95, targets);
     return targets;
   }
 
   function exit() {
+    held = false;
+    ramp = 1; // the next entry flight lands on full-speed positions
     deps.renderer.setQuietEdges(false);
     deps.renderer.setClusterLabelsVisible(true);
     deps.renderer.setDrawOrder(null);
@@ -707,9 +729,10 @@ export function createOrbitView(deps) {
     // The clock accumulates only while actually drifting (no resume jump),
     // and pauses while the user navigates (the depth-view lesson: motion
     // must never fight the mouse).
+    const tSec = clock(now);
     if (mode === "galaxy" && universe) {
       const dt = lastTick > 0 ? Math.min((now - lastTick) / 1000, 0.1) : 0;
-      if (drift && now - lastInteract > DRIFT_RESUME_MS) orbitT += dt;
+      if (drift && now - lastInteract > DRIFT_RESUME_MS) orbitT += dt * speed();
       for (const g of universe.galaxies) {
         if (!g.orbit) continue;
         const a = g.orbit.phase + g.orbit.omega * orbitT;
@@ -721,7 +744,6 @@ export function createOrbitView(deps) {
     // galaxy-lab: the cluster markers sit INSIDE one rotating disc, so they
     // have to turn with it — same mutate-the-shared-center contract as above.
     if (mode === "galaxy-lab" && universe) {
-      const tSec = now / 1000;
       for (const g of universe.galaxies) {
         if (!g.local) continue;
         const a = g.spin * (g.omegaScale ?? 1) * tSec;
@@ -740,7 +762,7 @@ export function createOrbitView(deps) {
       }
     }
     lastTick = now;
-    apply(now / 1000);
+    apply(tSec);
   }
 
   /** Rebuild the universe in place (mode/option change while the view is
@@ -749,7 +771,7 @@ export function createOrbitView(deps) {
     universe = null;
     build();
     enterAt = performance.now();
-    apply(performance.now() / 1000);
+    apply(clock(performance.now()));
   }
 
   /** #307: the cached universe knows only the clusters that existed when it
@@ -773,6 +795,10 @@ export function createOrbitView(deps) {
     distanceMode = m === "balanced" ? "balanced" : "woven";
     localStorage.setItem(DIST_KEY, distanceMode);
     universe = null;
+  }
+  /** Hold every rotation still (true) or let it ease back in (false). */
+  function hold(on) {
+    held = !!on;
   }
   function setDrift(on) {
     drift = !!on;
@@ -798,6 +824,7 @@ export function createOrbitView(deps) {
     setMode,
     setDistanceMode,
     setDrift,
+    hold,
     setCore,
     getCore: () => core,
     getMode: () => mode,

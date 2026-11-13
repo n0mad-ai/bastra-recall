@@ -44,7 +44,10 @@ export function mountLensView(kind, stage) {
     card = memoryCard(selMem, { onClose: closeCard });
     cardHost.append(card.el);
   }
-  function closeCard() { selMem = null; lens.clearSel(); buildCard(); }
+  // closing glides back to the fit (as the zoom bar's fit button)
+  function closeCard() { selMem = null; lens.reset(); buildCard(); }
+  const onKey = (e) => { if (e.key === "Escape" && selMem) closeCard(); };
+  window.addEventListener("keydown", onKey);
 
   function place() {
     const b = stage.getBoundingClientRect(), W = b.width, H = b.height;
@@ -64,12 +67,12 @@ export function mountLensView(kind, stage) {
   let prev = { ...state }, prevWin = windowKey();
   const unsub = subscribe((st) => {
     const ch = (k) => st[k] !== prev[k];
-    if (ch("focus") && selMem) { selMem = null; buildCard(); }
+    if (ch("focus") && selMem) closeCard();
     if (ch("focus") || ch("hover") || windowKey() !== prevWin) lens.update(opts());
     if (ch("hits")) place();
     prev = { ...st }; prevWin = windowKey();
   });
   const unData = onData(() => { const v = vault(); if (v && (!shown || shown.src !== v)) lens.update(opts()); });
 
-  return () => { unMb(); unsub(); unData(); lens.destroy(); };
+  return () => { window.removeEventListener("keydown", onKey); unMb(); unsub(); unData(); lens.destroy(); };
 }

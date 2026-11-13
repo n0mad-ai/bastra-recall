@@ -84,6 +84,7 @@ export function mountEngineView(id, stage) {
     sel = n; selM = memOf(n);
     e.renderer.setHover(null);
     e.renderer.setFocus(n);
+    engine.hold(true); // Mindspace stops turning so the card can be read
     const pts = [n];
     const lists = e.view === "semantic" ? [e.sim.edges, e.semantic.getEdges()] : [e.sim.edges];
     for (const list of lists) for (const x of list) { if (x.s.id === n.id) pts.push(x.t); if (x.t.id === n.id) pts.push(x.s); }
@@ -93,10 +94,14 @@ export function mountEngineView(id, stage) {
     tip.hidden = true;
   }
 
-  function closeMem() {
+  /** refit: back out to the centred default view (as the zoom bar's fit);
+   *  false when an area focus takes the camera right after. */
+  function closeMem(refit = true) {
     sel = null;
     engine.setCardInset(0);
     engine.get()?.renderer.setFocus(null);
+    engine.hold(false);
+    if (refit) engine.fit();
     engine.wake(300);
   }
 
@@ -121,7 +126,7 @@ export function mountEngineView(id, stage) {
     const key = sel ? `m|${sel.id}` : state.focus ? `a|${state.focus}|${H < 420}` : "";
     if (key !== cardKey) {
       cardKey = key; clear(cardHost); card = null;
-      if (sel) card = memoryCard(selM, { onClose: closeMem });
+      if (sel) card = memoryCard(selM, { onClose: () => closeMem() });
       else if (state.focus && vault()) card = areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const n = e.sim.byId.get(m.id); if (n) pick(n); } });
       if (card) cardHost.append(card.el);
     }
@@ -155,7 +160,7 @@ export function mountEngineView(id, stage) {
   const unsub = subscribe((st) => {
     const ch = (k) => st[k] !== prev[k];
     if (ch("focus")) {
-      if (sel) closeMem();
+      if (sel) closeMem(!st.focus);
       engine.setCardInset(st.focus ? CARD_COL : 0);
       if (st.focus) engine.flyTo(members(st.focus), { padding: 90, maxScale: 2.4, ms: 850 });
     }

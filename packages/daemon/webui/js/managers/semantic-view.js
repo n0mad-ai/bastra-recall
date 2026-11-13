@@ -188,11 +188,15 @@ export function createSemanticView(deps) {
 
   /** Per-frame drive in 3D mode — projects at the current angles; auto-spin
    *  (opt-in) nudges the yaw, dragging works with spin on or off. */
+  // hold(): an open memory card stops the spin; the release eases it back in
+  let held = false;
+  let ramp = 1; // 0 … 1 over 1.4 s; the speed is its smoothstep
   function tick(now) {
     const dt = lastNow > 0 ? Math.min((now - lastNow) / 1000, 0.1) : 0;
     lastNow = now;
+    ramp = held ? 0 : Math.min(ramp + dt / 1.4, 1);
     if (!active || mode !== "3d") return;
-    if (autoSpin) yaw += dt * SPIN;
+    if (autoSpin) yaw += dt * SPIN * ramp * ramp * (3 - 2 * ramp);
     projectAll();
   }
 
@@ -267,6 +271,8 @@ export function createSemanticView(deps) {
 
   function exit() {
     active = false;
+    held = false;
+    ramp = 1;
     applyDepthState(); // löst Drag-Delegate + Depth-Cues + Controls
     deps.renderer.setSemanticEdges(null);
     deps.renderer.setClusterLabelsVisible(true);
@@ -277,6 +283,10 @@ export function createSemanticView(deps) {
     enter,
     exit,
     tick,
+    /** Hold the auto-spin still (true) or let it ease back in (false). */
+    hold: (on) => {
+      held = !!on;
+    },
     setMode,
     getMode: () => mode,
     targetsForMode,

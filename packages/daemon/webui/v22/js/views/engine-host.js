@@ -374,4 +374,7 @@ export const engine = {
   setDemo(on) { const e = eng; if (!e) return; if (on) e.boltDemo.start(); else e.boltDemo.stop(); awake(e); },
   drift: () => eng?.orbit.getDrift() ?? true,
   setDrift(on) { const e = eng; if (!e) return; e.orbit.setDrift(on); awake(e); },
+  /** Hold every rotation still while a memory card is open; releasing eases
+   *  it back in (orbit-view.js / semantic-view.js hold). Clouds do not turn. */
+  hold(on) { const e = eng; if (!e) return; if (e.view === "orbit") e.orbit.hold(on); else if (e.view === "semantic") e.semantic.hold(on); awake(e); },
 };

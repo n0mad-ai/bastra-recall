@@ -140,7 +140,6 @@ export function mountLens(canvas, opts) {
     update,
     zoomBy(f) { zoomAt(f, w / 2, h0 / 2); },
     reset() { sel = null; aim(1, 0, 0); },
-    clearSel() { sel = null; req(); },
     /** Open a memory as a click on it would (mark, glide, onOpen); false when it is not drawn. */
     open(id) {
       // its own dot, else the day dot that holds it (Chronos)
