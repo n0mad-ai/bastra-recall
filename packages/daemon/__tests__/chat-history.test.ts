@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ test("migration v2 adds the chat tables after a backup of v1, once", () => {
   const v1 = openAppDatabase({ path, migrations: APP_MIGRATIONS.slice(0, 1) });
   v1.sqlite.prepare("INSERT INTO app_records(namespace,key,value) VALUES('t','k','1')").run();
   v1.close();
-  const db = openAppDatabase({ path });
+  const db = openAppDatabase({ path, migrations: APP_MIGRATIONS.slice(0, 2) });
   assert.equal(db.sqlite.prepare("PRAGMA user_version").get()?.user_version, 2);
   assert.deepEqual(tables(db.sqlite), ["chat_conversations", "chat_messages"]);
   assert.equal(db.sqlite.prepare("SELECT value FROM app_records WHERE key='k'").get()?.value, "1", "v1 rows survive");
@@ -38,7 +38,7 @@ test("migration v2 adds the chat tables after a backup of v1, once", () => {
   assert.equal(snap.prepare("SELECT value FROM app_records WHERE key='k'").get()?.value, "1");
   snap.close();
   const all = readdirSync(`${path}.backups`);
-  openAppDatabase({ path }).close();
+  openAppDatabase({ path, migrations: APP_MIGRATIONS.slice(0, 2) }).close();
   assert.deepEqual(readdirSync(`${path}.backups`), all, "reopening migrates nothing and backs up nothing");
 });
 
@@ -71,7 +71,7 @@ function settings(): string {
   return p;
 }
 
-async function serve(handler: (req: Parameters<Parameters<typeof createServer>[0]>[0], res: Parameters<Parameters<typeof createServer>[0]>[1]) => void): Promise<{ base: string; server: Server }> {
+async function serve(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<{ base: string; server: Server }> {
   const server = createServer(handler);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   return { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, server };

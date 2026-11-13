@@ -64,6 +64,26 @@ export const APP_MIGRATIONS: readonly AppMigration[] = [{
     ) STRICT;
     CREATE INDEX chat_messages_conversation ON chat_messages(conversation_id, id);`);
   },
+}, {
+  version: 3,
+  name: "telemetry-days",
+  // #1438: one row per finished UTC day of the telemetry event log
+  // (telemetry-day-store.ts): the day's events cut to the fields the report
+  // reads, as gzip-compressed JSON. Rebuildable from the logs at any time;
+  // nothing here is vault data.
+  up(db) {
+    db.exec(`CREATE TABLE telemetry_days (
+      log_dir TEXT NOT NULL,
+      day TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      file_size INTEGER NOT NULL,
+      file_mtime_ms REAL NOT NULL,
+      event_count INTEGER NOT NULL,
+      events_json_gz BLOB NOT NULL,
+      computed_at INTEGER NOT NULL,
+      PRIMARY KEY(log_dir, day)
+    ) STRICT;`);
+  },
 }];
 
 export interface AppDatabaseOptions {

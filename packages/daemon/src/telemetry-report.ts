@@ -72,18 +72,54 @@ export interface EventWindow {
   excludedEval: number;
   /** #664: client rows folded into the daemon row of the same call. */
   foldedDuplicates: number;
+  /** #1438: earliest parseable timestamp (ms) among the rows inside the
+   *  window, before filters — the window stays the same until the rolling
+   *  cutoff passes it. Null when no row has a parseable timestamp. */
+  earliestMs?: number | null;
+}
+
+/** Die gültigen Ereignisse einer Tagesdatei (kaputte Zeilen und Zeilen ohne
+ *  `kind`/`ts` übersprungen), in Dateireihenfolge. */
+export function parseEventLines(raw: string): ReportEvent[] {
+  const out: ReportEvent[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line) as ReportEvent;
+      if (typeof e.kind !== "string" || typeof e.ts !== "string") continue;
+      out.push(e);
+    } catch {
+      /* skip malformed line */
+    }
+  }
+  return out;
+}
+
+/**
+ * #1438: liefert die Ereignisse einer abgeschlossenen Tagesdatei aus einem
+ * Speicher statt aus dem Log (telemetry-day-store.ts). Wirft, wenn die Datei
+ * nicht lesbar ist — dann wird sie übersprungen wie beim direkten Lesen.
+ */
+export interface FinishedDaySource {
+  eventsOf(logDir: string, file: string, day: string): Promise<ReportEvent[]>;
 }
 
 /**
  * Ereignisse der letzten `days` Tage. Dateien vor dem Fenster-Tag werden gar
  * nicht geöffnet — auf einer Installation mit drei Monaten Logs sind das
  * über 100 MB, die ein 7-Tage-Fenster nie braucht.
+ *
+ * #1438: Mit `finished` kommen abgeschlossene UTC-Tage (Dateitag vor dem Tag
+ * von `now`) aus diesem Speicher; nur der laufende Tag wird aus dem Log
+ * gelesen. Zeitfenster, Filter und Faltung laufen danach für beide Wege
+ * gleich, das Ergebnis ist dasselbe.
  */
 export async function readEventWindow(
   logDir: string,
   days: number,
   now = Date.now(),
   includeEval = false,
+  finished?: FinishedDaySource,
 ): Promise<EventWindow> {
   let files: string[];
   try {
@@ -93,25 +129,26 @@ export async function readEventWindow(
   }
   const cutoff = now - days * 24 * 60 * 60 * 1000;
   const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+  const today = new Date(now).toISOString().slice(0, 10);
   const relevant = files.filter((f) => (EVENT_FILE.exec(f)?.[1] ?? "") >= cutoffDay);
   const read: ReportEvent[] = [];
+  let earliestMs: number | null = null;
   for (const f of relevant) {
-    let raw: string;
+    const fileDay = EVENT_FILE.exec(f)?.[1] ?? "";
+    let parsed: ReportEvent[];
     try {
-      raw = await readFile(join(logDir, f), "utf8");
+      parsed = finished && fileDay < today
+        ? await finished.eventsOf(logDir, f, fileDay)
+        : parseEventLines(await readFile(join(logDir, f), "utf8"));
     } catch {
       continue;
     }
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const e = JSON.parse(line) as ReportEvent;
-        if (typeof e.kind !== "string" || typeof e.ts !== "string") continue;
-        if (Date.parse(e.ts) < cutoff) continue;
-        read.push(e);
-      } catch {
-        /* skip malformed line */
-      }
+    // `< cutoff` wie bisher: ein unlesbarer Zeitstempel (NaN) bleibt drin.
+    for (const e of parsed) {
+      const t = Date.parse(e.ts);
+      if (t < cutoff) continue;
+      read.push(e);
+      if (!Number.isNaN(t) && (earliestMs === null || t < earliestMs)) earliestMs = t;
     }
   }
   // #664: the same two filters `bastra logs --stats` applies, once, here —
@@ -134,6 +171,7 @@ export async function readEventWindow(
     to,
     excludedEval: read.length - kept.length,
     foldedDuplicates: folded,
+    earliestMs,
   };
 }
 

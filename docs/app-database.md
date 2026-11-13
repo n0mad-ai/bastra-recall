@@ -116,6 +116,36 @@ sind nur lokal erreichbar; DELETE verlangt eine Anfrage derselben Herkunft mit
 startet mit dieser Datenbank nicht; für den Rückweg `before-v2-<UUID>.db`
 wie oben beschrieben zurückspielen (die Gespräche gehen dabei verloren).
 
+### Telemetry days (schema v3)
+
+Migration v3 (`telemetry-days`, #1438) adds `telemetry_days`: one row per
+finished UTC day of the telemetry event log (`~/.bastra/logs/events-<day>.jsonl`).
+Columns: `log_dir`, `day` (UTC `YYYY-MM-DD`, primary key with `log_dir`),
+`version`, `file_size`, `file_mtime_ms`, `event_count`, `events_json_gz`
+(gzip-compressed JSON array of the day's events, cut to the fields the
+telemetry report reads) and `computed_at`. `GET /ui/telemetry` reads finished
+days from here and only the current UTC day from the log; the report is
+identical to reading every log file. A day is read again from its log when
+`version` differs from the code's `TELEMETRY_DAY_VERSION` or when the log
+file's size or mtime changed (late lines just after midnight, rewrites).
+Rows whose log file retention deleted are removed. The table holds no vault
+data and can be emptied at any time; it is rebuilt from the logs on the next
+request. If the database cannot be opened, the report is computed from the
+logs as before. To downgrade, restore `before-v3-<UUID>.db` as described
+above; nothing is lost but the cache.
+
+**Deutsch:** Migration v3 (`telemetry-days`, #1438) legt `telemetry_days` an:
+je abgeschlossenem UTC-Tag des Telemetrie-Logs eine Zeile mit den
+Ereignissen des Tages, beschnitten auf die Felder, die der Bericht liest,
+gzip-komprimiert. `GET /ui/telemetry` liest abgeschlossene Tage von hier und
+nur den laufenden Tag aus dem Log; das Ergebnis ist dasselbe wie beim Lesen
+aller Logdateien. Ein Tag wird neu aus dem Log gelesen, wenn sich die
+Auswertungsversion ändert oder die Logdatei nachträglich gewachsen bzw.
+geändert ist. Zeilen zu Tagen, deren Logdatei gelöscht wurde, werden
+entfernt. Die Tabelle enthält keine Vault-Daten und darf jederzeit geleert
+werden. Für den Rückweg `before-v3-<UUID>.db` zurückspielen; verloren geht
+dabei nur der Zwischenspeicher.
+
 ## Tests
 
 Tests always choose temporary fixture paths; calls without an explicit path
