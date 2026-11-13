@@ -92,8 +92,8 @@ export function dateStr(ms) {
   return new Date(ms).toLocaleDateString(document.documentElement.lang === "de" ? "de-DE" : "en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-// Zoom bar footprint at the stage's bottom right (142 × 30 px + 12 px margins).
-const ZB_W = 154, ZB_H = 54;
+// Zoom bar footprint at the stage's bottom right corner (142 × 30 px + 12 px gap).
+const ZB_W = 154, ZB_H = 42;
 
 /**
  * Dock a card to an anchor (prototype ring focus geometry, renderValsDark):
