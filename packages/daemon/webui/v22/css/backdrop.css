@@ -9,7 +9,9 @@
 .bd__img { position: absolute; inset: -24px; }
 .bd__img.is-in { animation: bd-in .8s ease-out both; }
 .bd.is-blur .bd__img { filter: blur(14px) saturate(1.1); }
-.bd__shade { position: absolute; inset: 0; background: rgba(6,10,19,var(--bd-dim, .8)); transition: background .4s; }
+.bd__shade { position: absolute; inset: 0; background: rgba(6,10,19,var(--bd-dim, .8)); transition: background .6s ease; }
+/* Vault views (ring, lenses, mindspace, …) draw onto the image: only the image is dimmed further there. */
+.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .96)); }
 .bd__vig { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 45%, rgba(6,10,19,0) 45%, rgba(6,10,19,.7)); }
 @keyframes bd-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
 

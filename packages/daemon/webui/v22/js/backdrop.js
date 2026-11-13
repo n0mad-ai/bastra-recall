@@ -5,6 +5,8 @@
 // The settings page previews through setBackdrop() and saves via settings-model.js.
 import { addStrings } from "./i18n.js";
 import { h, setVars } from "./dom.js";
+import { state, subscribe } from "./state.js";
+import { VAULT_VIEWS } from "./areas.js";
 import en from "./i18n/backdrop-en.js";
 import de from "./i18n/backdrop-de.js";
 
@@ -14,6 +16,8 @@ addStrings(en, de);
 export const PRESETS = ["none", "aurora", "deepsea", "ember", "topo", "grid", "dusk"];
 export const UPLOAD_TYPES = ["image/png", "image/jpeg", "image/webp"];
 export const UPLOAD_MAX = 8 * 1024 * 1024;
+/** Vault views project onto the image: there only the image is dimmed this far (at least; Daniel 13.11.2026). */
+const VAULT_DIM = 96;
 
 export const backdrop = { cfg: { backdrop: "none", dim: 80, blur: false }, uploads: [] };
 
@@ -31,6 +35,8 @@ export function mountBackdrop(app) {
   if (glow) glow.after(layer); else app.prepend(layer);
   render();
   load();
+  // Only the view switch toggles the class; the shade fades via its CSS transition.
+  subscribe((s) => layer.classList.toggle("is-vault", VAULT_VIEWS.includes(s.view)));
 }
 
 /** CSS class + custom properties of an option (also used by the picker tiles). */
@@ -54,7 +60,9 @@ function render() {
     void img.offsetWidth; img.classList.add("is-in");
     shownId = id;
   }
-  setVars(layer, { "--bd-dim": (Math.min(95, Math.max(50, Number(dim) || 80)) / 100).toFixed(2) });
+  const d = Math.min(95, Math.max(50, Number(dim) || 80));
+  setVars(layer, { "--bd-dim": (d / 100).toFixed(2), "--bd-dim-vault": (Math.max(d, VAULT_DIM) / 100).toFixed(2) });
+  layer.classList.toggle("is-vault", VAULT_VIEWS.includes(state.view));
   layer.classList.toggle("is-blur", !!blur);
 }
 

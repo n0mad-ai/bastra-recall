@@ -22,6 +22,9 @@
 
 /* ── head ──────────────────────────────────────────────────────────────── */
 .tk-hud { z-index: 7; }
+/* Denser surfaces than the prototype so a background image (ui.backdrop) only
+ * shows faintly behind the Tasks area (Daniel 13.11.2026); colours unchanged. */
+.tk-hud.hud { background-color: rgba(9,15,27,.9); }
 .tk-hud .hud__title { font-size: 17px; }
 .tk-duebtn { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 1px solid var(--line-30); background: transparent; color: var(--ink); font: 500 10.5px var(--mono); letter-spacing: .1em; cursor: pointer; white-space: nowrap; }
 .tk-duebtn:hover { border-color: var(--accent); }
@@ -30,7 +33,7 @@
 
 /* ── pop-overs ─────────────────────────────────────────────────────────── */
 .tk-dim { position: absolute; inset: 0; z-index: 5; background: rgba(4,7,13,.58); backdrop-filter: blur(5px) saturate(.6) grayscale(.5); -webkit-backdrop-filter: blur(5px) saturate(.6) grayscale(.5); cursor: pointer; animation: dim-in .25s ease-out both; }
-.tk-pop { position: absolute; z-index: 6; top: 54px; left: 0; right: 0; max-height: calc(100% - 90px); overflow-y: auto; animation: pop-in .28s var(--ease-knob) both; border: 1px solid var(--accent-35); background: rgba(9,15,27,.9); box-shadow: inset 0 2px 0 var(--accent); }
+.tk-pop { position: absolute; z-index: 6; top: 54px; left: 0; right: 0; max-height: calc(100% - 90px); overflow-y: auto; animation: pop-in .28s var(--ease-knob) both; border: 1px solid var(--accent-35); background: rgba(9,15,27,.96); box-shadow: inset 0 2px 0 var(--accent); }
 .tk-pop--compose, .tk-pop--prop { padding: 18px 20px; }
 .tk-pop--due { border-color: var(--amber-35); box-shadow: inset 0 2px 0 var(--amber); }
 .tk-pop__h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
@@ -91,10 +94,10 @@
 .tk-prop__pre { max-height: 220px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line-18); background: var(--surface-tile); font: 11px var(--mono); line-height: 1.5; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 
 /* ── calendar frame ────────────────────────────────────────────────────── */
-.tk-cal { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-16); background: rgba(9,15,27,.7); }
+.tk-cal { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-16); background: rgba(9,15,27,.9); }
 .tk-cal__main { flex: 1; min-height: 0; display: flex; }
 .tk-cal__body { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.tk-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--line-16); background: rgba(9,15,27,.7); text-align: center; }
+.tk-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--line-16); background: rgba(9,15,27,.9); text-align: center; }
 .tk-empty p { max-width: 420px; font-size: 13px; color: var(--muted); }
 
 .tk-tb { flex: none; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line-14); }
