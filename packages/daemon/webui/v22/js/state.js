@@ -28,6 +28,8 @@ export const state = {
   footer: saved.footer || "console",
   timeline: saved.timeline || "bars",
   ftDw: false,
+  // A layer covers the stage (js/cover.js): the vault view under it is frozen.
+  covered: false,
   isMin: false,
   isDrag: false,
   isPos: (() => { try { return JSON.parse(localStorage.getItem("recall-v22-island") || "null"); } catch { return null; } })(),

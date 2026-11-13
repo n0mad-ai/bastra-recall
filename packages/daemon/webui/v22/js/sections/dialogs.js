@@ -13,6 +13,7 @@ import { addStrings, t } from "../i18n.js";
 import { registerArea, ICON } from "../areas.js";
 import { loadGraph } from "../data.js";
 import { h, clear } from "../dom.js";
+import { cover } from "../cover.js";
 import { loadingInline, setBusy, touched } from "./loading.js";
 import en from "../i18n/dialogs-en.js";
 import de from "../i18n/dialogs-de.js";
@@ -47,12 +48,13 @@ function dialog({ kicker, title, cls = "", onClose, canClose = () => true }) {
     closed = true;
     document.removeEventListener("keydown", onKey);
     veil.remove();
-    if (openDlg?.veil === veil) openDlg = null;
+    if (openDlg?.veil === veil) { openDlg = null; cover("dlg", false); }
     onClose?.();
   }
   document.addEventListener("keydown", onKey);
   document.body.append(veil);
   openDlg = { veil, close };
+  cover("dlg", true); // the view under the veil stands still (js/cover.js)
   return { box, body, close };
 }
 

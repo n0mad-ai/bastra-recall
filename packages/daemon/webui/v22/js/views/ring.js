@@ -237,7 +237,7 @@ export function mountRing(stage) {
     core.classList.toggle("is-on", showCore);
     setVars(core, { "--l": `${(cx - coreF / 2).toFixed(0)}px`, "--t": `${(cy - coreF / 2).toFixed(0)}px`, "--s": `${coreF.toFixed(0)}px` });
     if (showCore && !jarvis) { jarvis = mountJarvis(faceCv, { scale: 0.3, points: 700, glow: false }); jarvis.set(state.agent); }
-    jarvis?.setActive(showCore);
+    jarvis?.setActive(showCore && !state.covered); // frozen under the memory browser / a dialog (js/cover.js)
     placeMarks(kk);
     placeCard(kk, cx, cy);
     const hits = Array.isArray(state.hits) ? state.hits : [];

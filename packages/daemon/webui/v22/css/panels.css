@@ -1,7 +1,7 @@
 /* Recall UI v22 — agent window, agent pod, footer timeline, right panel (lens), stage. */
 
 /* ── Agent window ─────────────────────────────────────────────────────── */
-.agent { position: absolute; left: var(--j-l, 100px); top: var(--panel-t, 66px); bottom: 92px; width: var(--j-w, 360px); z-index: 10; display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(-24px); transform-origin: 50% 100%; clip-path: inset(0 0 0 0); pointer-events: none; transition: opacity .4s, transform .45s var(--ease-knob), clip-path .45s var(--ease-panel); border: 1px solid var(--accent-24); background: radial-gradient(120% 50% at 50% 22%, var(--accent-13), transparent 62%), repeating-linear-gradient(0deg, var(--line-03) 0 1px, transparent 1px 3px), var(--surface-agent); backdrop-filter: blur(18px); box-shadow: 0 30px 80px var(--shade-50); }
+.agent { position: absolute; left: var(--j-l, 100px); top: var(--panel-t, 66px); bottom: 92px; width: var(--j-w, 360px); z-index: 10; display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(-24px); transform-origin: 50% 100%; clip-path: inset(0 0 0 0); pointer-events: none; transition: opacity .4s, transform .45s var(--ease-knob), clip-path .45s var(--ease-panel); border: 1px solid var(--accent-24); background: radial-gradient(120% 50% at 50% 22%, var(--accent-13), transparent 62%), repeating-linear-gradient(0deg, var(--line-03) 0 1px, transparent 1px 3px), var(--surface-agent); box-shadow: 0 30px 80px var(--shade-50); }
 .agent.is-open { opacity: 1; transform: none; pointer-events: auto; }
 .agent__head { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 16px 0; }
 .agent__name { font-size: 16px; font-weight: 600; letter-spacing: .04em; }
@@ -64,7 +64,7 @@
 .agent__send svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── Agent pod (footer, left) ─────────────────────────────────────────── */
-.pod { position: absolute; left: var(--j-l, 100px); bottom: 24px; width: var(--pod-w, 250px); height: 56px; z-index: 11; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 8px; border: 1px solid var(--line-25); background: var(--surface-agent); backdrop-filter: blur(18px); box-shadow: 0 18px 50px var(--shade-50), 0 0 40px transparent; color: var(--ink); text-align: left; cursor: pointer; transition: width .45s var(--ease-knob), border-color .3s, box-shadow .3s; }
+.pod { position: absolute; left: var(--j-l, 100px); bottom: 24px; width: var(--pod-w, 250px); height: 56px; z-index: 11; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 8px; border: 1px solid var(--line-25); background: var(--surface-agent); box-shadow: 0 18px 50px var(--shade-50), 0 0 40px transparent; color: var(--ink); text-align: left; cursor: pointer; transition: width .45s var(--ease-knob), border-color .3s, box-shadow .3s; }
 .pod:hover { border-color: var(--accent); }
 .pod.is-lit { border-color: var(--accent-45); }
 .pod.is-busy { box-shadow: 0 18px 50px var(--shade-50), 0 0 40px var(--accent-18); }
@@ -80,7 +80,7 @@
 .orb__core { position: absolute; inset: 26%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #effcff, #38d9f5 45%, #0b3a4d 100%); box-shadow: 0 0 16px var(--accent-70); animation: orb-breathe 3.2s ease-in-out infinite; }
 
 /* ── Footer timeline (console) ────────────────────────────────────────── */
-.tl { position: absolute; left: var(--ft-l, 362px); right: 24px; bottom: 24px; height: 56px; z-index: 4; overflow: hidden; border: 1px solid var(--line-18); border-top: 1px solid var(--line-18); background: linear-gradient(180deg, rgba(15,22,36,.94), rgba(9,14,24,.94)); backdrop-filter: blur(18px); box-shadow: 0 18px 50px var(--shade-45); transition: left .45s var(--ease-knob); }
+.tl { position: absolute; left: var(--ft-l, 362px); right: 24px; bottom: 24px; height: 56px; z-index: 4; overflow: hidden; border: 1px solid var(--line-18); border-top: 1px solid var(--line-18); background: linear-gradient(180deg, rgba(15,22,36,.94), rgba(9,14,24,.94)); box-shadow: 0 18px 50px var(--shade-45); transition: left .45s var(--ease-knob); }
 .tl__in { position: absolute; inset: 0; display: flex; align-items: stretch; gap: 16px; padding: 0 16px; }
 .tl__ctl { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .tl__opts { display: flex; align-items: center; gap: 4px; }
@@ -107,7 +107,7 @@
 
 /* ── Right panel (lens) ───────────────────────────────────────────────── */
 .lens-peek { position: absolute; right: 0; top: var(--panel-t, 66px); bottom: var(--lens-b, 92px); width: 22px; z-index: 11; }
-.lens { position: absolute; right: 24px; top: var(--panel-t, 66px); bottom: var(--lens-b, 92px); width: var(--lens-w, 320px); z-index: 12; display: flex; flex-direction: column; opacity: 0; transform: translateX(24px); pointer-events: none; transition: opacity .35s, transform .45s var(--ease-knob); background: var(--surface-lens); border: 1px solid var(--line-20); backdrop-filter: blur(18px); box-shadow: 0 20px 60px var(--shade-55); }
+.lens { position: absolute; right: 24px; top: var(--panel-t, 66px); bottom: var(--lens-b, 92px); width: var(--lens-w, 320px); z-index: 12; display: flex; flex-direction: column; opacity: 0; transform: translateX(24px); pointer-events: none; transition: opacity .35s, transform .45s var(--ease-knob); background: var(--surface-lens); border: 1px solid var(--line-20); box-shadow: 0 20px 60px var(--shade-55); }
 .lens.is-compact { transform: translateX(calc(var(--lens-w, 288px) + 36px)); box-shadow: -28px 0 60px var(--shade-65), 0 24px 60px var(--shade-55); }
 .lens.is-open { opacity: 1; transform: none; pointer-events: auto; }
 .lens__tabs { flex: none; display: flex; align-items: stretch; height: 42px; border-bottom: 1px solid var(--line-20); }

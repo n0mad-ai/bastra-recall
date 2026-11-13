@@ -2,7 +2,7 @@
  * Pop-over rules (DESIGN-SYSTEM.md § 1.8): square, strong drop shadow, 1px
  * accent line on top, backdrop darkened and blurred. Buttons, inputs,
  * segment switch per § 5. */
-.dlg { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgba(6,10,19,.55); backdrop-filter: blur(6px); animation: tkr-fade .2s ease both; }
+.dlg { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgba(6,10,19,.8); animation: tkr-fade .2s ease both; }
 .dlg__box { position: relative; width: min(600px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; background: var(--surface-toast); border: 1px solid var(--line-22); border-top-color: var(--accent); box-shadow: 0 24px 60px var(--shade-75), 0 4px 16px var(--shade-60); animation: card-in .25s var(--ease-panel) both; }
 .dlg--onboard { width: min(560px, 100%); }
 .dlg__head { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 12px 22px; background: var(--surface-toast); }

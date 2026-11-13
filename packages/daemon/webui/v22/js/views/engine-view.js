@@ -57,6 +57,7 @@ export function mountEngineView(id, stage) {
       onReady: () => { note.hidden = true; look(); },
       onError: (err) => { note.hidden = false; note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) }); },
     });
+    engine.freeze(state.covered); // a memory browser already open over this view
     look();
   }
 
@@ -159,6 +160,7 @@ export function mountEngineView(id, stage) {
   let prev = { ...state }, prevWin = windowKey();
   const unsub = subscribe((st) => {
     const ch = (k) => st[k] !== prev[k];
+    if (ch("covered")) engine.freeze(st.covered); // js/cover.js: nothing moves under a covering layer
     if (ch("focus")) {
       if (sel) closeMem(!st.focus);
       engine.setCardInset(st.focus ? CARD_COL : 0);

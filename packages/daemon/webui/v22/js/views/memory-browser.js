@@ -21,6 +21,7 @@ import { t, addStrings, numberFmt } from "../i18n.js";
 import { state, setState } from "../state.js";
 import { data, onData } from "../data.js";
 import { ask } from "../agent.js";
+import { cover } from "../cover.js";
 import { vault, areaCol, ago } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
 import en from "../i18n/membrowser-en.js";
@@ -170,7 +171,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     clearTimeout(closeT);
     input.value = M.q;
     if (!care) loadCare().then(() => { if (!dead && M.open) renderReader(true); });
-    if (!anim) { root.classList.add("is-on", "is-grow"); render(); return; }
+    if (!anim) { root.classList.add("is-on", "is-grow"); render(); cover("mb", true); return; }
     M.grow = false;
     // Prototype openMB: clip-path from the origin box to the full stage
     // (.5s cubic-bezier(.65,0,.25,1)); without an origin from the centre, fading in.
@@ -182,11 +183,14 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     render();
     void root.offsetWidth;
     requestAnimationFrame(() => { if (!dead) { root.classList.add("is-grow"); if (M.sel) setTimeout(() => reveal(M.sel), 520); } });
+    // the view underneath freezes once the window covers it (js/cover.js)
+    closeT = setTimeout(() => { if (!dead && M.open) cover("mb", true); }, 520);
   }
   function hide(after) {
     M.menu = false; renderHead();
     root.classList.remove("is-grow");
     clearTimeout(closeT);
+    cover("mb", false); // the view moves again while the window shrinks away
     closeT = setTimeout(() => { M.open = false; root.classList.remove("is-on"); after?.(); }, 480);
   }
 
@@ -457,6 +461,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     dead = true; clearTimeout(closeT); clearTimeout(semT);
     // A close that was still animating finishes here.
     if (!root.classList.contains("is-grow")) M.open = false;
+    cover("mb", false); // the next vault view covers again if the browser stays open
     window.removeEventListener("keydown", onKey, true); document.removeEventListener("pointerdown", onDoc);
     ro.disconnect(); unData(); root.remove();
     if (inst?.show === show) inst = null;

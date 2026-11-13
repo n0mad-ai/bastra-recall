@@ -92,13 +92,13 @@
 .fm__opts .tl__opt { padding: 0 6px; font-size: 10.5px; }
 
 /* ── drawer ───────────────────────────────────────────────────────────── */
-.fd { position: absolute; left: var(--fd-l, 100px); right: var(--fd-r, 24px); bottom: 64px; height: 180px; z-index: 13; display: flex; flex-direction: column; padding: 18px 22px 16px; border: 1px solid var(--accent-35); border-bottom: 0; background: linear-gradient(180deg, var(--ft-hi-97), var(--ft-lo-97)); backdrop-filter: blur(18px); box-shadow: 0 -24px 60px var(--shade-55); opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity .25s ease, transform .35s var(--ease-panel), left .45s var(--ease-knob), right .45s var(--ease-knob); }
+.fd { position: absolute; left: var(--fd-l, 100px); right: var(--fd-r, 24px); bottom: 64px; height: 180px; z-index: 13; display: flex; flex-direction: column; padding: 18px 22px 16px; border: 1px solid var(--accent-35); border-bottom: 0; background: linear-gradient(180deg, var(--ft-hi-97), var(--ft-lo-97)); box-shadow: 0 -24px 60px var(--shade-55); opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity .25s ease, transform .35s var(--ease-panel), left .45s var(--ease-knob), right .45s var(--ease-knob); }
 .fd.is-open { opacity: 1; transform: none; pointer-events: auto; }
 .fd__head { flex: none; display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .fd__lab { font: 500 9.5px var(--mono); letter-spacing: .2em; color: var(--muted); }
 .fd__opts, .fi__opts { display: flex; gap: 4px; }
 .fd__sum { margin-left: auto; font: 11px var(--mono); color: var(--ink); white-space: nowrap; }
-.fdb { position: absolute; left: var(--j-l, 100px); right: 24px; bottom: 24px; height: 40px; z-index: 14; display: flex; align-items: stretch; border: 1px solid var(--line-20); background: linear-gradient(180deg, var(--ft-hi-95), var(--ft-lo-95)); backdrop-filter: blur(18px); transition: border-color .25s; }
+.fdb { position: absolute; left: var(--j-l, 100px); right: 24px; bottom: 24px; height: 40px; z-index: 14; display: flex; align-items: stretch; border: 1px solid var(--line-20); background: linear-gradient(180deg, var(--ft-hi-95), var(--ft-lo-95)); transition: border-color .25s; }
 .fdb.is-open { border-color: var(--accent-35); }
 .fdb__agent { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 18px 0 10px; border: 0; border-right: 1px solid var(--line-16); background: transparent; color: var(--ink); cursor: pointer; }
 .fdb__agent:hover { background: var(--accent-06); }
@@ -114,7 +114,7 @@
 
 /* ── island (floating, draggable) and its minimized bar ───────────────── */
 .fi, .fim { position: absolute; left: var(--fi-x, 0px); top: var(--fi-y, 0px); z-index: 16; display: flex; align-items: stretch; border: 1px solid var(--line-22); box-shadow: 0 32px 90px var(--shade-80), 0 10px 30px var(--shade-60), 0 0 0 1px var(--shade-55), 0 0 50px var(--accent-12); transition: left .45s var(--ease-knob), top .45s var(--ease-knob), width .45s var(--ease-knob), box-shadow .2s, border-color .2s; }
-.fi { width: var(--fi-w, 660px); height: 64px; background: linear-gradient(180deg, var(--ft-hi-96), var(--ft-lo-96)); backdrop-filter: blur(18px); }
+.fi { width: var(--fi-w, 660px); height: 64px; background: linear-gradient(180deg, var(--ft-hi-96), var(--ft-lo-96)); }
 .fim { width: 360px; height: 52px; background: linear-gradient(180deg, var(--ft-hi-97), var(--ft-lo-97)); }
 .fi.is-drag, .fim.is-drag { border-color: var(--accent-55); box-shadow: 0 40px 100px var(--shade-85), 0 0 0 1px var(--shade-60), 0 0 60px var(--accent-25); transition: box-shadow .2s, border-color .2s; }
 .fi.is-seam-t, .fim.is-seam-t { border-top-color: var(--line-12); }

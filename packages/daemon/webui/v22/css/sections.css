@@ -7,7 +7,7 @@
 /* ── stage frame (js/stage.js sectionFrame) ────────────────────────────── */
 .sx { position: absolute; inset: 0; }
 .sx__scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
-.sx--frame { overflow: hidden; border: 1px solid var(--line-14); background: var(--surface-frame); backdrop-filter: blur(8px); }
+.sx--frame { overflow: hidden; border: 1px solid var(--line-14); background: var(--surface-frame); }
 .sx--frame .sx__in { padding: 18px 28px 0; }
 /* No frame: the scrollbar sits 14px outside the content edge (Documents grid). */
 .sx:not(.sx--frame) .sx__scroll { right: -14px; }

@@ -71,7 +71,7 @@
 .vv-mark { position: absolute; left: var(--x, 0px); top: var(--y, 0px); width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: rgba(6,10,19,.85); border: 1px solid var(--accent); box-shadow: 0 0 0 6px rgba(56,217,245,.12), 0 0 18px rgba(56,217,245,.55); color: var(--accent); font: 500 11px var(--mono); pointer-events: none; animation: mark-in .4s ease-out both; }
 
 /* ── focus card (prototype `insp`, cardRef) ────────────────────────────── */
-.vcard { position: absolute; left: var(--cx, 0px); top: var(--cy, 0px); z-index: 5; width: 260px; padding: 16px 18px 14px; background: linear-gradient(180deg, rgba(9,14,24,.98), rgba(6,10,19,.96)); border: 1px solid var(--line-22); border-top: 1px solid var(--fc); backdrop-filter: blur(10px); box-shadow: 0 32px 90px rgba(0,0,0,.85), 0 10px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.55); animation: card-in .3s ease-out both; }
+.vcard { position: absolute; left: var(--cx, 0px); top: var(--cy, 0px); z-index: 5; width: 260px; padding: 16px 18px 14px; background: linear-gradient(180deg, rgba(9,14,24,.98), rgba(6,10,19,.96)); border: 1px solid var(--line-22); border-top: 1px solid var(--fc); box-shadow: 0 32px 90px rgba(0,0,0,.85), 0 10px 30px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.55); animation: card-in .3s ease-out both; }
 .vcard__side { position: absolute; top: -1px; width: 1px; height: var(--sh, 0px); background: var(--fc); pointer-events: none; display: none; }
 .vcard__side.is-left { display: block; left: -1px; }
 .vcard__side.is-right { display: block; right: -1px; }

@@ -20,7 +20,7 @@
     linear-gradient(var(--muted),var(--muted)) right bottom / 1px 18px no-repeat; }
 
 /* ── Left navigation ──────────────────────────────────────────────────── */
-.nav { position: absolute; left: 24px; top: 24px; bottom: 24px; width: 64px; z-index: 20; display: flex; flex-direction: column; padding: 12px 0; background: var(--surface-nav); border: 1px solid var(--line-20); backdrop-filter: blur(18px); box-shadow: 0 20px 60px var(--shade-50), 0 -8px 20px var(--shade-65), 6px 0 18px var(--shade-35); transition: bottom .45s var(--ease-knob); }
+.nav { position: absolute; left: 24px; top: 24px; bottom: 24px; width: 64px; z-index: 20; display: flex; flex-direction: column; padding: 12px 0; background: var(--surface-nav); border: 1px solid var(--line-20); box-shadow: 0 20px 60px var(--shade-50), 0 -8px 20px var(--shade-65), 6px 0 18px var(--shade-35); transition: bottom .45s var(--ease-knob); }
 .nav__logo { flex: none; display: grid; place-items: center; height: 40px; margin-bottom: 10px; }
 .nav__logo svg { width: 32px; height: 32px; }
 .nav__logo .r-base { fill: none; stroke: var(--line-35); stroke-width: 1; }

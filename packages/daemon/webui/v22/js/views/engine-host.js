@@ -138,7 +138,7 @@ function syncGeometry(e) {
 
 function awake(e, ms = AWAKE_MS) {
   e.awakeUntil = Math.max(e.awakeUntil, performance.now() + ms);
-  if (e.stage && !e.raf && !document.hidden) e.raf = requestAnimationFrame((now) => frame(e, now));
+  if (e.stage && !e.raf && !document.hidden && !e.frozen) e.raf = requestAnimationFrame((now) => frame(e, now));
 }
 
 /** "full" | "stop". Anything that moves is drawn at the full rAF rate, exactly
@@ -154,7 +154,7 @@ function cadence(e, now) {
 
 function frame(e, now) {
   e.raf = 0;
-  if (!e.stage || document.hidden) return;
+  if (!e.stage || document.hidden || e.frozen) return;
   if (syncGeometry(e)) e.awakeUntil = Math.max(e.awakeUntil, now + 200);
   const mode = cadence(e, now);
   if (mode === "stop") { e.hooks?.onFrame(); return; }
@@ -191,6 +191,19 @@ function frame(e, now) {
   e.renderer.draw(now);
   e.hooks?.onFrame();
   e.raf = requestAnimationFrame((t) => frame(e, t));
+}
+
+/** Rotations stop for an open memory card (engine-view.js) or a freeze. */
+function applyHold(e) {
+  const on = !!(e.cardHold || e.frozen);
+  if (e.view === "orbit") e.orbit.hold(on); else if (e.view === "semantic") e.semantic.hold(on);
+}
+
+/** One held tick outside the loop: the motion clocks catch up to now at zero
+ *  speed (orbit-view.js clock(), semantic-view.js tick()). */
+function settleClocks(e) {
+  const now = performance.now();
+  if (e.view === "orbit") e.orbit.tick(now); else if (e.view === "semantic") e.semantic.tick(now);
 }
 
 /** Visible nodes for fits (ghosts included, as in the old fitAll). */
@@ -257,6 +270,7 @@ async function enterView(e, v) {
   } else if (v === "orbit") to = e.orbit.enter();
   else to = sem;
   e.view = v;
+  applyHold(e); // a card hold or a freeze carries over to the view entered
   e.userTouched = false;
   e.transition = { t0: performance.now(), ms: FLIGHT_MS, from, to };
   fit(e, FLIGHT_MS, to);
@@ -291,6 +305,7 @@ export function attach(stage, v, hooks) {
     e.boltDemo.stop(); // a workbench light: it goes out when you leave (bolt-demo.js)
     e.renderer.setFocus(null); e.renderer.setHover(null); e.renderer.setHighlight(null); e.renderer.setFilter(null);
     e.stage = null; e.hooks = null; e.zoomAnim = null; e.cardInset = 0;
+    e.cardHold = false; e.frozen = false; // the next view sets its own (engine-view.js)
     e.clip.remove();
     e.canvas.width = 0; e.canvas.height = 0; // free the backing store while hidden
   };
@@ -376,5 +391,14 @@ export const engine = {
   setDrift(on) { const e = eng; if (!e) return; e.orbit.setDrift(on); awake(e); },
   /** Hold every rotation still while a memory card is open; releasing eases
    *  it back in (orbit-view.js / semantic-view.js hold). Clouds do not turn. */
-  hold(on) { const e = eng; if (!e) return; if (e.view === "orbit") e.orbit.hold(on); else if (e.view === "semantic") e.semantic.hold(on); awake(e); },
+  hold(on) { const e = eng; if (!e) return; e.cardHold = !!on; applyHold(e); awake(e); },
+  /** Freeze the picture while a layer covers the stage (js/cover.js): the
+   *  loop stops, and the turning clocks are held across the pause, so on
+   *  release the motion eases back in from where it stood (no jump). */
+  freeze(on) {
+    const e = eng; if (!e || !!e.frozen === !!on) return;
+    if (on) { e.frozen = true; applyHold(e); settleClocks(e); return; }
+    settleClocks(e); // still held: swallows the frozen time without turning
+    e.frozen = false; applyHold(e); awake(e);
+  },
 };
