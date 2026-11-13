@@ -20,7 +20,7 @@
 .bd.is-hole .bd__shade { background: rgba(6,10,19,var(--bd-dim-hole, .96)); }
 .bd__hole { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease;
   background: radial-gradient(calc(var(--glow-x, 50%) - var(--c-l, 0px)) calc(var(--glow-y, 50%) - var(--panel-t, 0px)) at calc(var(--glow-x, 50%) - 12px) calc(var(--glow-y, 50%) - 12px),
-    #060a13 0%, #060a13 55%, rgba(6,10,19,.7) 80%, rgba(6,10,19,0) 100%); }
+    #060a13 0%, #060a13 70%, rgba(6,10,19,.7) 90%, rgba(6,10,19,0) 108%); }
 .bd.is-hole .bd__hole { opacity: 1; }
 .bd__vig { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 45%, rgba(6,10,19,0) 45%, rgba(6,10,19,.7)); }
 @keyframes bd-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
