@@ -58,6 +58,7 @@ export function mountEngineView(id, stage) {
       onError: (err) => { note.hidden = false; note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) }); },
     });
     engine.freeze(state.covered); // a memory browser already open over this view
+    if (state.focus) engine.hold(true); // an area opened before this view keeps it still
     look();
   }
 
@@ -101,7 +102,7 @@ export function mountEngineView(id, stage) {
     sel = null;
     engine.setCardInset(0);
     engine.get()?.renderer.setFocus(null);
-    engine.hold(false);
+    engine.hold(!!state.focus); // an open area card keeps the hold
     if (refit) engine.fit();
     engine.wake(300);
   }
@@ -163,6 +164,7 @@ export function mountEngineView(id, stage) {
     if (ch("covered")) engine.freeze(st.covered); // js/cover.js: nothing moves under a covering layer
     if (ch("focus")) {
       if (sel) closeMem(!st.focus);
+      engine.hold(!!st.focus); // an open area card stops the turning, as a memory card does
       engine.setCardInset(st.focus ? CARD_COL : 0);
       if (st.focus) engine.flyTo(members(st.focus), { padding: 90, maxScale: 2.4, ms: 850 });
     }
