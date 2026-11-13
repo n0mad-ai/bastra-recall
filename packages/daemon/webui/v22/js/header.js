@@ -37,13 +37,13 @@ export function mountHeader(root, ctx) {
 
   tkrNow = h("div.tkr__now", null, h("span.dot.dot--pulse"), h("span", { text: t("ticker.now") }));
   tkrTrack = h("div.tkr__track", { "data-tkr-track": "1", on: { mouseenter: () => { tk.paused = true; syncPlay(); }, mouseleave: () => { tk.paused = false; syncPlay(); } } });
-  tkrRunWrap = h("div.tkr__run", null, tkrTrack);
+  // Notices (state.toast) take the running-text area for a few seconds, see renderNote.
+  tkrNote = h("div.tkr__note", { role: "status", "aria-live": "polite", on: { mouseenter: () => holdNote("hover", true), mouseleave: () => holdNote("hover", false) } });
+  tkrRunWrap = h("div.tkr__run", null, tkrTrack, tkrNote);
   tkrDueN = h("span.n-amber"); tkrDueW = h("span", { text: t("ticker.due") });
   tkrSum = h("div.tkr__sum", null, h("button", { on: { click: () => setState({ view: "tasks", tab: "areas" }) } }, tkrDueN, tkrDueW));
   tkrIn = h("div.tkr__in", null, tkrNow, tkrRunWrap, tkrSum);
-  // Notices (state.toast) take over the ticker for a few seconds, see renderNote.
-  tkrNote = h("div.tkr__note", { role: "status", "aria-live": "polite", on: { mouseenter: () => holdNote("hover", true), mouseleave: () => holdNote("hover", false) } });
-  tkr = h("div.tkr", { "data-tkr-bar": "1" }, tkrIn, tkrNote);
+  tkr = h("div.tkr", { "data-tkr-bar": "1" }, tkrIn);
   // The glow pulse runs on the svg's own layer (opacity only), the fade-in on
   // the box around it — so the drop-shadow is not re-rastered every frame.
   acSvg = s("svg.ac__glow", { width: "100%", height: 70, "shape-rendering": "geometricPrecision" });
@@ -111,10 +111,12 @@ let lastItemsKey = "";
 function renderTicker() {
   const avail = geo ? geo.R - geo.L : 0;
   const show = avail >= 200;
-  // A notice is shown even where the ticker itself has no room.
+  // A notice needs the running-text area: it is shown even where the ticker
+  // would hide it; below 200 px JETZT and the sum make room for it.
   tkr.hidden = !show && !note.on;
   tkrNow.lastChild.hidden = avail < 230;
-  tkrRunWrap.hidden = avail < 300;
+  tkrRunWrap.hidden = avail < 300 && !note.on;
+  tkrNow.hidden = tkrSum.hidden = !show && note.on;
   tkrDueW.hidden = avail < 280;
   tkrDueN.textContent = String(data.dueTasks.length);
   const items = tickerItems();
@@ -147,8 +149,9 @@ function syncPlay() {
 
 // ── notices ───────────────────────────────────────────────────────────────
 // Every short confirmation or error (state.toast: a string, or
-// { text, tone: "error" }) slides into the ticker: the ticker content fades
-// out, the notice stays with a running timer line, then the ticker returns.
+// { text, tone: "error" }) appears centred in the running-text area only
+// (between JETZT and the sum): the running text fades out, the notice stays
+// with a timer line, then the running text returns.
 // Hover and a hidden browser tab pause the timer; a new notice replaces the
 // current one. One timeout per notice, no loop.
 const note = { on: false, shown: null, left: 0, since: 0, timer: 0, outT: 0, hover: false, tab: false };
