@@ -16,8 +16,8 @@
  * rising towards the stage edges between the side panels. The ellipse is sized from the
  * stage (--glow-x/-y = stage centre, --c-l = stage left, --panel-t = stage top; all
  * relative to the app, .bd sits 12px inside). Static gradient, only opacity animates. */
-.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .94)); }
-.bd.is-hole .bd__shade { background: rgba(6,10,19,var(--bd-dim-hole, .93)); }
+.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .96)); }
+.bd.is-hole .bd__shade { background: rgba(6,10,19,var(--bd-dim-hole, .96)); }
 .bd__hole { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease;
   background: radial-gradient(calc(var(--glow-x, 50%) - var(--c-l, 0px)) calc(var(--glow-y, 50%) - var(--panel-t, 0px)) at calc(var(--glow-x, 50%) - 12px) calc(var(--glow-y, 50%) - 12px),
     #060a13 0%, #060a13 55%, rgba(6,10,19,.7) 80%, rgba(6,10,19,0) 100%); }

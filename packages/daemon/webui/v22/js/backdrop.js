@@ -19,8 +19,8 @@ export const UPLOAD_MAX = 8 * 1024 * 1024;
 /** Vault views project onto the image, so only the image is dimmed further there (Daniel 13.11.2026):
  *  ring and lenses — the image glows through evenly and faintly (at least VAULT_DIM);
  *  HOLE_VIEWS — no image in the stage centre, rising towards the stage edges (at least HOLE_DIM there). */
-const VAULT_DIM = 94;
-const HOLE_DIM = 93;
+const VAULT_DIM = 96;
+const HOLE_DIM = 96;
 const HOLE_VIEWS = ["mindspace", "clouds", "semantic"];
 
 export const backdrop = { cfg: { backdrop: "none", dim: 80, blur: false }, uploads: [] };
