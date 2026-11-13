@@ -91,7 +91,7 @@ export function mountEngineView(id, stage) {
     for (const list of lists) for (const x of list) { if (x.s.id === n.id) pts.push(x.t); if (x.t.id === n.id) pts.push(x.s); }
     // the card docks in a column on the right; the neighbourhood fits beside it
     engine.setCardInset(CARD_COL);
-    engine.flyTo(pts, { padding: 60, maxScale: 2.6 });
+    engine.flyTo(pts, { padding: 60, maxZoom: 2.4 });
     tip.hidden = true;
   }
 
@@ -133,7 +133,7 @@ export function mountEngineView(id, stage) {
     }
     if (card) {
       let ax = NaN, ay = NaN, right = true;
-      if (sel) { [ax, ay] = engine.toStage(sel.x, sel.y); right = ax < W - CARD_COL; }
+      if (sel) { [ax, ay] = engine.toStage(sel.x, sel.y); right = ax < W * 0.6; }
       else {
         // area: dock at the cloud's outer edge on the card side, so the card
         // does not cover the area it describes
@@ -145,7 +145,7 @@ export function mountEngineView(id, stage) {
       else {
         const m = right ? -Math.PI / 4 : (-3 * Math.PI) / 4;
         const ex = ax + Math.cos(m) * 26, ey = ay + Math.sin(m) * 26;
-        const x = right ? W - CARD_COL + 18 : 12;
+        const x = sel ? (right ? ex + 40 : ex - 40 - 260) : (right ? W - CARD_COL + 18 : 12);
         dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color: sel ? TC[selM.cls] || INK : areaCol(state.focus) });
       }
     } else ov.arm(null);
@@ -154,8 +154,8 @@ export function mountEngineView(id, stage) {
       .map((m) => { const [x, y] = engine.toStage(m.node.x, m.node.y); return { n: m.n, x, y }; }).filter((m) => m.x >= 0 && m.x <= W && m.y >= 0 && m.y <= H));
   }
 
-  const onKey = (ev) => { if (ev.key === "Escape" && sel) closeMem(); };
-  window.addEventListener("keydown", onKey);
+  const onKey = (ev) => { if (ev.key === "Escape" && sel && !state.covered && !state.vpOpen) { ev.preventDefault(); ev.stopImmediatePropagation(); closeMem(); } };
+  window.addEventListener("keydown", onKey, true);
 
   let prev = { ...state }, prevWin = windowKey();
   const unsub = subscribe((st) => {
@@ -176,7 +176,7 @@ export function mountEngineView(id, stage) {
   return () => {
     dead = true;
     unMb(); unsub(); unData();
-    window.removeEventListener("keydown", onKey);
+    window.removeEventListener("keydown", onKey, true);
     if (detach) detach();
   };
 }

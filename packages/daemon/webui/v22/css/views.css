@@ -31,6 +31,7 @@
 .rg-ghosts.is-dim { opacity: .3; }
 .rg-emblem { cursor: pointer; transition: stroke .2s; }
 .rg.is-dot, .rg.is-dot .rg-seg { cursor: pointer; }
+.rg.is-out-dot, .rg.is-out-dot .rg-seg { cursor: default; }
 .rg-hov, .rg-sel, .rg-pulse { pointer-events: none; display: none; }
 .rg-hov.is-on, .rg-sel.is-on, .rg-pulse.is-on { display: inline; }
 .rg-sel { filter: drop-shadow(0 0 4px rgba(56,217,245,.8)); }

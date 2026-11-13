@@ -31,10 +31,11 @@ export function mountRing(stage) {
   wrap.addEventListener("click", (e) => {
     if (moved) { e.stopPropagation(); e.preventDefault(); return; }
     const p = dotAt(e); if (!p) return;
-    e.stopPropagation(); e.preventDefault(); openDot(p);
+    e.stopPropagation(); e.preventDefault();
+    if (inWindow(vault().byId.get(p.id), timeWindow())) openDot(p);
   }, true);
   wrap.addEventListener("pointermove", onMove);
-  wrap.addEventListener("pointerleave", () => hoverDot(null));
+  wrap.addEventListener("pointerleave", () => { hoverDot(null); wrap.classList.remove("is-out-dot"); });
   wrap.addEventListener("wheel", onWheel, { passive: false });
   const zb = zoomBar({ onIn: () => zoomAt(1.4, W / 2, H / 2, true), onOut: () => zoomAt(1 / 1.4, W / 2, H / 2, true), onFit: () => ringTo(1, 0, 0, true) });
   const faceCv = h("canvas", { title: t("vv.talk"), on: { click: () => setState({ jOpen: true }) } });
@@ -51,6 +52,16 @@ export function mountRing(stage) {
   let hovDot = null, glideDot = null, openT = 0, opening = false;
   // closing a memory card (×, Escape, another area) glides back to the fit
   const zoomHome = () => ringTo(1, 0, 0, true);
+  function closeMem() {
+    clearTimeout(openT); glideDot = null; selMem = null;
+    setState({ focus: null });
+    place(); zoomHome();
+  }
+  const onKey = (e) => {
+    if (e.key !== "Escape" || state.covered || state.vpOpen || (!selMem && !glideDot)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); closeMem();
+  };
+  window.addEventListener("keydown", onKey, true);
 
   const k = () => (Math.min(W, H) / (2 * (ring ? ring.extent : 400))) * rz;
   // SVG units per screen pixel at zoom 100 % — the scale ring labels are laid
@@ -189,6 +200,7 @@ export function mountRing(stage) {
   function paint() {
     if (!refs) return;
     const hover = hoverKey(), win = timeWindow(), v = vault();
+    if (hovDot && !inWindow(v.byId.get(hovDot.id), win)) { hoverDot(null); wrap.classList.add("is-out-dot"); }
     for (const r of refs.segRefs) {
       const on = hover === r.x.key, dim = !!hover && !on;
       r.wedge.setAttribute("fill", col(r.x.key, on ? 0.09 : 0.03));
@@ -237,7 +249,7 @@ export function mountRing(stage) {
     core.classList.toggle("is-on", showCore);
     setVars(core, { "--l": `${(cx - coreF / 2).toFixed(0)}px`, "--t": `${(cy - coreF / 2).toFixed(0)}px`, "--s": `${coreF.toFixed(0)}px` });
     if (showCore && !jarvis) { jarvis = mountJarvis(faceCv, { scale: 0.3, points: 700, glow: false }); jarvis.set(state.agent); }
-    jarvis?.setActive(showCore && !state.covered); // frozen under the memory browser / a dialog (js/cover.js)
+    jarvis?.setActive(showCore && !state.covered && !state.vpOpen); // frozen under the memory browser / a dialog (js/cover.js)
     placeMarks(kk);
     placeCard(kk, cx, cy);
     const hits = Array.isArray(state.hits) ? state.hits : [];
@@ -250,17 +262,20 @@ export function mountRing(stage) {
   function dotAt(e) {
     if (!ring || !refs) return null;
     const b = stage.getBoundingClientRect(), sx = e.clientX - b.left, sy = e.clientY - b.top;
-    const kk = k(), v = vault(), win = timeWindow();
+    const kk = k();
     let best = null, bd = Infinity;
     for (const p of ring.dotOf.values()) {
       const [x, y] = toScr(p.x, p.y), d = Math.hypot(x - sx, y - sy);
-      if (d < bd && d <= Math.max(p.r * kk + 2, 5) && inWindow(v.byId.get(p.id), win)) { bd = d; best = p; }
+      if (d < bd && d <= Math.max(p.r * kk + 2, 5)) { bd = d; best = p; }
     }
     return best;
   }
   function onMove(e) {
     if (moved) return;
-    const p = dotAt(e);
+    let p = dotAt(e);
+    const out = !!p && !inWindow(vault().byId.get(p.id), timeWindow());
+    wrap.classList.toggle("is-out-dot", out);
+    if (out) p = null;
     hoverDot(p);
     if (!p) return;
     const m = vault().byId.get(p.id), c = TC[m.cls] || INK;
@@ -323,7 +338,7 @@ export function mountRing(stage) {
     if (key !== cardKey) {
       cardKey = key; clear(cardHost); card = null;
       if (state.focus && vault()) {
-        card = selMem ? memoryCard(selMem, { onClose: () => { selMem = null; place(); zoomHome(); } }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
+        card = selMem ? memoryCard(selMem, { onClose: closeMem }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
         cardHost.append(card.el);
       }
     }
@@ -361,5 +376,5 @@ export function mountRing(stage) {
   const ready = document.fonts?.load ? Promise.all([document.fonts.load("700 10.5px 'IBM Plex Sans Condensed'"), document.fonts.load("400 9.5px 'IBM Plex Mono'")]).catch(() => {}) : Promise.resolve();
   ready.then(() => { if (!dead) build(); });
 
-  return () => { dead = true; unMb(); clearTimeout(relayT); clearTimeout(openT); cancelAnimationFrame(raf); ro.disconnect(); unsub(); unData(); jarvis?.destroy(); };
+  return () => { dead = true; window.removeEventListener("keydown", onKey, true); unMb(); clearTimeout(relayT); clearTimeout(openT); cancelAnimationFrame(raf); ro.disconnect(); unsub(); unData(); jarvis?.destroy(); };
 }

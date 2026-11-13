@@ -215,7 +215,7 @@ function fitScale(e, pts, padding = 90, maxScale = 1.6) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   const W = e.rect.right - e.rect.left, H = e.rect.bottom - e.rect.top;
-  return Math.max(0.05, Math.min((W - padding * 2) / Math.max(x1 - x0, 1), (H - padding * 2) / Math.max(y1 - y0, 1), maxScale));
+  return Math.min((W - padding * 2) / Math.max(x1 - x0, 1), (H - padding * 2) / Math.max(y1 - y0, 1), maxScale);
 }
 
 function fit(e, ms = 700, map = null) {
@@ -339,7 +339,14 @@ export const engine = {
   setCardInset(px) { if (eng) eng.cardInset = px; },
   /** Explicit flight (focus, memory): it owns the camera, so the settle fit
    *  after the physics comes to rest must not take it back. */
-  flyTo(points, opts) { if (!eng || !points.length) return; eng.userTouched = true; eng.interactions.flyToBounds(points, opts); awake(eng, (opts?.ms ?? 800) + 100); },
+  flyTo(points, { maxZoom, ...opts } = {}) {
+    if (!eng || !points.length) return;
+    eng.userTouched = true;
+    // Camera scales are world units; the UI percentage is relative to fit.
+    if (maxZoom != null) opts.maxScale = (eng.baseScale || 1) * maxZoom;
+    eng.interactions.flyToBounds(points, opts);
+    awake(eng, (opts.ms ?? 800) + 100);
+  },
   structure: () => eng?.structure ?? "clusters",
   setStructure(mode) {
     const e = eng; if (!e || e.view !== "clouds" || e.transition || mode === e.structure) return;
