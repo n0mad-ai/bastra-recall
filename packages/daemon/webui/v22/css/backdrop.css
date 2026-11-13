@@ -10,8 +10,18 @@
 .bd__img.is-in { animation: bd-in .8s ease-out both; }
 .bd.is-blur .bd__img { filter: blur(14px) saturate(1.1); }
 .bd__shade { position: absolute; inset: 0; background: rgba(6,10,19,var(--bd-dim, .8)); transition: background .6s ease; }
-/* Vault views (ring, lenses, mindspace, …) draw onto the image: only the image is dimmed further there. */
-.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .96)); }
+/* Vault views draw onto the image, so only the image is dimmed further there (js/backdrop.js):
+ * ring and lenses (.is-vault) — evenly, the image glows through faintly;
+ * mindspace, clouds, semantic (.is-hole) — a round cut-out: no image in the stage centre,
+ * rising towards the stage edges between the side panels. The ellipse is sized from the
+ * stage (--glow-x/-y = stage centre, --c-l = stage left, --panel-t = stage top; all
+ * relative to the app, .bd sits 12px inside). Static gradient, only opacity animates. */
+.bd.is-vault .bd__shade { background: rgba(6,10,19,var(--bd-dim-vault, .94)); }
+.bd.is-hole .bd__shade { background: rgba(6,10,19,var(--bd-dim-hole, .93)); }
+.bd__hole { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease;
+  background: radial-gradient(calc(var(--glow-x, 50%) - var(--c-l, 0px)) calc(var(--glow-y, 50%) - var(--panel-t, 0px)) at calc(var(--glow-x, 50%) - 12px) calc(var(--glow-y, 50%) - 12px),
+    #060a13 0%, #060a13 55%, rgba(6,10,19,.7) 80%, rgba(6,10,19,0) 100%); }
+.bd.is-hole .bd__hole { opacity: 1; }
 .bd__vig { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 45%, rgba(6,10,19,0) 45%, rgba(6,10,19,.7)); }
 @keyframes bd-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
 

@@ -16,8 +16,12 @@ addStrings(en, de);
 export const PRESETS = ["none", "aurora", "deepsea", "ember", "topo", "grid", "dusk"];
 export const UPLOAD_TYPES = ["image/png", "image/jpeg", "image/webp"];
 export const UPLOAD_MAX = 8 * 1024 * 1024;
-/** Vault views project onto the image: there only the image is dimmed this far (at least; Daniel 13.11.2026). */
-const VAULT_DIM = 96;
+/** Vault views project onto the image, so only the image is dimmed further there (Daniel 13.11.2026):
+ *  ring and lenses — the image glows through evenly and faintly (at least VAULT_DIM);
+ *  HOLE_VIEWS — no image in the stage centre, rising towards the stage edges (at least HOLE_DIM there). */
+const VAULT_DIM = 94;
+const HOLE_DIM = 93;
+const HOLE_VIEWS = ["mindspace", "clouds", "semantic"];
 
 export const backdrop = { cfg: { backdrop: "none", dim: 80, blur: false }, uploads: [] };
 
@@ -30,13 +34,13 @@ let layer = null, img = null, shownId = "";
 export function mountBackdrop(app) {
   img = h("div.bd__img");
   img.addEventListener("animationend", () => img.classList.remove("is-in"));
-  layer = h("div.bd", { hidden: true, "aria-hidden": "true" }, img, h("div.bd__shade"), h("div.bd__vig"));
+  layer = h("div.bd", { hidden: true, "aria-hidden": "true" }, img, h("div.bd__shade"), h("div.bd__hole"), h("div.bd__vig"));
   const glow = app.querySelector(".glow");
   if (glow) glow.after(layer); else app.prepend(layer);
   render();
   load();
   // Only the view switch toggles the class; the shade fades via its CSS transition.
-  subscribe((s) => layer.classList.toggle("is-vault", VAULT_VIEWS.includes(s.view)));
+  subscribe(markView);
 }
 
 /** CSS class + custom properties of an option (also used by the picker tiles). */
@@ -44,6 +48,12 @@ export function lookOf(id) {
   if (PRESETS.includes(id)) return { cls: `bd-p--${id}`, vars: null };
   const up = backdrop.uploads.find((u) => u.id === id);
   return up ? { cls: "bd-p--upload", vars: { "--bd-url": `url("${up.url}")` } } : null;
+}
+
+function markView(s) {
+  const hole = HOLE_VIEWS.includes(s.view);
+  layer.classList.toggle("is-hole", hole);
+  layer.classList.toggle("is-vault", !hole && VAULT_VIEWS.includes(s.view));
 }
 
 function render() {
@@ -61,8 +71,8 @@ function render() {
     shownId = id;
   }
   const d = Math.min(95, Math.max(50, Number(dim) || 80));
-  setVars(layer, { "--bd-dim": (d / 100).toFixed(2), "--bd-dim-vault": (Math.max(d, VAULT_DIM) / 100).toFixed(2) });
-  layer.classList.toggle("is-vault", VAULT_VIEWS.includes(state.view));
+  setVars(layer, { "--bd-dim": (d / 100).toFixed(2), "--bd-dim-vault": (Math.max(d, VAULT_DIM) / 100).toFixed(2), "--bd-dim-hole": (Math.max(d, HOLE_DIM) / 100).toFixed(2) });
+  markView(state);
   layer.classList.toggle("is-blur", !!blur);
 }
 
