@@ -31,7 +31,7 @@ addStrings(en, de);
 
 const DAY = 864e5, PAGE = 120, CLASSES = ["decision", "rule", "convention", "fact", "note", "reference"];
 
-const M = { open: false, scope: "all", q: "", type: "all", sort: "recent", sel: null, menu: false, reader: false, limit: PAGE, sem: [], semQ: "", from: null, grow: false };
+const M = { open: false, scope: "all", q: "", type: "all", sort: "recent", sel: null, menu: false, reader: false, limit: PAGE, sem: [], semQ: "", from: null, grow: false, focus: false };
 let inst = null;
 
 /** Focus a memory in the mounted vault view (its glide / fly + info card).
@@ -43,7 +43,7 @@ export function showInView(id) { if (!inst?.showMemory) return false; inst.showM
  *  { left, top, right, bottom } box) taken at click time — the window grows
  *  out of exactly that spot and shrinks back into it. */
 export function openMemoryBrowser(scope, sel, from) {
-  Object.assign(M, { open: true, scope: scope || "all", sel: sel || null, q: "", type: "all", menu: false, reader: !!sel, limit: PAGE, sem: [], semQ: "", from: box(from) || pressBox(), grow: true });
+  Object.assign(M, { open: true, scope: scope || "all", sel: sel || null, q: "", type: "all", menu: false, reader: !!sel, limit: PAGE, sem: [], semQ: "", from: box(from) || pressBox(), grow: true, focus: !!sel });
   // The browser lives in the vault views (ring, lenses, map engines), which
   // mount it; from anywhere else the ring takes over and plays the same grow.
   if (inst) inst.show(true); else setState({ view: "ring" });
@@ -164,14 +164,14 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     h("div.mb__body", null, list, reader));
   stage.append(root);
 
-  let dead = false, closeT = 0, semT = 0, semSeq = 0, order = [], readerFor = null, view = null;
+  let dead = false, closeT = 0, revealT = 0, semT = 0, semSeq = 0, order = [], readerFor = null, view = null;
 
   // ── open / close (prototype openMB / closeMB) ──
   function show(anim) {
     clearTimeout(closeT);
     input.value = M.q;
     if (!care) loadCare().then(() => { if (!dead && M.open) renderReader(true); });
-    if (!anim) { root.classList.add("is-on", "is-grow"); render(); cover("mb", true); return; }
+    if (!anim) { root.classList.add("is-on", "is-grow"); render(); scheduleReveal(); cover("mb", true); return; }
     M.grow = false;
     // Prototype openMB: clip-path from the origin box to the full stage
     // (.5s cubic-bezier(.65,0,.25,1)); without an origin from the centre, fading in.
@@ -182,7 +182,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     root.classList.remove("is-grow"); root.classList.add("is-on");
     render();
     void root.offsetWidth;
-    requestAnimationFrame(() => { if (!dead) { root.classList.add("is-grow"); if (M.sel) setTimeout(() => reveal(M.sel), 520); } });
+    requestAnimationFrame(() => { if (!dead && M.open) { root.classList.add("is-grow"); scheduleReveal(520); } });
     // the view underneath freezes once the window covers it (js/cover.js)
     closeT = setTimeout(() => { if (!dead && M.open) cover("mb", true); }, 520);
   }
@@ -211,8 +211,13 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   // ── render ──
   function render() {
     if (dead || !M.open) return;
+    // A direct memory link wins over a caller's stale area. Resolve this only
+    // once the graph arrives; later manual filtering remains under user control.
+    const target = M.focus && vault()?.byId.get(M.sel);
+    if (target && M.scope !== "all" && M.scope !== target.area) M.scope = target.area;
     view = model();
     renderHead(); renderBar(); renderPulse(); renderList(); renderReader();
+    if (target) { M.focus = false; scheduleReveal(); }
   }
 
   function renderHead() {
@@ -272,7 +277,12 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     const top = list.scrollTop;
     clear(list);
     if (!view) { order = []; return; }
-    const { rows } = view, shown = rows.slice(0, M.limit);
+    const { rows } = view;
+    // A selected memory may be older than the first page (also for wikilinks
+    // and remounts in another vault view). Materialize its row before scrolling.
+    const selected = rows.findIndex((m) => m.id === M.sel);
+    if (selected >= M.limit) M.limit = Math.ceil((selected + 1) / PAGE) * PAGE;
+    const shown = rows.slice(0, M.limit);
     order = rows.map((m) => m.id);
     const group = (label, n, items) => [h("div.mb__gh", null, h("span", { text: label }), h("span", { text: numberFmt.format(n) })), ...items.map(row)];
     if (M.sort === "recent") {
@@ -292,7 +302,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   function select(id, fromList) {
     M.sel = id; M.reader = true;
     render();
-    if (!fromList) setTimeout(() => reveal(id), 30);
+    if (!fromList) scheduleReveal();
   }
   function step(d) {
     if (!order.length) return;
@@ -303,7 +313,14 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   function reveal(id) {
     const el = list.querySelector(`[data-id="${CSS.escape(id)}"]`); if (!el) return;
     const r = el.getBoundingClientRect(), b = list.getBoundingClientRect();
-    if (r.top < b.top + 34 || r.bottom > b.bottom) list.scrollTo({ top: r.top - b.top + list.scrollTop - 40, behavior: "smooth" });
+    // Jump to the target after layout: long smooth scrolls can still be far
+    // from an old memory when the grow transition has finished.
+    if (r.top < b.top + 34 || r.bottom > b.bottom) list.scrollTo({ top: r.top - b.top + list.scrollTop - 40, behavior: "instant" });
+  }
+  function scheduleReveal(delay = 0) {
+    clearTimeout(revealT);
+    const id = M.sel;
+    revealT = setTimeout(() => { if (!dead && M.open && M.sel === id) reveal(id); }, delay);
   }
   /** A linked memory: select it, widening the scope when it lives elsewhere. */
   function follow(id) {
@@ -337,7 +354,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
       [last === null ? t("mb.never") : last <= 0 ? t("mb.today") : t("mb.dAgo", { n: last }), "last", INK]];
     const links = m.links.map((l) => ({ l, o: v.byId.get(l.id) })).filter((x) => x.o);
     const el = h("div.mb-rd", null,
-      narrow ? h("button.mb-rd__back", { text: t("mb.back"), on: { click: () => { M.reader = false; renderReader(true); } } }) : null,
+      narrow ? h("button.mb-rd__back", { text: t("mb.back"), on: { click: () => { M.reader = false; renderReader(true); scheduleReveal(); } } }) : null,
       h("div.mb-rd__top", null,
         h("span.mb-rd__chip", { text: t(`vv.cls.${m.cls}`), vars: { "--tc": c } }),
         h("button.mb-rd__area", { on: { click: () => { Object.assign(M, { scope: m.area, menu: false, limit: PAGE }); render(); } } }, h("span.mb-rd__adot", { vars: { "--ac": areaCol(m.area) } }), m.area),
@@ -439,7 +456,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (!M.open || !root.classList.contains("is-grow")) return;
     const tag = e.target?.tagName;
     if (e.key === "Escape") {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault(); e.stopImmediatePropagation();
       if (M.menu) { M.menu = false; renderHead(); }
       else if (e.target === input && M.q) { input.value = ""; onInput(); }
       else hide();
@@ -450,7 +467,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   window.addEventListener("keydown", onKey, true);
   const onDoc = (e) => { if (M.menu && !e.target.closest?.(".mb__scope")) { M.menu = false; renderHead(); } };
   document.addEventListener("pointerdown", onDoc);
-  const ro = new ResizeObserver(() => { if (M.open) renderReader(); });
+  const ro = new ResizeObserver(() => { if (M.open) { renderReader(); scheduleReveal(); } });
   ro.observe(root);
   const unData = onData(() => { if (M.open) render(); });
 
@@ -458,7 +475,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   if (M.open) show(M.grow);
 
   return () => {
-    dead = true; clearTimeout(closeT); clearTimeout(semT);
+    dead = true; clearTimeout(closeT); clearTimeout(revealT); clearTimeout(semT);
     // A close that was still animating finishes here.
     if (!root.classList.contains("is-grow")) M.open = false;
     cover("mb", false); // the next vault view covers again if the browser stays open
