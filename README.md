@@ -136,7 +136,7 @@ A project decision made on Monday should still be available on Thursday, even if
 - **Keep useful context:** preferences, decisions, project facts and lessons from solved problems.
 - **Recall before work:** supported hooks surface context at session start and before actions; the shared Skill guides the assistant's own searches and saves.
 - **Own the files:** memories are plain Markdown with structured metadata, readable and editable outside Bastra.
-- **See what is remembered:** `bastra map` opens the local vault map for browsing, search and memory care.
+- **See what is remembered:** `bastra map` opens the local vault map for browsing, search and memory care. The user UI includes private memories; external graph reads retain their filter. [Graph access and counts](./docs/Graph-Views.md#english).
 
 [Examples from a working week](./docs/USAGE.md#cookbook) show how these fit together.
 
@@ -312,7 +312,7 @@ Eine Projektentscheidung vom Montag soll am Donnerstag noch verfügbar sein, auc
 - **Nützlichen Kontext bewahren:** Vorlieben, Entscheidungen, Projektwissen und Erkenntnisse aus gelösten Problemen.
 - **Vor der Arbeit erinnern:** Unterstützte Hooks liefern Kontext beim Sitzungsstart und vor Aktionen; der gemeinsame Skill leitet die eigenen Such- und Speichervorgänge des Assistenten an.
 - **Die Dateien behalten:** Erinnerungen sind Markdown mit strukturierten Metadaten und außerhalb von Bastra lesbar und bearbeitbar.
-- **Gespeichertes nachvollziehen:** `bastra map` öffnet die lokale Vault-Map zum Stöbern, Suchen und Pflegen.
+- **Gespeichertes nachvollziehen:** `bastra map` öffnet die lokale Vault-Map zum Stöbern, Suchen und Pflegen. Die Nutzer-UI enthält private Memories; externe Graph-Abrufe behalten ihren Filter. [Graph-Zugriff und Zähler](./docs/Graph-Views.md#deutsch).
 
 [Beispiele aus einer Arbeitswoche](./docs/USAGE.md#kochbuch) zeigen das Zusammenspiel.
 

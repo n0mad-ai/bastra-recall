@@ -3,11 +3,26 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
+test("user area counts include memories and documents while synthetic nodes stay in the raw graph", async () => {
+  const source = await readFile(new URL("../../packages/daemon/webui/v22/js/data.js", import.meta.url), "utf8");
+  const nodes = [
+    { id: "m", kind: "memory", cluster: "area" },
+    { id: "d", kind: "doc", cluster: "area" },
+    { id: "g", kind: "ghost", cluster: "area" },
+    { id: "s", kind: "skill", cluster: "skills" },
+  ];
+  const ctx = vm.createContext({ document: { title: "" }, fetch: async () => ({ ok: true, json: async () => ({ nodes, clusters: [{ key: "area", count: 3 }, { key: "skills", count: 1 }], edges: [] }) }) });
+  vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, data };", ctx);
+  await ctx.api.loadGraph();
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.api.data.clusters)), [{ key: "area", count: 2 }]);
+  assert.equal(ctx.api.data.graph.nodes.length, 4, "raw graph and engines keep synthetic references");
+});
+
 test("live graph refresh coalesces a batch, covers changes/deletes, skips reads and duplicate polls", async () => {
   const source = await readFile(new URL("../../packages/daemon/webui/v22/js/data.js", import.meta.url), "utf8");
   let graphCalls = 0, updateCalls = 0, seq = 1, updates = [], nodes = [{ id: "existing", title: "Old" }];
   const context = vm.createContext({ document: { title: "" }, fetch: async (url) => ({ ok: true, json: async () => {
-    if (url === "/api/v1/graph") { graphCalls++; return { nodes: structuredClone(nodes), edges: [], clusters: [] }; }
+    if (url === "/ui/graph") { graphCalls++; return { nodes: structuredClone(nodes), edges: [], clusters: [] }; }
     updateCalls++; return { seq, updates };
   } }) });
   vm.runInContext(source.replaceAll("export ", "") + ";globalThis.api = { loadGraph, pollUpdates, data };", context);
@@ -30,7 +45,7 @@ test("a mutation arriving during initial graph load fetches a fresh snapshot aft
   const source = await readFile(new URL("../../packages/daemon/webui/v22/js/data.js", import.meta.url), "utf8");
   let seq = 1, calls = 0, finishInitial;
   const ctx = vm.createContext({ document: { title: "" }, fetch: async (url) => {
-    if (url === "/api/v1/graph") {
+    if (url === "/ui/graph") {
       calls++;
       if (calls === 1) return new Promise((resolve) => { finishInitial = () => resolve({ ok: true, json: async () => ({ nodes: [{ id: "old" }] }) }); });
       return { ok: true, json: async () => ({ nodes: [{ id: "new" }] }) };

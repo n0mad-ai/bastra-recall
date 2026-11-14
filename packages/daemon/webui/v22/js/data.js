@@ -4,7 +4,7 @@ const listeners = new Set();
 
 export const data = {
   health: null,     // GET /ui/health
-  clusters: [],     // [{ key, count }] from GET /api/v1/graph
+  clusters: [],     // [{ key, count }] from GET /ui/graph
   edges: 0,
   weeks: [],        // 52 weekly counts of memory updates, oldest first
   weekStart: null,  // Date of week 0
@@ -13,8 +13,8 @@ export const data = {
   newSince: 0,      // live updates since page load (all kinds, incl. reads)
   newMemories: 0,   // memories created since page load (kind "add" only)
   weather: null,    // { temp, city }
-  vaultName: null,  // vault_name from GET /api/v1/graph, as the user named it
-  graph: null,      // { nodes, edges, groups } from GET /api/v1/graph, for the vault views
+  vaultName: null,  // vault_name from GET /ui/graph, as the user named it
+  graph: null,      // { nodes, edges, groups } from GET /ui/graph, for the vault views
   graphError: false, // the first graph request failed (run indicator shows it)
   tasksLoaded: false, // the first task list answered (or failed): widgets stop showing "loading"
 };
@@ -40,12 +40,19 @@ export function loadGraph() {
 }
 async function fetchGraph() {
   try {
-    const g = await getJson("/api/v1/graph");
+    const g = await getJson("/ui/graph");
     if (typeof g.vault_name === "string" && g.vault_name.trim()) {
       data.vaultName = g.vault_name.trim();
       document.title = `${data.vaultName} — Recall`;
     }
-    if (Array.isArray(g.clusters)) data.clusters = g.clusters.filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count));
+    // User-facing area counts describe memories/documents, not synthetic
+    // ghosts or skills. Keep the graph's stable order and raw projection.
+    const realCounts = new Map();
+    for (const n of Array.isArray(g.nodes) ? g.nodes : []) {
+      if (n && (n.kind === "memory" || n.kind === "doc") && typeof n.cluster === "string") realCounts.set(n.cluster, (realCounts.get(n.cluster) || 0) + 1);
+    }
+    if (Array.isArray(g.clusters)) data.clusters = g.clusters.filter((c) => c && typeof c.key === "string" && Number.isFinite(c.count))
+      .map((c) => ({ key: c.key, count: realCounts.get(c.key) || 0 })).filter((c) => c.count > 0);
     data.edges = Array.isArray(g.edges) ? g.edges.length : 0;
     // Raw nodes and edges for the vault views (js/views/vault-data.js checks the shapes).
     data.graph = { nodes: Array.isArray(g.nodes) ? g.nodes : [], edges: Array.isArray(g.edges) ? g.edges : [], groups: Array.isArray(g.groups) ? g.groups : [] };

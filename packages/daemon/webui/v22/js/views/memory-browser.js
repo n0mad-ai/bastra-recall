@@ -9,9 +9,9 @@
 // open while switching between vault views.
 //
 // Real data:
-//   list, chips, pulse, stats, links — vault() from GET /api/v1/graph
+//   list, chips, pulse, stats, links — vault() from GET /ui/graph
 //   last recalled, tags, scope        — the same graph nodes (reach.last_at …)
-//   reader text, topic, source        — GET /api/v1/graph/node?id= (as the old map inspector)
+//   reader text, topic, source        — GET /ui/graph/node?id= (as the old map inspector)
 //   semantic hits                     — GET /ui/search?q= (as the old map search)
 //   vault care flags                  — GET /ui/annotations, POST /ui/annotate (old inspector)
 // The prototype's recall_when, version, file path, sessions, reflex mode and
@@ -95,7 +95,7 @@ const detail = new Map(); // id → node detail | null (failed)
 async function loadDetail(id) {
   if (detail.has(id)) return detail.get(id);
   let d = null;
-  try { const r = await fetch(`/api/v1/graph/node?id=${encodeURIComponent(id)}`, { credentials: "same-origin" }); if (r.ok) { const b = await r.json(); if (b && typeof b === "object") d = b; } } catch { /* stays null */ }
+  try { const r = await fetch(`/ui/graph/node?id=${encodeURIComponent(id)}`, { credentials: "same-origin" }); if (r.ok) { const b = await r.json(); if (b && typeof b === "object") d = b; } } catch { /* stays null */ }
   detail.set(id, d);
   return d;
 }

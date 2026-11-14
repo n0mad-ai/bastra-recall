@@ -32,8 +32,9 @@ import { handleHookOnboarding, handleUiOnboarding } from "./onboarding.js";
 import { handleSessionContext, handleSessionContextPost } from "./session-context.js";
 import { sendJson } from "./http-util.js";
 import { dispatchUiBackdrop } from "./ui-backdrop.js";
+import { dispatchUiGraph, type GraphReadCtx } from "./http-graph-reads.js";
 
-export interface UiRouteCtx {
+export interface UiRouteCtx extends GraphReadCtx {
   vault: Vault;
   search: SearchIndex;
   toolDeps: ToolDeps;
@@ -52,6 +53,7 @@ export function dispatchUiRoutes(
   ctx: UiRouteCtx,
 ): boolean {
   const { vault, search, toolDeps, liveUpdates } = ctx;
+  if (dispatchUiGraph(req, res, method, url, ctx)) return true;
   if (dispatchTaskUi(req, res, method, url, defaultTaskContext(toolDeps, true))) return true;
 
   // Vault care (#207): flags from the map, appended to vault-care.md in the

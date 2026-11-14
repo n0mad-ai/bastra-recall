@@ -1,4 +1,4 @@
-// Vault data for the vault views, built from GET /api/v1/graph (data.graph).
+// Vault data for the vault views, built from GET /ui/graph (data.graph).
 // The prototype's sample vault (memory-data.js) is replaced by real nodes:
 //   area     = node.cluster            recalled = node.reach.loaded
 //   at       = node.updated (date)     acted    = node.reach.acted_on
@@ -68,7 +68,7 @@ export function vault() {
   }
   const counts = new Map();
   for (const m of mems) counts.set(m.area, (counts.get(m.area) || 0) + 1);
-  // Order follows GET /api/v1/graph clusters (same order as the Areas list and its colours).
+  // Order follows GET /ui/graph clusters (same order as the Areas list and its colours).
   const order = new Map(data.clusters.map((c, i) => [c.key, i]));
   const areas = [...counts.entries()].map(([key, count]) => ({ key, count, meta: metaKeys.has(key) }))
     .sort((a, b) => (order.get(a.key) ?? 1e9) - (order.get(b.key) ?? 1e9) || b.count - a.count);

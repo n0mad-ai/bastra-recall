@@ -6,20 +6,20 @@
 const GOLDEN_ANGLE = 137.508;
 
 export async function fetchGraph() {
-  const res = await fetch("/api/v1/graph");
+  const res = await fetch("/ui/graph");
   if (!res.ok) throw new Error(`graph fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function fetchNode(id) {
-  const res = await fetch(`/api/v1/graph/node?id=${encodeURIComponent(id)}`);
+  const res = await fetch(`/ui/graph/node?id=${encodeURIComponent(id)}`);
   if (!res.ok) return null;
   return res.json();
 }
 
 /** Semantic search — the daemon's hybrid recall (BM25 + embeddings). */
 export async function fetchSemanticLayout() {
-  const res = await fetch("/api/v1/graph/semantic");
+  const res = await fetch("/ui/graph/semantic");
   if (res.status === 503) throw new Error("the embedding index is still warming up");
   if (!res.ok) throw new Error(`semantic layout fetch failed: ${res.status}`);
   return res.json();

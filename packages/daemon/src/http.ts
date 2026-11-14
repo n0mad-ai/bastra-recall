@@ -332,6 +332,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       toolDeps,
       liveUpdates: ctx.liveUpdates,
       uiChat: opts.uiChat,
+      server: ctx,
+      embeddingVectors: opts.embeddingVectors,
     })) {
       return;
     }

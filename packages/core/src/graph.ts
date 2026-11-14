@@ -10,8 +10,8 @@
  *   - bridges: nodes whose neighbors span ≥2 foreign clusters — connections
  *     the folder structure doesn't show.
  *
- * Any viewer (daemon web UI, Mac app, external tools) renders from this same
- * projection; none of them is privileged (#140).
+ * External viewers use the filtered default. The account-checked user UI
+ * explicitly includes private memories without changing tool sensitivity.
  */
 import { basename, relative, sep, sep as sepChar } from "node:path";
 import type { Vault } from "./vault.js";
@@ -51,6 +51,8 @@ export interface GraphNode {
   /** total edge count, ghost links included — viewers scale node size on it */
   degree: number;
   kind: "memory" | "doc" | "ghost" | "skill";
+  /** Real memory/doc visibility; null for synthetic ghost/skill references. */
+  sensitivity?: Memory["fm"]["sensitivity"] | null;
   /** foreign clusters this node connects (present only when ≥2 → a bridge) */
   bridge?: string[];
   /** ghosts/skills only: ids of the existing memories that link to it */
@@ -256,13 +258,12 @@ export function subKeyFor(m: Memory, vaultRoot: string): string {
   return parts.length > idx + 2 ? parts[idx + 1] : "general";
 }
 
-export function buildGraph(vault: Vault, skills: SkillRef[] = []): VaultGraph {
-  // Private memories stay off the wire entirely — same default the other
-  // externally reachable endpoints apply (min_sensitivity "team"). How many
-  // that drops is reported as `withheld` (#332), so the gap to `vault_size`
-  // is a stated exclusion rather than a silent one.
+export function buildGraph(vault: Vault, skills: SkillRef[] = [], options: { includePrivate?: boolean } = {}): VaultGraph {
+  // The external projection keeps the existing team sensitivity default.
+  // Only the account-checked UI explicitly opts into private memories.
+  // `withheld` counts actual exclusions, including zero for the full view.
   const all = vault.list();
-  const memories = all.filter((m) => m.fm.sensitivity !== "private");
+  const memories = options.includePrivate ? all : all.filter((m) => m.fm.sensitivity !== "private");
   const byId = new Map(memories.map((m) => [m.fm.id, m]));
   // Declared skills keep their identity regardless of live links — the fix
   // for "my skills are gone": a ghost exists only while a linker survives,
@@ -359,6 +360,7 @@ export function buildGraph(vault: Vault, skills: SkillRef[] = []): VaultGraph {
       ...(isIsoDate(m.fm.created) ? { created: m.fm.created } : {}),
       degree: degree.get(id) ?? 0,
       kind: m.fm.type === "doc" ? "doc" : "memory",
+      sensitivity: m.fm.sensitivity,
       ...(bridge ? { bridge } : {}),
       // #217: nur echte Memories tragen Valenz; Ghost-/Skill-Nodes bleiben ohne.
       ...(typeof m.fm.salience === "number" ? { salience: m.fm.salience } : {}),
@@ -401,6 +403,7 @@ export function buildGraph(vault: Vault, skills: SkillRef[] = []): VaultGraph {
       updated: "",
       degree: degree.get(id) ?? 0,
       kind: "ghost",
+      sensitivity: null,
       ...(bridge ? { bridge } : {}),
       linked_by: linkers.sort(),
     });
@@ -425,6 +428,7 @@ export function buildGraph(vault: Vault, skills: SkillRef[] = []): VaultGraph {
       updated: "",
       degree: degree.get(id) ?? 0,
       kind: "skill",
+      sensitivity: null,
       ...(bridge ? { bridge } : {}),
       linked_by: (ghostLinkers.get(id) ?? []).sort(),
     });

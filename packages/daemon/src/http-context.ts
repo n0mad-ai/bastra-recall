@@ -46,6 +46,9 @@ export interface HttpServerContext {
   semanticCache: { at: number; body: SemanticLayout } | null;
   /** The layout build in progress, shared by requests that arrive during it. */
   semanticInflight: Promise<SemanticLayout> | null;
+  /** Account-checked UI projection, never reused by the filtered REST door. */
+  uiSemanticCache: { at: number; body: SemanticLayout } | null;
+  uiSemanticInflight: Promise<SemanticLayout> | null;
   /** #1279: in-flight OAuth logins, codes and the authorize-form throttle. */
   oauth: OAuthState;
 }
@@ -141,6 +144,8 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
     isHealthProbe: (url: string): boolean => url === "/health" || url === "/api/v1/health",
     semanticCache: null,
     semanticInflight: null,
+    uiSemanticCache: null,
+    uiSemanticInflight: null,
     oauth: createOAuthState(),
   };
 }
