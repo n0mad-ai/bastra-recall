@@ -148,7 +148,7 @@ export function create() {
 }
 
 export async function openDue() {
-  S.showDue = true; S.compose = false; S.dueBusy = true; emit();
+  S.showDue = true; S.compose = false; S.proposal = null; S.dueBusy = true; emit();
   try {
     const d = await api("due", { include_acknowledged: true, max_bytes: 16384 });
     S.due = Array.isArray(d.cards) ? d.cards : [];

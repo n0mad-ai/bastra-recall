@@ -194,7 +194,7 @@ export function viewTab(body) {
     return h("button.tk-style", { cls: [on ? "is-on" : "", avail ? "" : "is-locked"].join(" "), "data-lsel": on ? "1" : null,
       on: { click: () => { if (!avail) { say(t("tk.proHint")); return; } S.style = id; save(); emit(); } } },
       h("span.tk-style__ic", null, s("svg", { viewBox: "0 0 24 24" }, s("path", { d: st?.icon || ICONS[id] || ICONS.ledger }))),
-      h("span.tk-style__txt", null, h("span.tk-style__n", null, h("span", { text: name }), pro ? h("span.tk-badge.is-pro", { text: "PRO" }) : h("span.tk-badge", { text: t("tk.std") })),
+      h("span.tk-style__txt", null, h("span.tk-style__n", null, h("span", { text: name }), pro ? h("span.tk-badge.is-pro", { text: t("tk.proSoon") }) : h("span.tk-badge", { text: t("tk.std") })),
         h("span.tk-style__d", { text: desc })));
   };
   body.append(h("div.tk-pn", null,

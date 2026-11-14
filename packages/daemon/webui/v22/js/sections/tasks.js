@@ -20,7 +20,7 @@ import * as cal from "./tasks-cal.js";
 import { calendarStyle, onCalendarStyles } from "./tasks-styles.js";
 import { KEYS, label, ICON as KICON, onSelect, endDrag } from "./tasks-cal.js";
 import { splitPanel, weekDays, monthStart, rangeOf } from "./tasks-ledger.js";
-import { overlays } from "./tasks-overlays.js";
+import { overlayRenderer } from "./tasks-overlays.js";
 import { detailTab, viewTab, controlTab, statusTiles, dueList } from "./tasks-panel.js";
 import en from "../i18n/tasks-en.js";
 import de from "../i18n/tasks-de.js";
@@ -86,7 +86,7 @@ function calendar() {
   return h("div.tk-cal", null, toolbar(v), legend(), h("div.tk-cal__main", null, agOn ? splitPanel(weekDays()) : null, bodyEl), tray());
 }
 
-let root = null, calSlot = null;
+let root = null, calSlot = null, headSlot = null, drawOverlays = null;
 function drawCal() { if (!calSlot || S.drag) return; endDrag(); clear(calSlot).append(calendar()); }
 
 function draw() {
@@ -95,15 +95,22 @@ function draw() {
   const content = S.error && !S.snap
     ? h("div.tk-empty", null, h("span.wip-badge", { text: t("tk.offlineBadge") }), h("p", { text: S.error }), h("button.tk-btn", { text: t("tk.retry"), on: { click: () => refresh() } }))
     : null;
-  calSlot = h("div.tk-calslot");
   // first answer pending: a run indicator instead of an empty calendar
   const wait = !content && !S.snap ? loadingBlock(t("ld.tasks")) : null;
-  clear(root).append(head(), ...overlays(ctxRef), content || wait || calSlot);
+  clear(headSlot).append(head());
+  drawOverlays();
+  clear(calSlot);
+  if (content || wait) calSlot.append(content || wait);
   if (!content && !wait) drawCal();
 }
 
 function mount(el, ctx) {
   ctxRef = ctx; root = el; root.classList.add("tk");
+  headSlot = h("div.tk-headslot");
+  const overlaySlot = h("div.tk-overlays");
+  calSlot = h("div.tk-calslot");
+  root.append(headSlot, overlaySlot, calSlot);
+  drawOverlays = overlayRenderer(overlaySlot);
   const sro = new ResizeObserver(() => { const w = el.clientWidth; if (w > 0 && Math.abs(w - S.W) > 1) { S.W = w; draw(); } });
   sro.observe(el); S.W = el.clientWidth || S.W;
   const off = onTasks((what) => { draw(); if (what !== "cal" && state.view === "tasks") ctx.refreshLens(); });
@@ -115,7 +122,7 @@ function mount(el, ctx) {
   // CPU: the old UI polled every 1.5 s; here every 15 s while visible and idle.
   const poll = setInterval(() => { if (!document.hidden && !S.drag && !S.compose && !S.edit && !S.proposal) refresh(true); }, 15000);
   const tick = setInterval(() => { if (!document.hidden && !S.drag && !S.compose) drawCal(); }, 60000); // now-line
-  return () => { off(); offStyles(); sro.disconnect(); ro?.disconnect(); ro = null; clearInterval(poll); clearInterval(tick); window.removeEventListener("keydown", key, true); root = null; calSlot = null; bodyEl = null; };
+  return () => { off(); offStyles(); sro.disconnect(); ro?.disconnect(); ro = null; clearInterval(poll); clearInterval(tick); window.removeEventListener("keydown", key, true); root = null; calSlot = null; headSlot = null; drawOverlays = null; bodyEl = null; };
 }
 
 registerArea({ id: "tasks", group: "work", order: 1, labelKey: "nav.tasks", icon: ICON.tasks, pinAgent: true,

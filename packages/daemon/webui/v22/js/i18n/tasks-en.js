@@ -4,6 +4,8 @@ export default {
   "tk.title": "What Recall keeps an eye on for you",
   "tk.dueBtn": "DUE · {n}",
   "tk.new": "NEW TASK +",
+  "tk.f.create": "CREATE TASK",
+  "tk.proSoon": "PRO · coming soon",
   "tk.offlineBadge": "Unavailable",
   "tk.retry": "TRY AGAIN",
   "tk.loading": "loading …",

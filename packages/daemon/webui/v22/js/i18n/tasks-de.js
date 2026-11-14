@@ -5,6 +5,8 @@ export default {
   "tk.title": "Was Recall für dich im Blick behält",
   "tk.dueBtn": "FÄLLIG · {n}",
   "tk.new": "NEUE AUFGABE +",
+  "tk.f.create": "AUFGABE ANLEGEN",
+  "tk.proSoon": "PRO · bald verfügbar",
   "tk.offlineBadge": "Nicht erreichbar",
   "tk.retry": "ERNEUT VERSUCHEN",
   "tk.loading": "lädt …",

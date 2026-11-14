@@ -2,7 +2,7 @@
  * Values are the prototype's inline styles. */
 
 /* ── board ─────────────────────────────────────────────────────────────── */
-.db { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding-right: 6px; }
+.db { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
 .db__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding: 2px 0 16px; }
 .db__hl { min-width: 0; }
 .db__kicker { font: 10px var(--mono); letter-spacing: .24em; color: var(--accent); }

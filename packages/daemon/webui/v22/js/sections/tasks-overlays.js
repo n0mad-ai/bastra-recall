@@ -6,7 +6,7 @@ import { h } from "../dom.js";
 import { loadingInline } from "./loading.js";
 import { t } from "../i18n.js";
 import { S, emit, say, act, select, create, executeProposal, byId, liveTasks } from "./tasks-store.js";
-import { api, fmtAt, calendarSchedule, isTerminal } from "./tasks-api.js";
+import { api, fmtAt, calendarSchedule, isTerminal, dueAt } from "./tasks-api.js";
 
 const close = () => { S.compose = false; S.showDue = false; S.proposal = null; emit(); };
 
@@ -82,12 +82,26 @@ function dueCard(c) {
   return h("div.tk-due__c", null, parts, h("div.tk-due__acts", null, acts));
 }
 
+// The delivery endpoint may withhold cards until the next retry. The status
+// snapshot still contains the actual due tasks: show those, without inventing
+// an occurrence or acknowledgement action for an undelivered card.
+const pendingTasks = () => {
+  const delivered = new Set((S.due || []).map((c) => c.task_id));
+  return S.items.filter((x) => x.k === "due" && !x.t.archived && !delivered.has(x.t.id));
+};
 function due() {
   const cards = S.due || [];
+  const pending = pendingTasks();
+  const count = cards.filter((c) => c.kind !== "availability").length + pending.length;
   return h("div.tk-pop.tk-pop--due", { role: "dialog", "aria-label": t("tk.due.title") },
-    h("div.tk-pop__h.is-row", null, h("span.tk-pop__k", { text: t("tk.due.title") }), S.dueBusy ? h("span.tk-pop__n", null, loadingInline(t("tk.loading"))) : h("span.tk-pop__n", { text: t("tk.due.ready", { n: cards.filter((c) => c.kind !== "availability").length }) }),
+    h("div.tk-pop__h.is-row", null, h("span.tk-pop__k", { text: t("tk.due.title") }), S.dueBusy ? h("span.tk-pop__n", null, loadingInline(t("tk.loading"))) : h("span.tk-pop__n", { text: t("tk.due.ready", { n: count }) }),
       h("button.tk-pop__x", { text: t("tk.close"), on: { click: close } })),
-    h("div.tk-due", null, cards.map(dueCard), !S.dueBusy && !cards.length ? h("p.tk-due__none", { text: S.duePending ? t("tk.due.pending", { n: S.duePending, b: S.dueBlocked }) : t("tk.due.none") }) : null));
+    h("div.tk-due", null, cards.map(dueCard), pending.map((x) => h("div.tk-due__c", null,
+      h("span.tk-due__g", { text: x.t.goal }),
+      h("span.tk-due__m", { text: fmtAt(dueAt(x.t), x.t.timezone) }),
+      h("div.tk-due__acts", null, h("button.tk-btn.is-sm.is-link", { text: t("tk.due.details"), on: { click: () => { S.showDue = false; select(x.id); } } })))),
+    !S.dueBusy && S.duePending ? h("p.tk-due__none", { text: t("tk.due.pending", { n: S.duePending, b: S.dueBlocked }) })
+      : !S.dueBusy && !count && !cards.length ? h("p.tk-due__none", { text: t("tk.due.none") }) : null));
 }
 
 function authText(a) {
@@ -118,4 +132,35 @@ export function overlays() {
   const open = S.compose || S.showDue || !!S.proposal;
   if (!open) return [];
   return [h("div.tk-dim", { on: { click: close } }), S.proposal ? proposal() : S.compose ? compose() : due()];
+}
+
+/** Keep the dimmer and dialog themselves mounted across polling/weather/
+ * resize updates. Only meaningful changes update their content, so the entry
+ * animation does not restart and unrelated refreshes do not steal input. */
+export function overlayRenderer(host) {
+  let kind = "", key = "";
+  return () => {
+    const next = S.proposal ? "proposal" : S.compose ? "compose" : S.showDue ? "due" : "";
+    const sig = JSON.stringify(next === "proposal" ? [S.proposal, S.propNote]
+      // Text inputs already own their live values. Including them here would
+      // rebuild the form on the first poll after typing, despite no UI change.
+      : next === "compose" ? [S.F.timing, S.F.level, S.F.arm, S.F.assignee, S.F.srcKind, liveTasks().filter((x) => !isTerminal(x)).map((x) => x.goal)]
+      : next === "due" ? [S.due, S.dueBusy, S.duePending, S.dueBlocked, pendingTasks().map((x) => [x.id, x.t.goal, dueAt(x.t), x.t.timezone])]
+      : null);
+    if (next === kind && sig === key) return;
+    if (next !== kind) host.replaceChildren(...overlays());
+    else if (next) {
+      const current = host.querySelector(".tk-pop"), fresh = overlays()[1];
+      const scroll = current.scrollTop, active = document.activeElement;
+      const inputs = [...current.querySelectorAll("input,textarea")], index = inputs.indexOf(active);
+      const field = index < 0 ? null : { value: active.value, start: active.selectionStart, end: active.selectionEnd };
+      current.replaceChildren(...fresh.childNodes);
+      current.scrollTop = scroll;
+      if (field) {
+        const input = current.querySelectorAll("input,textarea")[index];
+        if (input) { input.value = field.value; input.focus({ preventScroll: true }); input.setSelectionRange(field.start, field.end); }
+      }
+    }
+    kind = next; key = sig;
+  };
 }

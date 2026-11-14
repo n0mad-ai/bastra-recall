@@ -208,7 +208,7 @@ function armPreview(el, it, i) {
     const half = track.scrollWidth / 2 || 1;
     const open = () => { el.querySelector(".tkr__arm")?.remove(); tk.arm = null; tk.open = i; el.classList.add("is-open"); syncPlay(); showPreview(it, { il: r.left - d - o.left, iw: r.width, rootW: o.width }); };
     if (d) { tk.nudge = (tk.nudge + d) % half; tk.hold = true; setVars(track, { "--tkr-nudge": `${-tk.nudge}px` }); syncPlay(); setTimeout(open, 190); } else open();
-  }, 2000);
+  }, 1000);
 }
 
 function closePreview() {

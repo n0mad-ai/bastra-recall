@@ -118,11 +118,13 @@
 .tkr__track.is-paused { animation-play-state: paused; }
 .tkr__item { position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px 0 14px; border: 0; background: transparent; color: var(--ink); font-size: 12.5px; white-space: nowrap; cursor: pointer; transition: background .25s, color .2s; }
 .tkr__item:hover, .tkr__item.is-open { color: var(--accent); }
-.tkr__arm { position: absolute; left: 14px; right: 18px; bottom: 6px; height: 1px; background: var(--accent); box-shadow: 0 0 6px var(--accent); transform-origin: left; animation: tkr-arm 2s linear both; }
+.tkr__arm { position: absolute; left: 14px; right: 18px; bottom: 6px; height: 1px; background: var(--accent); box-shadow: 0 0 6px var(--accent); transform-origin: left; animation: tkr-arm 1s linear both; }
 /* Real task goals can be long: one ticker entry never exceeds 360 px of text. */
 .tkr__text { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
-.tkr__dia { width: 5px; height: 5px; background: var(--c); box-shadow: 0 0 6px var(--c); transform: rotate(45deg); }
-.tkr__tag { font: 500 9px var(--mono); letter-spacing: .16em; color: var(--c); }
+/* Optical alignment: the mono caps/diamond sit above the condensed text's
+ * visible centre despite flex centring their line boxes. */
+.tkr__dia { width: 5px; height: 5px; background: var(--c); box-shadow: 0 0 6px var(--c); transform: translateY(1.5px) rotate(45deg); }
+.tkr__tag { font: 500 9px var(--mono); letter-spacing: .16em; color: var(--c); transform: translateY(1.5px); }
 .tkr__meta { font: 10px var(--mono); color: var(--muted); }
 .tkr__empty { display: flex; align-items: center; padding: 0 14px; font: 10.5px var(--mono); color: var(--muted); white-space: nowrap; }
 .tkr__sum { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 12px; border-left: 1px solid var(--line-12); font: 10.5px var(--mono); color: var(--muted); white-space: nowrap; }
