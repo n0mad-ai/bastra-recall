@@ -66,3 +66,28 @@ test("the agent's real vault picker keeps locked Pro views closed and shows the 
   assert.equal(context.pick("chronos"), true);
   assert.equal(state.view, "chronos");
 });
+
+test("earlier answers omit absent source elements before native append and preserve present sources", async () => {
+  const source = await readFile(new URL("../../packages/daemon/webui/v22/js/agent.js", import.meta.url), "utf8");
+  const history = source.slice(source.indexOf("  const pairs = [];"), source.indexOf("  msgBox.className ="));
+  const sourceNode = { tag: "source-button" }, appended = [];
+  const context = vm.createContext({
+    chatState: { msgs: [
+      { text: "First question" }, { text: "First answer" },
+      { text: "Second question" }, { text: "Second answer", sources: [] },
+      { text: "Third question" }, { text: "Third answer", sources: [["Title", "reference", "id"]] },
+    ] },
+    msgBox: { append: (...children) => appended.push(...children) }, clear: (el) => el,
+    h: (tag, props, ...children) => ({ tag, text: props?.text, children }),
+    md: (text) => [text], srcButtons: () => [sourceNode], t: (key) => key,
+  });
+  vm.runInContext(history, context);
+  assert.ok(appended.every((node) => node !== null && node !== undefined), "native append must never receive null/undefined children");
+  assert.deepEqual(appended.filter((node) => node.tag === "div.msg.msg--you").map((node) => node.text), ["Third question", "Second question", "First question"]);
+  const sources = appended.filter((node) => node.tag === "div.agent__srcs.agent__srcs--old");
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].children[0], sourceNode);
+  context.chatState.msgs = []; appended.length = 0;
+  vm.runInContext(`{${history}}`, context);
+  assert.deepEqual(appended, []);
+});

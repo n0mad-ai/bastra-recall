@@ -311,7 +311,7 @@ export function render(L) {
   for (let i = 0; i + 1 < chatState.msgs.length; i += 2) pairs.unshift([chatState.msgs[i], chatState.msgs[i + 1]]);
   clear(msgBox).append(...(pairs.length ? [h("span.agent__srcs-l", { text: t("agent.earlier") })] : []), ...pairs.flatMap(([you, rec]) => [
     h("div.msg.msg--you", { text: you.text }), h("div.msg.msg--recall.agent__md", null, ...md(rec.text)),
-    rec.sources?.length ? h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources)) : null]));
+    ...(rec.sources?.length ? [h("div.agent__srcs.agent__srcs--old", null, ...srcButtons(rec.sources))] : [])]));
   msgBox.className = pairs.length ? "agent__srcs agent__hist" : "";
   renderConvs();
   const keys = getArea(state.view)?.presetKeys || VAULT_PRESETS;

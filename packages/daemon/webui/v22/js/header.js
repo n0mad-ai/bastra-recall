@@ -67,13 +67,16 @@ function closeWeather() {
 
 function positionWeather() {
   if (!wxPop) return;
-  const r = wxBtn.getBoundingClientRect(), a = app.getBoundingClientRect();
-  const x = Math.max(12, Math.min(r.right - a.left - wxPop.offsetWidth, a.width - wxPop.offsetWidth - 12));
-  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top + 8}px` });
+  const r = rightTab.getBoundingClientRect(), a = app.getBoundingClientRect();
+  const x = Math.max(12, r.right - a.left - wxPop.offsetWidth);
+  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px` });
 }
 
 function openWeather() {
-  wxPop = h("div.wx-pop", { role: "dialog", "aria-label": t("status.weatherPlace") }, weatherPicker(placeWeather(), closeWeather));
+  wxPop = h("div.wx-pop", { role: "dialog", "aria-label": t("status.weatherPlace"), vars: { "--c": "var(--accent)" } },
+    h("div.tp__tex"), h("span.tp__scan"),
+    h("div.tp__head", null, h("span.tp__tagw", null, h("span.tp__dia"), h("span.tp__tag", { text: t("status.weatherPlace") }))),
+    h("div.tp__body", null, weatherPicker(placeWeather(), closeWeather)));
   app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); positionWeather();
   wxPop.querySelector("input")?.focus();
 }
