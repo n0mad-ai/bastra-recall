@@ -1,23 +1,44 @@
 // Right panel ("lens"): tabs per area, the Areas list for vault views,
 // active-row marker on the outer edge, report links at the bottom.
-import { h, s, clear, setVars } from "./dom.js";
+import { h, s, icon, clear, setVars } from "./dom.js";
 import { t, numberFmt } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data } from "./data.js";
-import { getArea } from "./areas.js";
+import { getArea, ICON, VAULT_VIEWS } from "./areas.js";
+import { FREE_VIEWS, isPro, viewLocked, pickVaultView } from "./views/pro-views.js";
 import { signalsTab } from "./views/signals.js";
 import { panelIndicator } from "./panel-indicator.js";
 import { liveTab } from "./views/live-tab.js";
 
 // Vault views (no tabs of their own): Areas, Signals, View, Live.
+// View: the vault views to pick from (Daniel, 14.11.2026), below them the
+// view's own display settings when it has some (registerArea({ viewTab })).
 const VAULT_TABS = [{ id: "areas", labelKey: "lens.areas", render: (b) => { b.append(areasTab()); } },
-  { id: "signals", labelKey: "lens.signals", render: (b) => signalsTab(b) }, { id: "view", labelKey: "lens.view" }, liveTab];
-// A vault view may fill the View tab (registerArea({ viewTab: render })).
-const tabsOf = (view) => {
-  const a = getArea(view);
-  if (a?.tabs) return a.tabs;
-  return a?.viewTab ? VAULT_TABS.map((x) => (x.id === "view" ? { ...x, render: a.viewTab } : x)) : VAULT_TABS;
-};
+  { id: "signals", labelKey: "lens.signals", render: (b) => signalsTab(b) }, { id: "view", labelKey: "lens.view", render: (b) => viewTab(b) }, liveTab];
+const tabsOf = (view) => getArea(view)?.tabs || VAULT_TABS;
+
+function viewTab(body) {
+  const cur = state.view;
+  const row = (v) => {
+    const on = v === cur, locked = viewLocked(v);
+    return h("button.vw-item", { type: "button", cls: [on ? "is-on" : "", locked ? "is-locked" : ""].join(" "), "data-lsel": on ? "1" : null, "aria-pressed": String(on), "aria-disabled": locked ? "true" : null,
+      on: { click: () => { if (!on) pickVaultView(v); } } },
+      h("span.vw-item__ic", null, icon(ICON[v])),
+      // name and badge wrap onto two lines where the panel is narrow
+      h("span.vw-item__txt", null, h("span.vw-item__n", { text: t(`view.${v}`) }), isPro(v) ? h("span.vw-badge", { text: t("vv.proSoon") }) : null),
+      on ? h("span.dot", { "aria-hidden": "true" }) : null);
+  };
+  const views = [...FREE_VIEWS, ...VAULT_VIEWS.filter(isPro)];
+  body.append(h("div.lens__sec.vw", null,
+    h("div.lens__h", null, h("span.lens__h-t", { text: t("vv.views") }), h("span.lens__h-n", { text: String(views.length) })),
+    h("p.vw__p", { text: t("vv.viewsText") }),
+    h("div.vw__list", null, views.map(row))));
+  const own = getArea(cur)?.viewTab;
+  if (typeof own !== "function") return null;
+  const sub = h("div.vw__own");
+  body.append(sub);
+  return own(sub);
+}
 
 // Footer icons, same drawings as the old UI's #feedback-row.
 const strokes = (...lines) => s("g", { stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round" },

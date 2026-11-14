@@ -5,7 +5,7 @@ import { state, setState, subscribe } from "./state.js";
 import { computeLayout, applyLayout } from "./layout.js";
 import { getArea } from "./areas.js";
 import { data, onData, startPolling } from "./data.js";
-import { mountNav, updateNav, closeVp } from "./nav.js";
+import { mountNav, updateNav } from "./nav.js";
 import { mountHeader, updateHeader } from "./header.js";
 import * as agent from "./agent.js";
 import * as footer from "./footer.js";
@@ -57,7 +57,6 @@ function update(changed) {
 
 subscribe((s) => {
   const changed = new Set(Object.keys(s).filter((k) => s[k] !== prev[k]));
-  if (changed.has("view") && prev.vpOpen && s.vpOpen) closeVp();
   prev = { ...s };
   update(changed);
 });
@@ -66,7 +65,6 @@ onData(() => update(new Set(["data"])));
 window.addEventListener("resize", () => setState({ vw: window.innerWidth, vh: window.innerHeight }));
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (state.vpOpen) { closeVp(); return; }
   if (state.focus) setState({ focus: null }); else setState({ jOpen: false });
 });
 

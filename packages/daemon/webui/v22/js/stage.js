@@ -9,10 +9,12 @@
 // Vault views register without `section` and get the bare stage.
 import { h, clear } from "./dom.js";
 import { t } from "./i18n.js";
-import { state } from "./state.js";
-import { getArea } from "./areas.js";
+import { state, setState } from "./state.js";
+import { getArea, VAULT_VIEWS } from "./areas.js";
+import { closeMemoryBrowser } from "./views/memory-browser.js";
+import { viewLocked, proOpen, lastVaultView } from "./views/pro-views.js";
 
-let stage, current = null, unmount = null;
+let stage, current = null, unmount = null, closing = false;
 
 export function mountStage(app) {
   stage = h("main.stage");
@@ -20,7 +22,20 @@ export function mountStage(app) {
 }
 
 export function render(ctx) {
-  if (current === state.view) return;
+  if (current === state.view || closing) return;
+  // A locked Pro view (views/pro-views.js) never reaches the stage, whatever
+  // route asked for it: before /ui/health answers nothing mounts yet, then it
+  // falls back to a free view (with the Pro hint unless at start-up).
+  if (viewLocked(state.view)) {
+    if (proOpen() === null) return;
+    const toast = current === null ? state.toast : t("vv.proHint");
+    queueMicrotask(() => setState({ view: lastVaultView(), toast }));
+    return;
+  }
+  // Leaving the vault views with the memory browser open: the browser shrinks
+  // away first, then the area changes (every route: rail, header, links). It
+  // stays open between vault views (memory-browser.js).
+  if (VAULT_VIEWS.includes(current) && !VAULT_VIEWS.includes(state.view) && closeMemoryBrowser(() => { closing = false; render(ctx); })) { closing = true; return; }
   current = state.view;
   if (typeof unmount === "function") unmount();
   unmount = null;

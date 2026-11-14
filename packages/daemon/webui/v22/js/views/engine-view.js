@@ -13,6 +13,7 @@ import { attach, engine } from "./engine-host.js";
 import { signalMatch } from "./signals.js";
 import { CORES } from "../../../js/managers/orbit-core.js";
 import { weatherPicker } from "../weather-place.js";
+import { loadingBlock } from "../sections/loading.js";
 
 /** v22 view id → engine view id (old UI data-view). */
 export const ENGINE_VIEW = { mindspace: "orbit", clouds: "clouds", semantic: "semantic" };
@@ -45,21 +46,38 @@ export function mountEngineView(id, stage) {
   // memory browser over this view; "show" flies to the memory (old select())
   const unMb = mountMemoryBrowser(stage, { showMemory: (mid) => { const n = engine.get()?.sim.byId.get(mid); if (n) pick(n); } });
 
-  let detach = null, sel = null, selM = null, card = null, cardKey = "", pct = -1, dead = false;
+  let detach = null, sel = null, selM = null, card = null, cardKey = "", pct = -1, dead = false, waiting = false, loader = null;
+
+  // Until the view is entered the engine would still draw the previous view's
+  // layout (Semantic loads its layout for seconds, Clouds settles ~1 s of
+  // physics on its first entry): the canvas stays hidden and the run
+  // indicator covers the stage (css/views.css › .ev-wait; it fades in after a
+  // short wait, so quick switches do not flash).
+  function loading(on) {
+    stage.classList.toggle("ev-wait", on);
+    if (on && !loader) { loader = h("div.ld-stage.ev-load", null, loadingBlock(t("ev.loading"))); stage.append(loader); }
+    if (!on && loader) { loader.remove(); loader = null; }
+  }
 
   function start() {
-    if (detach || dead || !data.graph) return;
-    note.hidden = false; note.textContent = t("ev.loading");
-    detach = attach(stage, ENGINE_VIEW[id], {
-      onSelect: pick,
-      onHover: hover,
-      onFrame: place,
-      onReady: () => { note.hidden = true; look(); },
-      onError: (err) => { note.hidden = false; note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) }); },
-    });
-    engine.freeze(state.covered); // a memory browser already open over this view
-    if (state.focus) engine.hold(true); // an area opened before this view keeps it still
-    look();
+    if (detach || waiting || dead || !data.graph) return;
+    waiting = true;
+    loading(true);
+    // two frames: the indicator is painted before a synchronous engine entry blocks
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      waiting = false;
+      if (dead || detach) return;
+      detach = attach(stage, ENGINE_VIEW[id], {
+        onSelect: pick,
+        onHover: hover,
+        onFrame: place,
+        onReady: () => { loading(false); note.hidden = true; look(); },
+        onError: (err) => { loading(false); note.hidden = false; note.textContent = t("ev.semUnavailable", { e: err?.message || String(err) }); },
+      });
+      engine.freeze(state.covered); // a memory browser already open over this view
+      if (state.focus) engine.hold(true); // an area opened before this view keeps it still
+      look();
+    }));
   }
 
   // ── engine look: area focus = cluster filter, area hover = preview, footer
@@ -177,6 +195,7 @@ export function mountEngineView(id, stage) {
 
   return () => {
     dead = true;
+    loading(false);
     unMb(); unsub(); unData();
     window.removeEventListener("keydown", onKey, true);
     if (detach) detach();

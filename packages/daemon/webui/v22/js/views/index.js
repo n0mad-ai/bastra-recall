@@ -1,5 +1,6 @@
 // Vault views registered as areas. Group "vault-view" is not in GROUPS, so
-// the rail adds no buttons; the views are picked from the vault pop-over.
+// the rail adds no buttons; the views are picked in the right panel › View
+// (js/lens.js; Free and Pro: pro-views.js).
 // Mindspace, Clouds and Semantic run the old map engines unchanged
 // (engine-host.js) inside the v22 frame (engine-view.js).
 import { registerArea, ICON } from "../areas.js";

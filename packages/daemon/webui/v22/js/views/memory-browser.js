@@ -24,6 +24,7 @@ import { ask } from "../agent.js";
 import { cover } from "../cover.js";
 import { vault, areaCol, ago } from "./vault-data.js";
 import { TC, INK, ACC, MUT, dateStr, lastPress } from "./chrome.js";
+import { viewLocked, lastVaultView } from "./pro-views.js";
 import en from "../i18n/membrowser-en.js";
 import de from "../i18n/membrowser-de.js";
 
@@ -38,6 +39,10 @@ let inst = null;
  *  false when no vault view is mounted or it has no such hook. */
 export function showInView(id) { if (!inst?.showMemory) return false; inst.showMemory(id); return true; }
 
+/** Close an open browser with its shrink, then run `after` (stage.js: leaving
+ *  the vault views closes it before the area changes). false when none is open. */
+export function closeMemoryBrowser(after) { if (!M.open || !inst) return false; inst.hide(after); return true; }
+
 /** Open the browser on an area (or "all"), optionally with a memory selected. */
 /** `from` is where the user clicked: the clicked element's DOMRect (or a
  *  { left, top, right, bottom } box) taken at click time — the window grows
@@ -45,8 +50,9 @@ export function showInView(id) { if (!inst?.showMemory) return false; inst.showM
 export function openMemoryBrowser(scope, sel, from) {
   Object.assign(M, { open: true, scope: scope || "all", sel: sel || null, q: "", type: "all", menu: false, reader: !!sel, limit: PAGE, sem: [], semQ: "", from: box(from) || pressBox(), grow: true, focus: !!sel });
   // The browser lives in the vault views (ring, lenses, map engines), which
-  // mount it; from anywhere else the ring takes over and plays the same grow.
-  if (inst) inst.show(true); else setState({ view: "ring" });
+  // mount it; from anywhere else the ring takes over and plays the same grow
+  // (the last free view while the Pro views are locked, pro-views.js).
+  if (inst) inst.show(true); else setState({ view: viewLocked("ring") ? lastVaultView() : "ring" });
 }
 
 const box = (r) => (r && [r.left, r.top, r.right, r.bottom].every(Number.isFinite) ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null);
@@ -164,14 +170,16 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     h("div.mb__body", null, list, reader));
   stage.append(root);
 
-  let dead = false, closeT = 0, revealT = 0, semT = 0, semSeq = 0, order = [], readerFor = null, view = null;
+  // growing: the open animation runs; its end plays the visible scroll to the
+  // selected memory, so earlier reveals (resize, graph arrival) must not jump.
+  let dead = false, closeT = 0, revealT = 0, semT = 0, semSeq = 0, order = [], readerFor = null, view = null, growing = false, glideId = null, glideT = 0;
 
   // ── open / close (prototype openMB / closeMB) ──
   function show(anim) {
     clearTimeout(closeT);
     input.value = M.q;
     if (!care) loadCare().then(() => { if (!dead && M.open) renderReader(true); });
-    if (!anim) { root.classList.add("is-on", "is-grow"); render(); scheduleReveal(); cover("mb", true); return; }
+    if (!anim) { growing = false; root.classList.add("is-on", "is-grow"); render(); scheduleReveal(); cover("mb", true); return; }
     M.grow = false;
     // Prototype openMB: clip-path from the origin box to the full stage
     // (.5s cubic-bezier(.65,0,.25,1)); without an origin from the centre, fading in.
@@ -180,16 +188,18 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (o) setVars(root, { "--ct": cl(o.top - sb.top, sb.height), "--cr": cl(sb.right - o.right, sb.width), "--cb": cl(sb.bottom - o.bottom, sb.height), "--cl": cl(o.left - sb.left, sb.width), "--op": "1" });
     else setVars(root, { "--ct": "46%", "--cr": "46%", "--cb": "46%", "--cl": "46%", "--op": "0" });
     root.classList.remove("is-grow"); root.classList.add("is-on");
+    growing = true;
     render();
+    list.scrollTop = 0; // the list scrolls from the top to the memory once the window stands
     void root.offsetWidth;
-    requestAnimationFrame(() => { if (!dead && M.open) { root.classList.add("is-grow"); scheduleReveal(520); } });
+    requestAnimationFrame(() => { if (!dead && M.open) { root.classList.add("is-grow"); scheduleReveal(520, true); } });
     // the view underneath freezes once the window covers it (js/cover.js)
     closeT = setTimeout(() => { if (!dead && M.open) cover("mb", true); }, 520);
   }
   function hide(after) {
     M.menu = false; renderHead();
     root.classList.remove("is-grow");
-    clearTimeout(closeT);
+    clearTimeout(closeT); clearTimeout(revealT); clearTimeout(glideT); growing = false; glideId = null;
     cover("mb", false); // the view moves again while the window shrinks away
     closeT = setTimeout(() => { M.open = false; root.classList.remove("is-on"); after?.(); }, 480);
   }
@@ -217,7 +227,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (target && M.scope !== "all" && M.scope !== target.area) M.scope = target.area;
     view = model();
     renderHead(); renderBar(); renderPulse(); renderList(); renderReader();
-    if (target) { M.focus = false; scheduleReveal(); }
+    if (target) { M.focus = false; if (!growing) scheduleReveal(); }
   }
 
   function renderHead() {
@@ -296,6 +306,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (rows.length > shown.length) list.append(h("button.mb__more", { text: t("mb.more", { n: numberFmt.format(Math.min(PAGE, rows.length - shown.length)) }), on: { click: () => { M.limit += PAGE; render(); } } }));
     if (!rows.length) list.append(h("div.mb__empty", { text: t("mb.empty", { s: M.scope === "all" ? t("mb.all") : M.scope }) }));
     list.scrollTop = top;
+    if (glideId && glideId === M.sel) reveal(glideId, true);
   }
 
   // ── selection ──
@@ -310,17 +321,31 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
     if (n >= M.limit) M.limit = Math.ceil((n + 1) / PAGE) * PAGE;
     select(order[n]);
   }
-  function reveal(id) {
+  /** Bring the selected row into view. `glide` (after the open animation):
+   *  centre it with a visible scroll from where the list stands; far targets
+   *  first jump to one list height before the row, so the glide stays short
+   *  and arrives in time (old memories sit thousands of rows down). Otherwise
+   *  jump, and only when the row is out of view. */
+  function reveal(id, glide) {
     const el = list.querySelector(`[data-id="${CSS.escape(id)}"]`); if (!el) return;
     const r = el.getBoundingClientRect(), b = list.getBoundingClientRect();
-    // Jump to the target after layout: long smooth scrolls can still be far
-    // from an old memory when the grow transition has finished.
-    if (r.top < b.top + 34 || r.bottom > b.bottom) list.scrollTo({ top: r.top - b.top + list.scrollTop - 40, behavior: "instant" });
+    if (!b.height) return; // narrow reader: the list is hidden, "back" reveals again
+    const max = list.scrollHeight - list.clientHeight;
+    const to = Math.max(0, Math.min(max, r.top - b.top + list.scrollTop - (b.height - r.height) / 2));
+    if (!glide) { if (r.top < b.top + 34 || r.bottom > b.bottom) list.scrollTo({ top: to, behavior: "instant" }); return; }
+    if (Math.abs(to - list.scrollTop) < 4) return;
+    if (Math.abs(to - list.scrollTop) > b.height * 1.5) list.scrollTo({ top: to > list.scrollTop ? to - b.height : to + b.height, behavior: "instant" });
+    list.scrollTo({ top: to, behavior: "smooth" });
+    // A list re-render (live data) cancels a running smooth scroll: renderList
+    // resumes it while the glide lasts, and its end makes sure the row is in view.
+    glideId = id; clearTimeout(glideT);
+    glideT = setTimeout(() => { glideId = null; if (!dead && M.open && M.sel === id) reveal(id); }, 1000);
   }
-  function scheduleReveal(delay = 0) {
+  function scheduleReveal(delay = 0, glide = false) {
     clearTimeout(revealT);
+    if (!glide) growing = false; // a user step or link ends the pending open glide
     const id = M.sel;
-    revealT = setTimeout(() => { if (!dead && M.open && M.sel === id) reveal(id); }, delay);
+    revealT = setTimeout(() => { if (glide) growing = false; if (!dead && M.open && M.sel === id) reveal(id, glide); }, delay);
   }
   /** A linked memory: select it, widening the scope when it lives elsewhere. */
   function follow(id) {
@@ -467,15 +492,15 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   window.addEventListener("keydown", onKey, true);
   const onDoc = (e) => { if (M.menu && !e.target.closest?.(".mb__scope")) { M.menu = false; renderHead(); } };
   document.addEventListener("pointerdown", onDoc);
-  const ro = new ResizeObserver(() => { if (M.open) { renderReader(); scheduleReveal(); } });
+  const ro = new ResizeObserver(() => { if (M.open) { renderReader(); if (!growing) scheduleReveal(); } });
   ro.observe(root);
   const unData = onData(() => { if (M.open) render(); });
 
-  inst = { show, showMemory };
+  inst = { show, showMemory, hide };
   if (M.open) show(M.grow);
 
   return () => {
-    dead = true; clearTimeout(closeT); clearTimeout(revealT); clearTimeout(semT);
+    dead = true; clearTimeout(closeT); clearTimeout(revealT); clearTimeout(glideT); clearTimeout(semT);
     // A close that was still animating finishes here.
     if (!root.classList.contains("is-grow")) M.open = false;
     cover("mb", false); // the next vault view covers again if the browser stays open

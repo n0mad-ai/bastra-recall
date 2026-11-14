@@ -59,6 +59,9 @@ export interface HealthDeps {
    *  #719: `configFingerprint` is the fingerprint of that env's behaviour
    *  settings (configFingerprint, same file). */
   origin?: { startedBy: string; envOrigin: string; configFingerprint?: string };
+  /** BASTRA_PRO_PREVIEW: Pro views in the web UI are usable on this machine
+   *  (the maintainer's own install). Read once at start. Absent = off. */
+  proPreview?: boolean;
 }
 
 export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
@@ -112,6 +115,8 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     ...(deps.power ? { power: deps.power() } : {}),
     ...(deps.origin ? { started_by: deps.origin.startedBy, env_origin: deps.origin.envOrigin } : {}),
     ...(deps.origin?.configFingerprint ? { config_fingerprint: deps.origin.configFingerprint } : {}),
+    // Web UI v22: Pro vault views unlocked for a preview (BASTRA_PRO_PREVIEW).
+    pro_preview: deps.proPreview === true,
     update_available:
       updateState && updateState.hasUpdate
         ? {

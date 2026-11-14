@@ -181,3 +181,26 @@ test("api health: a probe must not keep the daemon awake", async () => {
     assert.equal(activity(), 1);
   });
 });
+
+test("ui health: pro_preview follows BASTRA_PRO_PREVIEW, read at start (web UI v22 Pro views)", async () => {
+  const before = process.env.BASTRA_PRO_PREVIEW;
+  try {
+    delete process.env.BASTRA_PRO_PREVIEW;
+    await withServer(async (port) => {
+      const body = JSON.parse((await httpReq(port, "GET", "/ui/health")).body) as { pro_preview?: unknown };
+      assert.equal(body.pro_preview, false, "unset: the Pro views stay locked");
+    });
+    process.env.BASTRA_PRO_PREVIEW = "1";
+    await withServer(async (port) => {
+      const body = JSON.parse((await httpReq(port, "GET", "/ui/health")).body) as { pro_preview?: unknown };
+      assert.equal(body.pro_preview, true);
+    });
+    process.env.BASTRA_PRO_PREVIEW = "0";
+    await withServer(async (port) => {
+      const body = JSON.parse((await httpReq(port, "GET", "/ui/health")).body) as { pro_preview?: unknown };
+      assert.equal(body.pro_preview, false);
+    });
+  } finally {
+    if (before === undefined) delete process.env.BASTRA_PRO_PREVIEW; else process.env.BASTRA_PRO_PREVIEW = before;
+  }
+});

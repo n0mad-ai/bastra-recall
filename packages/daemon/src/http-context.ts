@@ -25,7 +25,7 @@ import { createLiveUpdates } from "./live-updates.js";
 import { getApiToken, getCorsOrigins } from "./settings.js";
 import { corsAllowlistFromEnv, resolveCorsAllowlist } from "./http-auth.js";
 import type { HttpOptions } from "./http.js";
-import { envOff } from "./env.js";
+import { envOff, envFirst, isOnValue } from "./env.js";
 import { createOAuthState, type OAuthState } from "./oauth-server.js";
 
 export interface HttpServerContext {
@@ -111,6 +111,9 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
   // runs, and /health is polled about once a second by the statusline.
   const buildRevision = ownBuildStamp()?.revision ?? null;
 
+  // Web UI v22 Pro views (Ring, Chronos, lenses) for a preview install; read once.
+  const proPreview = isOnValue(envFirst("BASTRA_PRO_PREVIEW"));
+
   return {
     apiToken,
     loopbackSkip,
@@ -133,6 +136,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
         startedAtMs,
         codeStale: () => staleness.check(),
         buildRevision,
+        proPreview,
       }),
     isHealthProbe: (url: string): boolean => url === "/health" || url === "/api/v1/health",
     semanticCache: null,
