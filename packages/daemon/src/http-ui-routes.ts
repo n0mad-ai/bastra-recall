@@ -7,6 +7,8 @@
  */
 import { dispatchTaskUi } from "./task-ui-session.js";
 import { defaultTaskContext } from "./task-transport.js";
+import { callTaskCrud } from "./task-service.js";
+import { taskClientToken } from "./task-client-auth.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault, SearchIndex } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
@@ -157,7 +159,14 @@ export function dispatchUiRoutes(
       return m && m.fm.sensitivity !== "private" ? m.body : null;
     };
     const isPrivate = (id: string) => vault.get(id)?.fm.sensitivity === "private";
-    handleUiChat(req, res, { search, chat: ctx.uiChat ?? null, getBody, history: chatHistory, isPrivate }).catch(() =>
+    // Same read the tasks area does (task_list as the local agent principal).
+    const listTasks = async (): Promise<unknown> => {
+      const token = taskClientToken();
+      if (!token) return null;
+      const result = (await callTaskCrud(defaultTaskContext(toolDeps, true), `Bearer ${token}`, "task_list", {})) as { tasks?: unknown };
+      return result.tasks ?? [];
+    };
+    handleUiChat(req, res, { search, chat: ctx.uiChat ?? null, getBody, history: chatHistory, isPrivate, listTasks }).catch(() =>
       sendJson(res, 500, { error: "ui error" }),
     );
     return true;

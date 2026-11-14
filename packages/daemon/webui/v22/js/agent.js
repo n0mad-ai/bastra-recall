@@ -1,7 +1,7 @@
 // Agent window (Recall) and the agent pod in the footer.
 // Free build: text only — no microphone and no LIVE/realtime button (Pro).
 import { h, s, clear, setVars } from "./dom.js";
-import { t, numberFmt } from "./i18n.js";
+import { t, numberFmt, LANG } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
 import { getArea } from "./areas.js";
@@ -95,7 +95,7 @@ export function ask(q) {
   setState({ jOpen: true, focus: null, agent: "thinking", hits: [] });
   render();
   const history = chatState.history.slice(-6);
-  chat(q, history, chatState.conv).then(async ({ ok, status, body }) => {
+  chat(q, history, chatState.conv, state.view, LANG).then(async ({ ok, status, body }) => {
     if (seq !== chatState.seq) return;
     let answer, sources = [];
     if (ok && typeof body.reply === "string") {

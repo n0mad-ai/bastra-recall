@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
-import { parseQueries, parseAnswer, runSearchCopilot } from "../src/webui-chat.js";
+import { parseQueries, parseAnswer, runSearchCopilot, buildAnswerPrompt, buildTaskContext, tasksFromList } from "../src/webui-chat.js";
 
 test("parseQueries: strips bullets, dedupes, always leads with the raw message", () => {
   const q = parseQueries("- browser view\n2) Browser View\n* ring wheel drill\n{json}", "warum browser?");
@@ -101,4 +101,41 @@ test("runSearchCopilot: fans out queries, grounds the answer, honors the model's
     await vault.stop?.();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
+});
+
+test("tasks area: the answer prompt carries the real tasks, bucketed by local day", () => {
+  const tz = "Europe/Berlin";
+  const now = Date.parse("2026-11-14T12:00:00Z"); // Saturday 13:00 Berlin
+  const tasks = tasksFromList([
+    { goal: "Revoke old token", state: "due", armed: true, schedule: { at: Date.parse("2026-11-05T09:00:00Z") } },
+    { goal: "Call the garage", state: "pending", armed: true, next_slot: { at: Date.parse("2026-11-14T16:30:00Z") } },
+    { goal: "Plan trip", state: "pending", armed: false, schedule: { at: Date.parse("2026-11-20T08:00:00Z") } },
+    { goal: "Old reminder", state: "resolved", armed: false, schedule: { at: Date.parse("2026-10-01T08:00:00Z") } },
+    { goal: "Archived", state: "due", archived: true },
+    { state: "due" }, // no title → dropped (external data)
+    "garbage",
+  ]);
+  assert.equal(tasks.length, 4);
+  const ctx = buildTaskContext(tasks, now, tz);
+  assert.match(ctx, /Current local date and time: Saturday 2026-11-14 13:00/);
+  assert.match(ctx, /DUE TODAY \(1\):\n- Call the garage — due Saturday 2026-11-14 17:30; status: planned, not due yet/);
+  assert.match(ctx, /OVERDUE[^\n]*\(1\):\n- Revoke old token — due Thursday 2026-11-05 10:00; status: due, waiting for the user/);
+  assert.match(ctx, /Plan trip[^\n]*draft, not approved yet/);
+  assert.match(ctx, /Finished or cancelled tasks: 1\./);
+  assert.ok(!ctx.includes("Old reminder") && !ctx.includes("Archived"));
+
+  const empty = buildTaskContext([], now, tz);
+  assert.match(empty, /DUE TODAY \(0\):\n\(none\)/);
+  assert.match(buildTaskContext(null, now, tz), /TASK LIST: unavailable/);
+  const long = tasksFromList([{ goal: `Remind "Daniel" ${"to revoke the old token on the server ".repeat(4)}`, state: "due" }])[0];
+  assert.ok(long.title.length <= 91 && long.title.endsWith("…") && !long.title.includes('"'), long.title);
+
+  const prompt = buildAnswerPrompt("Was ist heute fällig?", [], undefined, ctx, "de");
+  assert.match(prompt, /TASKS area/);
+  assert.match(prompt, /Call the garage/);
+  assert.match(prompt, /answered ONLY from the TASK LIST/);
+  assert.match(prompt, /nothing is due today/);
+  assert.match(prompt, /language code "de"/);
+  // outside the tasks area the prompt stays the plain search copilot
+  assert.doesNotMatch(buildAnswerPrompt("x", []), /TASK LIST/);
 });
