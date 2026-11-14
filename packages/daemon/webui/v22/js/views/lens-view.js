@@ -68,11 +68,25 @@ export function mountLensView(kind, stage) {
   const unsub = subscribe((st) => {
     const ch = (k) => st[k] !== prev[k];
     if (ch("focus") && selMem) closeCard();
-    if (ch("focus") || ch("hover") || windowKey() !== prevWin) lens.update(opts());
+    if (ch("focus") || ch("hover") || windowKey() !== prevWin) lens.update({ ...opts(), replay: windowKey() !== prevWin });
     if (ch("hits")) place();
     prev = { ...st }; prevWin = windowKey();
   });
-  const unData = onData(() => { const v = vault(); if (v && (!shown || shown.src !== v)) lens.update(opts()); });
+  // Live vault update: new drawing data in place (no entrance sweep, zoom and
+  // selection stay). An open card follows its memory: same content → kept as
+  // is, changed → refilled without the entrance fade, deleted → closed.
+  const sig = (m) => [m.title, m.area, m.cls, m.at, m.recalled, m.links.length, m.summary].join("\u0001");
+  let seenV = vault();
+  const unData = onData(() => {
+    const v = vault(); if (!v || v === seenV) return;
+    seenV = v;
+    lens.update(opts());
+    if (!selMem) return;
+    const m = v.byId.get(selMem.id);
+    if (!m) { closeCard(); return; }
+    const was = sig(selMem); selMem = m;
+    if (sig(m) !== was) { buildCard(); card.el.classList.add("is-swap"); place(); }
+  });
 
   return () => { window.removeEventListener("keydown", onKey, true); unMb(); unsub(); unData(); lens.destroy(); };
 }

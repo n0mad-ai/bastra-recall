@@ -66,19 +66,36 @@ function chronos(g) {
   const yr = P.items.filter((x) => x.c >= 0 && x.c < DAYS);
   yr.forEach((x) => { const bi = bIdx.get(x.m.area); if (bi !== undefined) per[bi][Math.floor(x.c / BIN)]++; });
   const pmax = Math.max(1, ...per.flat());
+  const binA = (k) => a0 + ((NB - 1 - k + 0.5) / NB) * span;
   bands.forEach((b, bi) => {
     const r = R - (bi + 0.5) * bt, hot = foc === b.area || (hov && hov.area === b.area) || o.hoverArea === b.area, dim = foc && foc !== b.area;
-    const sp = (span * r) / NB;
+    const sp = (span * r) / NB, size = (c) => (c ? Math.min(bt * 0.42, sp * 0.44, 0.9 + Math.sqrt(c / pmax) * bt * 0.4) : 0.55);
     for (let k = 0; k < NB; k++) {
-      const a = a0 + ((NB - 1 - k + 0.5) / NB) * span; if (a > reveal) continue;
-      const c = per[bi][k], s = c ? Math.min(bt * 0.42, sp * 0.44, 0.9 + Math.sqrt(c / pmax) * bt * 0.4) : 0.55;
+      const a = binA(k); if (a > reveal) continue;
+      const c = per[bi][k], s = size(c);
       ctx.fillStyle = hot ? rgba(ACC, c ? 0.95 : 0.22) : rgba(INK, dim ? 0.05 : c ? 0.22 + 0.62 * Math.sqrt(c / pmax) : 0.07);
       ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, s, 0, TAU); ctx.fill();
     }
     const fs = Math.max(8, Math.min(10, bt * 0.66)); ctx.font = `${fs}px ${MONO}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillStyle = hot ? ACC : rgba(MUT, dim ? 0.45 : 0.95);
-    ctx.fillText(fit(ctx, b.area, 2 * r * Math.sin(GAP / 2) * 0.9), cx, cy - r);
-    g.reg((x, y) => Math.abs(Math.hypot(x - cx, y - cy) - r) < bt / 2, { key: "a:" + b.area, area: b.area, title: b.area, sub: tr("vv.lens.bandSub", { n: b.n }), hint: tr("vv.lens.focusArea") });
+    const label = fit(ctx, b.area, 2 * r * Math.sin(GAP / 2) * 0.9), labW = ctx.measureText(label).width;
+    ctx.fillText(label, cx, cy - r);
+    // Hit only what is visible: the band label in the gap and the band's
+    // non-empty 3-day dots (empty bins are near-invisible specks).
+    g.reg((x, y) => {
+      const dx = x - cx, dy = y - cy;
+      if (Math.abs(dx) <= labW / 2 + 3 && Math.abs(dy + r) <= fs / 2 + 2) return true;
+      if (Math.abs(Math.hypot(dx, dy) - r) >= bt / 2) return false;
+      let aa = Math.atan2(dy, dx); while (aa < a0) aa += TAU; while (aa >= a0 + TAU) aa -= TAU;
+      if (aa > reveal) return false;
+      const k = Math.round(NB - 0.5 - ((aa - a0) / span) * NB);
+      for (let j = k - 1; j <= k + 1; j++) {
+        if (j < 0 || j >= NB || !per[bi][j]) continue;
+        const aj = binA(j);
+        if (Math.hypot(x - (cx + Math.cos(aj) * r), y - (cy + Math.sin(aj) * r)) <= Math.max(size(per[bi][j]) + 3, bt / 2)) return true;
+      }
+      return false;
+    }, { key: "a:" + b.area, area: b.area, title: b.area, sub: tr("vv.lens.bandSub", { n: b.n }), hint: tr("vv.lens.focusArea") });
   });
   // week badges
   const wsp = (span * rWk) / WEEKS, bw = Math.min(17, wsp * 0.8), bh = Math.min(10, bt * 0.95);
@@ -260,13 +277,22 @@ function weave(g) {
     const [a0, a1] = arc.get(ar.area), hot = hArea === ar.area || foc === ar.area, dim = foc && foc !== ar.area;
     ctx.strokeStyle = hot ? ACC : (g.o.areaColor ? g.o.areaColor(ar.area, dim ? 0.25 : 0.85) : rgba(INK, 0.6)); ctx.lineWidth = 8; ctx.lineCap = "butt";
     ctx.beginPath(); ctx.arc(cx, cy, R + 4, a0, a0 + (a1 - a0) * t); ctx.stroke();
-    g.reg((x, y) => { const rr = Math.hypot(x - cx, y - cy); if (rr < R - 2 || rr > R + Lm * 0.9) return false; let aa = Math.atan2(y - cy, x - cx); while (aa < -Math.PI / 2) aa += TAU; while (aa > -Math.PI / 2 + TAU) aa -= TAU; return aa >= a0 && aa <= a1; }, { key: "a:" + ar.area, area: ar.area, title: ar.area, sub: tr("vv.lens.weaveSub", { n: ar.n, l: P.pairs.filter((p) => p.a.m.area === ar.area || p.b.m.area === ar.area).length }), hint: tr("vv.lens.focusArea") });
+    let lab = null; // drawn label: angle and radial length
     if ((a1 - a0) * R >= fs + 2) {
       ctx.font = `${fs}px ${MONO}`; const need = Math.min(Lm, ctx.measureText(`${ar.area} ${ar.n}`).width + 4);
       let best = (a0 + a1) / 2, bestRoom = avail(cx, cy, R + 14, best, w, h); const pad = Math.min((a1 - a0) / 2, (fs * 0.7) / R);
       if (bestRoom < need) for (let k = 0; k <= 16; k++) { const aa = a0 + pad + ((a1 - a0 - 2 * pad) * k) / 16, rm = avail(cx, cy, R + 14, aa, w, h); if (rm > bestRoom) { bestRoom = rm; best = aa; } }
-      if (bestRoom >= 40) { ctx.fillStyle = hot ? ACC : rgba(INK, dim ? 0.35 : 0.9); rad(ctx, fit(ctx, `${ar.area} ${ar.n}`, Math.min(Lm, bestRoom)), cx, cy, R + 14, best); }
+      if (bestRoom >= 40) { const s = fit(ctx, `${ar.area} ${ar.n}`, Math.min(Lm, bestRoom)); ctx.fillStyle = hot ? ACC : rgba(INK, dim ? 0.35 : 0.9); rad(ctx, s, cx, cy, R + 14, best); lab = { a: best, len: ctx.measureText(s).width }; }
     }
+    // Hit only what is drawn: the area arc (R..R+8) and its radial label.
+    g.reg((x, y) => {
+      const rr = Math.hypot(x - cx, y - cy); if (rr < R - 2) return false;
+      let aa = Math.atan2(y - cy, x - cx); while (aa < -Math.PI / 2) aa += TAU; while (aa > -Math.PI / 2 + TAU) aa -= TAU;
+      if (rr <= R + 10) return aa >= a0 && aa <= a1;
+      if (!lab || rr < R + 10 || rr > R + 16 + lab.len) return false;
+      let da = Math.abs(aa - lab.a); if (da > Math.PI) da = TAU - da;
+      return da * rr <= fs * 0.7 + 2;
+    }, { key: "a:" + ar.area, area: ar.area, title: ar.area, sub: tr("vv.lens.weaveSub", { n: ar.n, l: P.pairs.filter((p) => p.a.m.area === ar.area || p.b.m.area === ar.area).length }), hint: tr("vv.lens.focusArea") });
   });
   P.items.forEach((x) => {
     const aa = angOf(x.m.id), c = TC[x.m.cls] || INK, isH = x.m.id === hId, dm = dimA(g, x);
@@ -300,8 +326,10 @@ function halflife(g) {
   areas.forEach((ar) => {
     const [s0, s1] = sec.get(ar.area), on = !hArea || hArea === ar.area, ac = o.areaColor ? o.areaColor(ar.area, 1) : ACC;
     ctx.strokeStyle = ac; ctx.globalAlpha = on ? 0.9 : 0.3; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R + 7, s0, s0 + (s1 - s0) * t); ctx.stroke(); ctx.globalAlpha = 1;
-    if ((s1 - s0) * R > 34) { ctx.font = "600 9.5px " + SANS; ctx.letterSpacing = "1.2px"; ctx.fillStyle = on ? INK : MUT; const am = (s0 + s1) / 2; tan(ctx, fit(ctx, ar.area.toUpperCase(), Math.max(24, (s1 - s0) * (R + 18) - 10)), cx, cy, R + 18, am); ctx.letterSpacing = "0px"; }
-    reg((x, y) => { const d = Math.hypot(x - cx, y - cy); if (d < R + 2 || d > R + 30) return false; let a = Math.atan2(y - cy, x - cx); while (a < s0) a += TAU; return a <= s1; }, { key: "a:" + ar.area, area: ar.area, title: ar.area, sub: tr("vv.lens.halfSub", { n: ar.n, f: P.items.filter((x) => x.m.area === ar.area && x.u <= 7).length }), hint: tr("vv.lens.focusArea") });
+    let labA = 0; // half the label's angular width (0: no label)
+    if ((s1 - s0) * R > 34) { ctx.font = "600 9.5px " + SANS; ctx.letterSpacing = "1.2px"; ctx.fillStyle = on ? INK : MUT; const am = (s0 + s1) / 2, s = fit(ctx, ar.area.toUpperCase(), Math.max(24, (s1 - s0) * (R + 18) - 10)); tan(ctx, s, cx, cy, R + 18, am); labA = (ctx.measureText(s).width / 2 + 4) / (R + 18); ctx.letterSpacing = "0px"; }
+    // Hit only what is drawn: the sector arc (R+7) and the label above its middle.
+    reg((x, y) => { const d = Math.hypot(x - cx, y - cy); if (d < R + 2 || d > R + 26) return false; let a = Math.atan2(y - cy, x - cx); while (a < s0) a += TAU; if (a > s1) return false; return d <= R + 12 || Math.abs(a - (s0 + s1) / 2) <= labA; }, { key: "a:" + ar.area, area: ar.area, title: ar.area, sub: tr("vv.lens.halfSub", { n: ar.n, f: P.items.filter((x) => x.m.area === ar.area && x.u <= 7).length }), hint: tr("vv.lens.focusArea") });
   });
   const linked = new Set(); if (hid) { const x = P.byId.get(hid); x && x.m.links.forEach((l) => linked.add(l.id)); }
   const pos = new Map(), shown = P.items.filter((x) => sec.has(x.m.area));

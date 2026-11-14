@@ -14,7 +14,7 @@ const TAU = Math.PI * 2;
 
 export function mountLens(canvas, opts) {
   let o = { ...opts }, P = null, Pv = null, w = 0, h0 = 0, dpr = 1, t0 = performance.now(), prog = 0, raf = 0, hov = null, pts = [], regs = [], dead = false;
-  let z = 1, tx = 0, ty = 0, Z = 1, TX = 0, TY = 0, sel = null, fx = [], drag = null, lastZ = -1, openT = 0;
+  let z = 1, tx = 0, ty = 0, Z = 1, TX = 0, TY = 0, sel = null, fx = [], drag = null, lastZ = -1, openT = 0, resync = false;
   const ZMIN = 1, ZMAX = 6;
   const clampT = (zz, x, y) => [Math.min(0, Math.max(w - w * zz, x)), Math.min(0, Math.max(h0 - h0 * zz, y))];
   const aim = (zz, x, y) => { Z = Math.max(ZMIN, Math.min(ZMAX, zz)); [TX, TY] = clampT(Z, x, y); req(); };
@@ -56,6 +56,8 @@ export function mountLens(canvas, opts) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h0); pts = []; regs = [];
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty);
     if (P && VIEWS[o.kind]) VIEWS[o.kind]({ ctx, w, h: h0, P, o, t: ease(prog), hov, pt: (x, y, r, d) => pts.push([x, y, r, d]), reg: (test, d) => regs.push([test, d]) });
+    // after new data the selected memory may sit elsewhere (Chronos: a longer needle)
+    if (resync) { resync = false; const p = sel && findPt(sel.id); if (p) { sel.x = p[0]; sel.y = p[1]; sel.r = p[2] || 3; } }
     const px = 1 / z;
     if (sel) {
       const s = 7 * px + sel.r, a = 4 * px; ctx.strokeStyle = ACC; ctx.lineWidth = 1.5 * px; ctx.shadowColor = ACC; ctx.shadowBlur = 8;
@@ -127,13 +129,18 @@ export function mountLens(canvas, opts) {
     const changed = kindChanged || n.focus !== o.focus || n.hoverArea !== o.hoverArea || (n.vault && n.vault !== Pv) || !P;
     const focusChanged = n.focus !== undefined && n.focus !== o.focus;
     o = { ...o, ...n };
-    if (n.vault && n.vault !== Pv) { Pv = n.vault; P = prep(n.vault); t0 = performance.now(); }
+    // New data swaps in place. The entrance sweep plays for the first data and
+    // when asked (footer range change, as in the prototype) — not for a live
+    // vault update, which keeps zoom, pan, hover and selection as they are.
+    if (n.vault && n.vault !== Pv) { if (!P || n.replay) t0 = performance.now(); Pv = n.vault; P = prep(n.vault); resync = true; }
     if (kindChanged) { t0 = performance.now(); hov = null; hideTip(); sel = null; fx = []; Z = z = 1; TX = tx = TY = ty = 0; }
     if (focusChanged) sel = null;
     if (changed) req();
   }
   update(opts); resize();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(req);
+  // a memory's own dot, else the day dot that holds it (Chronos)
+  function findPt(id) { return pts.find(([, , , d]) => d && d.m && d.m.id === id) || pts.find(([, , , d]) => d && Array.isArray(d.items) && d.items.some((x) => x.m && x.m.id === id)); }
   const scr = (x, y) => [x * z + tx, y * z + ty];
   const vault0 = (id) => { for (const [, , , d] of pts) { if (d?.m?.id === id) return d.m; const it = Array.isArray(d?.items) && d.items.find((x) => x.m && x.m.id === id); if (it) return it.m; } return null; };
   return {
@@ -142,8 +149,7 @@ export function mountLens(canvas, opts) {
     reset() { sel = null; aim(1, 0, 0); },
     /** Open a memory as a click on it would (mark, glide, onOpen); false when it is not drawn. */
     open(id) {
-      // its own dot, else the day dot that holds it (Chronos)
-      const p = pts.find(([, , , d]) => d && d.m && d.m.id === id) || pts.find(([, , , d]) => d && Array.isArray(d.items) && d.items.some((x) => x.m && x.m.id === id));
+      const p = findPt(id);
       if (!p) return false;
       const [x, y, r] = p, m = vault0(id);
       sel = { x, y, r: r || 3, id }; fx.push({ x, y, r: r || 3, c: (m && TC[m.cls]) || ACC, t: performance.now() });

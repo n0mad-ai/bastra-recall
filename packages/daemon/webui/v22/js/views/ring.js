@@ -49,7 +49,7 @@ export function mountRing(stage) {
 
   let ring = null, builtFor = null, W = 800, H = 600, rz = 1, rpx = 0, rpy = 0, raf = 0, moved = false, jarvis = null;
   let refs = null, card = null, cardKey = "", selMem = null, dead = false, labScale = 0, relayT = 0;
-  let hovDot = null, glideDot = null, openT = 0, opening = false;
+  let hovDot = null, glideDot = null, openT = 0, opening = false, swapCard = false;
   // closing a memory card (×, Escape, another area) glides back to the fit
   const zoomHome = () => ringTo(1, 0, 0, true);
   function closeMem() {
@@ -340,7 +340,9 @@ export function mountRing(stage) {
       if (state.focus && vault()) {
         card = selMem ? memoryCard(selMem, { onClose: closeMem }) : areaCard(state.focus, { compact: H < 420, onMemory: (m) => { const p = ring.dotOf.get(m.id); if (p) openDot(p); else { selMem = m; place(); } } });
         cardHost.append(card.el);
+        if (swapCard) card.el.classList.add("is-swap");
       }
+      swapCard = false;
     }
     if (!card) { ov.arm(null); return; }
     const edge = ring.extent * kk;
@@ -372,7 +374,17 @@ export function mountRing(stage) {
     prev = { ...st }; prevWin = windowKey();
     place();
   });
-  const unData = onData(() => { if (vault() !== builtFor) build(); });
+  // Live vault update: the wheel is re-laid out in place (area shares change),
+  // zoom and pan stay. An open card is refilled without its entrance fade, a
+  // memory card for a deleted memory closes.
+  const unData = onData(() => {
+    const v = vault(); if (!v || v === builtFor) return;
+    const had = !!builtFor;
+    build();
+    if (!had || !card) return;
+    if (selMem) { const m = v.byId.get(selMem.id); if (!m) { closeMem(); return; } selMem = m; }
+    cardKey = ""; swapCard = true; place();
+  });
   const ready = document.fonts?.load ? Promise.all([document.fonts.load("700 10.5px 'IBM Plex Sans Condensed'"), document.fonts.load("400 9.5px 'IBM Plex Mono'")]).catch(() => {}) : Promise.resolve();
   ready.then(() => { if (!dead) build(); });
 
