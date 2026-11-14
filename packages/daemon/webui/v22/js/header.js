@@ -11,7 +11,7 @@ import { placeWeather, weatherPicker } from "./weather-place.js";
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
 let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, tkrNote, acBox, acSvg, tpLayer;
-let geo = null, wxBtn, wxPop = null;
+let geo = null, wxBtn, wxPop = null, wxObserver = null;
 const tk = { nudge: 0, paused: false, arm: null, open: null, hold: false, tArm: 0, tClose: 0 };
 
 const slant = (pts, line, cls) => s(`svg.htab-slant.${cls}`, { width: 27, height: 42, viewBox: "0 0 27 42", "shape-rendering": "geometricPrecision" },
@@ -62,25 +62,44 @@ export function mountHeader(root, ctx) {
 }
 
 function closeWeather() {
+  wxObserver?.disconnect(); wxObserver = null;
   wxPop?.remove(); wxPop = null; wxBtn.setAttribute("aria-expanded", "false");
   rightTab.classList.remove("is-weather-open");
+  app.classList.remove("has-weather");
+  app.style.removeProperty("--wx-panel-top");
 }
 
 function positionWeather() {
   if (!wxPop) return;
   const r = rightTab.getBoundingClientRect(), b = wxBtn.getBoundingClientRect(), a = app.getBoundingClientRect();
-  const x = Math.max(12, r.right - a.left - wxPop.offsetWidth);
-  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px`,
+  const panel = app.querySelector(".lens"), column = panel ? getComputedStyle(panel) : null;
+  // Closed compact panels are translated offscreen. Their neutral CSS column
+  // remains the alignment source, independent of visibility or peek motion.
+  const width = column ? parseFloat(column.width) : 320;
+  const right = column ? parseFloat(column.right) : 24;
+  const x = Math.max(12, a.width - right - width);
+  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px`, "--wx-width": `${width}px`,
     "--wx-tab-left": `${Math.max(0, b.left - a.left - x)}px`,
-    "--wx-tab-tail": `${Math.max(0, x + wxPop.offsetWidth - (b.right - a.left))}px` });
+    "--wx-tab-tail": `${Math.max(0, x + width - (b.right - a.left))}px` });
+  if (panel) {
+    const body = panel.querySelector(".lens__body"), find = panel.querySelector(".lens__find");
+    const bodyHead = body && find ? Math.max(0, find.getBoundingClientRect().bottom - body.getBoundingClientRect().top) + 12 : 96;
+    const keep = (panel.querySelector(".lens__tabs")?.offsetHeight || 42) + (panel.querySelector(".lens__foot")?.offsetHeight || 36) + bodyHead + 2;
+    const list = wxPop.querySelector(".vt__wxl"), base = wxPop.offsetHeight - (list?.offsetHeight || 0);
+    const available = a.height - parseFloat(column.bottom) - (r.bottom - a.top) - 12 - keep - base;
+    setVars(wxPop, { "--wx-results-max": `${Math.max(32, Math.min(240, available))}px` });
+  }
+  // Reserve the actual content height, retaining the panel's existing bottom.
+  setVars(app, { "--wx-panel-top": `${r.bottom - a.top + wxPop.offsetHeight + 12}px` });
 }
 
 function openWeather() {
   wxPop = h("div.wx-pop", { role: "dialog", "aria-label": t("status.weatherPlace"), vars: { "--c": "var(--accent)" } },
     h("div.tp__tex"),
     h("div.tp__head", null, h("span.tp__tagw", null, h("span.tp__dia"), h("span.tp__tag", { text: t("status.weatherPlace") }))),
-    h("div.tp__body", null, weatherPicker(placeWeather(), closeWeather)));
-  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); rightTab.classList.add("is-weather-open"); positionWeather();
+    h("div.tp__body", null, weatherPicker(placeWeather(), closeWeather, { hideEmptyLabel: true })));
+  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); rightTab.classList.add("is-weather-open"); app.classList.add("has-weather"); positionWeather();
+  wxObserver = new ResizeObserver(positionWeather); wxObserver.observe(wxPop);
   wxPop.querySelector("input")?.focus();
 }
 

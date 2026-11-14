@@ -23,7 +23,7 @@ export function placeWeather() {
 export function onPlaceWeather(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 /** Picker for a weather manager `w`; redraw() runs after the place changed. */
-export function weatherPicker(w, redraw) {
+export function weatherPicker(w, redraw, { hideEmptyLabel = false } = {}) {
   if (!w) return h("span.vt__s", { text: "–" });
   const done = () => { loadWeather(); redraw(); };
   const msg = h("span.vt__msg");
@@ -33,7 +33,7 @@ export function weatherPicker(w, redraw) {
   const head = place
     ? h("div.vt__wxh", null, h("span.vt__wxp", { text: [place.name, r && Number.isFinite(r.temp) ? `${Math.round(r.temp)}°` : "", r?.label || ""].filter(Boolean).join(" · ") }),
       h("button.vt__btn", { type: "button", text: t("ev.off"), on: { click: (e) => { setBusy(e.currentTarget, true); void w.clear().then(done); } } }))
-    : h("span.vt__s", { text: t("ev.wxOff") });
+    : hideEmptyLabel ? null : h("span.vt__s", { text: t("ev.wxOff") });
   // Run indicators (js/sections/loading.js): a line in msg while a search or
   // GPS fix is on its way, a sweep on the button that started it. Only the
   // latest search counts.
