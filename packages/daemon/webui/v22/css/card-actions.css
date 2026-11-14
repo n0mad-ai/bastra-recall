@@ -1,0 +1,20 @@
+/* Shared vault-card actions: two quiet surfaces and one finite entry wave. */
+.vcard__acts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0 -18px -14px; border-top: 1px dashed var(--line-18); font: 500 10.5px var(--mono); letter-spacing: .14em; }
+.vcard__acts button { position: relative; isolation: isolate; min-width: 0; overflow: hidden; border: 0; background: transparent; padding: 12px 8px 14px; font: inherit; letter-spacing: inherit; white-space: nowrap; cursor: pointer; transition: background-color .18s ease-out; }
+.vcard__acts button + button { border-left: 1px solid var(--line-18); }
+.vcard__acts button:hover, .vcard__acts button:focus-visible { background-color: rgba(56,217,245,.065); }
+.vcard__acts button:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
+.vcard__acts button::after { content: ""; position: absolute; z-index: -1; pointer-events: none; left: var(--ripple-x, 50%); top: var(--ripple-y, 50%); width: var(--ripple-size, 400px); height: var(--ripple-size, 400px); border-radius: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.02); background: repeating-radial-gradient(circle, transparent 0 7px, rgba(56,217,245,.38) 7px 8px, transparent 8px 12px), repeating-linear-gradient(17deg, transparent 0 2px, rgba(56,217,245,.12) 2px 3px); mask-image: radial-gradient(circle, transparent 0 30%, #000 40% 65%, transparent 73%); }
+.vcard__acts button.is-rippling::after { animation: vcard-ripple .5s ease-out both; }
+@keyframes vcard-ripple {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.02); }
+  14% { opacity: .66; }
+  36% { opacity: .48; }
+  52% { opacity: .55; }
+  76% { opacity: .24; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vcard__acts button { transition: none; }
+  .vcard__acts button.is-rippling::after { animation: none; }
+}

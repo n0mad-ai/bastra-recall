@@ -53,6 +53,25 @@ function shell(color, onClose, kicker) {
   return { el, side };
 }
 
+// A single short texture wave on pointer entry. No pointermove loop, timers or
+// click effect: resting over a button leaves only its quiet CSS hover surface.
+function actionButton(cls, key, click) {
+  return h(`button.${cls}`, { type: "button", text: t(key), on: {
+    click,
+    pointerenter: (e) => {
+      if (e.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const button = e.currentTarget, r = button.getBoundingClientRect();
+      const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+      const y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+      const radius = Math.hypot(Math.max(x, r.width - x), Math.max(y, r.height - y));
+      setVars(button, { "--ripple-x": `${x}px`, "--ripple-y": `${y}px`, "--ripple-size": `${radius * 2}px` });
+      button.classList.add("is-rippling");
+    },
+    pointerleave: (e) => e.currentTarget.classList.remove("is-rippling"),
+    animationend: (e) => { if (e.animationName === "vcard-ripple") e.currentTarget.classList.remove("is-rippling"); },
+  } });
+}
+
 /** Area card (prototype `insp`): rank, name, three stats, recent memories, actions. */
 export function areaCard(key, { compact, onMemory }) {
   const v = vault(), color = areaCol(key);
@@ -66,8 +85,8 @@ export function areaCard(key, { compact, onMemory }) {
     h("div.vcard__list", null, recentIn(key, compact ? 2 : 3).map((m) => h("button.vcard__mem", { on: { click: () => onMemory(m) } },
       h("span.vcard__sq", { vars: { "--tc": TC[m.cls] || INK } }), h("span.vcard__mt", { text: m.title }), h("span.vcard__ago", { text: Number.isFinite(m.at) ? ago(m.at) : "" })))),
     h("div.vcard__acts", null,
-      h("button.vcard__open", { text: t("vv.openBrowser"), on: { click: (e) => openMemoryBrowser(key, null, e.currentTarget.getBoundingClientRect()) } }),
-      h("button.vcard__ask", { text: t("vv.ask"), on: { click: () => ask(t("vv.askArea", { a: key })) } })));
+      actionButton("vcard__open", "vv.openBrowser", (e) => openMemoryBrowser(key, null, e.currentTarget.getBoundingClientRect())),
+      actionButton("vcard__ask", "vv.ask", () => ask(t("vv.askArea", { a: key })))));
   return { el, side };
 }
 
@@ -83,8 +102,8 @@ export function memoryCard(m, { onClose }) {
     m.summary ? h("p.vcard__sum", { text: m.summary }) : null,
     h("div.vcard__acts", null,
       // memory browser, opened on this memory out of the clicked button (not for ghosts / skills)
-      vault()?.byId.get(m.id) ? h("button.vcard__open", { text: t("vv.openBrowser"), on: { click: (e) => openMemoryBrowser(m.area, m.id, e.currentTarget.getBoundingClientRect()) } }) : null,
-      h("button.vcard__ask", { text: t("vv.ask"), on: { click: () => ask(t("vv.askMemory", { m: m.title })) } })));
+      vault()?.byId.get(m.id) ? actionButton("vcard__open", "vv.openBrowser", (e) => openMemoryBrowser(m.area, m.id, e.currentTarget.getBoundingClientRect())) : null,
+      actionButton("vcard__ask", "vv.ask", () => ask(t("vv.askMemory", { m: m.title })))));
   return { el, side };
 }
 
