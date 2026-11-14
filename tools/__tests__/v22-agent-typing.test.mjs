@@ -10,7 +10,7 @@ async function fixture() {
     setInterval: (fn) => { const id = next++; timers.set(id, fn); return id; },
     clearInterval: (id) => timers.delete(id),
     chat: () => new Promise((resolve) => replies.push(resolve)),
-    setState: () => {}, render: () => {}, storeConv: () => {}, t: (s) => s,
+    setState: () => {}, render: () => {}, storeConv: () => {}, t: (s) => s, state: { view: "mindspace" }, LANG: "de",
   });
   const functions = source.slice(source.indexOf("export function ask("), source.indexOf("/** Answer text as safe DOM"));
   vm.runInContext(`let typeTimer = 0, convs; const chatState = { msgs: [], history: [], seq: 0 }; ${functions.replace("export ", "")} globalThis.api = { ask, typeOut, chatState };`, ctx);

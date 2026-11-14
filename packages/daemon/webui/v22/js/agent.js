@@ -206,7 +206,9 @@ async function openConversation(id, row, quiet) {
     });
     storeConv(id);
     convs = null;
-    setState({ agent: "idle", hits: last ? last.sources.map((x) => x[2]).filter(Boolean) : [] });
+    // A restored conversation on page load (quiet) shows no hit marks: without
+    // the answer on screen a numbered mark on the map has no explanation.
+    setState({ agent: "idle", hits: !quiet && last ? last.sources.map((x) => x[2]).filter(Boolean) : [] });
     render();
   } catch {
     if (quiet) return;
