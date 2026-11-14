@@ -22,7 +22,10 @@ export function mountStage(app) {
 }
 
 export function render(ctx) {
-  if (current === state.view || closing) return;
+  // Reopening the browser cancels a pending departure by restoring its host
+  // view. Its show() cancels the shrink timeout, so clear our guard here too.
+  if (current === state.view) { closing = false; return; }
+  if (closing) return;
   // A locked Pro view (views/pro-views.js) never reaches the stage, whatever
   // route asked for it: before /ui/health answers nothing mounts yet, then it
   // falls back to a free view (with the Pro hint unless at start-up).
@@ -35,7 +38,13 @@ export function render(ctx) {
   // Leaving the vault views with the memory browser open: the browser shrinks
   // away first, then the area changes (every route: rail, header, links). It
   // stays open between vault views (memory-browser.js).
-  if (VAULT_VIEWS.includes(current) && !VAULT_VIEWS.includes(state.view) && closeMemoryBrowser(() => { closing = false; render(ctx); })) { closing = true; return; }
+  if (VAULT_VIEWS.includes(current) && !VAULT_VIEWS.includes(state.view)) {
+    // cover(false) can synchronously reenter render through the state store.
+    // Guard before calling hide, not after, to avoid scheduling it twice.
+    closing = true;
+    if (closeMemoryBrowser(() => { closing = false; render(ctx); })) return;
+    closing = false;
+  }
   current = state.view;
   if (typeof unmount === "function") unmount();
   unmount = null;

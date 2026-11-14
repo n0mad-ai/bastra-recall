@@ -52,7 +52,12 @@ export function openMemoryBrowser(scope, sel, from) {
   // The browser lives in the vault views (ring, lenses, map engines), which
   // mount it; from anywhere else the ring takes over and plays the same grow
   // (the last free view while the Pro views are locked, pro-views.js).
-  if (inst) inst.show(true); else setState({ view: viewLocked("ring") ? lastVaultView() : "ring" });
+  if (inst) {
+    // A departure may still be shrinking this mounted browser. Reopening is
+    // a new navigation intent: restore its host before cancelling that timer.
+    if (state.view !== inst.view) setState({ view: inst.view });
+    inst.show(true);
+  } else setState({ view: viewLocked("ring") ? lastVaultView() : "ring" });
 }
 
 const box = (r) => (r && [r.left, r.top, r.right, r.bottom].every(Number.isFinite) ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null);
@@ -150,6 +155,7 @@ export function markdown(md, onLink) {
 // ── mount ──────────────────────────────────────────────────────────────────
 /** Mount into a vault view's stage. `showMemory(id)` focuses a memory in that view (glide / fly + card). */
 export function mountMemoryBrowser(stage, { showMemory } = {}) {
+  const hostView = state.view;
   const input = h("input.mb__input", { type: "text", spellcheck: "false", placeholder: t("mb.search"), on: { input: onInput } });
   const hits = h("span.mb__hits");
   const scopeBtn = h("button.mb__scopebtn", { on: { click: () => { M.menu = !M.menu; renderHead(); } } });
@@ -496,7 +502,7 @@ export function mountMemoryBrowser(stage, { showMemory } = {}) {
   ro.observe(root);
   const unData = onData(() => { if (M.open) render(); });
 
-  inst = { show, showMemory, hide };
+  inst = { show, showMemory, hide, view: hostView };
   if (M.open) show(M.grow);
 
   return () => {
