@@ -65,8 +65,6 @@ function closeWeather() {
   wxObserver?.disconnect(); wxObserver = null;
   wxPop?.remove(); wxPop = null; wxBtn.setAttribute("aria-expanded", "false");
   rightTab.classList.remove("is-weather-open");
-  app.classList.remove("has-weather");
-  app.style.removeProperty("--wx-panel-top");
 }
 
 function positionWeather() {
@@ -81,16 +79,10 @@ function positionWeather() {
   setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px`, "--wx-width": `${width}px`,
     "--wx-tab-left": `${Math.max(0, b.left - a.left - x)}px`,
     "--wx-tab-tail": `${Math.max(0, x + width - (b.right - a.left))}px` });
-  if (panel) {
-    const body = panel.querySelector(".lens__body"), find = panel.querySelector(".lens__find");
-    const bodyHead = body && find ? Math.max(0, find.getBoundingClientRect().bottom - body.getBoundingClientRect().top) + 12 : 96;
-    const keep = (panel.querySelector(".lens__tabs")?.offsetHeight || 42) + (panel.querySelector(".lens__foot")?.offsetHeight || 36) + bodyHead + 2;
-    const list = wxPop.querySelector(".vt__wxl"), base = wxPop.offsetHeight - (list?.offsetHeight || 0);
-    const available = a.height - parseFloat(column.bottom) - (r.bottom - a.top) - 12 - keep - base;
-    setVars(wxPop, { "--wx-results-max": `${Math.max(32, Math.min(240, available))}px` });
-  }
-  // Reserve the actual content height, retaining the panel's existing bottom.
-  setVars(app, { "--wx-panel-top": `${r.bottom - a.top + wxPop.offsetHeight + 12}px` });
+  // The picker overlays the panel; only the result list scrolls when space runs out.
+  const list = wxPop.querySelector(".vt__wxl"), base = wxPop.offsetHeight - (list?.offsetHeight || 0);
+  const available = a.height - (r.bottom - a.top) - base - 24;
+  setVars(wxPop, { "--wx-results-max": `${Math.max(32, Math.min(240, available))}px` });
 }
 
 function openWeather() {
@@ -98,7 +90,7 @@ function openWeather() {
     h("div.tp__tex"),
     h("div.tp__head", null, h("span.tp__tagw", null, h("span.tp__dia"), h("span.tp__tag", { text: t("status.weatherPlace") }))),
     h("div.tp__body", null, weatherPicker(placeWeather(), closeWeather, { hideEmptyLabel: true })));
-  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); rightTab.classList.add("is-weather-open"); app.classList.add("has-weather"); positionWeather();
+  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); rightTab.classList.add("is-weather-open"); positionWeather();
   wxObserver = new ResizeObserver(positionWeather); wxObserver.observe(wxPop);
   wxPop.querySelector("input")?.focus();
 }

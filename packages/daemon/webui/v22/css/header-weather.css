@@ -10,7 +10,6 @@ button.wx { order: 2; }
 .htab-r.is-weather-open { z-index: 61; }
 .wx.is-empty .wx__t { font: 11px var(--mono); }
 .wx-pop { position: absolute; z-index: 60; left: var(--wx-x); top: var(--wx-y); width: var(--wx-width, 320px); border: 1px solid var(--accent); border-top: 0; background: var(--panel-2); filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60)); }
-.app.has-weather .lens, .app.has-weather .lens-peek { top: var(--wx-panel-top); }
 .wx-pop::before, .wx-pop::after { content: ""; position: absolute; top: 0; border-top: 1px solid var(--accent); pointer-events: none; }
 .wx-pop::before { left: -1px; width: var(--wx-tab-left); }
 .wx-pop::after { right: -1px; width: var(--wx-tab-tail); }
