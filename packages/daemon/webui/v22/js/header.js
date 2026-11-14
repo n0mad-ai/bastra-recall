@@ -6,11 +6,12 @@ import { state, setState } from "./state.js";
 import { data, dueAt } from "./data.js";
 import { openTask } from "./sections/tasks-store.js";
 import { getArea } from "./areas.js";
+import { placeWeather, weatherPicker } from "./weather-place.js";
 
 const AMB = "#d9a441";
 let app, ctxRef, leftTab, crumbEl, rightTab, statMem, statMemD, statLinks, liveBtn, wxT, wxC, lensBtnWrap;
 let tkr, tkrIn, tkrNow, tkrRunWrap, tkrTrack, tkrSum, tkrDueN, tkrDueW, tkrNote, acBox, acSvg, tpLayer;
-let geo = null;
+let geo = null, wxBtn, wxPop = null;
 const tk = { nudge: 0, paused: false, arm: null, open: null, hold: false, tArm: 0, tClose: 0 };
 
 const slant = (pts, line, cls) => s(`svg.htab-slant.${cls}`, { width: 27, height: 42, viewBox: "0 0 27 42", "shape-rendering": "geometricPrecision" },
@@ -25,6 +26,7 @@ export function mountHeader(root, ctx) {
   statLinks = h("span.stat__n", { text: "–" });
   liveBtn = h("button.live-btn", { title: t("status.liveTitle"), on: { click: () => setState({ live: !state.live }) } }, h("span.dot"), h("span"));
   wxT = h("span.wx__t", { text: "" }); wxC = h("span.wx__c", { text: "" });
+  wxBtn = h("button.wx", { type: "button", "aria-expanded": "false", "aria-haspopup": "dialog", on: { click: () => wxPop ? closeWeather() : openWeather() } }, weatherIcon(), wxT, wxC);
   lensBtnWrap = h("span.htab-r__tail");
   rightTab = h("div.htab-r", null,
     slant("0,0 27,0 27,42 24,42", "0,0 24,41.5 27,41.5", "htab-slant--r"),
@@ -32,7 +34,7 @@ export function mountHeader(root, ctx) {
       h("span.stat.stat--mem", null, statMem, h("span.stat__u", { text: t("status.mem") }), statMemD), h("span.vsep"),
       h("span.stat.stat--links", null, statLinks, h("span.stat__u", { text: t("status.links") })), h("span.vsep"),
       liveBtn, h("span.vsep.wx-sep"),
-      h("span.wx", null, weatherIcon(), wxT, wxC),
+      wxBtn,
       lensBtnWrap));
 
   tkrNow = h("div.tkr__now", null, h("span.dot.dot--pulse"), h("span", { text: t("ticker.now") }));
@@ -51,10 +53,29 @@ export function mountHeader(root, ctx) {
   tpLayer = h("div");
 
   app.append(leftTab, rightTab, tkr, tpLayer, acBox);
+  document.addEventListener("pointerdown", (e) => { if (wxPop && !wxPop.contains(e.target) && !wxBtn.contains(e.target)) closeWeather(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape" && wxPop) { e.preventDefault(); e.stopImmediatePropagation(); closeWeather(); wxBtn.focus(); } }, true);
   document.addEventListener("visibilitychange", () => holdNote("tab", document.hidden));
   const ro = new ResizeObserver(() => measure());
   ro.observe(leftTab); ro.observe(rightTab);
   window.addEventListener("resize", () => requestAnimationFrame(measure));
+}
+
+function closeWeather() {
+  wxPop?.remove(); wxPop = null; wxBtn.setAttribute("aria-expanded", "false");
+}
+
+function positionWeather() {
+  if (!wxPop) return;
+  const r = wxBtn.getBoundingClientRect(), a = app.getBoundingClientRect();
+  const x = Math.max(12, Math.min(r.right - a.left - wxPop.offsetWidth, a.width - wxPop.offsetWidth - 12));
+  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top + 8}px` });
+}
+
+function openWeather() {
+  wxPop = h("div.wx-pop", { role: "dialog", "aria-label": t("status.weatherPlace") }, weatherPicker(placeWeather(), closeWeather));
+  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); positionWeather();
+  wxPop.querySelector("input")?.focus();
 }
 
 function weatherIcon() {
@@ -84,8 +105,12 @@ function renderStatus(L) {
   liveBtn.classList.toggle("is-on", state.live);
   liveBtn.lastChild.textContent = state.live ? t("status.liveNew", { n: data.newSince }) : t("status.liveOff");
   const w = ctxRef.weather();
-  wxT.textContent = w ? `${Math.round(w.temp)}°` : "–";
-  wxC.textContent = w?.city ? w.city : "";
+  const place = placeWeather().getPlace();
+  wxT.textContent = w ? `${Math.round(w.temp)}°` : place ? "–" : t("status.weatherPlace");
+  wxBtn.title = t("status.weatherPlace");
+  wxBtn.classList.toggle("is-empty", !place);
+  wxC.textContent = w?.city || place?.name || "";
+  positionWeather();
   clear(lensBtnWrap);
   if (!L.lensOpen || L.compact) {
     const b = h("button.lens-btn", { title: t("status.panel"), "aria-label": t("status.panel"), cls: L.compact && L.lensOpen ? "is-on" : "",

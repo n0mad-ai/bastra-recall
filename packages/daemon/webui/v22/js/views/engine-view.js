@@ -173,7 +173,7 @@ export function mountEngineView(id, stage) {
       .map((m) => { const [x, y] = engine.toStage(m.node.x, m.node.y); return { n: m.n, x, y }; }).filter((m) => m.x >= 0 && m.x <= W && m.y >= 0 && m.y <= H));
   }
 
-  const onKey = (ev) => { if (ev.key === "Escape" && sel && !state.covered && !state.vpOpen) { ev.preventDefault(); ev.stopImmediatePropagation(); closeMem(); } };
+  const onKey = (ev) => { if (ev.key === "Escape" && sel && !state.covered) { ev.preventDefault(); ev.stopImmediatePropagation(); closeMem(); } };
   window.addEventListener("keydown", onKey, true);
 
   let prev = { ...state }, prevWin = windowKey();

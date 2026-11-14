@@ -87,7 +87,7 @@ export async function act(fn, okMsg) {
 /** Opens the Tasks area with this task selected (dashboard widgets, header
  *  ticker). The id is the daemon task id, which is the item id of a live task. */
 export function openTask(id) {
-  select(typeof id === "string" ? id : null, { view: "tasks", hover: null, vpOpen: false });
+  select(typeof id === "string" ? id : null, { view: "tasks", hover: null });
 }
 
 export function select(id, extra = {}) {

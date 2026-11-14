@@ -46,7 +46,7 @@ export function mountLensView(kind, stage) {
   }
   // closing glides back to the fit (as the zoom bar's fit button)
   function closeCard() { selMem = null; lens.reset(); buildCard(); }
-  const onKey = (e) => { if (e.key === "Escape" && selMem && !state.covered && !state.vpOpen) { e.preventDefault(); e.stopImmediatePropagation(); closeCard(); } };
+  const onKey = (e) => { if (e.key === "Escape" && selMem && !state.covered) { e.preventDefault(); e.stopImmediatePropagation(); closeCard(); } };
   window.addEventListener("keydown", onKey, true);
 
   function place() {

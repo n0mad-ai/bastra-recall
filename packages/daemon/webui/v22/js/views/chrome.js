@@ -106,7 +106,9 @@ const ZB_W = 154, ZB_H = 42;
 export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
   // An anchor outside the stage (panned or zoomed away) gets no arm.
   if (!(ax >= 0 && ax <= W && ay >= 0 && ay <= H)) { park(card, ov, W, H); return; }
-  const cardH = card.el.offsetHeight || 300, CW = 260;
+  const cardH = card.el.offsetHeight || 300, CW = card.el.offsetWidth || 350;
+  // Callers provide the original 260px-card anchor; preserve its near edge.
+  if (!right) x -= CW - 260;
   const side = card.side;
   side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
   // Keep the card clear of the zoom bar.
@@ -144,7 +146,8 @@ export function dock(card, ov, { ax, ay, ex, ey, right, x, W, H, color }) {
 /** Card without an anchor: top right (prototype else-branch). */
 export function park(card, ov, W, H = Infinity) {
   // too tall to end above the zoom bar: move left of it
-  const x = 10 + card.el.offsetHeight > H - ZB_H ? W - ZB_W - 260 : W - 280;
+  const CW = card.el.offsetWidth || 350;
+  const x = 10 + card.el.offsetHeight > H - ZB_H ? W - ZB_W - CW : W - CW - 20;
   setVars(card.el, { "--cx": `${Math.max(0, x)}px`, "--cy": "10px" });
   card.side.classList.remove("is-left", "is-right", "is-top", "is-bottom");
   ov.arm(null);

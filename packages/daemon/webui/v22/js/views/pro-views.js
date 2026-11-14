@@ -1,5 +1,5 @@
 // Free and Pro vault views (Daniel, 14.11.2026): Mindspace, Clouds and Semantic
-// belong to free Recall; every view from Chronos on (Ring and the lenses) is
+// and Ring belong to free Recall; Chronos and the other lenses are
 // Pro and locked until Pro is available. The daemon unlocks them for a preview
 // install with BASTRA_PRO_PREVIEW (GET /ui/health › pro_preview).
 // Pickers: right panel › View (lens.js); the rail's Vault button opens the
@@ -9,7 +9,7 @@ import { setState } from "../state.js";
 import { data } from "../data.js";
 import { VAULT_VIEWS } from "../areas.js";
 
-export const FREE_VIEWS = ["mindspace", "clouds", "semantic"];
+export const FREE_VIEWS = ["mindspace", "clouds", "semantic", "ring"];
 export const isPro = (v) => VAULT_VIEWS.includes(v) && !FREE_VIEWS.includes(v);
 
 /** true / false once /ui/health answered, null before. */

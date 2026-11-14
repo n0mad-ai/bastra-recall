@@ -58,7 +58,7 @@ export function mountRing(stage) {
     place(); zoomHome();
   }
   const onKey = (e) => {
-    if (e.key !== "Escape" || state.covered || state.vpOpen || (!selMem && !glideDot)) return;
+    if (e.key !== "Escape" || state.covered || (!selMem && !glideDot)) return;
     e.preventDefault(); e.stopImmediatePropagation(); closeMem();
   };
   window.addEventListener("keydown", onKey, true);
@@ -249,7 +249,7 @@ export function mountRing(stage) {
     core.classList.toggle("is-on", showCore);
     setVars(core, { "--l": `${(cx - coreF / 2).toFixed(0)}px`, "--t": `${(cy - coreF / 2).toFixed(0)}px`, "--s": `${coreF.toFixed(0)}px` });
     if (showCore && !jarvis) { jarvis = mountJarvis(faceCv, { scale: 0.3, points: 700, glow: false }); jarvis.set(state.agent); }
-    jarvis?.setActive(showCore && !state.covered && !state.vpOpen); // frozen under the memory browser / a dialog (js/cover.js)
+    jarvis?.setActive(showCore && !state.covered); // frozen under the memory browser / a dialog (js/cover.js)
     placeMarks(kk);
     placeCard(kk, cx, cy);
     const hits = Array.isArray(state.hits) ? state.hits : [];
