@@ -4,7 +4,8 @@ import { h, s, clear, setVars } from "./dom.js";
 import { t, numberFmt, LANG } from "./i18n.js";
 import { state, setState } from "./state.js";
 import { data, chat } from "./data.js";
-import { getArea } from "./areas.js";
+import { getArea, VAULT_VIEWS } from "./areas.js";
+import { pickVaultView } from "./views/pro-views.js";
 import { mountJarvis } from "../vendor/jarvis-v13.js";
 import { vault, typeClass, inWindow, timeWindow } from "./views/vault-data.js";
 import { TC, INK } from "./views/chrome.js";
@@ -100,6 +101,10 @@ export function ask(q) {
     let answer, sources = [];
     if (ok && typeof body.reply === "string") {
       answer = body.reply;
+      if (typeof body.navigate === "string") {
+        if (VAULT_VIEWS.includes(body.navigate)) pickVaultView(body.navigate);
+        else if (getArea(body.navigate)?.kind === "view") setState({ view: body.navigate, hover: null });
+      }
       if (typeof body.conversation_id === "string") { chatState.conv = body.conversation_id; storeConv(chatState.conv); }
       sources = Array.isArray(body.hits) ? body.hits.filter((x) => x && typeof x.title === "string").slice(0, 3).map((x) => [x.title, String(x.type || ""), typeof x.id === "string" ? x.id : ""]) : [];
     } else if (status === 503) {

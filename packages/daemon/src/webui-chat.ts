@@ -28,7 +28,7 @@ export interface CopilotDeps {
   /** Private memories are never kept as a stored source title. */
   isPrivate?: (id: string) => boolean;
   /** Raw `task_list` result (`tasks` array) of the daemon's task store, for
-   *  questions asked in the tasks area; null = tasks disabled. */
+   *  questions in every area; null = tasks disabled. */
   listTasks?: () => Promise<unknown>;
 }
 
@@ -37,6 +37,7 @@ export interface TaskBrief {
   title: string;
   state: string;
   armed: boolean;
+  paused?: boolean;
   /** Next contact time, same order as the UI's dueAt(); null = none. */
   dueAt: number | null;
 }
@@ -53,6 +54,10 @@ const MAX_HISTORY = 8;
 const QUERIES_MAX = 3;
 const HITS_PER_QUERY = 6;
 const HITS_TOTAL = 8;
+
+/** Actual v22 view IDs (areas.js/registerArea and views/pro-views.js).
+ * Action entries such as import/areas are dialogs, not navigable views. */
+export const CHAT_NAVIGATION = ["dashboard", "telemetry", "tasks", "settings", "mindspace", "clouds", "ring", "semantic", "chronos", "radiant", "spiral", "halflife", "weave"] as const;
 
 export function buildQueryPrompt(message: string, history: Array<{ role: string; content: string }>): string {
   const ctx = history
@@ -95,7 +100,7 @@ export function tasksFromList(raw: unknown): TaskBrief[] {
     const title = typeof t.goal === "string" ? t.goal.replace(/\s+/g, " ").trim() : "";
     if (!title) continue;
     const dueAt = num(t.snoozed_until) ?? num(t.next_slot?.at) ?? num(t.schedule?.at) ?? num(t.next_check_at);
-    out.push({ title: shortTitle(title), state: typeof t.state === "string" ? t.state : "unknown", armed: t.armed === true, dueAt });
+    out.push({ title: shortTitle(title), state: typeof t.state === "string" ? t.state : "unknown", armed: t.armed === true, paused: t.paused === true, dueAt });
   }
   return out;
 }
@@ -127,22 +132,23 @@ export function buildTaskContext(tasks: TaskBrief[] | null, now: number, timeZon
   const done = tasks.length - open.length;
   const line = (t: TaskBrief) => {
     const when = t.dueAt === null ? "no due time" : `due ${localParts(t.dueAt, timeZone).text}`;
-    const state = STATE_WORDS[t.state] ?? t.state;
+    const state = t.paused ? "paused (not active)" : STATE_WORDS[t.state] ?? t.state;
     return `- ${t.title} — ${when}; status: ${state}${t.armed ? "" : "; draft, not approved yet"}`;
   };
-  const bucket = (pick: (t: TaskBrief) => boolean) => open.filter(pick).sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+  const bucket = (pick: (t: TaskBrief) => boolean) => open.filter((t) => !t.paused && pick(t)).sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
   const dayOf = (t: TaskBrief) => (t.dueAt === null ? null : localParts(t.dueAt, timeZone).day);
   const overdue = bucket((t) => { const d = dayOf(t); return d !== null && d < today.day; });
   const dueToday = bucket((t) => dayOf(t) === today.day);
   const later = bucket((t) => { const d = dayOf(t); return d === null || d > today.day; });
   const section = (label: string, list: TaskBrief[]) =>
-    `${label} (${list.length}):\n${list.length ? list.slice(0, TASKS_MAX).map(line).join("\n") : "(none)"}`;
+    `${label} (${list.length}):\n${list.length ? list.slice(0, TASKS_MAX).map(line).join("\n") : "(none)"}${list.length > TASKS_MAX ? `\n… and ${list.length - TASKS_MAX} more (not listed)` : ""}`;
   return [
     head,
     "TASK LIST — the user's real tasks from the task manager (the ONLY source of truth for tasks, due dates and reminders):",
     section("DUE TODAY", dueToday),
     section("OVERDUE (due before today, still open)", overdue),
     section("LATER or without due time", later),
+    section("PAUSED (not active; not currently due)", open.filter((t) => t.paused)),
     `Finished or cancelled tasks: ${done}.`,
   ].join("\n");
 }
@@ -167,27 +173,22 @@ export function buildAnswerPrompt(
         })
         .join("\n")
     : "(no notes found)";
-  const langHint = lang ? ` (if unclear: language code "${lang}")` : "";
-  if (taskContext) {
-    return [
-      "You are the assistant in the TASKS area of a personal memory app. You know the user's real tasks:",
-      taskContext,
-      "The vault search additionally returned these notes (background only, never a source for tasks):",
-      listing,
-      `User question: "${message}"`,
-      "Reply with STRICT JSON, nothing else:",
-      `{"reply": "<answer in the language of the user's question${langHint}, plain prose without line breaks and without double quotes>", "relevant": ["<ids of notes that actually helped; usually []>"]}`,
-      "Questions about tasks, due dates, reminders or the schedule are answered ONLY from the TASK LIST: name each relevant task with its title, when it is due or since when it is overdue (weekday and date, time if useful) and its status in plain words. If DUE TODAY is empty, say clearly that nothing is due today, then mention overdue open tasks if there are any. Keep it short. Never invent tasks, dates or rules, and never derive tasks from notes or describe how the app works instead of answering.",
-      "For other questions answer from the notes as usual, grounded only in them.",
-    ].join("\n\n");
-  }
+  const langHint = lang ? ` Only for input with no identifiable language, the fallback language code is "${lang}".` : "";
   return [
-    "You are the search copilot of a personal note vault. The vault search returned these notes:",
+    "You are the assistant of a personal memory app. First decide the user intent: opening a view, asking about tasks, or asking about vault knowledge. A request to OPEN a view is navigation, not a question about its contents.",
+    `Always answer in the language of the user's question, even when the UI uses a different language.${langHint}`,
+    "VAULT NOTES — use these for questions about knowledge, decisions and memories:",
     listing,
-    `User question: "${message}"`,
-    "Reply with STRICT JSON, nothing else:",
-    '{"reply": "<2-5 sentences in the user\'s language, grounded ONLY in the notes above — quote their actual rules/content where it answers the question, never invent>", "relevant": ["<ids of the notes that actually answer the question>"]}',
-    'If none of the notes fit, say the SEARCH did not surface it and suggest a sharper search term — never claim the thing does not exist (the vault may hold it under different words). Return "relevant": [] in that case.',
+    taskContext || "TASK LIST: unavailable. Never infer current tasks from notes.",
+    "Use the TASK LIST only when the question concerns the user's tasks, due dates, reminders or schedule. Those questions are answered ONLY from the TASK LIST, never inferred from VAULT NOTES. Name relevant titles, due weekday/date (time if useful) and status in plain words. Paused tasks are paused, not active or currently due. If DUE TODAY is empty, say nothing is due today, then mention overdue active tasks if any. If a group is truncated, acknowledge the omitted count; do not invent its titles. Keep it short.",
+    "For vault questions, ignore the task block and answer grounded ONLY in the VAULT NOTES: quote their actual rules/content when useful, never invent. If none fit, say the search did not surface it and suggest a sharper search term; never claim the thing does not exist. Return relevant: [] in that case.",
+    `NAVIGATION — allowed view IDs: ${CHAT_NAVIGATION.join(", ")}. Only when the user asks to open or switch to one of these areas/views, include its exact ID as navigate. For navigation, ignore notes/tasks, return relevant: [] and a brief natural confirmation in the question language. Never use a JSON field name as the reply. Do not navigate merely because a view is mentioned in a knowledge question. The UI enforces Pro availability. For all information questions (including questions about task contents or due dates), omit navigate entirely: answering about an area is not a request to open it.`,
+    "Output format: STRICT JSON with reply (your answer in the question language) and relevant (IDs of notes actually used, otherwise []). For answers about tasks/due dates/reminders, relevant MUST be []: TASK LIST entries have no vault note IDs and the notes are never task sources. Add navigate with the exact allowed ID for an opening/switching request; OMIT navigate for an information question.",
+    "Navigation examples only; these are not answers to the actual question:",
+    'Example user question: "Open Clouds" → {"reply":"Opening Clouds.","relevant":[],"navigate":"clouds"}',
+    'Example user question: "Öffne die Telemetrie" → {"reply":"Ich öffne die Telemetrie.","relevant":[],"navigate":"telemetry"}',
+    "For the actual question, determine its language yourself and write a fresh answer grounded in the actual context. Do not copy an example. The UI fallback language must never override an identifiable question language. Reply with JSON only.",
+    `Actual user question: "${message}"`,
   ].join("\n\n");
 }
 
@@ -206,16 +207,17 @@ export function parseQueries(raw: string, message: string): string[] {
 
 /** Tolerant JSON extraction: models wrap JSON in prose/fences. `parsed:false`
  *  means the caller should fall back to its own hit selection. */
-export function parseAnswer(raw: string): { reply: string; relevant: string[]; parsed: boolean } {
+export function parseAnswer(raw: string): { reply: string; relevant: string[]; parsed: boolean; navigate?: string } {
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
     try {
-      const json = JSON.parse(match[0]) as { reply?: unknown; relevant?: unknown };
+      const json = JSON.parse(match[0]) as { reply?: unknown; relevant?: unknown; navigate?: unknown };
       if (typeof json.reply === "string" && json.reply.trim()) {
         const relevant = Array.isArray(json.relevant)
           ? json.relevant.filter((r): r is string => typeof r === "string")
           : [];
-        return { reply: json.reply.trim(), relevant, parsed: true };
+        const navigate = typeof json.navigate === "string" && (CHAT_NAVIGATION as readonly string[]).includes(json.navigate) ? json.navigate : undefined;
+        return { reply: json.reply.trim(), relevant, parsed: true, ...(navigate ? { navigate } : {}) };
       }
     } catch {
       /* fall through to the reply-value rescue below */
@@ -240,7 +242,7 @@ export async function runSearchCopilot(
   message: string,
   history: Array<{ role: string; content: string }>,
   deps: { search: SearchIndex; chat: ChatFn; getBody?: (id: string) => string | null; taskContext?: string; lang?: string },
-): Promise<{ reply: string; hits: CopilotHit[] }> {
+): Promise<{ reply: string; hits: CopilotHit[]; navigate?: string }> {
   const queries = parseQueries(await deps.chat(buildQueryPrompt(message, history)), message);
   const merged = new Map<string, RecallHit>();
   for (const q of queries) {
@@ -255,14 +257,15 @@ export async function runSearchCopilot(
   const answer = parseAnswer(await deps.chat(buildAnswerPrompt(message, top, deps.getBody, deps.taskContext, deps.lang)));
   // model picked → trust it (including an explicit "nothing fits" = []);
   // unparseable reply → surface the strongest hits rather than none
-  // (in the tasks area the answer rests on the task list, so a failed parse
-  // must not dress it up with unrelated notes as sources)
+  // With task context a failed parse must not dress up a task answer
+  // with unrelated notes as sources.
   const chosen = answer.parsed
     ? top.filter((h) => answer.relevant.includes(h.id))
     : deps.taskContext ? [] : top.slice(0, 3);
   return {
     reply: answer.reply || "…",
-    hits: chosen.map((h) => ({ id: h.id, title: h.title, type: h.type, score: h.score })),
+    ...(answer.navigate ? { navigate: answer.navigate } : {}),
+    hits: (answer.navigate ? [] : chosen).map((h) => ({ id: h.id, title: h.title, type: h.type, score: h.score })),
   };
 }
 
@@ -293,11 +296,9 @@ export async function handleUiChat(
   let message = "";
   let history: Array<{ role: string; content: string }> = [];
   let conversationId: string | null = null;
-  let area = "";
   let lang: string | undefined;
   try {
     const body = JSON.parse(raw) as { message?: unknown; history?: unknown; conversation_id?: unknown; area?: unknown; lang?: unknown };
-    area = typeof body.area === "string" ? body.area : "";
     lang = typeof body.lang === "string" && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(body.lang) ? body.lang : undefined;
     conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
     message = typeof body.message === "string" ? body.message.trim().slice(0, MAX_MESSAGE) : "";
@@ -322,19 +323,16 @@ export async function handleUiChat(
     return;
   }
   try {
-    // The tasks area answers from the real task store; the area — not words
-    // in the question — decides the context (Recall is multilingual).
-    let taskContext: string | undefined;
-    if (area === "tasks" && deps.listTasks) {
-      let tasks: TaskBrief[] | null;
+    // All areas receive the same context. The model resolves intent; no
+    // language-specific keyword matching or area gate on task knowledge.
+    let tasks: TaskBrief[] | null = null;
+    if (deps.listTasks) {
       try {
         const raw = await deps.listTasks();
         tasks = raw === null ? null : tasksFromList(raw);
-      } catch {
-        tasks = null;
-      }
-      taskContext = buildTaskContext(tasks, Date.now());
+      } catch { /* unavailable is explicit in the prompt */ }
     }
+    const taskContext = buildTaskContext(tasks, Date.now());
     const result = await runSearchCopilot(message, history, {
       search: deps.search,
       chat: deps.chat,

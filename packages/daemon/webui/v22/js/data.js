@@ -121,7 +121,7 @@ async function fetchUpdates() {
   } catch { /* keep last */ }
 }
 
-/** POST /ui/chat — { message, history, conversation_id, area?, lang? } → { reply, hits, conversation_id }.
+/** POST /ui/chat — { message, history, conversation_id, area?, lang? } → { reply, hits, conversation_id, navigate? }.
  *  Without a conversation id the daemon starts a new stored conversation. */
 export async function chat(message, history, conversationId, area, lang) {
   const r = await fetch("/ui/chat", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history, conversation_id: conversationId || undefined, area: area || undefined, lang: lang || undefined }) });
