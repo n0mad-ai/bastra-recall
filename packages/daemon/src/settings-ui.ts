@@ -10,6 +10,7 @@ import { effectiveSetting } from "./settings-effective.js";
 import { envSettingsSnapshot, envSettingSpec, applyEnvSettingChanges, validateEnvPinChanges, validateRawEnvInput } from "./settings-env.js";
 import { autostartSnapshot, settingsAutostart, type SettingsAutostart } from "./settings-autostart.js";
 import { listClients, revokeClient } from "./oauth-store.js";
+import { listOllamaModels } from "./learned-recall/reranker.js";
 const sessions = new Map<string,{csrf:string;expires:number;path:string;host:string;lastUsed:number}>();
 const ttl = 15*60_000, cookieName = "bastra_settings_session";
 // Full: the least recently used session gives way once it has been idle this
@@ -56,6 +57,8 @@ export function dispatchSettingsUi(req:IncomingMessage,res:ServerResponse,method
       const session=id?sessions.get(id):undefined;
       if(!session||session.path!==path||session.host!==req.headers.host)failure(401);
       if(method==="GET"&&url==="/ui/settings") {session.lastUsed=Date.now();sendJson(res,200,await snapshot(path,options));return;}
+      // Installed Ollama models for the model pickers; empty when Ollama is not reachable.
+      if(method==="GET"&&url==="/ui/settings/models") {session.lastUsed=Date.now();sendJson(res,200,{models:await listOllamaModels({timeoutMs:2000}).catch(()=>[] as string[])});return;}
       if(method!=="POST")failure(405);
       const csrf=req.headers["x-bastra-settings-csrf"];if(typeof csrf!=="string"||!safeEqual(csrf,session.csrf))failure(403);
       session.lastUsed=Date.now();

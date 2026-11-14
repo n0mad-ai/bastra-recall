@@ -45,6 +45,31 @@ export const META = {
   "ui.backdropDim": { min: 50, max: 95, step: 5, unit: "%" },
 };
 
+/** Pick lists for free-form keys: typical values (std = the registry default, marked automatically),
+ *  `custom` adds "Custom value …", `pre` shares one label set (st.o.<pre>.<value>), `k` overrides the label key,
+ *  `models` merges the Ollama models installed on this machine (GET /ui/settings/models). */
+const LANGS = ["de", "en", "fr", "es", "it", "nl", "pt"].map((v) => ({ v }));
+const nums = (...a) => a.map((v) => ({ v }));
+export const OPTIONS = {
+  "language.primary": { vals: LANGS, pre: "lang", custom: true },
+  "docs.language": { vals: LANGS, pre: "lang", custom: true },
+  "sharedRecall.language": { vals: [{ v: null }, { v: "de" }, { v: "en" }], pre: "lang" },
+  "generation.model": { vals: nums("gemma3:1b", "gemma3:4b", "gemma3:12b"), models: true, custom: true },
+  "embedding.model": { vals: nums("embeddinggemma"), models: true, custom: true },
+  "ollama.url": { vals: nums("http://localhost:11434"), custom: true },
+  "ollama.keepAlive": { vals: nums("0", "5m", "10m", "30m", "1h", "24h"), custom: true },
+  "archive.retain": { vals: ["junk=1,in-git=1,user=1", "junk=1,in-git=2,user=2", "junk=3,in-git=7,user=7", "junk=7,in-git=14,user=30"].map((v, i) => ({ v, k: `r${i}` })), custom: true },
+  "archive.cap": { vals: nums("1GB", "5GB", "10GB", "25GB", "50GB"), custom: true },
+  "archive.max-item": { vals: nums(null, "100MB", "500MB", "1GB", "2GB", "5GB"), custom: true },
+  "size.guide": { vals: nums(200, 300, 500, 800, 1000), custom: true },
+  "size.critical": { vals: nums(500, 800, 1000, 1500, 2000), custom: true },
+  "tasks.chatActiveMinutes": { vals: nums(10, 15, 30, 60, 120, 240), custom: true },
+  "recall.floor": { vals: nums(10, 20, 30, 40, 50, 60), custom: true },
+  "hint.suppressAfter": { vals: nums(3, 5, 8, 12, 20), custom: true },
+  "reflex.maxPerTurn": { vals: nums(1, 2, 3, 4, 5) },
+  "logs.retention": { vals: nums(30, 60, 90, 180, 365), custom: true },
+};
+
 /** Runtime metadata takes precedence over presentation hints. */
 export const metaOf = (e) => ({ ...(META[e.key] || {}), ...Object.fromEntries(
   ["min", "max", "step", "unit", "experimental"].filter((k) => e[k] !== undefined).map((k) => [k, e[k]])) });
@@ -66,6 +91,7 @@ export const store = {
   savedRestart: false,  // last apply touched restart-only keys
   busy: false,
   restarting: false,
+  models: [],           // installed Ollama models (empty when Ollama is not reachable)
 };
 
 const listeners = new Set();
@@ -116,6 +142,15 @@ export async function load() {
   store.error = "";
   try { accept(await withSession(() => call("/ui/settings"))); } catch (err) { store.error = err.message; }
   emit();
+}
+
+/** Installed Ollama models for the model pickers; a failure just leaves the static suggestions. */
+export async function loadModels() {
+  try {
+    const r = await withSession(() => call("/ui/settings/models"));
+    const models = Array.isArray(r?.models) ? r.models.filter((m) => typeof m === "string").map((m) => m.replace(/:latest$/, "")) : [];
+    if (JSON.stringify(models) !== JSON.stringify(store.models)) { store.models = models; emit(); }
+  } catch { /* suggestions only */ }
 }
 
 export async function apply() {

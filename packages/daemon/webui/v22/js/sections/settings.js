@@ -13,7 +13,7 @@ import { h, clear } from "../dom.js";
 import { setState } from "../state.js";
 import { hud, hudRow, hudChip, hudButton, hudTiles } from "./hud.js";
 import { loadingBlock, loadingInline, setBusy } from "./loading.js";
-import { SETTINGS_FILE, GROUPS, metaOf, store, onStore, emit, load, apply, discard, restart, revokeOauth,
+import { SETTINGS_FILE, GROUPS, OPTIONS, metaOf, loadModels, store, onStore, emit, load, apply, discard, restart, revokeOauth,
   entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
 import { backdropCtl } from "./settings-backdrop.js";
@@ -69,8 +69,53 @@ function toggleCtl(e) {
 }
 
 function segCtl(e) {
-  const btns = e.choices.map((o) => h("button.st-seg__o", { type: "button", text: o, on: { click: () => setValue(e.key, o) } }));
+  const btns = e.choices.map((o) => h("button.st-seg__o", { type: "button", text: tx(`st.o.${e.key}.${o}`, o), on: { click: () => setValue(e.key, o) } }));
   return { nodes: [h("div.st-seg", null, btns)], sync: () => { const v = shown(e); btns.forEach((b, i) => b.classList.toggle("is-on", e.choices[i] === v)); } };
+}
+
+/** Pick list: typical values, the default marked, "Custom value …" reveals a text field (also for a stored value outside the list). */
+function selectCtl(e) {
+  const spec = OPTIONS[e.key], m = metaOf(e), isNum = e.kind === "number", unit = m.unit ? t(`st.unit.${m.unit}`) : "";
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const installed = spec.models ? store.models : [];
+  const vals = spec.models ? [...installed.map((v) => ({ v })), ...spec.vals.filter((o) => !installed.includes(o.v))] : spec.vals;
+  const opts = vals.map((o) => {
+    const std = same(o.v, e.default);
+    let text = tx(`st.o.${spec.pre || e.key}.${o.k ?? o.v}`, o.v === null ? t("st.o.none") : isNum && unit ? `${o.v} ${unit}` : String(o.v));
+    if (spec.models && installed.length) text += ` · ${t(installed.includes(o.v) ? "st.o.installed" : "st.o.notInstalled")}`;
+    return { v: o.v, std, text: std ? `${text} · ${t("st.v.default")}` : text };
+  });
+  let customMode = false;
+  const sel = h("select.st-select", { "aria-label": nameOf(e) });
+  const custom = h("input.st-text", { type: "text", autocomplete: "off", spellcheck: "false", hidden: true, placeholder: t(isNum ? "st.custom.num" : "st.custom.ph"),
+    "aria-label": `${nameOf(e)} – ${t("st.custom")}` });
+  const draw = () => {
+    clear(sel).append(...opts.map((o, i) => h("option", { value: String(i), text: o.text })), spec.custom ? h("option", { value: "custom", text: t("st.custom") }) : null);
+  };
+  draw();
+  sel.addEventListener("change", () => {
+    if (sel.value === "custom") { customMode = true; custom.hidden = false; custom.focus(); return; }
+    customMode = false; custom.hidden = true; custom.classList.remove("is-bad");
+    const o = opts[Number(sel.value)];
+    setValue(e.key, o.std ? null : o.v);
+  });
+  custom.addEventListener("input", () => {
+    const raw = custom.value.trim(), n = Number(raw);
+    custom.classList.remove("is-bad");
+    if (raw === "") { setValue(e.key, null); return; }
+    if (isNum && (!Number.isFinite(n) || n < (m.min ?? -Infinity) || n > (m.max ?? Infinity))) { custom.classList.add("is-bad"); return; }
+    setValue(e.key, isNum ? n : raw);
+  });
+  return { nodes: [h("span.st-selw", null, sel), custom], wide: true, sync: () => {
+    const v = shown(e), cur = v === undefined || v === null ? e.default : v;
+    const i = opts.findIndex((o) => same(o.v, cur));
+    if (i < 0 && !spec.custom) { opts.push({ v: cur, std: false, text: String(cur) }); draw(); }
+    const idx = i < 0 && !spec.custom ? opts.length - 1 : i;
+    if (idx < 0) customMode = true;
+    sel.value = customMode || idx < 0 ? "custom" : String(idx);
+    custom.hidden = sel.value !== "custom";
+    if (!custom.hidden && document.activeElement !== custom) custom.value = v === undefined || v === null ? "" : String(v);
+  } };
 }
 
 function numberCtl(e) {
@@ -130,6 +175,7 @@ function controlFor(e) {
   if (e.secret) return e.envOverride?.length ? valueCtl(e) : secretCtl(e);
   if (e.kind === "boolean") return toggleCtl(e);
   if (e.choices) return segCtl(e);
+  if (OPTIONS[e.key]) return selectCtl(e);
   if (e.kind === "number") return numberCtl(e);
   if (e.kind === "json") return listCtl(e);
   return textCtl(e);
@@ -297,7 +343,7 @@ function mount(el, ctx) {
   });
   const offData = onData(drawHead);
   build();
-  load();
+  load().then(loadModels);
   return () => { offStore(); offData(); scroller.removeEventListener("scroll", onScroll); cancelAnimationFrame(raf); clearTimeout(flashT); bar.remove(); store.jump = null; };
 }
 
