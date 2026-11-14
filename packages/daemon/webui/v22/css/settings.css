@@ -1,3 +1,4 @@
+@import "./settings-soul.css";
 /* Recall UI v22 — Settings area (prototype STAGE › isSettings, LENS › tabFindSet / tabChanges).
  * Values are the prototype's inline styles. */
 .st-hud .hud__text { max-width: 660px; }

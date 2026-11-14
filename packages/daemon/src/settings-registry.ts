@@ -6,6 +6,7 @@ import { normalizeAssistantName } from "./assistant-address-name.js";
 import { parseRetain, parseSize } from "./rm-archive-reconcile.js";
 import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
+import { SOUL_DIRECTIONS, SOUL_TEXT_MAX } from "./soul.js";
 
 export const UPDATE_MODES = ["notify", "auto", "off"] as const;
 export const EMBEDDING_PROVIDERS = ["ollama", "openai", "none"] as const;
@@ -74,6 +75,10 @@ export const SETTINGS_REGISTRY = {
     backdropBlur: setting(bool, { area: "general", label: "Hintergrundbild weichzeichnen", default: false }),
   },
   assistant: { name: setting(z.string().transform((value,ctx) => { try { return normalizeAssistantName(value); } catch { ctx.addIssue({code:"custom",message:"Invalid assistant name"}); return z.NEVER; } }), { area: "general", label: "Name des Assistenten", default: null, required: true }) },
+  soul: {
+    direction: setting(z.enum(SOUL_DIRECTIONS), { area: "general", label: "Persönlichkeit", default: "balanced" }),
+    text: setting(z.string().trim().max(SOUL_TEXT_MAX), { area: "general", label: "Gewünschter Umgang in eigenen Worten", default: "" }),
+  },
   reflex: {
     enabled: setting(bool, { area: "hooks", label: "Reflex", default: true, env: "BASTRA_REFLEX" }),
     maxPerTurn: setting(z.number().int().min(1).max(5), { area: "hooks", label: "Reflex-Treffer je Runde", default: 2, env: "BASTRA_REFLEX_MAX_PER_TURN" }),

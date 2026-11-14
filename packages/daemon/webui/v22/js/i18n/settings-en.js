@@ -1,6 +1,25 @@
 // Settings area strings (js/sections/settings*.js). Merged via addStrings().
 // Row texts: st.k.<key> (name), st.k.<key>.d (description), st.k.<key>.p (placeholder).
 export default {
+  "st.g.personality": "Personality",
+  "st.g.personality.q": "Choose how Recall speaks with you. This affects tone, not facts or permissions.",
+  "st.k.soul.direction": "Basic personality",
+  "st.k.soul.direction.d": "Applies in the agent window and in new sessions of connected assistants.",
+  "st.k.soul.text": "In your own words",
+  "st.k.soul.text.d": "Add how you want to be treated. Facts, rules and permissions still apply.",
+  "st.k.soul.text.p": "Be direct, question my ideas, but stay calm and avoid irony when I am stressed.",
+  "st.soul.count": "{n} / {max} characters",
+  "st.soul.balanced": "Balanced",
+  "st.soul.balanced.d": "Factual and friendly, with a balanced tone.",
+  "st.soul.direct": "Direct",
+  "st.soul.direct.d": "Lead with the answer and keep it concise.",
+  "st.soul.warm": "Warm",
+  "st.soul.warm.d": "Supportive and considerate, with honest disagreement when needed.",
+  "st.soul.playful": "Playful",
+  "st.soul.playful.d": "Relaxed, with light humor when it fits.",
+  "st.soul.sparring": "Sparring partner",
+  "st.soul.sparring.d": "Question assumptions and discuss ideas critically.",
+
   "st.kicker": "SETTINGS · {file}",
   "st.title": "How recall runs on this machine",
   "st.text": "Every option bastra knows today, from the CLI and its config file. Environment variables always win over the file — where one is set, the setting shows it and stays read-only here. Nothing is written until you apply.",

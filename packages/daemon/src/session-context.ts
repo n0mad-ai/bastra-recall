@@ -21,6 +21,7 @@ import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import { projectForLane } from "./scope-filter.js";
 import { dimensionHints } from "./telemetry-dimensions.js";
 import { startupRulebookCatalog } from "./rulebook-catalog.js";
+import { buildSoulBlock, readSoulPreference } from "./soul.js";
 import type { ActiveConvention } from "./session-state.js";
 import {
   assembleSessionSections,
@@ -48,7 +49,7 @@ export async function buildSessionContext(
     { project: null, expand_hops: 0, dueText },
     deps,
   );
-  return renderSessionContext(assembled.sections, vault.size());
+  return renderSessionContext(assembled.sections, vault.size()) + buildSoulBlock(await readSoulPreference());
 }
 
 /** GET /hook/session-context — loopback-only, no auth (same trust level as
@@ -161,7 +162,7 @@ export async function handleSessionContextPost(
       ...(typeof budget.tokens === "number" ? { tokens: budget.tokens } : {}),
     },
   });
-  const context = renderSessionContext(assembled.sections, vault.size());
+  const context = renderSessionContext(assembled.sections, vault.size()) + buildSoulBlock(await readSoulPreference());
   if (due && assembled.reports.some(r => r.kind === "due" && r.included)) res.once("finish", due.record);
   sendJsonPlain(res, 200, {
     context,

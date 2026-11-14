@@ -3,6 +3,7 @@ import { filterPendingSaveSuggestions } from "./save-suggestion-review.js";
 import { SESSION_START_BUDGET_MS } from "./hook-budgets.js";
 import { resetRulebookContext } from "./rulebook-check.js";
 import { capSessionContext } from "./session-context-cap.js";
+import { buildSoulBlock, readSoulPreference } from "./soul.js";
 /**
  * SessionStart lane, daemon-side (#369/#15 — the #343/#344 pattern, applied to the
  * lane that greets every new session).
@@ -684,7 +685,8 @@ export async function runSessionLane(
   }
   if (kernelWanted && !sideData?.kernel) kernel.text = "Rulebook unavailable at session start; the complete catalog remains available through list_rules().\n";
   const kernelHead = kernel.text === "" ? "" : kernel.text + "\n";
-  const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
+  const soulBlock = buildSoulBlock(await readSoulPreference());
+  const extras = taxonomyBlock + languageBlock + soulBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
   const pinnedHead = pinnedBlock === "" ? "" : pinnedBlock + "\n";
@@ -746,7 +748,7 @@ export async function runSessionLane(
     const parsed = JSON.parse(out);
     const context = parsed.hookSpecificOutput?.additionalContext;
     if (typeof context === "string") {
-      const capped = capSessionContext(context, [kernel.text, languageBlock]);
+      const capped = capSessionContext(context, [kernel.text, languageBlock, soulBlock]);
       parsed.hookSpecificOutput.additionalContext = capped.text;
       out = JSON.stringify(parsed); injected = capped.text;
     }

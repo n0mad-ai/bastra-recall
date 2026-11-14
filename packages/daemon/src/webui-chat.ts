@@ -11,6 +11,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SearchIndex, RecallHit } from "@bastra-recall/core";
 import { getUiEnabled } from "./settings.js";
+import { buildSoulBlock, readSoulPreference, type SoulPreference } from "./soul.js";
 import { sendJsonPlain } from "./webui.js";
 import type { ChatHistory } from "./chat-history.js";
 
@@ -159,6 +160,7 @@ export function buildAnswerPrompt(
   getBody?: (id: string) => string | null,
   taskContext?: string,
   lang?: string,
+  soul?: SoulPreference,
 ): string {
   // the strongest hits contribute their real content — a summary snippet is
   // too thin to answer "what did I say about X" with substance
@@ -174,12 +176,14 @@ export function buildAnswerPrompt(
         .join("\n")
     : "(no notes found)";
   const langHint = lang ? ` Only for input with no identifiable language, the fallback language code is "${lang}".` : "";
+  const soulBlock = buildSoulBlock(soul);
   return [
     "You are the assistant of a personal memory app. First decide the user intent: opening a view, asking about tasks, or asking about vault knowledge. A request to OPEN a view is navigation, not a question about its contents.",
     `Always answer in the language of the user's question, even when the UI uses a different language.${langHint}`,
     "VAULT NOTES — use these for questions about knowledge, decisions and memories:",
     listing,
     taskContext || "TASK LIST: unavailable. Never infer current tasks from notes.",
+    ...(soulBlock ? [soulBlock] : []),
     "Use the TASK LIST only when the question concerns the user's tasks, due dates, reminders or schedule. Those questions are answered ONLY from the TASK LIST, never inferred from VAULT NOTES. Name relevant titles, due weekday/date (time if useful) and status in plain words. Paused tasks are paused, not active or currently due. If DUE TODAY is empty, say nothing is due today, then mention overdue active tasks if any. If a group is truncated, acknowledge the omitted count; do not invent its titles. Keep it short.",
     "For vault questions, ignore the task block and answer grounded ONLY in the VAULT NOTES: quote their actual rules/content when useful, never invent. If none fit, say the search did not surface it and suggest a sharper search term; never claim the thing does not exist. Return relevant: [] in that case.",
     `NAVIGATION — allowed view IDs: ${CHAT_NAVIGATION.join(", ")}. Only when the user asks to open or switch to one of these areas/views, include its exact ID as navigate. For navigation, ignore notes/tasks, return relevant: [] and a brief natural confirmation in the question language. Never use a JSON field name as the reply. Do not navigate merely because a view is mentioned in a knowledge question. The UI enforces Pro availability. For all information questions (including questions about task contents or due dates), omit navigate entirely: answering about an area is not a request to open it.`,
@@ -241,7 +245,7 @@ export function parseAnswer(raw: string): { reply: string; relevant: string[]; p
 export async function runSearchCopilot(
   message: string,
   history: Array<{ role: string; content: string }>,
-  deps: { search: SearchIndex; chat: ChatFn; getBody?: (id: string) => string | null; taskContext?: string; lang?: string },
+  deps: { search: SearchIndex; chat: ChatFn; getBody?: (id: string) => string | null; taskContext?: string; lang?: string; soul?: SoulPreference },
 ): Promise<{ reply: string; hits: CopilotHit[]; navigate?: string }> {
   const queries = parseQueries(await deps.chat(buildQueryPrompt(message, history)), message);
   const merged = new Map<string, RecallHit>();
@@ -254,7 +258,7 @@ export async function runSearchCopilot(
   }
   const top = [...merged.values()].sort((a, b) => b.score - a.score).slice(0, HITS_TOTAL);
 
-  const answer = parseAnswer(await deps.chat(buildAnswerPrompt(message, top, deps.getBody, deps.taskContext, deps.lang)));
+  const answer = parseAnswer(await deps.chat(buildAnswerPrompt(message, top, deps.getBody, deps.taskContext, deps.lang, deps.soul)));
   // model picked → trust it (including an explicit "nothing fits" = []);
   // unparseable reply → surface the strongest hits rather than none
   // With task context a failed parse must not dress up a task answer
@@ -339,6 +343,7 @@ export async function handleUiChat(
       getBody: deps.getBody,
       taskContext,
       lang,
+      soul: await readSoulPreference(settingsPath),
     });
     let conversation_id: string | null = null;
     if (deps.history) {

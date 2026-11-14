@@ -101,3 +101,20 @@ Die Einstellungs-API verlangt eine direkte lokale Verbindung, einen Loopback-Hos
 Die Einstellungen liegen im Namespace `settings` der lokalen `recall.db`; Schlüssel ist der ursprüngliche absolute Pfad von `cli-settings.json`. Beim ersten Umzug sichert der gemeinsame Adapter automatisch die Datenbank und erhält die Originalbytes als `cli-settings.json.pre-db`. Wiederholtes Lesen importiert diese Datei nicht erneut. Die bisherigen typisierten Einstellungszugriffe bleiben erhalten. Siehe [lokale Datenbank](app-database.md) und [Speicherumzug/Rückweg](app-record-store.md).
 
 Für die Rückkehr zuerst alle Daemon-/CLI-Schreiber stoppen und die erhaltene `.pre-db`-Datei unter ihrem alten Namen wiederherstellen, dann die alte Version starten. Sollen neuere Änderungen erhalten bleiben, zuvor mit der neuen Version `exportAppRecord("settings", ursprünglicherAbsoluterPfad, neuesZiel)` ausführen und stattdessen diesen Export wiederherstellen. DB, WAL-/SHM-Dateien und Originale bis zur Prüfung der zurückgekehrten Version bewahren. Die Datenbank gehört nie auf ein Sync- oder Netzlaufwerk. Erinnerungen bleiben Markdown im Vault.
+
+
+## Personality: Soul (v22)
+
+The free v22 Settings page has a **Personality** group. Choose Balanced (default), Direct, Warm, Playful or Sparring partner; the short explanation changes with the selection. Add up to 600 characters in your own words. The counter shows the current length. Apply saves both values through the ordinary settings workflow; Discard removes unsaved edits. No daemon restart is needed.
+
+The values are `soul.direction` (`balanced`, `direct`, `warm`, `playful`, `sparring`) and `soul.text` (default empty). Returning a value to its default clears that override. They shape tone, length, humor and directness in the agent window and in the session context of connected assistants. Start a new hook session to receive changed preferences. Hookless clients receive the block once at the first tool call of their MCP-forwarder process; if that process is reused, reconnect or restart the client. No mid-session update contract is added. Balanced with no text adds no client context. Preferences do not alter facts, task data, navigation intent, permissions or binding rules. Free text is quoted style data; instructions to override those boundaries are not granted authority.
+
+This is base personality only, planned for v1.2.0. It does not learn from interactions or store episodes; those follow in v1.3.0 (#1504). It uses the existing local settings store, with no database schema change.
+
+## Persoenlichkeit: Soul (v22)
+
+Die freie v22-Einstellungsseite enthält die Gruppe **Persönlichkeit**. Wähle Ausgewogen (Standard), Direkt, Warm, Locker oder Sparringspartner; die kurze Erklärung passt sich der Auswahl an. Ergänze bis zu 600 Zeichen in eigenen Worten. Der Zähler zeigt die aktuelle Länge. Übernehmen speichert beide Werte im normalen Einstellungsablauf; Verwerfen entfernt ungespeicherte Änderungen. Ein Daemon-Neustart ist nicht nötig.
+
+Die Werte heißen `soul.direction` (`balanced`, `direct`, `warm`, `playful`, `sparring`) und `soul.text` (Standard leer). Zurück zum Standard entfernt die jeweilige Überschreibung. Sie gestalten Ton, Länge, Humor und Direktheit im Agentenfenster und im Sitzungskontext angebundener Assistenten. Für geänderte Wünsche eine neue Hook-Sitzung starten. Hooklose Clients erhalten den Block einmal beim ersten Toolaufruf ihres MCP-Forwarder-Prozesses; bleibt dieser Prozess bestehen, den Client neu verbinden oder neu starten. Eine Aktualisierung mitten in laufenden Sitzungen ist hier nicht ergänzt. Ausgewogen ohne Freitext ergänzt keinen Client-Kontext. Wünsche ändern weder Fakten, Aufgabendaten, Navigationsabsicht, Rechte noch verbindliche Regeln. Freitext wird als zitierter Stilwunsch eingebettet; Anweisungen zum Aufheben dieser Grenzen erhalten dadurch keine Geltung.
+
+Dies ist nur die Grundpersönlichkeit, vorgesehen für v1.2.0. Sie lernt nicht aus Interaktionen und speichert keine Episoden; das folgt in v1.3.0 (#1504). Sie nutzt die bestehenden lokalen Einstellungen ohne Änderung am Datenbankschema.

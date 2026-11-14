@@ -15,6 +15,7 @@ export const SETTINGS_FILE = "~/.bastra/cli-settings.json";
 export const GROUPS = [
   { id: "appearance", keys: ["ui.footer", "ui.timeline", "ui.backdrop", "ui.backdropDim", "ui.backdropBlur"] },
   { id: "general", keys: ["update.mode", "language.primary", "autostart", "battery.saver", "ui.enabled", "assistant.name", "daemon.env"] },
+  { id: "personality", keys: ["soul.direction", "soul.text"] },
   { id: "models", keys: ["embedding.provider", "embedding.model", "ollama.autostart", "ollama.url", "generation.model", "ollama.keepAlive", "modelRecommendation.id", "modelRecommendation.answer", "modelRecommendation.at"] },
   { id: "recall", keys: ["recall.floor", "reflex.enabled", "reflex.maxPerTurn", "prompt.hookMode", "hint.suppress", "hint.suppressAfter", "evidenceGate.enabled", "scope.filterLanes", "experiment.name", "experiment.arms", "experiment.registration", "experiment.registration_version"] },
   { id: "sharing", keys: ["commons.enabled", "sharedRecall.enabled", "sharedRecall.language", "sharedRecall.live"] },

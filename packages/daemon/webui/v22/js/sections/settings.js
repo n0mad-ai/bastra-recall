@@ -17,6 +17,7 @@ import { SETTINGS_FILE, GROUPS, OPTIONS, metaOf, loadModels, store, onStore, emi
   entry, groupKeys, locked, changed, shown, setValue, revert, matches } from "./settings-model.js";
 import { findTab, changesTab } from "./settings-panel.js";
 import { backdropCtl } from "./settings-backdrop.js";
+import { soulControl } from "./settings-soul.js";
 import en from "../i18n/settings-en.js";
 import de from "../i18n/settings-de.js";
 
@@ -171,6 +172,7 @@ function valueCtl(e) {
 
 function controlFor(e) {
   if (e.managed || e.readonly) return valueCtl(e);
+  if (e.key === "soul.direction" || e.key === "soul.text") return soulControl(e);
   if (e.key === "ui.backdrop") return backdropCtl(e, { shown, setValue, revert, reload: load });
   if (e.secret) return e.envOverride?.length ? valueCtl(e) : secretCtl(e);
   if (e.kind === "boolean") return toggleCtl(e);

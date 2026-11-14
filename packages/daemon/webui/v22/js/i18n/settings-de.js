@@ -1,6 +1,25 @@
 // Settings area strings (js/sections/settings*.js). Merged via addStrings().
 // Row texts: st.k.<key> (name), st.k.<key>.d (description), st.k.<key>.p (placeholder).
 export default {
+  "st.g.personality": "Persönlichkeit",
+  "st.g.personality.q": "Lege fest, wie Recall mit dir spricht. Das verändert den Ton, nicht Fakten oder Rechte.",
+  "st.k.soul.direction": "Grundpersönlichkeit",
+  "st.k.soul.direction.d": "Wirkt im Agentenfenster und in neuen Sitzungen angebundener Assistenten.",
+  "st.k.soul.text": "In eigenen Worten",
+  "st.k.soul.text.d": "Ergänze, wie du behandelt werden möchtest. Fakten, Regeln und Rechte gelten weiterhin.",
+  "st.k.soul.text.p": "Sei direkt, hinterfrage meine Ideen, aber behandle mich bei Stress ruhig und ohne Ironie.",
+  "st.soul.count": "{n} / {max} Zeichen",
+  "st.soul.balanced": "Ausgewogen",
+  "st.soul.balanced.d": "Sachlich und freundlich, mit ausgewogenem Ton.",
+  "st.soul.direct": "Direkt",
+  "st.soul.direct.d": "Kommt sofort zur Antwort und hält sich kurz.",
+  "st.soul.warm": "Warm",
+  "st.soul.warm.d": "Unterstützt und nimmt Rücksicht, widerspricht aber bei Bedarf ehrlich.",
+  "st.soul.playful": "Locker",
+  "st.soul.playful.d": "Entspannt, mit leichtem Humor, wenn er zur Situation passt.",
+  "st.soul.sparring": "Sparringspartner",
+  "st.soul.sparring.d": "Hinterfragt Annahmen und diskutiert Ideen kritisch.",
+
   "st.kicker": "EINSTELLUNGEN · {file}",
   "st.title": "Wie Recall auf diesem Rechner läuft",
   "st.text": "Jede Option, die bastra heute kennt, aus der CLI und ihrer Konfigurationsdatei. Umgebungsvariablen gehen der Datei immer vor — ist eine gesetzt, zeigt die Einstellung sie an und bleibt hier schreibgeschützt. Geschrieben wird erst, wenn du übernimmst.",
