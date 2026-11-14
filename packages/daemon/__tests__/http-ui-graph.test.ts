@@ -32,10 +32,10 @@ async function fixture() {
   const owner = (await stat(dir)).uid;
   const vectors = new Map(["public", "secret", "private-doc"].map((id, i) => [id, new Float32Array([1, i / 100, 0, 0])]));
   const handles: Array<Awaited<ReturnType<typeof startHttpServer>>> = [];
-  const start = async (peer = owner) => {
+  const start = async (peer = owner, platform: NodeJS.Platform = "darwin") => {
     const handle = await startHttpServer({ port: 0, vault, search, telemetry, version: "test", toolDeps: { vault, search, telemetry, vaultPath: dir }, documentWriteEnabled: false,
       embedding: { on: false, providerId: null, source: "none" }, embeddingVectors: () => vectors,
-      localAccount: { platform: "darwin", euid: () => owner, lookup: async () => peer },
+      localAccount: { platform, euid: () => owner, lookup: async () => peer },
     }); handles.push(handle); return handle.port!;
   };
   return { vault, start, async close() { for (const h of handles) await h.close(); search.stop(); await vault.stop(); await mutateSettings(settingsFilePath(), () => original); await rm(dir, { recursive: true, force: true }); } };
@@ -108,5 +108,15 @@ test("UI/API semantic caches and in-flight builds never cross visibility boundar
     assert.ok(!first[1].raw.includes("secret"));
     for (const [path, count] of [["/api/v1/graph/semantic?include_private=true", 1], ["/ui/graph/semantic", 3], ["/api/v1/graph/semantic", 1]] as const) assert.equal((await get(port, path)).body.count, count);
     assert.equal(builds, 2, "both caches are reused without leaking either direction");
+  } finally { await f.close(); }
+});
+
+test("UI graph fails closed where the peer account cannot be proven", async () => {
+  const f = await fixture();
+  try {
+    const port = await f.start(undefined, "linux");
+    const ui = await get(port, "/ui/graph"); assert.equal(ui.status, 200);
+    assert.equal(ui.body.withheld.private, 2); assert.ok(!ui.raw.includes('"secret"'));
+    assert.equal((await get(port, "/ui/graph/node?id=secret")).status, 404);
   } finally { await f.close(); }
 });

@@ -89,6 +89,8 @@ export function createPeerUidLookup(scan: PortScan) {
   };
 }
 export const macosPeerUid = createPeerUidLookup(lsofScan);
+/** True only where the peer account check above really runs (this release: macOS). */
+export function accountBindingEnforced(options: LocalAccountOptions = {}): boolean { return platformOf(options) === 'darwin'; }
 export function localAccountPath(url: string): boolean {
   let path: string; try { path = new URL(url, 'http://localhost').pathname; } catch { return true; }
   return path === '/ui' || path.startsWith('/ui/') || path.startsWith('/api/v1/tasks') || path.startsWith('/api/v1/task_');

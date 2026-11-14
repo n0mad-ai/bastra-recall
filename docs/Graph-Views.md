@@ -2,7 +2,7 @@
 
 ## English
 
-The user web UI (classic and v22) reads `/ui/graph`, `/ui/graph/node?id=…` and `/ui/graph/semantic`. These routes require the existing enabled-UI access boundary: accepted local Host, forwarding token when applicable, and the vault account's OS peer on macOS. The assistant-address gateway checks the browser's account before forwarding. This adds no login step or new session mechanism; the existing OS-account check is macOS-specific.
+The user web UI (classic and v22) reads `/ui/graph`, `/ui/graph/node?id=…` and `/ui/graph/semantic`. These routes require the existing enabled-UI access boundary: accepted local Host, forwarding token when applicable, and the vault account's OS peer on macOS. The assistant-address gateway checks the browser's account before forwarding. This adds no login step or new session mechanism; the existing OS-account check is macOS-specific. Private memories are included only when that check actually ran and passed; on platforms without it, the UI routes fail closed to the filtered projection.
 
 This user projection includes private memories and documents, their graph edges and full node details, including `related`, `related_via` and body. UI responses use `Cache-Control: no-store`. The external `/api/v1/graph*` projection keeps its existing private filter and REST authorization. Query parameters cannot switch that projection to include private memories. MCP tool sensitivity is unchanged. Semantic caches and in-flight builds are separate for the two projections.
 
@@ -10,7 +10,7 @@ Every graph node carries `sensitivity`: the memory/document's actual value, or `
 
 ## Deutsch
 
-Die Nutzer-Weboberfläche (klassisch und v22) liest `/ui/graph`, `/ui/graph/node?id=…` und `/ui/graph/semantic`. Diese Wege verwenden die vorhandene Grenze der eingeschalteten UI: akzeptierter lokaler Host, gegebenenfalls Weiterleitungs-Token und auf macOS das Betriebssystem-Konto des Vaults als Socket-Gegenstelle. Der Assistentenadressen-Gateway prüft das Browserkonto vor dem Weiterleiten. Es entsteht kein zusätzlicher Anmeldeschritt und keine neue Sitzungsmechanik; die bestehende Betriebssystem-Kontoprüfung gilt nur für macOS.
+Die Nutzer-Weboberfläche (klassisch und v22) liest `/ui/graph`, `/ui/graph/node?id=…` und `/ui/graph/semantic`. Diese Wege verwenden die vorhandene Grenze der eingeschalteten UI: akzeptierter lokaler Host, gegebenenfalls Weiterleitungs-Token und auf macOS das Betriebssystem-Konto des Vaults als Socket-Gegenstelle. Der Assistentenadressen-Gateway prüft das Browserkonto vor dem Weiterleiten. Es entsteht kein zusätzlicher Anmeldeschritt und keine neue Sitzungsmechanik; die bestehende Betriebssystem-Kontoprüfung gilt nur für macOS. Private Memories kommen nur mit, wenn diese Prüfung wirklich gelaufen und bestanden ist; auf Plattformen ohne sie liefern die UI-Wege die gefilterte Sicht.
 
 Diese Nutzersicht enthält private Memories und Dokumente, deren Graphkanten und vollständige Knotendetails mit `related`, `related_via` und Body. UI-Antworten tragen `Cache-Control: no-store`. Die externe Sicht `/api/v1/graph*` behält ihren privaten Filter und ihre REST-Zugriffsprüfung. Ein Queryparameter kann private Memories dort nicht einschalten. Die Sensitivity von MCP-Werkzeugen bleibt unverändert. Semantic-Caches und laufende Berechnungen sind für beide Sichten getrennt.
 

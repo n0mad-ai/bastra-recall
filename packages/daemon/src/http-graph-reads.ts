@@ -19,6 +19,8 @@ export interface GraphReadCtx {
   toolDeps: ToolDeps;
   embeddingVectors?: () => ReadonlyMap<string, Float32Array> | null;
   server: HttpServerContext;
+  /** Set by http.ts only after a proven peer-account check (fail closed). */
+  privateGraph?: boolean;
 }
 
 export function isGraphReadPath(path: string, prefix: string): boolean {
@@ -83,7 +85,7 @@ export function dispatchUiGraph(req: IncomingMessage, res: ServerResponse, metho
   void (async () => {
     if (!(await getUiEnabled())) { sendJson(res, 404, { error: "ui disabled" }); return; }
     if (method !== "GET") { sendJson(res, 405, { error: "method not allowed" }); return; }
-    await handleGraphRead(res, url, ctx, true);
+    await handleGraphRead(res, url, ctx, ctx.privateGraph === true);
   })().catch((err: Error) => sendJson(res, 500, { error: err.message }));
   return true;
 }

@@ -1,4 +1,4 @@
-import { createLocalAccountGuard, localAccountPath, vaultAccountUid, type LocalAccountOptions } from "./local-account-access.js";
+import { accountBindingEnforced, createLocalAccountGuard, localAccountPath, vaultAccountUid, type LocalAccountOptions } from "./local-account-access.js";
 import { authenticateTask } from "./task-auth.js";
 import { dispatchSettingsUi, type SettingsUiOptions } from "./settings-ui.js";
 import { createAssistantAddressListener } from "./assistant-address-gateway.js";
@@ -334,6 +334,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       uiChat: opts.uiChat,
       server: ctx,
       embeddingVectors: opts.embeddingVectors,
+      // Private memories only when the peer account was actually proven, never on a pass-through platform.
+      privateGraph: accountVerified && accountBindingEnforced(opts.localAccount),
     })) {
       return;
     }
