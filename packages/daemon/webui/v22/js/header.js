@@ -56,28 +56,31 @@ export function mountHeader(root, ctx) {
   document.addEventListener("pointerdown", (e) => { if (wxPop && !wxPop.contains(e.target) && !wxBtn.contains(e.target)) closeWeather(); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape" && wxPop) { e.preventDefault(); e.stopImmediatePropagation(); closeWeather(); wxBtn.focus(); } }, true);
   document.addEventListener("visibilitychange", () => holdNote("tab", document.hidden));
-  const ro = new ResizeObserver(() => measure());
+  const ro = new ResizeObserver(() => { measure(); positionWeather(); });
   ro.observe(leftTab); ro.observe(rightTab);
   window.addEventListener("resize", () => requestAnimationFrame(measure));
 }
 
 function closeWeather() {
   wxPop?.remove(); wxPop = null; wxBtn.setAttribute("aria-expanded", "false");
+  rightTab.classList.remove("is-weather-open");
 }
 
 function positionWeather() {
   if (!wxPop) return;
-  const r = rightTab.getBoundingClientRect(), a = app.getBoundingClientRect();
+  const r = rightTab.getBoundingClientRect(), b = wxBtn.getBoundingClientRect(), a = app.getBoundingClientRect();
   const x = Math.max(12, r.right - a.left - wxPop.offsetWidth);
-  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px` });
+  setVars(wxPop, { "--wx-x": `${x}px`, "--wx-y": `${r.bottom - a.top}px`,
+    "--wx-tab-left": `${Math.max(0, b.left - a.left - x)}px`,
+    "--wx-tab-tail": `${Math.max(0, x + wxPop.offsetWidth - (b.right - a.left))}px` });
 }
 
 function openWeather() {
   wxPop = h("div.wx-pop", { role: "dialog", "aria-label": t("status.weatherPlace"), vars: { "--c": "var(--accent)" } },
-    h("div.tp__tex"), h("span.tp__scan"),
+    h("div.tp__tex"),
     h("div.tp__head", null, h("span.tp__tagw", null, h("span.tp__dia"), h("span.tp__tag", { text: t("status.weatherPlace") }))),
     h("div.tp__body", null, weatherPicker(placeWeather(), closeWeather)));
-  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); positionWeather();
+  app.append(wxPop); wxBtn.setAttribute("aria-expanded", "true"); rightTab.classList.add("is-weather-open"); positionWeather();
   wxPop.querySelector("input")?.focus();
 }
 
@@ -113,7 +116,6 @@ function renderStatus(L) {
   wxBtn.title = t("status.weatherPlace");
   wxBtn.classList.toggle("is-empty", !place);
   wxC.textContent = w?.city || place?.name || "";
-  positionWeather();
   clear(lensBtnWrap);
   if (!L.lensOpen || L.compact) {
     const b = h("button.lens-btn", { title: t("status.panel"), "aria-label": t("status.panel"), cls: L.compact && L.lensOpen ? "is-on" : "",
@@ -121,6 +123,7 @@ function renderStatus(L) {
       s("svg", { viewBox: "0 0 24 24" }, s("path", { d: "M15 5l-7 7 7 7" })));
     lensBtnWrap.append(b);
   }
+  positionWeather();
 }
 
 // ── ticker ────────────────────────────────────────────────────────────────

@@ -1,8 +1,16 @@
 /* Header weather hangs from the right tab; surface/details match the ticker preview. */
-button.wx { border: 0; background: transparent; color: var(--ink); cursor: pointer; }
-button.wx:hover, button.wx[aria-expanded="true"] { background: var(--accent-10); }
+button.wx { position: relative; align-self: flex-start; height: 42px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+button.wx:hover { background: var(--accent-10); }
+button.wx[aria-expanded="true"] { background: var(--panel-2); }
+button.wx[aria-expanded="true"]::before { content: ""; position: absolute; inset: 0; border: 1px solid var(--accent); border-bottom: 0; pointer-events: none; }
+.htab-r.is-weather-open { z-index: 61; }
 .wx.is-empty .wx__t { font: 11px var(--mono); }
-.wx-pop { position: absolute; z-index: 60; left: var(--wx-x); top: var(--wx-y); width: min(320px, calc(100% - 24px)); max-height: calc(100% - 80px); overflow-y: auto; border: 1px solid var(--accent); border-top: 0; background: var(--panel-2); filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60)); animation: tkr-drop .15s var(--ease-panel) both; }
+.wx-pop { position: absolute; z-index: 60; left: var(--wx-x); top: var(--wx-y); width: min(320px, calc(100% - 24px)); border: 1px solid var(--accent); border-top: 0; background: var(--panel-2); filter: drop-shadow(0 10px 14px var(--shade-55)) drop-shadow(0 34px 44px var(--shade-60)); }
+.wx-pop::before, .wx-pop::after { content: ""; position: absolute; top: 0; border-top: 1px solid var(--accent); pointer-events: none; }
+.wx-pop::before { left: -1px; width: var(--wx-tab-left); }
+.wx-pop::after { right: -1px; width: var(--wx-tab-tail); }
 .wx-pop .tp__head, .wx-pop .tp__body { animation: none; }
+.wx-pop .tp__body { padding-top: 12px; padding-bottom: 12px; }
+.wx-pop .vt__wxl { max-height: min(240px, calc(100vh - 230px)); overflow-y: auto; overscroll-behavior: contain; }
 .wx-pop .vt__btn, .wx-pop .vt__wxp { font-size: 10.5px; }
 .wx-pop .vt__in, .wx-pop .vt__wxo { font-size: 12.5px; }
