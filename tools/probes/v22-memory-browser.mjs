@@ -26,7 +26,7 @@ const send = (method, params = {}) =>
 async function browserProbe(quick = false) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const { data } = await import("/ui/v22/js/data.js");
-  const { state, setState } = await import("/ui/v22/js/state.js");
+  const { setState } = await import("/ui/v22/js/state.js");
   const { vault, inWindow, timeWindow } = await import("/ui/v22/js/views/vault-data.js");
   const { openMemoryBrowser } = await import("/ui/v22/js/views/memory-browser.js");
   const { memoryCard, areaCard } = await import("/ui/v22/js/views/chrome.js");

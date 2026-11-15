@@ -116,7 +116,6 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   const sections: string[] = [];
   const identity: string[] = [];
   let files = 0;
-  let unanswered = 0;
   // #629: the coverage switch, read once and only once a block is under way.
   let coverageOn: boolean | undefined;
 
@@ -168,7 +167,6 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
     if (impact.missed.length === 0 && (graph === null || impact.unanswered.length === 0)) continue;
 
     files += impact.missed.length;
-    unanswered += impact.unanswered.length;
     identity.push(
       repoRoot,
       ...impact.missed.map((m) => `${m.file}<${m.changedFile}`),

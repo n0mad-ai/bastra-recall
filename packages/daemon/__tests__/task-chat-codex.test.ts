@@ -125,7 +125,7 @@ test("ordinary Codex resume does not inherit a crashed bridge hook exemption", a
   );
 });
 
-test("Codex metadata from an ordinary rollout never proves human origin", async (t) => {
+test("Codex metadata from an ordinary rollout never proves human origin", async (_t) => {
   const root = await mkdtemp(join(tmpdir(), "codex-unsupported-")),
     path = join(root, "rollout.jsonl"),
     now = Date.now();

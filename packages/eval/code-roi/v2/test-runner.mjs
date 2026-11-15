@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
-import { isTestFile } from "./test-truth.mjs";
+import "./test-truth.mjs"; // Preserve module initialization.
 
 /** Default ceiling for ONE suite run. A slower repository raises it explicitly. */
 export const DEFAULT_TIMEOUT_MS = Number(process.env.CODE_ROI_TEST_TIMEOUT_MS ?? 600_000);

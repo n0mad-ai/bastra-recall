@@ -276,6 +276,7 @@ async function mockDaemon(hits: Array<Record<string, unknown>>) {
     score_arms: ["bm25", "vector"],
   };
   const server = createServer(async (req, res) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Consume every chunk to drain the request; the binding is intentionally unread.
     for await (const _ of req) {
       /* drain */
     }

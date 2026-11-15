@@ -530,8 +530,8 @@ test("Befund C — recall-Event trägt den Raum von top_score UND candidate_pool
     search.start();
     const telemetry = new Telemetry();
     const logged: Record<string, unknown>[] = [];
-    const orig = telemetry.logRecall.bind(telemetry);
-    telemetry.logRecall = async (e: Parameters<typeof orig>[0]) => {
+    telemetry.logRecall.bind(telemetry); // Preserve the original binding evaluation.
+    telemetry.logRecall = async (e: Parameters<Telemetry["logRecall"]>[0]) => {
       logged.push(e as unknown as Record<string, unknown>);
     };
     const deps: ToolDeps = { vault, search, telemetry, vaultPath: dir };

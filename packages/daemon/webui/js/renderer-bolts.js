@@ -41,7 +41,6 @@ const BOLT_HOP_FALLOFF = 0.22; // visibility per level beyond the first
 // that shipped; zzallirog asked for the option of something far calmer
 // ("longer, parallel, rather than a short blast"), hence a slider instead of a
 // second hardcoded number.
-const BOLT_MS_DEFAULT = 420;
 // When each level starts is decided by levelStartOffset (bolt-styles.js): a
 // level fires only after the previous level's strike has finished, so there is
 // no per-level delay constant here any more.

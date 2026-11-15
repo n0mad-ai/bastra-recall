@@ -1,6 +1,6 @@
 import type { BoxChars } from "./types";
 
-import { visibleLength, codePointWidth, stripAnsi, ESC, ANSI_SPLIT } from "../utils/terminal";
+import { visibleLength, codePointWidth, ESC, ANSI_SPLIT } from "../utils/terminal";
 
 export function colorize(text: string, fgColor: string, reset: string, bold = false): string {
   const useBold = bold && reset !== "";

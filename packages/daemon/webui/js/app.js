@@ -102,7 +102,6 @@ async function main() {
     }
   }
   indexCare(await fetchAnnotations());
-  const openCareCount = () => [...careMap.values()].flat().filter((a) => !a.done).length;
   const hasOpenCare = (id) => (careMap.get(id) ?? []).some((a) => !a.done);
 
   // ── inspector + selection ──────────────────────────────────────

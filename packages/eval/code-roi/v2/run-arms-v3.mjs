@@ -70,7 +70,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { buildGraph, promptFor } from "./run-arms.mjs";
 import { execFileSync } from "node:child_process";

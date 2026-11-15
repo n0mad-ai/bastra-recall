@@ -34,12 +34,15 @@
     "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh",
     "openapi:generate": "node --import tsx packages/daemon/scripts/generate-openapi.ts",
     "openapi:check": "node --import tsx packages/daemon/scripts/generate-openapi.ts --check",
+    "lint": "eslint packages scripts tools",
     "format": "prettier --write \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\"",
     "format:check": "prettier --check \"{packages,scripts,tools}/**/*.{ts,mts,js,mjs,css,html,json}\""
   },
   "devDependencies": {
+    "eslint": "10.15.0",
     "prettier": "3.10.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "8.72.2"
   },
   "overrides": {
     "esbuild": "0.28.1",

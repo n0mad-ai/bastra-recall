@@ -213,7 +213,7 @@ export function morphLocal(morph, discR, i, t, spin, region = null) {
 
 /** Irregular / satellite: a few gravitationally shredded clumps, no symmetry.
  *  Deliberately NOT a disc — a Magellanic Cloud has no arms to speak of. */
-function irregular(morph, discR, i, t) {
+function irregular(morph, discR, i, _t) {
   const clumps = morph.clumps ?? 3;
   const c = i % clumps;
   const cx = (rnd(c + morph.seed, 457) - 0.5) * discR * 1.5;

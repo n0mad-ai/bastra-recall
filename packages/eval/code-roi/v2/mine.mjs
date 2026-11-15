@@ -51,7 +51,7 @@ import {
   symlinkSync,
   rmSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import "node:os";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
 

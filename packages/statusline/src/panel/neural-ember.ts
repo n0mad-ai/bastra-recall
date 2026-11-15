@@ -346,7 +346,6 @@ function bar(
 function funnel(grid: Grid, left: number, top: number, w: number, data: NeuralData, frame: number): void {
   const h = 5,
     dots = new Dots(w, h),
-    dw = w * 2,
     dh = h * 4;
   const cloud = Math.floor(w * 0.3),
     found = Math.floor(w * 0.42),

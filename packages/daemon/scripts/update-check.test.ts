@@ -384,20 +384,14 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
 
 test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", async () => {
   await withKegFixture(async ({ old, plist, launchctl, plutil }) => {
-    let out = "";
-    const outcome = await refreshManagedAutostart(
-      (s) => {
-        out += s;
-      },
-      {
-        target: null,
-        reload: true,
-        plistFile: plist,
-        launchctl,
-        plutil,
-        platform: "darwin",
-      }
-    );
+    const outcome = await refreshManagedAutostart((_s) => {}, {
+      target: null,
+      reload: true,
+      plistFile: plist,
+      launchctl,
+      plutil,
+      platform: "darwin",
+    });
     assert.equal(outcome.ok, false, "an update may not report success it cannot prove");
     const program = programFromPlist(await readFile(plist, "utf8"));
     assert.equal(program[1], old.script, "nothing was rewritten");

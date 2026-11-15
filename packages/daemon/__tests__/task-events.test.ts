@@ -178,11 +178,11 @@ test("secret equals uses original hashes, not identical redaction placeholders",
 test("snoozed journal event remains eligible after checkpoint and restart", async () => {
   const f = await fixture();
   await callTaskCrud(f.ctx, f.auth, "task_source_register", f.source);
-  let t = (await callTaskCrud(f.ctx, f.auth, "task_create", {
+  const t = (await callTaskCrud(f.ctx, f.auth, "task_create", {
     ...f.input,
     schedule: { kind: "event", source_id: "source", predicate: "equals", expected: "yes" },
   })) as any;
-  t = await callTaskCrud(f.ctx, f.auth, "task_snooze", {
+  await callTaskCrud(f.ctx, f.auth, "task_snooze", {
     id: t.id,
     expected_revision: t.expected_revision,
     until: 2000,

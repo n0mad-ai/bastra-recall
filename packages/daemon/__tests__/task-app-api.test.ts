@@ -195,8 +195,8 @@ test("SSE announces expiry and a recurring occurrence completion without ending 
   const f = await fixture();
   let subscription: Awaited<ReturnType<typeof stream>> | undefined;
   try {
-    let task = await f.create();
-    task = await f.call("task_edit", {
+    const task = await f.create();
+    await f.call("task_edit", {
       id: task.id,
       expected_revision: task.expected_revision,
       patch: { expires_at: 2500 },

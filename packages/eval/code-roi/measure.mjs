@@ -26,7 +26,7 @@ import { writeFile } from "node:fs/promises";
 const run = promisify(execFile);
 const REPO = "/Users/n0mad/Projekte/bastra-recall";
 const D = `${REPO}/packages/daemon/dist`;
-const { loadGraph, findSymbol, dependentFilesOf, symbolsOfFile } = await import(`${D}/code-graph/reader.js`);
+const { loadGraph, findSymbol } = await import(`${D}/code-graph/reader.js`);
 const { findCode } = await import(`${D}/code-graph/find-code.js`);
 
 const tokens = (s) => Math.ceil(s.length / 4);

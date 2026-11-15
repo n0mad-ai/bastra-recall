@@ -298,7 +298,7 @@ test("missing managed token retires former automatic access; unsafe file is visi
   }));
 
 test("hookless forwarder session context authenticates from private token file without env token", async () =>
-  isolated(async (root) => {
+  isolated(async (_root) => {
     const { createServer } = await import("node:http");
     const { spawn } = await import("node:child_process");
     const { fileURLToPath } = await import("node:url");

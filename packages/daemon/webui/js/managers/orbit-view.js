@@ -34,7 +34,7 @@
  *  @param {() => Map} deps.getHues       active cluster→hue map
  *  @param {() => [string, string]} deps.getSatLight  theme HSL parts */
 
-import { clusterColor, glowSprite } from "../graph-data.js";
+import { glowSprite } from "../graph-data.js";
 // galactic mode (#217 follow-up): the user cloud as the rotating center —
 // opt-in layout, pure placement math lives in orbit-galaxy.js
 import {

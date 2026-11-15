@@ -50,7 +50,7 @@ export function createOrbitDecor(env) {
     const stars = env.getStars();
     const hole = env.getHole();
     const orbitRings = env.getOrbitRings();
-    const mode = env.getMode();
+    env.getMode(); // Keep the getter evaluation even though its result is unused.
     const enterAt = env.getEnterAt();
     const R = env.getR();
 

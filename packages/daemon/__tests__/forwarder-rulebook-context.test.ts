@@ -34,7 +34,7 @@ test("forwarder ignores a foreign inherited Codex thread and does not equate mis
   assert.equal(await maybeSessionContextItem(), null, "first-call context/notice remains one-shot");
 });
 
-test("fix2: Claude statusline wins over inherited Codex environment", async (t) => {
+test("fix2: Claude statusline wins over inherited Codex environment", async (_t) => {
   const { liveStatusline } = await import("../src/mcp-forwarder-statusline.js");
   const { callDaemon } = await import("../src/mcp-forwarder-calls.js");
   const old = liveStatusline.cc_session_id;

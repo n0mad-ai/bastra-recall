@@ -43,6 +43,9 @@ jobs:
       - name: Install (clean, from lockfile)
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Formatting
         run: npm run format:check
 
