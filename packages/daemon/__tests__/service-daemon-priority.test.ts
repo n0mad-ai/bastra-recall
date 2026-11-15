@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, get } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { mkdtemp, mkdir, writeFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -75,7 +75,7 @@ async function fixture(work: (dir: string, env: NodeJS.ProcessEnv, port: number)
     // never the storage-writer lifetime boundary (#1413).
     await until(async () => {
       try {
-        const r = await fetch(env.BASTRA_DAEMON_URL + "/health", { signal: AbortSignal.timeout(200) });
+        const r = await healthResponse(env, false);
         return !r.ok;
       } catch {
         return true;
@@ -98,12 +98,76 @@ async function stop(child: ChildProcess) {
 }
 async function health(env: NodeJS.ProcessEnv) {
   try {
-    const r = await fetch(env.BASTRA_DAEMON_URL + "/health", { signal: AbortSignal.timeout(200) });
-    return r.ok ? ((await r.json()) as { started_by?: string }) : null;
+    const r = await healthResponse(env);
+    return r.ok ? (JSON.parse(r.body) as { started_by?: string }) : null;
   } catch {
     return null;
   }
 }
+// Poll real HTTP without Undici's socket QoS path (nodejs/undici#6075):
+// daemon startup/exit can reset a connection between connect and write.
+function healthResponse(env: NodeJS.ProcessEnv, readBody = true): Promise<{ ok: boolean; body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = get(
+      env.BASTRA_DAEMON_URL + "/health",
+      { agent: false, signal: AbortSignal.timeout(200) },
+      (response) => {
+        const ok = response.statusCode! >= 200 && response.statusCode! < 300;
+        let body = "";
+        response.on("error", reject);
+        if (!readBody || !ok) {
+          // Teardown and unsuccessful health checks only need headers.
+          response.resume();
+          resolve({ ok, body });
+          return;
+        }
+        response.setEncoding("utf8");
+        response.on("data", (chunk: string) => (body += chunk));
+        response.on("end", () => resolve({ ok, body }));
+      }
+    );
+    request.on("error", reject);
+  });
+}
+
+test("health fixture retains status checks while JSON, reset and stalled bodies fail safely", async () => {
+  let mode = "json";
+  const listener = createServer((_req, res) => {
+    if (mode === "reset") {
+      res.destroy();
+      return;
+    }
+    res.writeHead(mode.startsWith("unavailable") ? 503 : 200, { "content-type": "application/json" });
+    if (mode.endsWith("stall")) {
+      res.write("{");
+      return;
+    }
+    res.end(mode === "malformed" ? "{" : JSON.stringify({ started_by: "launchagent" }));
+  });
+  await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+  const env = { BASTRA_DAEMON_URL: `http://127.0.0.1:${(listener.address() as { port: number }).port}` };
+  try {
+    assert.equal((await health(env))?.started_by, "launchagent");
+    mode = "malformed";
+    assert.equal(await health(env), null);
+    assert.equal((await healthResponse(env, false)).ok, true, "bad JSON must not mean the port is free");
+    mode = "unavailable";
+    assert.equal(await health(env), null);
+    assert.equal((await healthResponse(env, false)).ok, false);
+    mode = "unavailable-stall";
+    assert.deepEqual(await healthResponse(env), { ok: false, body: "" }, "non-2xx must not await a stalled body");
+    mode = "reset";
+    assert.equal(await health(env), null);
+    await assert.rejects(healthResponse(env, false));
+    mode = "stall";
+    const status = await healthResponse(env, false);
+    assert.equal(status.ok, true, "a healthy status must not await the response body");
+    assert.equal(await health(env), null, "the body deadline must still abort a stalled JSON response");
+    assert.equal(status.ok, true, "a later body timeout must not report a released port");
+  } finally {
+    await new Promise<void>((resolve, reject) => listener.close((error) => (error ? reject(error) : resolve())));
+  }
+});
 async function plist(env: NodeJS.ProcessEnv) {
   const file = managedAutostartPlistPath(env.HOME);
   await mkdir(join(env.HOME!, "Library/LaunchAgents"), { recursive: true });
