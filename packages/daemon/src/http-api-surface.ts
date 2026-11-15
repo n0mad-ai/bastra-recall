@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
 import type { HttpServerContext } from "./http-context.js";
-import { handleGraphRead, isGraphReadPath } from "./http-graph-reads.js";
+import { handleGraphRead } from "./http-graph-reads.js";
 import { listFloors } from "./floors.js";
 import { liveIntent, readActs } from "./floor-acts.js";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
@@ -144,7 +144,17 @@ export function dispatchApiSurface(
         .catch((err: Error) => sendJson(res, 500, { error: err.message }));
       return true;
     }
-    if (isGraphReadPath(u.pathname, "/api/v1/graph")) {
+    // Keep route and query declarations visible to fail-closed OpenAPI discovery.
+    if (u.pathname === "/api/v1/graph") {
+      void handleGraphRead(res, url, ctx, false).catch((err: Error) => sendJson(res, 500, { error: err.message }));
+      return true;
+    }
+    if (u.pathname === "/api/v1/graph/semantic") {
+      void handleGraphRead(res, url, ctx, false).catch((err: Error) => sendJson(res, 500, { error: err.message }));
+      return true;
+    }
+    if (u.pathname === "/api/v1/graph/node") {
+      u.searchParams.get("id"); // Read by handleGraphRead; declared here for the HTTP contract.
       void handleGraphRead(res, url, ctx, false).catch((err: Error) => sendJson(res, 500, { error: err.message }));
       return true;
     }
